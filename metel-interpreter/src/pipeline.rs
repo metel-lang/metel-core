@@ -120,6 +120,75 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     })
 }
 
+/// Run the full pipeline over one in-memory source string.
+///
+/// The source is rooted at the stable virtual path `playground.mtl`. It can
+/// import binary-embedded `std::` modules, but the single-file provider never
+/// falls through to the filesystem for user modules.
+///
+/// # Errors
+/// Returns an error if parsing, name resolution, typechecking, or evaluation
+/// fails.
+pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, MetelError> {
+    let total_started = Instant::now();
+    let root = "playground.mtl";
+    let provider = module_loader::InMemorySourceProvider::new(root, source);
+
+    let started = Instant::now();
+    let graph = module_loader::load_virtual_root_with(root, &provider)?;
+    let load_root_ns = elapsed_ns(started);
+
+    let started = Instant::now();
+    let names = name_resolver::resolve(&graph)?;
+    let resolve_ns = elapsed_ns(started);
+
+    let started = Instant::now();
+    let normalized = path_normalizer::normalize(graph, &names)?;
+    let normalize_ns = elapsed_ns(started);
+
+    let started = Instant::now();
+    coherence::check(&normalized, &names)?;
+    let coherence_ns = elapsed_ns(started);
+
+    let started = Instant::now();
+    let typed_report =
+        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
+    let typecheck_ns = elapsed_ns(started);
+
+    let mut warnings = typed_report.warnings;
+    if options.move_check {
+        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+    }
+
+    let started = Instant::now();
+    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
+    let elaborate_ns = elapsed_ns(started);
+
+    let started = Instant::now();
+    let evaluation = evaluator::evaluate_graph_with_options(
+        elaborated,
+        evaluator::EvaluationOptions {
+            collect_profile: options.collect_evaluator_profile,
+        },
+    )?;
+    let evaluate_ns = elapsed_ns(started);
+
+    Ok(RunReport {
+        phase_timings: PhaseTimings {
+            load_root_ns,
+            resolve_ns,
+            normalize_ns,
+            coherence_ns,
+            typecheck_ns,
+            elaborate_ns,
+            evaluate_ns,
+            total_ns: elapsed_ns(total_started),
+        },
+        evaluation,
+        warnings,
+    })
+}
+
 /// Run a single evaluator fixture through the full module pipeline (the same path
 /// the shipped binary uses), reporting evaluator-focused phase timings for the
 /// benchmark binary.
@@ -182,4 +251,17 @@ pub fn run_evaluator_fixture(
 
 fn elapsed_ns(started: Instant) -> u64 {
     started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_source_evaluates_a_virtual_single_file_program() {
+        let report = run_source("fun main() {}", &RunOptions::default())
+            .expect("an in-memory program should run through the full pipeline");
+
+        assert!(report.warnings.is_empty());
+    }
 }

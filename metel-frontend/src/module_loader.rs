@@ -100,6 +100,45 @@ impl SourceProvider for EmbeddedStdlibProvider {
     }
 }
 
+/// Supplies one virtual root module and the binary-embedded standard library.
+///
+/// This is the single-file, no-filesystem source provider used by callers such
+/// as the browser playground. Multi-file editor overlays belong to their own
+/// provider: this type deliberately has no fallback to the filesystem.
+#[derive(Debug, Clone)]
+pub struct InMemorySourceProvider {
+    root: PathBuf,
+    source: String,
+}
+
+impl InMemorySourceProvider {
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>, source: impl Into<String>) -> Self {
+        Self {
+            root: root.into(),
+            source: source.into(),
+        }
+    }
+}
+
+impl SourceProvider for InMemorySourceProvider {
+    fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError> {
+        if file_path == self.root {
+            return Ok(self.source.clone());
+        }
+        if let Some(source) = crate::stdlib::lookup(module_path) {
+            return Ok(source.to_string());
+        }
+        Err(module_error(
+            format!(
+                "in-memory source provider has no source for module '{}'",
+                file_path.display()
+            ),
+            file_path,
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct LoadedModule {
@@ -140,6 +179,27 @@ pub fn load_root_with<P: SourceProvider>(
     provider: &P,
 ) -> Result<ModuleGraph, MetelError> {
     let root = canonicalize_existing(path.as_ref())?;
+    load_root_at(root, provider)
+}
+
+/// Load a graph rooted at a virtual source file through `provider`.
+///
+/// Unlike [`load_root_with`], `path` is not canonicalized and need not exist on
+/// disk. This lets a single in-memory root enter the normal module pipeline
+/// without turning an overlay into an accidental filesystem read. Providers
+/// which need multi-file overlays can use the same entry point.
+///
+/// # Errors
+/// Returns an error if the provider cannot supply the root or an imported
+/// module, or if parsing or module-graph validation fails.
+pub fn load_virtual_root_with<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+) -> Result<ModuleGraph, MetelError> {
+    load_root_at(path.as_ref().to_path_buf(), provider)
+}
+
+fn load_root_at<P: SourceProvider>(root: PathBuf, provider: &P) -> Result<ModuleGraph, MetelError> {
     let root_dir = root
         .parent()
         .unwrap_or_else(|| Path::new("."))
@@ -604,5 +664,18 @@ mod tests {
             .read(&["greeter".to_string()], Path::new("ignored.mtl"))
             .unwrap();
         assert!(src.contains("fun hi"));
+    }
+
+    #[test]
+    fn virtual_root_loads_without_an_on_disk_root() {
+        let provider = InMemorySourceProvider::new("playground.mtl", "fun main() {}");
+        let graph = load_virtual_root_with("playground.mtl", &provider)
+            .expect("an in-memory root should load without filesystem access");
+
+        assert!(graph.root.ends_with("playground.mtl"));
+        assert!(graph
+            .modules
+            .iter()
+            .any(|module| module.module_path.is_empty()));
     }
 }

@@ -8,6 +8,7 @@
     clippy::cast_lossless
 )]
 
+pub mod analysis;
 pub mod ast;
 pub mod coherence;
 pub mod elaborator;
