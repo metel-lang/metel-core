@@ -34,6 +34,38 @@ pub struct Analysis {
     pub warnings: Vec<String>,
 }
 
+/// The result of an editor-oriented analysis attempt.
+///
+/// Tooling receives diagnostics as data rather than as a `Result` error, so it
+/// can publish them for an incomplete document without treating ordinary user
+/// mistakes as a server failure. The initial frontend remains fail-fast within
+/// a phase: the list contains the first blocking diagnostic. Parser recovery
+/// and multi-error typechecking can extend this representation without changing
+/// its callers.
+#[derive(Debug)]
+pub struct AnalysisReport {
+    /// Analysis facts when every blocking frontend phase succeeded.
+    pub analysis: Option<Analysis>,
+    /// Source or frontend diagnostics collected during the attempt.
+    pub diagnostics: Vec<MetelError>,
+}
+
+impl AnalysisReport {
+    fn success(analysis: Analysis) -> Self {
+        Self {
+            analysis: Some(analysis),
+            diagnostics: Vec::new(),
+        }
+    }
+
+    fn failure(diagnostic: MetelError) -> Self {
+        Self {
+            analysis: None,
+            diagnostics: vec![diagnostic],
+        }
+    }
+}
+
 /// Analyze an on-disk root through `provider` without evaluating it.
 ///
 /// The root path is canonicalized as it is for [`module_loader::load_root_with`].
@@ -69,6 +101,40 @@ pub fn analyze_virtual_root_with<P: SourceProvider>(
 ) -> Result<Analysis, MetelError> {
     let graph = module_loader::load_virtual_root_with(path, provider)?;
     analyze_graph(graph, options)
+}
+
+/// Analyze an on-disk root and return diagnostics as data for tooling.
+///
+/// The command-line pipeline should continue to use [`analyze_root_with`] and
+/// its fail-fast `Result`. This API is for long-lived editor processes, where a
+/// malformed source document is expected and must not be reported as a server
+/// failure.
+#[must_use]
+pub fn analyze_root_with_diagnostics<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+    options: AnalysisOptions,
+) -> AnalysisReport {
+    match analyze_root_with(path, provider, options) {
+        Ok(analysis) => AnalysisReport::success(analysis),
+        Err(diagnostic) => AnalysisReport::failure(diagnostic),
+    }
+}
+
+/// Analyze a virtual root and return diagnostics as data for tooling.
+///
+/// See [`analyze_root_with_diagnostics`] for the initial fail-fast collection
+/// boundary and its intended extension path.
+#[must_use]
+pub fn analyze_virtual_root_with_diagnostics<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+    options: AnalysisOptions,
+) -> AnalysisReport {
+    match analyze_virtual_root_with(path, provider, options) {
+        Ok(analysis) => AnalysisReport::success(analysis),
+        Err(diagnostic) => AnalysisReport::failure(diagnostic),
+    }
 }
 
 fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysis, MetelError> {
@@ -108,5 +174,25 @@ mod tests {
             .iter()
             .any(|module| module.module_path.is_empty()));
         assert!(analysis.warnings.is_empty());
+    }
+
+    #[test]
+    fn virtual_analysis_reports_parse_errors_as_diagnostics() {
+        let provider = InMemorySourceProvider::new("editor.mtl", "fun main(");
+        let report = analyze_virtual_root_with_diagnostics(
+            "editor.mtl",
+            &provider,
+            AnalysisOptions::default(),
+        );
+
+        assert!(report.analysis.is_none());
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(
+            report.diagnostics[0]
+                .primary_span()
+                .expect("parse error should be located")
+                .filename,
+            "editor.mtl"
+        );
     }
 }
