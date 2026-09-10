@@ -205,7 +205,9 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
     match pattern {
         Pattern::Wildcard(span) => TypedPattern::Wildcard(span.clone()),
         Pattern::Literal(lit, span) => TypedPattern::Literal(lit.clone(), span.clone()),
-        Pattern::Binding(name, span) => TypedPattern::Binding(name.clone(), span.clone()),
+        Pattern::Binding(name, span) => {
+            TypedPattern::Binding(name.clone(), ctx.local_binding_at(span), span.clone())
+        }
         Pattern::EnumVariant {
             path,
             fields,
@@ -444,7 +446,7 @@ pub(super) fn is_catch_all_pattern(pattern: &TypedPattern) -> bool {
         // unguarded arm with one always covers the entire struct type, regardless of
         // which fields it names.
         TypedPattern::Wildcard(_)
-        | TypedPattern::Binding(_, _)
+        | TypedPattern::Binding(_, _, _)
         | TypedPattern::Record { .. }
         | TypedPattern::Struct { .. } => true,
         // A tuple pattern is irrefutable when every element is also irrefutable.

@@ -42,6 +42,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                                 span: cls_span.clone(),
                             },
                             def_id: None,
+                            local_id: ctx.local_binding_at(&ld.span),
                             span: ld.span.clone(),
                         }));
                     }
@@ -77,6 +78,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                                     span: ident_span.clone(),
                                 },
                                 def_id: None,
+                                local_id: ctx.local_binding_at(&ld.span),
                                 span: ld.span.clone(),
                             }));
                         }
@@ -107,6 +109,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 type_ann: ld.type_ann.clone(),
                 value,
                 def_id: None,
+                local_id: ctx.local_binding_at(&ld.span),
                 span: ld.span.clone(),
             }))
         }
@@ -135,6 +138,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 type_ann: md.type_ann.clone(),
                 value,
                 def_id: None,
+                local_id: ctx.local_binding_at(&md.span),
                 span: md.span.clone(),
             }))
         }

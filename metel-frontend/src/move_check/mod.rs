@@ -1356,7 +1356,7 @@ impl<'a> Checker<'a> {
     ) {
         match pattern {
             TypedPattern::Wildcard(_) | TypedPattern::Literal(_, _) => {}
-            TypedPattern::Binding(name, _) => {
+            TypedPattern::Binding(name, _, _) => {
                 self.consume_place(
                     place,
                     root_ty,
@@ -1448,7 +1448,7 @@ impl<'a> Checker<'a> {
 
     fn observe_pattern_bindings(pattern: &TypedPattern, state: &mut FlowState) {
         match pattern {
-            TypedPattern::Binding(name, _) => state.bind(name),
+            TypedPattern::Binding(name, _, _) => state.bind(name),
             TypedPattern::Tuple(items, _) => {
                 for item in items {
                     Self::observe_pattern_bindings(item, state);
@@ -2792,7 +2792,7 @@ fn format_span(span: &Span) -> String {
 
 fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
     match pattern {
-        TypedPattern::Binding(name, _) => {
+        TypedPattern::Binding(name, _, _) => {
             into.insert(name.clone());
         }
         TypedPattern::Tuple(items, _) => {

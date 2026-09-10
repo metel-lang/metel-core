@@ -481,6 +481,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                         type_ann: ld.type_ann.clone(),
                         value,
                         def_id: None,
+                        local_id: ctx.local_binding_at(&ld.span),
                         span: ld.span.clone(),
                     };
                     Some(TypedForInit::Let(typed_ld))
@@ -516,6 +517,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                         type_ann: md.type_ann.clone(),
                         value,
                         def_id: None,
+                        local_id: ctx.local_binding_at(&md.span),
                         span: md.span.clone(),
                     };
                     Some(TypedForInit::Mut(typed_md))
@@ -602,6 +604,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
             ctx.pop_scope();
             Ok(TypedStmt::ForIn(Box::new(TypedForInStmt {
                 binding: fi.binding.clone(),
+                binding_id: ctx.local_binding_at(&fi.span),
                 mutable: fi.mutable,
                 iterable,
                 body,

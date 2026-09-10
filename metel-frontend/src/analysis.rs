@@ -597,6 +597,102 @@ mod tests {
                 "a top-level function reference resolves to a Global BindingId, got {binding:?}"
             );
         }
+
+        #[test]
+        fn block_local_let_carries_its_local_id_and_the_use_matches() {
+            let analysis = analyze(
+                "fun f() -> i64 {\n\
+                 \tlet q := 1;\n\
+                 \tq\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(func) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "f"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &func.body else {
+                panic!("typed body")
+            };
+            let let_id = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Let(ld) if ld.name == "q" => Some(ld.local_id),
+                    _ => None,
+                })
+                .expect("a `let q` in the block");
+            let bound = let_id.expect("a block-local let carries a LocalId");
+
+            // The `q` use in the tail resolves to that same LocalId.
+            let TypedExpr::Ident(_, Some(crate::identity::BindingId::Local(used)), _, _) =
+                block.tail.as_deref().unwrap()
+            else {
+                panic!("tail `q` should be a local reference");
+            };
+            assert_eq!(*used, bound, "the use and the `let` share one LocalId");
+        }
+
+        #[test]
+        fn match_arm_binding_pattern_carries_a_local_id() {
+            let analysis = analyze(
+                "fun pick(n: i64) -> i64 {\n\
+                 \tmatch (n) { x => x }\n\
+                 }\n",
+            );
+            let TypedPattern::Binding(name, local, _) = &match_arms(&analysis, "pick")[0].pattern
+            else {
+                panic!("expected a binding pattern");
+            };
+            assert_eq!(name, "x");
+            assert!(local.is_some(), "a match-arm binding introduces a LocalId");
+        }
+
+        #[test]
+        fn for_in_loop_binding_carries_a_local_id() {
+            use crate::typed_ast::TypedStmt;
+            let analysis = analyze(
+                "fun sum(xs: i64[]) -> i64 {\n\
+                 \tvar acc: i64 := 0;\n\
+                 \tfor (x in xs) { acc := acc + x; }\n\
+                 \tacc\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(func) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "sum"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &func.body else {
+                panic!("typed body")
+            };
+            let has_local_id = block.stmts.iter().any(|d| match d {
+                TypedDecl::Stmt(s) => matches!(
+                    &**s,
+                    TypedStmt::ForIn(fi) if fi.binding == "x" && fi.binding_id.is_some()
+                ),
+                _ => false,
+            });
+            assert!(has_local_id, "the `for` loop binding carries a LocalId");
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ use crate::ast::{
     AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
     Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
-use crate::identity::{BindingId, FieldId, VariantId};
+use crate::identity::{BindingId, FieldId, LocalId, VariantId};
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
 use crate::types::{CallMultiplicity, CallMutation, Type};
@@ -98,6 +98,10 @@ pub struct TypedLetDecl {
     /// for `fn` declarations. `None` for block-local/`for`-init `let`s, which stay
     /// name-keyed only (ADR-0041 design: locals are never given a top-level identity).
     pub def_id: Option<SymbolId>,
+    /// Lexical identity of a block-local / `for`-init `let` (ADR-0054 /
+    /// metel-core#1052). `None` for a module-level `let` (which is a
+    /// `SymbolId`, carried on `def_id`) and without identity context.
+    pub local_id: Option<LocalId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -110,6 +114,8 @@ pub struct TypedMutDecl {
     pub value: TypedExpr,
     /// See `TypedLetDecl::def_id` — same identity, same rationale, for `mut`.
     pub def_id: Option<SymbolId>,
+    /// See `TypedLetDecl::local_id`.
+    pub local_id: Option<LocalId>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
 }
@@ -248,6 +254,10 @@ pub enum TypedForInit {
 #[derive(Debug, Clone)]
 pub struct TypedForInStmt {
     pub binding: String,
+    /// Lexical identity of the loop binding (ADR-0054 / metel-core#1052). One
+    /// `LocalId` per lexical binding, reused across iterations — the frame is
+    /// re-slotted, not renumbered.
+    pub binding_id: Option<LocalId>,
     pub mutable: bool,
     pub iterable: TypedExpr,
     pub body: TypedBlock,
@@ -618,7 +628,10 @@ impl TypedExpr {
 pub enum TypedPattern {
     Wildcard(Span),
     Literal(Literal, Span),
-    Binding(String, Span),
+    /// A binding pattern (`x` in `match v { x => … }`). The second field is the
+    /// lexical identity of the binding it introduces (ADR-0054 /
+    /// metel-core#1052); `None` without identity context.
+    Binding(String, Option<LocalId>, Span),
     /// A genuine (two-segment) enum-variant pattern. `path` is
     /// `[.., Enum, Variant]`; one-segment bare variants are rewritten to this
     /// form (or to [`TypedPattern::Struct`]) before lowering, exactly as the

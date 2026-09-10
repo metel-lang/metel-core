@@ -428,6 +428,14 @@ impl<'a> ConstructCtx<'a> {
         self.identity?.binding_spans.get(span)
     }
 
+    /// The lexical identity of the binding *defined* at `span` (a `let` / `mut`
+    /// name, a loop binding, a pattern binding). `None` for a module-level
+    /// definition (a `SymbolId`, not a `LocalId`), a synthesised node, or
+    /// without identity context.
+    fn local_binding_at(&self, span: &Span) -> Option<crate::identity::LocalId> {
+        self.binding_id_at(span)?.as_local()
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }

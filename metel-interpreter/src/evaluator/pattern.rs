@@ -53,7 +53,7 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        TypedPattern::Binding(name, _) => {
+        TypedPattern::Binding(name, _, _) => {
             out.insert(name.clone(), value.clone());
             true
         }
