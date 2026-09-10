@@ -14,7 +14,7 @@
 /// | 100 – 999     | Reserved for stdlib expansion                  |
 /// | 1000 +        | User-defined declarations (name-resolver IDs)  |
 /// | 0x4000_0000 + | Free-function overload definitions (METEL-180) |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SymbolId(pub u32);
 
 // ── Builtin types (1–49) ──────────────────────────────────────────────────────
