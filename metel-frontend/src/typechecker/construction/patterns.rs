@@ -620,19 +620,10 @@ pub(super) fn construct_pattern_bindings(
             let _ = span;
             bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Struct {
-            name,
-            fields,
-            field_spans: _,
-            ..
-        } => {
+        Pattern::Struct { name, fields, .. } => {
             bind_struct_pattern_fields(name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Record {
-            fields,
-            field_spans: _,
-            ..
-        } => {
+        Pattern::Record { fields, .. } => {
             let Type::Record(record_fields) = scrutinee_ty else {
                 return Err(MetelError::internal("record pattern on non-record type"));
             };
