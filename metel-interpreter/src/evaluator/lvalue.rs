@@ -27,14 +27,26 @@ pub(super) fn resolve_place_assign_root(
         span: &Span,
     ) -> Result<std::rc::Rc<std::cell::RefCell<Value>>, MetelError> {
         match place {
-            TypedPlace::Ident(name, _, ident_span) => {
-                let rc = env.get_rc(name).ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0003,
-                        format!("assign: `{name}` not found"),
-                        ident_span,
-                    )
-                })?;
+            TypedPlace::Ident(name, binding, ident_span) => {
+                // A top-level `let` / `var` reached from a non-`main` body is
+                // absent from the name map; use its live global slot cell
+                // (metel-core#1052b).
+                let global_cell = match binding {
+                    Some(crate::identity::BindingId::Global(sym)) => {
+                        runtime.global_slot(*sym).cloned()
+                    }
+                    _ => None,
+                };
+                let rc = match global_cell {
+                    Some(cell) => cell,
+                    None => env.get_rc(name).ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("assign: `{name}` not found"),
+                            ident_span,
+                        )
+                    })?,
+                };
                 // Auto-deref: if the binding holds a &mut reference, follow it.
                 let inner = {
                     let v = rc.borrow();
@@ -93,13 +105,20 @@ pub(super) fn eval_typed_place_value(
     runtime: &RuntimeRegistry,
 ) -> Result<Value, MetelError> {
     match place {
-        TypedPlace::Ident(name, _, ident_span) => env.get(name).ok_or_else(|| {
-            MetelError::panic(
-                RuntimeErrorCode::R0003,
-                format!("assign: `{name}` not found"),
-                ident_span,
-            )
-        }),
+        TypedPlace::Ident(name, binding, ident_span) => {
+            if let Some(crate::identity::BindingId::Global(sym)) = binding {
+                if let Some(cell) = runtime.global_slot(*sym) {
+                    return Ok(cell.borrow().clone());
+                }
+            }
+            env.get(name).ok_or_else(|| {
+                MetelError::panic(
+                    RuntimeErrorCode::R0003,
+                    format!("assign: `{name}` not found"),
+                    ident_span,
+                )
+            })
+        }
         TypedPlace::Deref {
             object,
             span: tspan,

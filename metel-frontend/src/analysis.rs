@@ -891,6 +891,50 @@ mod tests {
         }
 
         #[test]
+        fn assignment_to_a_top_level_var_carries_its_global_binding_id() {
+            use crate::typed_ast::{TypedPlace, TypedStmt};
+            let analysis = analyze(
+                "var counter: i64 := 0;\n\
+                 fun bump() { counter := counter + 1; }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(bump) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "bump"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &bump.body else {
+                panic!("typed body")
+            };
+            let target_binding = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Stmt(s) => match &**s {
+                        TypedStmt::Expr(TypedExpr::Assign {
+                            target: TypedPlace::Ident(name, binding, _),
+                            ..
+                        }) if name == "counter" => Some(*binding),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .expect("a `counter := …` assignment");
+            assert!(
+                matches!(target_binding, Some(crate::identity::BindingId::Global(_))),
+                "a top-level `var` assignment target resolves to its SymbolId: {target_binding:?}"
+            );
+        }
+
+        #[test]
         fn assignment_target_ident_carries_the_local_binding_id() {
             use crate::typed_ast::{TypedPlace, TypedStmt};
             let analysis = analyze(

@@ -1,12 +1,12 @@
 // metel-core#1052b: a global value reference resolves through the SymbolId
 // value registry / live global slot rather than a source-name lookup.
 // Covers: a top-level fn passed as a first-class value; mutually-recursive
-// globals with a forward reference; and a top-level `let` read from a
-// non-`main` function body — previously an R0003 "undefined variable"
-// (metel-core#1081), because a non-`main` function captures a pre-Pass-2
-// snapshot of the module environment.
+// globals with a forward reference; a top-level `let` read from a non-`main`
+// function body (previously R0003, metel-core#1081); and a top-level `var`
+// read *and* reassigned through function bodies.
 
 let SCALE: i64 := 10;
+var counter: i64 := 0;
 
 fun double(n: i64) -> i64 {
     n * 2
@@ -30,6 +30,15 @@ fun scaled(n: i64) -> i64 {
     n * SCALE
 }
 
+// Reads and mutates a module-level `var` from function bodies.
+fun bump() {
+    counter := counter + 1;
+}
+
+fun current() -> i64 {
+    counter
+}
+
 fun main() {
     // Top-level fn passed by value and invoked through a parameter.
     assert(apply_twice(double, 3) == 12);
@@ -45,4 +54,14 @@ fun main() {
     // A module-level constant is visible inside a non-`main` function.
     assert(scaled(4) == 40);
     assert(scaled(SCALE) == 100);
+
+    // A module-level `var` reassigned through one function is observed by
+    // another and by `main` — one shared cell behind the name and the slot.
+    assert(current() == 0);
+    bump();
+    bump();
+    assert(current() == 2);
+    assert(counter == 2);
+    counter := 5;
+    assert(current() == 5);
 }

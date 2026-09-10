@@ -2633,20 +2633,35 @@ fn eval_assign_expr(
         ControlFlow::Break(signal) => return Ok(signal),
     };
     match target {
-        TypedPlace::Ident(name, _, ident_span) => {
+        TypedPlace::Ident(name, binding, ident_span) => {
+            // A top-level `let` / `var` assigned from a non-`main` function is
+            // absent from this activation's name map (that body captured a
+            // pre-Pass-2 snapshot); write its live global slot directly
+            // (metel-core#1052b). Locals stay on `env.set` — the frame and the
+            // name entry share one cell.
+            let global_cell = match binding {
+                Some(crate::identity::BindingId::Global(sym)) => runtime.global_slot(*sym).cloned(),
+                _ => None,
+            };
             let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
                 rhs
             } else {
-                let cur = env.get(name).ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0003,
-                        format!("assign: undefined `{name}`"),
-                        ident_span,
-                    )
-                })?;
+                let cur = global_cell
+                    .as_ref()
+                    .map(|c| c.borrow().clone())
+                    .or_else(|| env.get(name))
+                    .ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("assign: undefined `{name}`"),
+                            ident_span,
+                        )
+                    })?;
                 lvalue::apply_assign_op(op, cur, rhs, span)?
             };
-            if !env.set(name, new_val) {
+            if let Some(cell) = &global_cell {
+                *cell.borrow_mut() = deep_clone_value(new_val);
+            } else if !env.set(name, new_val) {
                 return Err(MetelError::panic(
                     RuntimeErrorCode::R0003,
                     format!("assign: undefined `{name}`"),

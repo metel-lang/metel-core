@@ -394,9 +394,11 @@ impl Walker<'_, '_> {
 
     fn resolve_assign_target(&mut self, target: &AssignTarget) {
         match target {
-            // A bare assignment target names a place (local or mutable binding); it is
-            // not a value reference to a top-level declaration, so do not record it.
-            AssignTarget::Ident(_, _) => {}
+            // A bare assignment target names a place. `record_ref` skips it if it
+            // is a local; a top-level `var` target is a reference to a global
+            // declaration and needs its `SymbolId` for the resolution freeze
+            // (ADR-0054 / metel-core#1052).
+            AssignTarget::Ident(name, span) => self.record_ref(name, span),
             AssignTarget::FieldAccess { object, .. }
             | AssignTarget::TupleAccess { object, .. }
             | AssignTarget::Deref { object, .. } => {
