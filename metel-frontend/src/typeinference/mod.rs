@@ -5,6 +5,7 @@
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
+use crate::identity::{FieldId, MemberTable, VariantId};
 use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
@@ -1744,12 +1745,21 @@ pub struct FieldEntry {
     pub ty: InferType,
     pub span: Span,
     pub visibility: Visibility,
+    /// Interned identity of this field declaration (ADR-0054 / #1068), stamped
+    /// from the whole-graph [`MemberTable`] after the registry is built (see
+    /// [`TypeDefinitionRegistry::stamp_member_ids`]). `None` before stamping,
+    /// for a block-local type the member table never interned, or when no
+    /// identity context is available — never a fabricated id.
+    pub id: Option<FieldId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VariantInfo {
     pub name: String,
     pub fields: Vec<FieldEntry>,
+    /// Interned identity of this variant declaration (ADR-0054 / #1068), stamped
+    /// alongside [`FieldEntry::id`]. `None` before stamping / without context.
+    pub id: Option<VariantId>,
 }
 
 #[derive(Debug, Clone)]
@@ -4054,6 +4064,39 @@ impl TypeDefinitionRegistry {
                 .or_insert_with(|| v.clone());
         }
     }
+
+    /// Stamp every struct field and enum variant entry with its interned
+    /// [`FieldId`] / [`VariantId`] from the whole-graph [`MemberTable`]
+    /// (ADR-0054 / #1068). Run once after the module's registry is built and
+    /// merged, so later phases (move-check field-type projection) select an
+    /// entry by frozen id rather than by source spelling.
+    ///
+    /// Idempotent and merge-order independent: `members` is deterministic for
+    /// one resolved graph and keyed by `(owner SymbolId, member name)`, so
+    /// re-stamping a merged-in entry yields the same id. Block-local types
+    /// (synthetic ids the name resolver never saw) stay `None`. A `None`
+    /// `members` (a move-check / diagnostic entry point with no identity
+    /// context) is a no-op — every entry keeps its `None` id.
+    pub fn stamp_member_ids(&mut self, members: Option<&MemberTable>) {
+        let Some(members) = members else {
+            return;
+        };
+        for (&owner, fields) in &mut self.struct_env {
+            for field in fields.iter_mut() {
+                field.id = members.field(owner, &field.name);
+            }
+        }
+        for (&owner, info) in &mut self.enum_env {
+            for variant in &mut info.variants {
+                variant.id = members.variant(owner, &variant.name);
+                for field in &mut variant.fields {
+                    // Variant fields are interned variant-qualified on the enum
+                    // owner (see `identity::collect_members`).
+                    field.id = members.field(owner, &format!("{}::{}", variant.name, field.name));
+                }
+            }
+        }
+    }
 }
 
 impl Default for TypeDefinitionRegistry {
@@ -5216,6 +5259,7 @@ mod registry_identity_tests {
             ty: InferType::unit(),
             span: Span::new(0, 0, "test"),
             visibility: Visibility::Public,
+            id: None,
         }
     }
 
@@ -5306,6 +5350,7 @@ mod registry_identity_tests {
         VariantInfo {
             name: name.to_string(),
             fields: vec![],
+            id: None,
         }
     }
 

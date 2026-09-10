@@ -373,6 +373,7 @@ fn register_program_decls(
                         ),
                         span: f.span.clone(),
                         visibility: f.visibility.clone(),
+                        id: None,
                     })
                     .collect();
                 registry.register_struct_fields(
@@ -407,6 +408,7 @@ fn register_program_decls(
                         ),
                         span: f.span.clone(),
                         visibility: f.visibility.clone(),
+                        id: None,
                     })
                     .collect();
                 registry.register_struct_fields(
@@ -458,8 +460,10 @@ fn register_program_decls(
                                 ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
                                 span: f.span.clone(),
                                 visibility: f.visibility.clone(),
+                                id: None,
                             })
                             .collect(),
+                        id: None,
                     })
                     .collect();
                 if let Some(sym) = enum_sym {

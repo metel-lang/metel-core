@@ -159,7 +159,10 @@ fn record_move_of_place(ctx: &mut ConstructCtx, place: &Place, leaf: &TypedExpr)
     let [projection] = place.projections() else {
         return;
     };
-    if !matches!(projection, Projection::Field(_) | Projection::TupleIndex(_)) {
+    if !matches!(
+        projection,
+        Projection::Field { .. } | Projection::TupleIndex(_)
+    ) {
         return;
     }
     // The moved leaf must be non-`Copy` for a move to happen at all.
@@ -276,7 +279,7 @@ fn field_labels(moved: &[Projection]) -> std::collections::HashSet<&str> {
     moved
         .iter()
         .filter_map(|p| match p {
-            Projection::Field(label) => Some(label.as_str()),
+            Projection::Field { name, .. } => Some(name.as_str()),
             _ => None,
         })
         .collect()

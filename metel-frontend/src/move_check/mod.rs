@@ -65,7 +65,7 @@ fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Typ
     present.iter().all(|label| {
         !moved
             .iter()
-            .any(|p| matches!(p, Projection::Field(f) if f == label))
+            .any(|p| matches!(p, Projection::Field { name, .. } if name == label))
     })
 }
 
@@ -1384,7 +1384,7 @@ impl<'a> Checker<'a> {
                 for field in fields {
                     let child = place
                         .clone()
-                        .with_projection(Projection::Field(field.clone()));
+                        .with_projection(Projection::field(field.clone()));
                     self.consume_place(
                         &child,
                         root_ty,
@@ -1397,10 +1397,10 @@ impl<'a> Checker<'a> {
                 }
             }
             TypedPattern::Struct { fields, .. } => {
-                for (field, _id) in fields {
+                for (field, id) in fields {
                     let child = place
                         .clone()
-                        .with_projection(Projection::Field(field.clone()));
+                        .with_projection(Projection::field_with_id(field.clone(), *id));
                     self.consume_place(
                         &child,
                         root_ty,
@@ -1747,7 +1747,7 @@ impl<'a> Checker<'a> {
             // `peel_type_references` has already stripped the reference, so the
             // peeled type *is* the pointee.
             Projection::Deref => Some(peeled.clone()),
-            Projection::Field(field) => match peeled {
+            Projection::Field { name: field, id } => match peeled {
                 Type::Record(fields) => fields
                     .iter()
                     .find(|(name, _)| name == field)
@@ -1756,7 +1756,15 @@ impl<'a> Checker<'a> {
                     let (type_id, _resolved_name, fields) = self
                         .registry
                         .projection_struct_fields(current_module, name)?;
-                    let field_entry = fields.iter().find(|entry| entry.name == *field)?;
+                    // Prefer the interned `FieldId` (ADR-0054 / #1068); the
+                    // declared name is the documented fallback for a place with
+                    // no resolved id (an assignment target, an RFC-0137
+                    // narrowing-synthesised projection) or an unstamped registry
+                    // (move-check run with no identity context).
+                    let field_entry = id
+                        .as_ref()
+                        .and_then(|fid| fields.iter().find(|entry| entry.id.as_ref() == Some(fid)))
+                        .or_else(|| fields.iter().find(|entry| entry.name == *field))?;
                     let raw_ty = field_entry.ty.clone();
                     let infer_ty = if let Some(type_params) =
                         self.registry.struct_type_params_by_id(type_id)

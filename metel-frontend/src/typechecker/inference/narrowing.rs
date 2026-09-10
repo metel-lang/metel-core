@@ -32,7 +32,7 @@ impl InferContext {
         let moved_labels: std::collections::HashSet<&str> = moved
             .iter()
             .filter_map(|p| match p {
-                Projection::Field(label) => Some(label.as_str()),
+                Projection::Field { name, .. } => Some(name.as_str()),
                 _ => None,
             })
             .collect();
@@ -138,7 +138,7 @@ impl InferContext {
                 (
                     root.clone(),
                     Some(field.clone()),
-                    Projection::Field(field.clone()),
+                    Projection::field(field.clone()),
                 )
             }
             crate::ast::Expr::TupleAccess { object, index, .. } => {
@@ -241,7 +241,7 @@ fn place_from_assign_target(target: &crate::ast::AssignTarget) -> Option<Place> 
             let crate::ast::Expr::Ident(root, _) = object.as_ref() else {
                 return None;
             };
-            Some(Place::new(root.clone()).with_projection(Projection::Field(field.clone())))
+            Some(Place::new(root.clone()).with_projection(Projection::field(field.clone())))
         }
         crate::ast::AssignTarget::TupleAccess { object, index, .. } => {
             let crate::ast::Expr::Ident(root, _) = object.as_ref() else {
@@ -288,7 +288,7 @@ fn infer_type_has_var(ty: &InferType) -> bool {
 pub(crate) fn typed_move_place(typed: &TypedExpr) -> Option<Place> {
     let place = place_from_expr(typed)?;
     match place.projections() {
-        [Projection::Field(_) | Projection::TupleIndex(_)] => Some(place),
+        [Projection::Field { .. } | Projection::TupleIndex(_)] => Some(place),
         _ => None,
     }
 }

@@ -476,6 +476,50 @@ mod tests {
             };
             assert_eq!(fields, &["x".to_string(), "y".to_string()]);
         }
+
+        // ── registry entry ids (#1068) ───────────────────────────────────────
+
+        #[test]
+        fn registry_field_and_variant_entries_carry_the_interned_ids() {
+            let analysis = analyze(
+                "struct Pt { x: i64, y: i64 }\n\
+                 enum Sig { Halt, Go { code: i64 } }\n\
+                 fun use_them(p: Pt, s: Sig) -> i64 {\n\
+                 \tmatch (s) { Sig::Halt => p.x, Sig::Go { code } => code }\n\
+                 }\n",
+            );
+            let reg = &analysis.graph.type_registry;
+            let pt = root_sym(&analysis, "Pt");
+            let sig = root_sym(&analysis, "Sig");
+
+            let pt_fields = reg.struct_fields_by_id(pt).expect("Pt in registry");
+            for f in pt_fields {
+                assert_eq!(
+                    f.id,
+                    analysis.members.field(pt, &f.name),
+                    "FieldEntry `{}` stamped with the interned FieldId",
+                    f.name
+                );
+                assert!(f.id.is_some());
+            }
+
+            let sig_info = reg.enum_info_by_id(sig).expect("Sig in registry");
+            for v in &sig_info.variants {
+                assert_eq!(v.id, analysis.members.variant(sig, &v.name));
+                assert!(v.id.is_some());
+                for f in &v.fields {
+                    assert_eq!(
+                        f.id,
+                        analysis
+                            .members
+                            .field(sig, &format!("{}::{}", v.name, f.name)),
+                        "variant field `{}::{}` stamped variant-qualified",
+                        v.name,
+                        f.name
+                    );
+                }
+            }
+        }
     }
 
     #[test]

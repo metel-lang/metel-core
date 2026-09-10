@@ -1289,6 +1289,7 @@ fn infer_block(
                         ty: type_expr_to_infer(&f.type_ann),
                         span: f.span.clone(),
                         visibility: f.visibility.clone(),
+                        id: None,
                     })
                     .collect();
                 ctx.register_struct_fields(sd.name.clone(), fields, sd.visibility.clone());
@@ -1307,8 +1308,10 @@ fn infer_block(
                                 ty: type_expr_to_infer(&f.type_ann),
                                 span: f.span.clone(),
                                 visibility: f.visibility.clone(),
+                                id: None,
                             })
                             .collect(),
+                        id: None,
                     })
                     .collect();
                 ctx.register_enum(
