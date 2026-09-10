@@ -6,8 +6,31 @@ use crate::error::{MetelError, RuntimeErrorCode};
 
 use super::{
     attach_stack, eval_block, pop_frame, profiler_enter, profiler_exit, push_frame, read_path,
-    type_of, ClosureBody, RuntimeCallable, RuntimeRegistry, Signal, Value,
+    type_of, ClosureBody, ClosureValue, Environment, RuntimeCallable, RuntimeRegistry, Signal,
+    Value,
 };
+
+/// Bind a method call's receiver and positional arguments into `call_env`,
+/// keyed additionally by each parameter's [`LocalId`] in the id-indexed frame
+/// when identity allocation stamped one (metel-core#1052b).
+fn bind_method_params(
+    call_env: &mut Environment,
+    closure: &ClosureValue,
+    receiver: ReceiverBinding,
+    args: &[Value],
+) {
+    if let Some(param) = closure.params.first() {
+        let id = closure.param_ids.first().copied().flatten();
+        match receiver {
+            ReceiverBinding::Value(value) => call_env.define_binding(id, &param.name, value),
+            ReceiverBinding::Shared(cell) => call_env.define_binding_rc(id, &param.name, cell),
+        }
+    }
+    for (i, (param, val)) in closure.params.iter().skip(1).zip(args.iter()).enumerate() {
+        let id = closure.param_ids.get(i + 1).copied().flatten();
+        call_env.define_binding(id, &param.name, val.clone());
+    }
+}
 
 /// How the receiver is bound into the callee's environment.
 /// `Value` → cloned (value/&self receivers); `Shared` → Rc shared (mut self / &mut self).
@@ -61,8 +84,9 @@ fn call_runtime_callable(
             push_frame(fn_name, span.clone());
             let mut call_env = closure.captured.clone();
             call_env.push_scope();
-            for (param, val) in closure.params.iter().zip(args.iter()) {
-                call_env.define(&param.name, val.clone());
+            for (i, (param, val)) in closure.params.iter().zip(args.iter()).enumerate() {
+                let id = closure.param_ids.get(i).copied().flatten();
+                call_env.define_binding(id, &param.name, val.clone());
             }
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
@@ -206,15 +230,7 @@ pub(super) fn call_method_function(
             };
             let mut call_env = closure.captured.clone();
             call_env.push_scope();
-            if let Some(param) = closure.params.first() {
-                match receiver {
-                    ReceiverBinding::Value(value) => call_env.define(&param.name, value),
-                    ReceiverBinding::Shared(cell) => call_env.define_rc(&param.name, cell),
-                }
-            }
-            for (param, val) in closure.params.iter().skip(1).zip(args.iter()) {
-                call_env.define(&param.name, val.clone());
-            }
+            bind_method_params(&mut call_env, &closure, receiver, &args);
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
                 ClosureBody::Untyped(b) => {

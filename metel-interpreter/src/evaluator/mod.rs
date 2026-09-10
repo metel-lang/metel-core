@@ -46,6 +46,7 @@ pub(super) fn attach_stack(err: MetelError) -> MetelError {
 }
 use crate::ast::Block;
 use crate::elaborator::ElaboratedModuleGraph;
+use crate::identity::LocalId;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, ResolvedImportRef, TypedBlock, TypedDecl, TypedExpr, TypedForInit,
@@ -823,6 +824,11 @@ pub struct ClosureValue {
     pub name: Option<String>,
     pub captures: Vec<CaptureSpec>,
     pub params: Vec<Param>,
+    /// Structural [`LocalId`] of each parameter binding, positionally aligned
+    /// with `params` (metel-core#1052b). `None` where identity allocation had
+    /// nothing to stamp (e.g. a body built by construction-at-call-time). The
+    /// call path binds each argument into the id-indexed frame by this id.
+    pub param_ids: Vec<Option<LocalId>>,
     pub body: ClosureBody,
     pub captured: Environment,
     pub call_mutation: crate::types::CallMutation,
@@ -856,6 +862,7 @@ fn deep_clone_value(v: Value) -> Value {
                 name: closure.name.clone(),
                 captures: closure.captures.clone(),
                 params: closure.params.clone(),
+                param_ids: closure.param_ids.clone(),
                 body: closure.body.clone(),
                 // A Copy closure is copied as a value, not Rc-aliased. Its owned
                 // environment cells therefore begin as equal but independent state.
@@ -1391,6 +1398,14 @@ fn eval_to_value(
 #[derive(Debug, Clone)]
 pub struct Environment {
     scopes: Vec<HashMap<String, Rc<RefCell<Value>>>>,
+    /// Activation-flat, id-indexed binding slots (metel-core#1052b). Written
+    /// alongside `scopes` whenever a binding's [`LocalId`] is known; `eval`
+    /// consults it before the name map and falls back to the name map on a
+    /// miss. A `LocalId` hashes the binding's full lexical path, so shadowing
+    /// and block nesting need no runtime nesting here — the map is flat and
+    /// lives for a single call activation (each call clones a fresh
+    /// environment from the closure's captured one).
+    frame: HashMap<LocalId, Rc<RefCell<Value>>>,
     /// Nested `fun`s `hoist_nested_funs` placeholdered but didn't build yet
     /// (metel-core#712). `eval_call_expr` builds one on demand if it's called before
     /// its declaration line runs.
@@ -1411,6 +1426,7 @@ impl Environment {
     pub fn new() -> Self {
         Self {
             scopes: vec![HashMap::new()],
+            frame: HashMap::new(),
             pending_funs: vec![HashMap::new()],
             type_ctx: None,
         }
@@ -1473,6 +1489,48 @@ impl Environment {
             .insert(name.to_string(), cell);
     }
 
+    /// [`define`](Self::define), also recording the binding in the id-indexed
+    /// `frame` when its [`LocalId`] is known (metel-core#1052b). The name map
+    /// stays in step so the not-yet-migrated lookup and assignment paths keep
+    /// working.
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`Environment::define`].
+    pub fn define_binding(&mut self, id: Option<LocalId>, name: &str, value: Value) {
+        let cell = Rc::new(RefCell::new(deep_clone_value(value)));
+        if let Some(id) = id {
+            self.frame.insert(id, Rc::clone(&cell));
+        }
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .insert(name.to_string(), cell);
+    }
+
+    /// [`define_rc`](Self::define_rc), also recording the shared cell in the
+    /// id-indexed `frame` when the binding's [`LocalId`] is known
+    /// (metel-core#1052b).
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`Environment::define`].
+    pub fn define_binding_rc(&mut self, id: Option<LocalId>, name: &str, cell: Rc<RefCell<Value>>) {
+        if let Some(id) = id {
+            self.frame.insert(id, Rc::clone(&cell));
+        }
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .insert(name.to_string(), cell);
+    }
+
+    /// Look up a binding by its structural [`LocalId`] in the id-indexed frame
+    /// (metel-core#1052b). `None` means no id-keyed slot — the caller falls
+    /// back to the name map.
+    #[must_use]
+    pub fn get_local(&self, id: LocalId) -> Option<Value> {
+        self.frame.get(&id).map(|cell| cell.borrow().clone())
+    }
+
     /// Look up a binding, searching from innermost to outermost scope.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<Value> {
@@ -1525,6 +1583,15 @@ impl Environment {
             .collect();
         Self {
             scopes,
+            // The id-indexed frame is an activation-local mirror of the name
+            // map (metel-core#1052b). A capture snapshot rebuilds bindings under
+            // fresh name-keyed cells; re-deriving the id keys here would need a
+            // name↔LocalId map this method does not have, and a parallel set of
+            // cells would drift out of sync with `scopes`. Leave it empty — a
+            // body reference to a captured binding then falls back to the name
+            // map, which this snapshot does populate. #1052b-2 threads
+            // `capture_ids` through so captures land in the frame directly.
+            frame: HashMap::new(),
             // AST reference data, immutable once produced — sharing the `Rc`s across
             // this deep-cloned environment is fine, only `scopes`' runtime values need
             // independent cells.
@@ -1770,6 +1837,7 @@ fn run_passes(
                     name: Some(f.name.clone()),
                     captures: vec![],
                     params: f.params.clone(),
+                    param_ids: f.param_ids.clone(),
                     body,
                     captured,
                     call_mutation: crate::types::CallMutation::Reading,
@@ -1803,6 +1871,7 @@ fn run_passes(
                                 name: Some(method.name.clone()),
                                 captures: vec![],
                                 params: method.params.clone(),
+                                param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
                                 call_mutation: crate::types::CallMutation::Reading,
@@ -1815,6 +1884,7 @@ fn run_passes(
                                     name: Some(method.name.clone()),
                                     captures: vec![],
                                     params: method.params.clone(),
+                                    param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
                                     call_mutation: crate::types::CallMutation::Reading,
@@ -1871,6 +1941,7 @@ fn run_passes(
                                 name: Some(method.name.clone()),
                                 captures: vec![],
                                 params: method.params.clone(),
+                                param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
                                 call_mutation: crate::types::CallMutation::Reading,
@@ -1883,6 +1954,7 @@ fn run_passes(
                                     name: Some(method.name.clone()),
                                     captures: vec![],
                                     params: method.params.clone(),
+                                    param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
                                     call_mutation: crate::types::CallMutation::Reading,
@@ -2084,6 +2156,7 @@ fn build_and_set_nested_fun(
         name: Some(f.name.clone()),
         captures: vec![],
         params: f.params.clone(),
+        param_ids: f.param_ids.clone(),
         body,
         captured,
         call_mutation: crate::types::CallMutation::Reading,
@@ -2194,14 +2267,14 @@ fn eval_decl(
     match decl {
         TypedDecl::Let(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
-                env.define(&d.name, val);
+                env.define_binding(d.local_id, &d.name, val);
                 Ok(Signal::Value(Value::Unit))
             }
             other => Ok(other),
         },
         TypedDecl::Mut(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
-                env.define(&d.name, val);
+                env.define_binding(d.local_id, &d.name, val);
                 Ok(Signal::Value(Value::Unit))
             }
             other => Ok(other),
@@ -2273,14 +2346,14 @@ pub fn eval_stmt(
                             ControlFlow::Continue(value) => value,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        env.define(&d.name, val);
+                        env.define_binding(d.local_id, &d.name, val);
                     }
                     TypedForInit::Mut(d) => {
                         let val = match eval_to_value(&d.value, env, runtime)? {
                             ControlFlow::Continue(value) => value,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        env.define(&d.name, val);
+                        env.define_binding(d.local_id, &d.name, val);
                     }
                     TypedForInit::Expr(e) => {
                         eval_expr(e, env, runtime)?;
@@ -2318,28 +2391,21 @@ pub fn eval_stmt(
                 ControlFlow::Continue(value) => value,
                 ControlFlow::Break(signal) => return Ok(signal),
             };
-            eval_for_in(
-                &fi.binding,
-                fi.mutable,
-                iterable,
-                &fi.body,
-                &fi.span,
-                env,
-                runtime,
-            )
+            eval_for_in(fi, iterable, env, runtime)
         }
     }
 }
 
 fn eval_for_in(
-    binding: &str,
-    _mutable: bool,
+    fi: &crate::typed_ast::TypedForInStmt,
     iterable: Value,
-    body: &TypedBlock,
-    span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
+    let binding = fi.binding.as_str();
+    let binding_id = fi.binding_id;
+    let body = &fi.body;
+    let span = &fi.span;
     let iterable = deref_value(&iterable, span)?.unwrap_or(iterable);
     // Fast path for built-in sequence types.
     let fast_items: Option<Vec<Value>> = match &iterable {
@@ -2359,14 +2425,9 @@ fn eval_for_in(
 
     if let Some(items) = fast_items {
         for item in items {
-            env.push_scope();
-            env.define(binding, item);
-            let sig = eval_block(body, env, runtime)?;
-            env.pop_scope();
-            match sig {
-                Signal::Value(_) | Signal::Continue => {}
-                Signal::Break(_) => break,
-                Signal::Return(v) => return Ok(Signal::Return(v)),
+            match run_for_in_iteration(binding_id, binding, item, body, env, runtime)? {
+                ControlFlow::Continue(()) => {}
+                ControlFlow::Break(sig) => return Ok(sig),
             }
         }
         return Ok(Signal::Value(Value::Unit));
@@ -2429,19 +2490,37 @@ fn eval_for_in(
         match maybe_item {
             None => break,
             Some(item) => {
-                env.push_scope();
-                env.define(binding, item);
-                let sig = eval_block(body, env, runtime)?;
-                env.pop_scope();
-                match sig {
-                    Signal::Value(_) | Signal::Continue => {}
-                    Signal::Break(_) => break,
-                    Signal::Return(v) => return Ok(Signal::Return(v)),
+                match run_for_in_iteration(binding_id, binding, item, body, env, runtime)? {
+                    ControlFlow::Continue(()) => {}
+                    ControlFlow::Break(sig) => return Ok(sig),
                 }
             }
         }
     }
     Ok(Signal::Value(Value::Unit))
+}
+
+/// Run one iteration of a `for`-`in` loop: bind the loop variable — by its
+/// [`LocalId`] in the id-indexed frame when known (metel-core#1052b) — then
+/// evaluate the body in a fresh scope. `Break` carries the loop's result value
+/// (`Unit` for a plain `break`, the returned value for a `return`).
+fn run_for_in_iteration(
+    binding_id: Option<LocalId>,
+    binding: &str,
+    item: Value,
+    body: &TypedBlock,
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+) -> Result<ControlFlow<Signal, ()>, MetelError> {
+    env.push_scope();
+    env.define_binding(binding_id, binding, item);
+    let sig = eval_block(body, env, runtime)?;
+    env.pop_scope();
+    Ok(match sig {
+        Signal::Value(_) | Signal::Continue => ControlFlow::Continue(()),
+        Signal::Break(_) => ControlFlow::Break(Signal::Value(Value::Unit)),
+        Signal::Return(v) => ControlFlow::Break(Signal::Return(v)),
+    })
 }
 
 fn range_field(
@@ -2923,7 +3002,15 @@ pub fn eval_expr(
             Ok(Signal::Value(val))
         }
 
-        TypedExpr::Ident(name, _, _, span) => {
+        TypedExpr::Ident(name, binding, _, span) => {
+            // Prefer the id-indexed frame when the reference resolved to a
+            // lexical local (metel-core#1052b); fall back to the name map for
+            // globals, still-unmigrated sites, and stdlib.
+            if let Some(crate::identity::BindingId::Local(id)) = binding {
+                if let Some(val) = env.get_local(*id) {
+                    return Ok(Signal::Value(val));
+                }
+            }
             match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
                 Some(val) => Ok(Signal::Value(val)),
                 None => Err(MetelError::panic(
@@ -3529,6 +3616,7 @@ pub fn eval_expr(
             captures,
             call_mutation,
             params,
+            param_ids,
             body,
             ty,
             span,
@@ -3540,6 +3628,7 @@ pub fn eval_expr(
                     name: None,
                     captures: captures.clone(),
                     params: params.clone(),
+                    param_ids: param_ids.clone(),
                     body: ClosureBody::Typed(body.clone()),
                     captured,
                     call_mutation: *call_mutation,
@@ -3555,6 +3644,7 @@ pub fn eval_expr(
             captures,
             call_mutation,
             params,
+            param_ids,
             body,
             span,
             ..
@@ -3565,6 +3655,7 @@ pub fn eval_expr(
                     name: name.clone(),
                     captures: captures.clone(),
                     params: params.clone(),
+                    param_ids: param_ids.clone(),
                     body: ClosureBody::Untyped(body.clone()),
                     captured,
                     call_mutation: *call_mutation,
@@ -3574,5 +3665,68 @@ pub fn eval_expr(
                 }),
             ))))
         }
+    }
+}
+
+#[cfg(test)]
+mod frame_tests {
+    //! metel-core#1052b -- the id-indexed activation frame and its name-map
+    //! fallback.
+
+    use super::{Environment, Value};
+    use crate::identity::LocalId;
+
+    fn as_i64(v: Option<Value>) -> Option<i64> {
+        match v {
+            Some(Value::I64(n)) => Some(n),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn define_binding_is_readable_by_local_id() {
+        let mut env = Environment::new();
+        let id = LocalId(0x1234);
+        env.define_binding(Some(id), "x", Value::I64(7));
+        assert_eq!(as_i64(env.get_local(id)), Some(7));
+        // The name map is written in step so unmigrated paths keep working.
+        assert_eq!(as_i64(env.get("x")), Some(7));
+    }
+
+    #[test]
+    fn a_name_only_binding_has_no_frame_slot() {
+        let mut env = Environment::new();
+        env.define("y", Value::I64(1));
+        assert!(env.get_local(LocalId(0x9999)).is_none());
+        assert_eq!(as_i64(env.get("y")), Some(1));
+    }
+
+    #[test]
+    fn distinct_local_ids_do_not_alias_when_the_name_is_reused() {
+        // Two bindings that share the spelling `n` but sit at different
+        // lexical paths hash to different `LocalId`s and keep independent
+        // slots, even though the later one shadows the former in the name map.
+        let mut env = Environment::new();
+        let outer = LocalId(1);
+        let inner = LocalId(2);
+        env.define_binding(Some(outer), "n", Value::I64(10));
+        env.define_binding(Some(inner), "n", Value::I64(20));
+        assert_eq!(as_i64(env.get_local(outer)), Some(10));
+        assert_eq!(as_i64(env.get_local(inner)), Some(20));
+        assert_eq!(as_i64(env.get("n")), Some(20));
+    }
+
+    #[test]
+    fn capture_clone_drops_frame_slots_but_keeps_the_name_snapshot() {
+        // A capture snapshot rebuilds bindings under fresh name-keyed cells;
+        // the id frame is intentionally cleared so a body reference to a
+        // captured binding resolves through the name-map fallback rather than
+        // a cell that has drifted out of sync.
+        let mut env = Environment::new();
+        let id = LocalId(42);
+        env.define_binding(Some(id), "c", Value::I64(5));
+        let snapshot = env.capture_clone();
+        assert!(snapshot.get_local(id).is_none());
+        assert_eq!(as_i64(snapshot.get("c")), Some(5));
     }
 }
