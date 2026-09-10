@@ -24,7 +24,7 @@
 )]
 
 pub use metel_frontend::{
-    analysis, ast, coherence, elaborator, error, module_loader, module_paths, move_check,
+    analysis, ast, coherence, elaborator, error, identity, module_loader, module_paths, move_check,
     name_resolver, native_keys, parser, path_normalizer, place, query, reference_resolver, stdlib,
     symbols, typechecker, typed_ast, typeinference, types,
 };

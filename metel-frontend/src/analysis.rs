@@ -44,7 +44,9 @@ pub struct Analysis {
     /// Identity for every declared struct field and enum variant
     /// (`FieldId` / `VariantId`), keyed by `(owning SymbolId, member name)`
     /// — the interning milestone of the resolution freeze (metel-core#1051,
-    /// ADR-0054 step 3). Not yet threaded onto the typed IR.
+    /// ADR-0054 step 3). Field accesses and enum-variant literals on the typed
+    /// IR carry the matching id (metel-core#1062); pattern member sites still do
+    /// not (metel-core#1063).
     pub members: MemberTable,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
@@ -205,8 +207,12 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
 
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let report =
-        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
+    let report = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &CorePrelude::default(),
+        Some(&members),
+    )?;
 
     let mut warnings = report.warnings;
     if options.move_check {
@@ -242,6 +248,140 @@ mod tests {
             .iter()
             .any(|module| module.module_path.is_empty()));
         assert!(analysis.warnings.is_empty());
+    }
+
+    // ── #1062 (Freeze 1051c): FieldId / VariantId on the typed IR ──────────────
+
+    mod member_ids_on_typed_ir {
+        use super::*;
+        use crate::typed_ast::{FunBody, TypedDecl, TypedExpr};
+
+        fn analyze(src: &str) -> Analysis {
+            let provider = InMemorySourceProvider::new("editor.mtl", src);
+            analyze_virtual_root_with("editor.mtl", &provider, AnalysisOptions::default())
+                .expect("source should analyze")
+        }
+
+        fn root_sym(analysis: &Analysis, name: &str) -> crate::symbols::SymbolId {
+            *analysis
+                .names
+                .symbols
+                .get(&(vec![], name.to_string()))
+                .unwrap_or_else(|| panic!("`{name}` should have a symbol"))
+        }
+
+        /// Tail expression of the root-module function `fn_name`.
+        fn tail_expr<'a>(analysis: &'a Analysis, fn_name: &str) -> &'a TypedExpr {
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .expect("root module");
+            let func = root
+                .decls
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Fun(f) if f.name == fn_name => Some(f),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("`{fn_name}` should be a typed function"));
+            match &func.body {
+                FunBody::Typed(block) => block
+                    .tail
+                    .as_deref()
+                    .unwrap_or_else(|| panic!("`{fn_name}` should have a tail expression")),
+                _ => panic!("`{fn_name}` should have a concrete typed body"),
+            }
+        }
+
+        #[test]
+        fn field_access_carries_the_interned_field_id() {
+            let analysis = analyze(
+                "struct Point { x: i64, y: i64 }\n\
+                 fun get_x(p: Point) -> i64 { p.x }\n",
+            );
+            let point = root_sym(&analysis, "Point");
+            let TypedExpr::FieldAccess {
+                field_id, field, ..
+            } = tail_expr(&analysis, "get_x")
+            else {
+                panic!("expected a field access");
+            };
+            assert_eq!(field, "x");
+            let id = field_id.expect("field access should carry a FieldId");
+            assert_eq!(
+                Some(id),
+                analysis.members.field(point, "x"),
+                "the stamped id must be the one the member table interned"
+            );
+            assert_eq!(
+                analysis.members.field_info(id).map(|i| i.owner),
+                Some(point)
+            );
+        }
+
+        #[test]
+        fn enum_variant_literal_carries_the_interned_variant_id() {
+            let analysis = analyze(
+                "enum Color { Red, Green, Blue }\n\
+                 fun pick() -> Color { Color::Green }\n",
+            );
+            let color = root_sym(&analysis, "Color");
+            let TypedExpr::StructLiteral {
+                variant_id,
+                type_id,
+                ..
+            } = tail_expr(&analysis, "pick")
+            else {
+                panic!("expected a struct-literal node for the enum variant");
+            };
+            assert_eq!(*type_id, Some(color));
+            assert_eq!(
+                *variant_id,
+                analysis.members.variant(color, "Green"),
+                "the stamped variant id must be the interned one"
+            );
+            assert!(variant_id.is_some(), "a resolved variant must carry an id");
+        }
+
+        #[test]
+        fn plain_struct_literal_has_no_variant_id() {
+            let analysis = analyze(
+                "struct Point { x: i64, y: i64 }\n\
+                 fun make() -> Point { Point { x = 1, y = 2 } }\n",
+            );
+            let TypedExpr::StructLiteral { variant_id, .. } = tail_expr(&analysis, "make") else {
+                panic!("expected a struct literal");
+            };
+            assert_eq!(*variant_id, None, "a struct is not a variant");
+        }
+
+        #[test]
+        fn field_access_on_a_type_the_member_table_never_saw_reports_none() {
+            // A block-local struct gets no `(module, name)` symbol from the name
+            // resolver, so `collect_members` never interns its fields. The node
+            // must carry `None` — the sanctioned recovery state — not a
+            // fabricated id.
+            let analysis = analyze(
+                "fun f() -> i64 {\n\
+                 \tstruct Local { v: i64 }\n\
+                 \tlet x := Local { v = 3 };\n\
+                 \tx.v\n\
+                 }\n",
+            );
+            let TypedExpr::FieldAccess {
+                field_id, field, ..
+            } = tail_expr(&analysis, "f")
+            else {
+                panic!("expected a field access");
+            };
+            assert_eq!(field, "v");
+            assert_eq!(
+                *field_id, None,
+                "no id for a type the member table never saw"
+            );
+        }
     }
 
     #[test]

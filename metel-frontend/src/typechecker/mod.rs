@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::ast::{Decl, Program, Visibility};
 use crate::error::MetelError;
 use crate::error::TypeErrorCode;
+use crate::identity::MemberTable;
 use crate::module_loader::LoadedModule;
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
@@ -312,15 +313,24 @@ pub fn check_graph(
     names: &ResolvedNames,
     std_prelude: &CorePrelude,
 ) -> Result<TypedModuleGraph, MetelError> {
-    Ok(check_graph_with_report(graph, names, std_prelude)?.graph)
+    Ok(check_graph_with_report(graph, names, std_prelude, None)?.graph)
 }
 
 /// # Errors
 /// Returns an error if any module fails to typecheck.
+///
+/// `members` is the whole-graph [`MemberTable`] (ADR-0054 / #1051); when
+/// supplied, construction stamps each field access and enum-variant literal with
+/// its interned [`FieldId`] / [`VariantId`] (#1062). `None` — the move-check and
+/// diagnostic-tool entry points — leaves every member site's id `None`.
+///
+/// [`FieldId`]: crate::identity::FieldId
+/// [`VariantId`]: crate::identity::VariantId
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
     std_prelude: &CorePrelude,
+    members: Option<&MemberTable>,
 ) -> Result<CheckGraphReport, MetelError> {
     // std::core is a real module in the graph (synthesized ahead of user code),
     // so its exports land in GlobalExports through the normal per-module loop —
@@ -357,6 +367,7 @@ pub fn check_graph_with_report(
             Some(&names.symbols),
             Some(&names.references),
             Some(&names.scopes),
+            members,
         )?;
         accumulate_typecheck_timings(&mut timings, report.timings);
         type_registry = report.registry;
@@ -974,6 +985,7 @@ fn check_impl(
         symbols,
         references,
         None,
+        None,
     )?;
     Ok((report.typed_decls, report.scheme_env, report.registry))
 }
@@ -989,6 +1001,7 @@ fn check_impl_with_report(
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     references: Option<&crate::reference_resolver::ReferenceTable>,
     scopes: Option<&HashMap<Vec<String>, crate::name_resolver::ModuleScope>>,
+    members: Option<&MemberTable>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
@@ -1100,6 +1113,7 @@ fn check_impl_with_report(
         current_module_path,
         references,
         &resolved_facts,
+        members,
     )?;
     let construction_ns = elapsed_ns(started);
 

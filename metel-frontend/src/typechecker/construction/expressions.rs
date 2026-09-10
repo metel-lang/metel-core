@@ -650,6 +650,8 @@ pub(super) fn construct_expr(
                         fields: vec![],
                         ty,
                         type_id: ctx.type_symbol_id(name),
+                        // A field-less *struct*, not an enum variant.
+                        variant_id: None,
                         span: span.clone(),
                     });
                 }
@@ -1059,6 +1061,9 @@ pub(super) fn construct_expr(
                 return Ok(TypedExpr::FieldAccess {
                     object: Box::new(typed_obj),
                     field: field.clone(),
+                    // Structural record / residual bases have no nominal owner,
+                    // so no `FieldId` (row labels are `LabelId`, ADR-0054).
+                    field_id: None,
                     ty: field_ty,
                     span: span.clone(),
                 });
@@ -1103,9 +1108,11 @@ pub(super) fn construct_expr(
                         MetelError::internal(format!("no field `{field}` on `{struct_name}`"))
                     })?
             };
+            let field_id = ctx.field_id_for(typed_obj.ty(), field);
             Ok(TypedExpr::FieldAccess {
                 object: Box::new(typed_obj),
                 field: field.clone(),
+                field_id,
                 ty: field_ty,
                 span: span.clone(),
             })
@@ -1575,11 +1582,18 @@ pub(super) fn construct_expr(
                 }
             });
 
+            // A 2-segment `Enum::Variant` literal selects a variant; `type_id` is
+            // the enum's `SymbolId`, so the member table keys the variant off it.
+            let variant_id = (resolved_path.len() == 2)
+                .then(|| ctx.variant_id_for(type_id, &resolved_path[1]))
+                .flatten();
+
             Ok(TypedExpr::StructLiteral {
                 path: resolved_path,
                 fields: typed_fields,
                 ty,
                 type_id,
+                variant_id,
                 span: span.clone(),
             })
         }
@@ -1671,11 +1685,13 @@ pub(super) fn construct_expr(
                         })?
                 };
                 record_ty.push((field.clone(), field_ty.clone()));
+                let field_id = ctx.field_id_for(typed_base.ty(), field);
                 projected_fields.push((
                     field.clone(),
                     TypedExpr::FieldAccess {
                         object: Box::new(typed_base.clone()),
                         field: field.clone(),
+                        field_id,
                         ty: field_ty,
                         span: span.clone(),
                     },
@@ -1721,11 +1737,13 @@ pub(super) fn construct_expr(
                             // SymbolId onto the runtime value, like any other constructor
                             // (METEL-185). The evaluator builds `Value::Enum` from a
                             // 2-segment struct-literal path.
+                            let type_id = ctx.type_symbol_id(type_name);
                             return Ok(TypedExpr::StructLiteral {
                                 path: segments.clone(),
                                 fields: vec![],
                                 ty: Type::Named(type_name.clone(), vec![]),
-                                type_id: ctx.type_symbol_id(type_name),
+                                type_id,
+                                variant_id: ctx.variant_id_for(type_id, member_name),
                                 span: span.clone(),
                             });
                         }

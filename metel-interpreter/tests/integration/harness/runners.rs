@@ -3,8 +3,8 @@ use std::path::Path;
 
 use metel::error::MetelError;
 use metel::{
-    coherence, elaborator, evaluator, module_loader, name_resolver, parser, path_normalizer,
-    pipeline, typechecker,
+    coherence, elaborator, evaluator, identity, module_loader, name_resolver, parser,
+    path_normalizer, pipeline, typechecker,
 };
 
 use super::fixture::{
@@ -73,12 +73,14 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
 fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
+    let members = identity::collect_members_for_graph(&graph, &names);
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph_with_report(
         &normalized,
         &names,
         &typechecker::CorePrelude::default(),
+        Some(&members),
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
@@ -135,10 +137,15 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     let graph = module_loader::load_root(main_source_path(path))?;
     assert_graph_checks(path, &graph, &config.graph);
     let names = name_resolver::resolve(&graph)?;
+    let members = identity::collect_members_for_graph(&graph, &names);
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
-    let typed =
-        typechecker::check_graph_with_report(&normalized, &names, &std_prelude(config.prelude))?;
+    let typed = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &std_prelude(config.prelude),
+        Some(&members),
+    )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
         for warning in metel::move_check::check_graph(&typed.graph)? {

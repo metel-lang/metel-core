@@ -55,7 +55,7 @@ mod position;
 pub use position::{PositionHit, PositionIndex};
 
 mod member;
-pub use member::{collect_members, MemberInfo, MemberTable};
+pub use member::{collect_members, collect_members_for_graph, MemberInfo, MemberTable};
 
 #[cfg(test)]
 mod tests;

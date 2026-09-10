@@ -8,6 +8,7 @@ use crate::ast::{
     AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
     Pattern, Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
+use crate::identity::{FieldId, VariantId};
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
 use crate::types::{CallMultiplicity, CallMutation, Type};
@@ -369,6 +370,13 @@ pub enum TypedExpr {
     FieldAccess {
         object: Box<TypedExpr>,
         field: String,
+        /// Stable identity of the selected field declaration (ADR-0054 / #1062).
+        /// Resolved from the `MemberTable` at construction, keyed by
+        /// `(owning type SymbolId, field name)`. `None` when no identity context
+        /// is available or member resolution failed — an explicit
+        /// diagnostic-recovery state, never a fabricated id. `field` is retained
+        /// for diagnostics and the (pre-#1063) evaluator.
+        field_id: Option<FieldId>,
         ty: Type,
         span: Span,
     },
@@ -438,6 +446,12 @@ pub enum TypedExpr {
         /// copied onto the runtime `Value` so method dispatch keys by `SymbolId`
         /// rather than surface name. `None` when no resolver context is available.
         type_id: Option<SymbolId>,
+        /// Stable identity of the selected enum variant (ADR-0054 / #1062), when
+        /// this literal constructs an enum variant rather than a plain struct.
+        /// Resolved from the `MemberTable`, keyed by `(enum SymbolId, variant
+        /// name)`. `None` for a plain struct literal, and for a variant literal
+        /// with no identity context or a failed lookup — never a fabricated id.
+        variant_id: Option<VariantId>,
         span: Span,
     },
     /// RFC-0078 §3.3: the inhabited-singleton coercion. `inner` is a value of an

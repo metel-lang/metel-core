@@ -7,6 +7,7 @@ use crate::ast::{
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::flow_state::FlowState;
+use crate::identity::{FieldId, MemberTable, VariantId};
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl,
@@ -133,6 +134,13 @@ struct ConstructCtx<'a> {
     references: Option<&'a HashMap<Span, SymbolId>>,
     /// Concrete semantic decisions frozen at the inference/construction boundary.
     resolved_facts: &'a ResolvedInferenceFacts,
+    /// Whole-graph member identity table (ADR-0054 / #1051). When present,
+    /// construction stamps `TypedExpr::FieldAccess::field_id` and
+    /// `TypedExpr::StructLiteral::variant_id` from it, keyed by
+    /// `(owning type SymbolId, member name)`. `None` for the move-check and
+    /// diagnostic-tool entry points that build no identity context — every
+    /// member site then carries `None`, the sanctioned recovery state.
+    members: Option<&'a MemberTable>,
     /// Concrete target-type name `Self` denotes in the innermost enclosing impl-block
     /// method body (None outside one). #774 (revised): a body-internal `let x:
     /// Self.{ field }`/`Self::AssocType` annotation resolves through this the same
@@ -172,6 +180,7 @@ impl<'a> ConstructCtx<'a> {
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
+        members: Option<&'a MemberTable>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -193,6 +202,7 @@ impl<'a> ConstructCtx<'a> {
             current_module,
             references,
             resolved_facts,
+            members,
             current_self_type_name: None,
             fn_table: vec![HashMap::new()],
             closure_owned_captures: Vec::new(),
@@ -361,6 +371,32 @@ impl<'a> ConstructCtx<'a> {
         self.registry.has_variant_named(name)
     }
 
+    /// Interned identity of the field selected by `object.field` (ADR-0054 /
+    /// #1062). `object_ty` is the access base's type; references are peeled and
+    /// a nominal owner `SymbolId` resolved through the registry, then looked up
+    /// in the whole-graph member table. `None` — no member table, a structural
+    /// (record / residual) base with no nominal owner, a block-local struct
+    /// (which the name resolver mints no `(module, name)` symbol for), or a
+    /// field the table never interned — is the sanctioned recovery state, never
+    /// a fabricated id.
+    fn field_id_for(&self, object_ty: &Type, field: &str) -> Option<FieldId> {
+        let members = self.members?;
+        let Type::Named(name, _) = peel_type_references(object_ty) else {
+            return None;
+        };
+        let owner = self.registry.resolve_type_id(self.current_module, name)?;
+        members.field(owner, field)
+    }
+
+    /// Interned identity of the enum variant an enum-variant `StructLiteral`
+    /// constructs (ADR-0054 / #1062). `enum_id` is the literal's
+    /// already-resolved enum `type_id`; `variant` is the last path segment.
+    /// `None` for a plain struct literal (no `enum_id`), without a member table,
+    /// or for a variant the table never interned — never a fabricated id.
+    fn variant_id_for(&self, enum_id: Option<SymbolId>, variant: &str) -> Option<VariantId> {
+        self.members?.variant(enum_id?, variant)
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }
@@ -488,11 +524,13 @@ fn resolve_unqualified_variant_expr(
             span,
         ));
     }
+    let type_id = ctx.type_symbol_id(&enum_name);
     Ok(TypedExpr::StructLiteral {
         path: vec![enum_name.clone(), variant_name.to_string()],
         fields: vec![],
         ty: expected_ty,
-        type_id: ctx.type_symbol_id(&enum_name),
+        type_id,
+        variant_id: ctx.variant_id_for(type_id, variant_name),
         span: span.clone(),
     })
 }
@@ -838,6 +876,10 @@ pub(super) fn construct_generic_body(
         &[],
         None,
         &resolved_facts,
+        // Generic bodies are reconstructed at runtime with no identity context;
+        // member sites in them carry `None` until the evaluator threads a member
+        // table (#1052/#1063).
+        None,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
@@ -881,6 +923,7 @@ pub(super) fn construct_program(
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,
+    members: Option<&MemberTable>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
@@ -892,6 +935,7 @@ pub(super) fn construct_program(
         current_module,
         references,
         resolved_facts,
+        members,
     )?;
 
     // metel-core#736 / RFC-0138: hoist every top-level `FunDecl`'s own shape into
@@ -1352,6 +1396,8 @@ fn construct_propagate_error(
                         fields: vec![("error".to_string(), err_value)],
                         ty: return_ty,
                         type_id: Some(crate::symbols::SYM_TYPE_RESULT),
+                        variant_id: ctx
+                            .variant_id_for(Some(crate::symbols::SYM_TYPE_RESULT), "Err"),
                         span: span.clone(),
                     })),
                     span: span.clone(),

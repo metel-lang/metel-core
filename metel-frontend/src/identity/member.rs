@@ -196,6 +196,31 @@ pub fn collect_members(
     table
 }
 
+/// Convenience wrapper around [`collect_members`] that takes a loaded
+/// (pre-normalization) [`ModuleGraph`] directly. The `analyze_*` path builds
+/// the member table from its own `identity_modules` slice (shared with
+/// [`allocate_graph`]); the interpreter pipeline has no `Analysis` to hang the
+/// table on, so it calls this right before `path_normalizer::normalize`
+/// consumes the graph. The `NameId`s in the resulting [`MemberInfo`]s are
+/// interned into a throwaway interner — the pipeline never resolves them — but
+/// [`FieldId`] / [`VariantId`] assignment is a plain declaration-order counter,
+/// so the ids match what `analyze_*` produces for the same graph.
+///
+/// [`ModuleGraph`]: crate::module_loader::ModuleGraph
+/// [`allocate_graph`]: super::allocate_graph
+#[must_use]
+pub fn collect_members_for_graph(
+    graph: &crate::module_loader::ModuleGraph,
+    names: &crate::name_resolver::ResolvedNames,
+) -> MemberTable {
+    let modules: Vec<(Vec<String>, &[crate::ast::Decl])> = graph
+        .modules
+        .iter()
+        .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
+        .collect();
+    collect_members(&modules, names, &mut NameInterner::new())
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

@@ -6,6 +6,7 @@ use crate::coherence;
 use crate::elaborator;
 use crate::error::MetelError;
 use crate::evaluator::{self, EvaluationReport};
+use crate::identity;
 use crate::module_loader;
 use crate::move_check;
 use crate::name_resolver;
@@ -73,6 +74,11 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let names = name_resolver::resolve(&graph)?;
     let resolve_ns = elapsed_ns(started);
 
+    // Member identities (ADR-0054 / #1051) are derived from the parsed graph, so
+    // build the table before `path_normalizer::normalize` consumes it; passed to
+    // the typechecker so construction can stamp field/variant ids (#1062).
+    let members = identity::collect_members_for_graph(&graph, &names);
+
     let started = Instant::now();
     let normalized = path_normalizer::normalize(graph, &names)?;
     let normalize_ns = elapsed_ns(started);
@@ -82,8 +88,12 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_report =
-        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
+    let typed_report = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &CorePrelude::default(),
+        Some(&members),
+    )?;
     let typecheck_ns = elapsed_ns(started);
 
     let mut warnings = typed_report.warnings;
@@ -142,6 +152,11 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let names = name_resolver::resolve(&graph)?;
     let resolve_ns = elapsed_ns(started);
 
+    // Member identities (ADR-0054 / #1051) are derived from the parsed graph, so
+    // build the table before `path_normalizer::normalize` consumes it; passed to
+    // the typechecker so construction can stamp field/variant ids (#1062).
+    let members = identity::collect_members_for_graph(&graph, &names);
+
     let started = Instant::now();
     let normalized = path_normalizer::normalize(graph, &names)?;
     let normalize_ns = elapsed_ns(started);
@@ -151,8 +166,12 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_report =
-        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
+    let typed_report = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &CorePrelude::default(),
+        Some(&members),
+    )?;
     let typecheck_ns = elapsed_ns(started);
 
     let mut warnings = typed_report.warnings;
@@ -211,13 +230,18 @@ pub fn run_evaluator_fixture(
     let started = Instant::now();
     let graph = module_loader::load_root(filename)?;
     let names = name_resolver::resolve(&graph)?;
+    let members = identity::collect_members_for_graph(&graph, &names);
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let parse_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let typed_report =
-        typechecker::check_graph_with_report(&normalized, &names, &CorePrelude::default())?;
+    let typed_report = typechecker::check_graph_with_report(
+        &normalized,
+        &names,
+        &CorePrelude::default(),
+        Some(&members),
+    )?;
 
     let mut warnings = typed_report.warnings;
     if options.move_check {
