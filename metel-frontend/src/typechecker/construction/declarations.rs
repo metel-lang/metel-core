@@ -8,6 +8,26 @@ use super::{
     TypedStructDecl,
 };
 
+/// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
+/// straight off the source `FunDecl` (methods carry no top-level identity).
+fn method_fun_decl(
+    method: &FunDecl,
+    param_ids: Vec<Option<crate::identity::LocalId>>,
+    body: FunBody,
+) -> TypedFunDecl {
+    TypedFunDecl {
+        name: method.name.clone(),
+        generics: method.generics.clone(),
+        params: method.params.clone(),
+        param_ids,
+        return_type: method.return_type.clone(),
+        body,
+        symbol_id: None,
+        def_id: None,
+        span: method.span.clone(),
+    }
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     match decl {
@@ -33,9 +53,11 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                             value: TypedExpr::GenericClosure {
                                 name: Some(ld.name.clone()),
                                 captures: captures.clone(),
+                                capture_ids: ctx.capture_local_ids(captures),
                                 call_multiplicity: *call_multiplicity,
                                 call_mutation: *call_mutation,
                                 params: params.clone(),
+                                param_ids: ctx.param_local_ids(params),
                                 return_type: return_type.clone(),
                                 body: body.clone(),
                                 ty: Type::Unit,
@@ -69,8 +91,10 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                                 value: TypedExpr::GenericClosure {
                                     name: Some(ld.name.clone()),
                                     captures: vec![],
+                                    capture_ids: vec![],
                                     call_multiplicity: crate::types::CallMultiplicity::Many,
                                     call_mutation: crate::types::CallMutation::Reading,
+                                    param_ids: ctx.param_local_ids(&params),
                                     params,
                                     return_type,
                                     body,
@@ -195,6 +219,7 @@ pub(super) fn construct_fun_decl(
             name: fun.name.clone(),
             generics: fun.generics.clone(),
             params: fun.params.clone(),
+            param_ids: ctx.param_local_ids(&fun.params),
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
             symbol_id,
@@ -341,6 +366,7 @@ pub(super) fn construct_fun_decl(
         name: fun.name.clone(),
         generics: fun.generics.clone(),
         params: fun.params.clone(),
+        param_ids: ctx.param_local_ids(&fun.params),
         return_type: fun.return_type.clone(),
         body,
         symbol_id: overload_entry.map(|e| e.symbol_id),
@@ -492,16 +518,11 @@ pub(super) fn construct_impl_method(
                 &binding.span,
             )
         })?;
-        return Ok(TypedFunDecl {
-            name: method.name.clone(),
-            generics: method.generics.clone(),
-            params: method.params.clone(),
-            return_type: method.return_type.clone(),
-            body: FunBody::Native(key),
-            symbol_id: None,
-            def_id: None,
-            span: method.span.clone(),
-        });
+        return Ok(method_fun_decl(
+            method,
+            ctx.param_local_ids(&method.params),
+            FunBody::Native(key),
+        ));
     }
 
     // Methods on a generic struct OR generic enum have T-typed params that can't be
@@ -524,16 +545,11 @@ pub(super) fn construct_impl_method(
             .struct_generic_names_for(ctx.current_module, target_name)
             .is_some_and(|names| !names.is_empty());
     if is_generic_target {
-        return Ok(TypedFunDecl {
-            name: method.name.clone(),
-            generics: method.generics.clone(),
-            params: method.params.clone(),
-            return_type: method.return_type.clone(),
-            body: FunBody::Generic(method.body.clone()),
-            symbol_id: None,
-            def_id: None,
-            span: method.span.clone(),
-        });
+        return Ok(method_fun_decl(
+            method,
+            ctx.param_local_ids(&method.params),
+            FunBody::Generic(method.body.clone()),
+        ));
     }
 
     let self_ty = super::super::inference::primitive_type_from_name(target_name)
@@ -588,16 +604,11 @@ pub(super) fn construct_impl_method(
     ctx.pop_return_type(saved_return);
     ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();
-    Ok(TypedFunDecl {
-        name: method.name.clone(),
-        generics: method.generics.clone(),
-        params: method.params.clone(),
-        return_type: method.return_type.clone(),
-        body: FunBody::Typed(typed_block),
-        symbol_id: None,
-        def_id: None,
-        span: method.span.clone(),
-    })
+    Ok(method_fun_decl(
+        method,
+        ctx.param_local_ids(&method.params),
+        FunBody::Typed(typed_block),
+    ))
 }
 
 // Synthesize typed method bodies for aspect methods not provided by this impl block.
@@ -690,6 +701,7 @@ pub(super) fn construct_default_aspect_method(
     Ok(TypedFunDecl {
         name: method.name.clone(),
         generics: method.generics.clone(),
+        param_ids: ctx.param_local_ids(&method.params),
         params: method.params.clone(),
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),

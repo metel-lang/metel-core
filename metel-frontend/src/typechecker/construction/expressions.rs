@@ -1894,9 +1894,11 @@ pub(super) fn construct_expr(
             );
             Ok(TypedExpr::Closure {
                 captures: captures.clone(),
+                capture_ids: ctx.capture_local_ids(captures),
                 call_multiplicity: effective_multiplicity,
                 call_mutation: effective_mutation,
                 params: params.clone(),
+                param_ids: ctx.param_local_ids(params),
                 return_type: return_type.clone(),
                 body: typed_body,
                 ty,

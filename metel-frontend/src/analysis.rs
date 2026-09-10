@@ -693,6 +693,81 @@ mod tests {
             });
             assert!(has_local_id, "the `for` loop binding carries a LocalId");
         }
+
+        #[test]
+        fn function_params_carry_local_ids_the_body_use_matches() {
+            let analysis = analyze("fun add(a: i64, b: i64) -> i64 { a + b }\n");
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(func) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "add"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            assert_eq!(func.param_ids.len(), 2);
+            assert!(
+                func.param_ids.iter().all(Option::is_some),
+                "every parameter carries a LocalId: {:?}",
+                func.param_ids
+            );
+        }
+
+        #[test]
+        fn closure_capture_ids_resolve_the_captured_local() {
+            let analysis = analyze(
+                "fun mk() -> i64 {\n\
+                 \tlet base := 10;\n\
+                 \tlet f := [base] |x: i64| { x + base };\n\
+                 \tf(1)\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(func) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "mk"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &func.body else {
+                panic!("typed body")
+            };
+            // `let base` — its LocalId.
+            let base_id = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Let(ld) if ld.name == "base" => ld.local_id,
+                    _ => None,
+                })
+                .expect("`let base`");
+            // The closure's capture of `base` resolves to that same LocalId.
+            let cap_ids = block.stmts.iter().find_map(|d| match d {
+                TypedDecl::Let(ld) => match &ld.value {
+                    TypedExpr::Closure { capture_ids, .. } => Some(capture_ids.clone()),
+                    _ => None,
+                },
+                _ => None,
+            });
+            let cap_ids = cap_ids.expect("a closure `let f`");
+            assert!(
+                cap_ids.contains(&Some(base_id)),
+                "the closure captures `base` by its LocalId: {cap_ids:?}"
+            );
+        }
     }
 
     #[test]

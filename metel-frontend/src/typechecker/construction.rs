@@ -436,6 +436,43 @@ impl<'a> ConstructCtx<'a> {
         self.binding_id_at(span)?.as_local()
     }
 
+    /// Lexical identity of each parameter, parallel to `params` (ADR-0054 /
+    /// #1052). Empty without identity context.
+    fn param_local_ids(&self, params: &[Param]) -> Vec<Option<crate::identity::LocalId>> {
+        if self.identity.is_none() {
+            return Vec::new();
+        }
+        params
+            .iter()
+            .map(|p| self.local_binding_at(&p.span))
+            .collect()
+    }
+
+    /// Lexical identity of the enclosing-scope binding each capture names,
+    /// parallel to `captures`. The identity walk records a capture-list entry as
+    /// a *use* of the outer binding, so it resolves like any reference.
+    fn capture_local_ids(
+        &self,
+        captures: &[crate::ast::CaptureSpec],
+    ) -> Vec<Option<crate::identity::LocalId>> {
+        use crate::ast::CaptureSpec;
+        if self.identity.is_none() {
+            return Vec::new();
+        }
+        captures
+            .iter()
+            .map(|c| {
+                let span = match c {
+                    CaptureSpec::Owned { span, .. }
+                    | CaptureSpec::SharedRef { span, .. }
+                    | CaptureSpec::MutRef { span, .. }
+                    | CaptureSpec::Clone { span, .. } => span,
+                };
+                self.local_binding_at(span)
+            })
+            .collect()
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }

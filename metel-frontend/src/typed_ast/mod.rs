@@ -141,6 +141,10 @@ pub struct TypedFunDecl {
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub generics: Vec<GenericParam>,
     pub params: Vec<Param>,
+    /// Lexical identity of each parameter (ADR-0054 / metel-core#1052), parallel
+    /// to `params`. Empty without identity context; entries `None` where a param
+    /// span was not a recorded binding site.
+    pub param_ids: Vec<Option<LocalId>>,
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub return_type: Option<TypeExpr>,
     pub body: FunBody,
@@ -429,9 +433,14 @@ pub enum TypedExpr {
     },
     Closure {
         captures: Vec<CaptureSpec>,
+        /// Lexical identity of the enclosing-scope binding each capture names
+        /// (ADR-0054 / metel-core#1052), parallel to `captures`.
+        capture_ids: Vec<Option<LocalId>>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
         params: Vec<Param>,
+        /// Lexical identity of each closure parameter, parallel to `params`.
+        param_ids: Vec<Option<LocalId>>,
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,
         body: TypedBlock,
@@ -445,9 +454,13 @@ pub enum TypedExpr {
         /// up the closure's `TypeScheme` from `type_ctx.scheme_env` for construction-at-call-time.
         name: Option<String>,
         captures: Vec<CaptureSpec>,
+        /// See `Closure::capture_ids`.
+        capture_ids: Vec<Option<LocalId>>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
         params: Vec<Param>,
+        /// See `Closure::param_ids`.
+        param_ids: Vec<Option<LocalId>>,
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,
         body: Block,
