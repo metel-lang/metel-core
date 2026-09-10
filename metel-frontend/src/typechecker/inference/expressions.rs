@@ -715,8 +715,10 @@ pub(super) fn infer_expr(
                 field_entry,
                 &struct_name,
                 ctx.current_module_path(),
-                ctx.registry().struct_declaring_module(&struct_name),
-                ctx.registry().struct_visibility_for(&struct_name),
+                ctx.registry()
+                    .struct_declaring_module(ctx.current_module_path(), &struct_name),
+                ctx.registry()
+                    .struct_visibility_for(ctx.current_module_path(), &struct_name),
                 span,
                 "access",
             )?;

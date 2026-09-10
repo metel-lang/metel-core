@@ -907,11 +907,13 @@ pub fn infer_named_type_args(
                 },
                 None => return vec![],
             },
-            None => match (
-                registry.struct_type_params_for(name),
-                registry.struct_fields(name),
-            ) {
-                (Some(tp), Some(f)) => (tp, f),
+            None => match registry.type_id_for_decl_name(name).and_then(|id| {
+                Some((
+                    registry.struct_type_params_by_id(id)?,
+                    registry.struct_fields_by_id(id)?,
+                ))
+            }) {
+                Some((tp, f)) => (tp, f),
                 _ => return vec![],
             },
         };

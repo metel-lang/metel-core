@@ -1071,17 +1071,18 @@ pub(super) fn construct_expr(
                     )))
                 }
             };
+            let struct_id = ctx
+                .registry
+                .resolve_type_id(ctx.current_module, &struct_name);
             let field_ty = if let Some(type_params) =
-                ctx.registry.raw_struct_type_params().get(&struct_name)
+                struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
                 // Generic struct: look up raw InferType field, build remap, apply, convert.
-                let raw_fields =
-                    ctx.registry
-                        .raw_struct_env()
-                        .get(&struct_name)
-                        .ok_or_else(|| {
-                            MetelError::internal(format!("missing raw fields for `{struct_name}`"))
-                        })?;
+                let raw_fields = struct_id
+                    .and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("missing raw fields for `{struct_name}`"))
+                    })?;
                 let raw_ty = raw_fields
                     .iter()
                     .find(|entry| entry.name == *field)
@@ -1462,12 +1463,13 @@ pub(super) fn construct_expr(
                 )?
             } else {
                 let type_name = resolved_path.last().unwrap();
-                if let Some(type_params) = ctx.registry.raw_struct_type_params().get(type_name) {
+                let type_id = ctx.registry.resolve_type_id(ctx.current_module, type_name);
+                if let Some(type_params) =
+                    type_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
+                {
                     // Generic struct: infer type args from the typed field values.
-                    let raw_fields = ctx
-                        .registry
-                        .raw_struct_env()
-                        .get(type_name.as_str())
+                    let raw_fields = type_id
+                        .and_then(|id| ctx.registry.raw_struct_env().get(&id))
                         .ok_or_else(|| {
                             MetelError::internal(format!("missing raw fields for `{type_name}`"))
                         })?;
@@ -1495,7 +1497,7 @@ pub(super) fn construct_expr(
                     // T0012: check each resolved type arg satisfies the declared bounds.
                     let generic_types_by_name: HashMap<String, Type> = ctx
                         .registry
-                        .struct_generic_names_for(type_name)
+                        .struct_generic_names_for(ctx.current_module, type_name)
                         .into_iter()
                         .flatten()
                         .cloned()
@@ -1505,7 +1507,10 @@ pub(super) fn construct_expr(
                         .get_type_param_record_kinds(type_name)
                         .cloned()
                         .unwrap_or_else(|| vec![false; type_args.len()]);
-                    if let Some(param_bounds) = ctx.registry.type_param_bounds_for(type_name) {
+                    if let Some(param_bounds) = ctx
+                        .registry
+                        .type_param_bounds_for(ctx.current_module, type_name)
+                    {
                         for (i, bounds) in param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
                             if bounds.is_empty() && !record_kind {
@@ -1528,8 +1533,9 @@ pub(super) fn construct_expr(
                     }
                     // T0012 negative bounds: check each resolved type arg does NOT
                     // implement the declared negative bounds (RFC-0072, issue #243).
-                    if let Some(neg_param_bounds) =
-                        ctx.registry.neg_type_param_bounds_for(type_name)
+                    if let Some(neg_param_bounds) = ctx
+                        .registry
+                        .neg_type_param_bounds_for(ctx.current_module, type_name)
                     {
                         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
@@ -1621,19 +1627,18 @@ pub(super) fn construct_expr(
             // branded Residual (§3's own worked example: naming every field is still
             // just the struct, not a distinct form).
             let mut total_field_count: Option<usize> = None;
+            let struct_id = ctx
+                .registry
+                .resolve_type_id(ctx.current_module, &struct_name);
             for field in fields {
                 let field_ty = if let Some(type_params) =
-                    ctx.registry.raw_struct_type_params().get(&struct_name)
+                    struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
                 {
-                    let raw_fields =
-                        ctx.registry
-                            .raw_struct_env()
-                            .get(&struct_name)
-                            .ok_or_else(|| {
-                                MetelError::internal(format!(
-                                    "missing raw fields for `{struct_name}`"
-                                ))
-                            })?;
+                    let raw_fields = struct_id
+                        .and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                        .ok_or_else(|| {
+                            MetelError::internal(format!("missing raw fields for `{struct_name}`"))
+                        })?;
                     total_field_count.get_or_insert(raw_fields.len());
                     let raw_ty = raw_fields
                         .iter()

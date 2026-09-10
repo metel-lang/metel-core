@@ -79,8 +79,11 @@ impl ConstructCtx<'_> {
     /// arguments. Mirrors `Expr::RecordProjection` construction's own field
     /// resolution — a generic struct's fields are remapped per instantiation.
     fn resolve_struct_row(&self, brand: &str, type_args: &[Type]) -> Option<Vec<(String, Type)>> {
-        if let Some(type_params) = self.registry.raw_struct_type_params().get(brand) {
-            let raw_fields = self.registry.raw_struct_env().get(brand)?;
+        let brand_id = self.registry.resolve_type_id(self.current_module, brand);
+        if let Some(type_params) =
+            brand_id.and_then(|id| self.registry.raw_struct_type_params().get(&id))
+        {
+            let raw_fields = brand_id.and_then(|id| self.registry.raw_struct_env().get(&id))?;
             let mut remap = crate::typeinference::Substitution::new();
             for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
                 remap.bind(tp, super::type_to_infer(arg));

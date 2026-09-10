@@ -1734,13 +1734,13 @@ impl<'a> Checker<'a> {
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
                 Type::Named(name, args) => {
-                    let (resolved_name, fields) = self
+                    let (type_id, _resolved_name, fields) = self
                         .registry
                         .projection_struct_fields(current_module, name)?;
                     let field_entry = fields.iter().find(|entry| entry.name == *field)?;
                     let raw_ty = field_entry.ty.clone();
                     let infer_ty = if let Some(type_params) =
-                        self.registry.struct_type_params_for(resolved_name)
+                        self.registry.struct_type_params_by_id(type_id)
                     {
                         let mut remap = Substitution::new();
                         for (&param, arg) in type_params.iter().zip(args.iter()) {

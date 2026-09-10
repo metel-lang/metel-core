@@ -544,7 +544,12 @@ fn check_copy_impl_eligibility(
     let (params, assumptions) = impl_params(ib, ctx);
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
     if let TypeExpr::Named(_, target_args) = &ib.target_type {
-        if let Some(struct_params) = ctx.registry().raw_struct_type_params().get(target_name) {
+        let target_id = ctx
+            .registry()
+            .resolve_type_id(ctx.current_module_path(), target_name);
+        if let Some(struct_params) =
+            target_id.and_then(|id| ctx.registry().raw_struct_type_params().get(&id))
+        {
             for (param, arg) in struct_params.iter().zip(target_args.iter()) {
                 type_param_args.insert(*param, arg);
             }
@@ -1811,7 +1816,7 @@ fn infer_struct_literal(
 ) -> Result<InferType, MetelError> {
     let struct_decl_module = ctx
         .registry()
-        .struct_declaring_module(&struct_name)
+        .struct_declaring_module(ctx.current_module_path(), &struct_name)
         .cloned();
     let expected_fields = ctx
         .get_struct_fields(&struct_name)
@@ -1869,7 +1874,8 @@ fn infer_struct_literal(
             &struct_name,
             ctx.current_module_path(),
             struct_decl_module.as_ref(),
-            ctx.registry().struct_visibility_for(&struct_name),
+            ctx.registry()
+                .struct_visibility_for(ctx.current_module_path(), &struct_name),
             span,
             "construct",
         )?;
@@ -2016,8 +2022,10 @@ fn infer_field_assign_type(
         field_entry,
         &struct_name,
         ctx.current_module_path(),
-        ctx.registry().struct_declaring_module(&struct_name),
-        ctx.registry().struct_visibility_for(&struct_name),
+        ctx.registry()
+            .struct_declaring_module(ctx.current_module_path(), &struct_name),
+        ctx.registry()
+            .struct_visibility_for(ctx.current_module_path(), &struct_name),
         target_span,
         "assign to",
     )?;
@@ -2163,7 +2171,10 @@ fn infer_struct_pattern(
     pat_span: &Span,
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
-    let struct_decl_module = ctx.registry().struct_declaring_module(struct_name).cloned();
+    let struct_decl_module = ctx
+        .registry()
+        .struct_declaring_module(ctx.current_module_path(), struct_name)
+        .cloned();
     let struct_fields = ctx
         .get_struct_fields(struct_name)
         .ok_or_else(|| {
@@ -2204,7 +2215,8 @@ fn infer_struct_pattern(
             struct_name,
             ctx.current_module_path(),
             struct_decl_module.as_ref(),
-            ctx.registry().struct_visibility_for(struct_name),
+            ctx.registry()
+                .struct_visibility_for(ctx.current_module_path(), struct_name),
             pat_span,
             "pattern-match on",
         )?;

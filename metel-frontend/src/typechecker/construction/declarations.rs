@@ -517,7 +517,7 @@ pub(super) fn construct_impl_method(
         || !method.generics.is_empty()
         || ctx
             .registry
-            .struct_generic_names_for(target_name)
+            .struct_generic_names_for(ctx.current_module, target_name)
             .is_some_and(|names| !names.is_empty());
     if is_generic_target {
         return Ok(TypedFunDecl {

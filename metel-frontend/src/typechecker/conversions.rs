@@ -56,7 +56,7 @@ fn resolve_record_projection_type(
     let Some(ctx) = assoc_ctx else {
         return unresolved_record_projection_type(path, fields);
     };
-    let Some((struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
+    let Some((_, struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
         ctx.current_module,
         lookup_name.as_deref().unwrap_or(&display_name),
     ) else {

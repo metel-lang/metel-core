@@ -42,13 +42,12 @@ pub(super) fn build_concrete_struct_env(
     registry
         .raw_struct_env()
         .iter()
-        .filter(|(name, _)| {
-            !registry
-                .raw_struct_type_params()
-                .contains_key(name.as_str())
-        })
-        .map(|(name, fields)| {
-            let concrete = fields
+        .filter(|(id, _)| !registry.raw_struct_type_params().contains_key(id))
+        .filter_map(|(id, fields)| {
+            // A struct with no recorded declared name cannot be keyed into the
+            // name-indexed concrete env; skip it rather than invent a key.
+            let name = registry.declared_type_name(*id)?;
+            let concrete: Result<ConcreteFields, MetelError> = fields
                 .iter()
                 .map(|field| {
                     Ok((
@@ -57,8 +56,8 @@ pub(super) fn build_concrete_struct_env(
                         field.span.clone(),
                     ))
                 })
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok((name.clone(), concrete))
+                .collect();
+            Some(concrete.map(|c| (name.to_string(), c)))
         })
         .collect()
 }
@@ -236,7 +235,8 @@ impl<'a> ConstructCtx<'a> {
     }
 
     fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
-        self.registry.type_param_record_kinds_for(name)
+        self.registry
+            .type_param_record_kinds_for(self.current_module, name)
     }
 
     fn get_struct_fields(&self, name: &str) -> Option<&Vec<(String, Type, Span)>> {
@@ -244,7 +244,11 @@ impl<'a> ConstructCtx<'a> {
     }
 
     fn has_struct_named(&self, name: &str) -> bool {
-        self.get_struct_fields(name).is_some() || self.registry.raw_struct_env().contains_key(name)
+        self.get_struct_fields(name).is_some()
+            || self
+                .registry
+                .resolve_type_id(self.current_module, name)
+                .is_some_and(|id| self.registry.raw_struct_env().contains_key(&id))
     }
 
     fn bind(&mut self, name: impl Into<String>, ty: Type) {
@@ -334,7 +338,7 @@ impl<'a> ConstructCtx<'a> {
         let symbols = self.symbols?;
         if let Some(module) = self
             .registry
-            .struct_declaring_module(type_name)
+            .struct_declaring_module(self.current_module, type_name)
             .or_else(|| self.registry.enum_declaring_module(type_name))
         {
             return symbols
@@ -1988,15 +1992,14 @@ fn typed_place_field_ty(
                 )
             }),
         Type::Named(struct_name, type_args) => {
-            if let Some(type_params) = ctx
+            let struct_id = ctx
                 .registry
-                .raw_struct_type_params()
-                .get(struct_name.as_str())
+                .resolve_type_id(ctx.current_module, struct_name);
+            if let Some(type_params) =
+                struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
-                let raw_fields = ctx
-                    .registry
-                    .raw_struct_env()
-                    .get(struct_name.as_str())
+                let raw_fields = struct_id
+                    .and_then(|id| ctx.registry.raw_struct_env().get(&id))
                     .ok_or_else(|| {
                         MetelError::type_error(
                             TypeErrorCode::T0003,

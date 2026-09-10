@@ -956,7 +956,10 @@ impl Cx<'_> {
         let TypeExpr::Named(name, args) = target else {
             return HashSet::new();
         };
-        let Some(declared) = self.registry.struct_generic_names_for(name) else {
+        let Some(declared) = self
+            .registry
+            .struct_generic_names_for(self.current_module, name)
+        else {
             return HashSet::new();
         };
         declared
@@ -1051,7 +1054,7 @@ impl Cx<'_> {
             }
         }
 
-        let Some((struct_name, raw_fields)) = self
+        let Some((_, struct_name, raw_fields)) = self
             .registry
             .projection_struct_fields(self.current_module, target)
         else {

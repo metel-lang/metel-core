@@ -354,6 +354,11 @@ fn register_program_decls(
     for decl in decls {
         match decl {
             Decl::Struct(sd) if sd.generics.is_empty() => {
+                // A struct with no declaring symbol is a broken resolution state;
+                // skip it rather than fabricate an id (metel-core#1060).
+                let Some(sym) = registry.resolve_type_id(current_module_path, &sd.name) else {
+                    continue;
+                };
                 let empty_generics = HashMap::new();
                 let fields: Vec<FieldEntry> = sd
                     .fields
@@ -371,6 +376,7 @@ fn register_program_decls(
                     })
                     .collect();
                 registry.register_struct_fields(
+                    sym,
                     sd.name.clone(),
                     fields,
                     current_module_path.to_vec(),
@@ -378,6 +384,9 @@ fn register_program_decls(
                 );
             }
             Decl::Struct(sd) => {
+                let Some(sym) = registry.resolve_type_id(current_module_path, &sd.name) else {
+                    continue;
+                };
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &sd.generics {
@@ -401,32 +410,34 @@ fn register_program_decls(
                     })
                     .collect();
                 registry.register_struct_fields(
+                    sym,
                     sd.name.clone(),
                     fields,
                     current_module_path.to_vec(),
                     sd.visibility.clone(),
                 );
-                registry.register_struct_type_params(sd.name.clone(), type_params);
+                registry.register_struct_type_params(sym, type_params);
                 registry.register_struct_generic_names(
-                    sd.name.clone(),
+                    sym,
                     sd.generics.iter().map(|g| g.name.clone()).collect(),
                 );
                 let record_kinds =
                     collect_type_param_record_kinds(&sd.generics, sd.where_clause.as_ref());
                 if record_kinds.iter().any(|flag| *flag) {
-                    registry.register_type_param_record_kinds(sd.name.clone(), record_kinds);
+                    registry.register_type_param_record_kinds(sym, record_kinds);
                 }
                 let bounds = collect_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
                 if bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_type_param_bounds(sd.name.clone(), bounds);
+                    registry.register_type_param_bounds(sym, bounds);
                 }
                 let neg_bounds =
                     collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
                 if neg_bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_neg_type_param_bounds(sd.name.clone(), neg_bounds);
+                    registry.register_neg_type_param_bounds(sym, neg_bounds);
                 }
             }
             Decl::Enum(ed) => {
+                let enum_sym = registry.resolve_type_id(current_module_path, &ed.name);
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &ed.generics {
@@ -451,10 +462,12 @@ fn register_program_decls(
                             .collect(),
                     })
                     .collect();
-                registry.register_struct_generic_names(
-                    ed.name.clone(),
-                    ed.generics.iter().map(|g| g.name.clone()).collect(),
-                );
+                if let Some(sym) = enum_sym {
+                    registry.register_struct_generic_names(
+                        sym,
+                        ed.generics.iter().map(|g| g.name.clone()).collect(),
+                    );
+                }
                 let record_kinds =
                     collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());
                 let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
@@ -466,16 +479,18 @@ fn register_program_decls(
                     },
                     current_module_path.to_vec(),
                 );
-                if record_kinds.iter().any(|flag| *flag) {
-                    registry.register_type_param_record_kinds(ed.name.clone(), record_kinds);
-                }
-                if bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_type_param_bounds(ed.name.clone(), bounds);
-                }
-                let neg_bounds =
-                    collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
-                if neg_bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_neg_type_param_bounds(ed.name.clone(), neg_bounds);
+                if let Some(sym) = enum_sym {
+                    if record_kinds.iter().any(|flag| *flag) {
+                        registry.register_type_param_record_kinds(sym, record_kinds);
+                    }
+                    if bounds.iter().any(|b| !b.is_empty()) {
+                        registry.register_type_param_bounds(sym, bounds);
+                    }
+                    let neg_bounds =
+                        collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
+                    if neg_bounds.iter().any(|b| !b.is_empty()) {
+                        registry.register_neg_type_param_bounds(sym, neg_bounds);
+                    }
                 }
             }
             Decl::Aspect(ad) => {
@@ -515,7 +530,7 @@ fn register_program_decls(
                 || has_method_own_generics
                 || nominal_target_name.as_ref().is_some_and(|target_name| {
                     registry
-                        .struct_generic_names_for(target_name.as_str())
+                        .struct_generic_names_for(current_module_path, target_name.as_str())
                         .is_some_and(|names| !names.is_empty())
                 });
 
@@ -523,7 +538,13 @@ fn register_program_decls(
                 register_array_impl_method_schemes(ib, gen, registry);
             } else if let Some(target_name) = nominal_target_name.as_ref() {
                 if is_generic_target {
-                    register_generic_impl_method_schemes(ib, target_name, gen, registry);
+                    register_generic_impl_method_schemes(
+                        ib,
+                        target_name,
+                        current_module_path,
+                        gen,
+                        registry,
+                    );
                 } else {
                     register_impl_methods(ib.methods.iter(), target_name, gen, registry);
                     if ib.polarity == Polarity::Positive {
@@ -581,7 +602,7 @@ fn register_program_decls(
                             );
                         } else if let Some(target_name) = nominal_target_name.as_ref() {
                             let generic_names = registry
-                                .struct_generic_names_for(target_name.as_str())
+                                .struct_generic_names_for(current_module_path, target_name.as_str())
                                 .cloned()
                                 .unwrap_or_default();
                             let synth = synth_generics_for_impl(&generic_names, &ib.generics);
@@ -673,7 +694,7 @@ fn register_program_decls(
                             );
                         } else if let Some(target_name) = nominal_target_name.as_ref() {
                             let generic_names = registry
-                                .struct_generic_names_for(target_name.as_str())
+                                .struct_generic_names_for(current_module_path, target_name.as_str())
                                 .cloned()
                                 .unwrap_or_default();
                             let synth = synth_generics_for_impl(&generic_names, &ib.generics);
@@ -753,9 +774,11 @@ fn register_aspect_decl(
 fn register_generic_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
+    current_module_path: &[String],
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
+    let target_id = registry.resolve_type_id(current_module_path, target_name);
     // Type params for the generic target — a struct or an enum. A non-generic
     // struct has no entry in `raw_struct_type_params` at all (registered only
     // for structs with `sd.generics` non-empty -- an optimization elsewhere,
@@ -765,16 +788,18 @@ fn register_generic_impl_method_schemes(
     // all (#746 -- needed so a method with its own generics on an otherwise
     // non-generic target, e.g. `extend Foo { fun describe<U: Aspect>(...) }`,
     // still resolves here instead of bailing).
-    let type_params: Vec<TypeVar> =
-        if let Some(tps) = registry.raw_struct_type_params().get(target_name).cloned() {
-            tps
-        } else if let Some(info) = registry.enum_info(target_name) {
-            info.type_params.clone()
-        } else if registry.raw_struct_env().contains_key(target_name) {
-            Vec::new()
-        } else {
-            return;
-        };
+    let type_params: Vec<TypeVar> = if let Some(tps) = target_id
+        .and_then(|id| registry.raw_struct_type_params().get(&id))
+        .cloned()
+    {
+        tps
+    } else if let Some(info) = registry.enum_info(target_name) {
+        info.type_params.clone()
+    } else if target_id.is_some_and(|id| registry.raw_struct_env().contains_key(&id)) {
+        Vec::new()
+    } else {
+        return;
+    };
     // #746: `type_params` (the *struct's* own params) may legitimately be
     // empty here -- this function is also the registration path for a method
     // that declares its own generics on an otherwise concrete target
@@ -783,7 +808,7 @@ fn register_generic_impl_method_schemes(
     // already folds each method's own `generics` into `quantified`/
     // `param_names` on top of whatever's here, empty or not.
     let generic_names = registry
-        .struct_generic_names_for(target_name)
+        .struct_generic_names_for(current_module_path, target_name)
         .cloned()
         .unwrap_or_default();
     let type_gen_map: HashMap<String, TypeVar> = generic_names

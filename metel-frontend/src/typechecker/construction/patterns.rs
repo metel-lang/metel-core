@@ -112,7 +112,14 @@ pub(super) fn construct_match(
     // since construction re-derives everything from the AST rather than reusing
     // Pass 1's rewritten patterns.
     let scrutinee_struct_name: Option<String> = match &scrutinee_ty {
-        Type::Named(name, _) if ctx.registry.struct_fields(name).is_some() => Some(name.clone()),
+        Type::Named(name, _)
+            if ctx
+                .registry
+                .struct_fields(ctx.current_module, name)
+                .is_some() =>
+        {
+            Some(name.clone())
+        }
         _ => None,
     };
     let mut typed_arms = vec![];
@@ -646,7 +653,7 @@ pub(super) fn construct_enum_literal_ty(
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
     let generic_types_by_name: HashMap<String, Type> = ctx
         .registry
-        .struct_generic_names_for(enum_name)
+        .struct_generic_names_for(ctx.current_module, enum_name)
         .into_iter()
         .flatten()
         .cloned()
@@ -656,7 +663,10 @@ pub(super) fn construct_enum_literal_ty(
         .get_type_param_record_kinds(enum_name)
         .cloned()
         .unwrap_or_else(|| vec![false; concrete_args.len()]);
-    if let Some(param_bounds) = ctx.registry.type_param_bounds_for(enum_name) {
+    if let Some(param_bounds) = ctx
+        .registry
+        .type_param_bounds_for(ctx.current_module, enum_name)
+    {
         for (i, bounds) in param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if bounds.is_empty() && !record_kind {
@@ -679,7 +689,10 @@ pub(super) fn construct_enum_literal_ty(
     }
     // T0012 negative bounds: check each resolved type arg does NOT implement
     // the declared negative bounds (RFC-0072, issue #243).
-    if let Some(neg_param_bounds) = ctx.registry.neg_type_param_bounds_for(enum_name) {
+    if let Some(neg_param_bounds) = ctx
+        .registry
+        .neg_type_param_bounds_for(ctx.current_module, enum_name)
+    {
         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if neg_bounds.is_empty() && !record_kind {
@@ -758,12 +771,12 @@ pub(super) fn bind_struct_pattern_fields(
 ) -> Result<(), MetelError> {
     let struct_fields = ctx
         .registry
-        .struct_fields(struct_name)
+        .struct_fields(ctx.current_module, struct_name)
         .ok_or_else(|| MetelError::internal(format!("unknown struct `{struct_name}`")))?
         .clone();
     let type_params = ctx
         .registry
-        .struct_type_params_for(struct_name)
+        .struct_type_params_for(ctx.current_module, struct_name)
         .cloned()
         .unwrap_or_default();
     let type_args = extract_type_args_from_type(scrutinee_ty);

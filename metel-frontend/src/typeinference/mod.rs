@@ -2062,22 +2062,46 @@ pub(crate) struct AspectEntry {
 
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
-    /// struct name → fields with declaration spans.
-    struct_env: HashMap<String, Vec<FieldEntry>>,
-    /// struct name → declaring module path.
-    struct_decl_modules: HashMap<String, Vec<String>>,
-    /// struct name → the struct's own `pub`/private visibility (RFC-0032 §7,
+    /// struct `SymbolId` → fields with declaration spans.
+    ///
+    /// Keyed by the declaration's `SymbolId`, not its surface name (metel-core#1060,
+    /// ADR-0054 step 3): two modules each declaring `struct Point` must never
+    /// conflate their field lists the way a name key made them (last-write-wins).
+    /// A surface spelling reaches this map through
+    /// [`resolve_type_position_id`](Self::resolve_type_position_id), the same
+    /// shadowing-aware lookup `impl_aspect_env` already uses.
+    struct_env: HashMap<SymbolId, Vec<FieldEntry>>,
+    /// struct `SymbolId` → declaring module path.
+    struct_decl_modules: HashMap<SymbolId, Vec<String>>,
+    /// struct/enum `SymbolId` → its declared short name, for the reverse
+    /// direction (rendering, and the runtime-reconstruction path in
+    /// `infer_named_type_args`, which only has a bare `Value` name tag).
+    type_decl_names: HashMap<SymbolId, String>,
+    /// Declared short name → `SymbolId` for the few callers that genuinely have
+    /// no module context (runtime type reconstruction from a `Value`). Mirrors
+    /// the old name-keyed maps' last-write-wins across same-named declarations;
+    /// every module-aware caller resolves through `resolve_type_position_id`
+    /// instead. Merged across modules (a `Value`'s name tag is module-blind).
+    type_decl_ids: HashMap<String, SymbolId>,
+    /// Declared short name → synthetic `SymbolId` for **block-local** struct/enum
+    /// declarations only. The name resolver assigns these no top-level symbol, so
+    /// `resolve_type_key` consults this map as a fallback. Never merged across
+    /// modules — a block-local type is torn down at its scope's end, within one
+    /// module check — so it can never leak an unimported type into another module
+    /// (metel-core#1060).
+    local_type_decl_ids: HashMap<String, SymbolId>,
+    /// struct `SymbolId` → the struct's own `pub`/private visibility (RFC-0032 §7,
     /// issue #776). Consulted alongside a field's own `visibility` by
     /// `check_field_visibility`: a `public` field on a private struct must not
     /// become reachable across a module boundary just because a value of that
     /// type was obtained some other way (e.g. via a public constructor
     /// function that never names the type itself).
-    struct_visibility: HashMap<String, Visibility>,
+    struct_visibility: HashMap<SymbolId, Visibility>,
     /// Ordered type-parameter `TypeVars` per generic struct (absent for non-generic structs).
-    struct_type_params: HashMap<String, Vec<TypeVar>>,
+    struct_type_params: HashMap<SymbolId, Vec<TypeVar>>,
     /// Ordered type-parameter names per generic struct/enum. Parallel to `struct_type_params`.
     /// Used when setting up impl method scopes so param names resolve to `TypeVars`.
-    struct_generic_names: HashMap<String, Vec<String>>,
+    struct_generic_names: HashMap<SymbolId, Vec<String>>,
     /// Polymorphic method schemes for methods on generic structs that reference the struct's
     /// type params. Key: (`type_name`, `method_name`) → (scheme, `struct_tvars_ordered`).
     /// `struct_tvars_ordered`[i] corresponds to the i-th type arg of the receiver at the call site.
@@ -2099,16 +2123,16 @@ pub struct TypeDefinitionRegistry {
     /// several conditional impls provide the same method name.
     generic_method_schemes_by_span: HashMap<Span, TypeScheme>,
     /// Per-type-param aspect bounds for generic structs and enums.
-    /// Key: type name. Value: one Vec<String> per type param (same order as `struct_type_params`),
-    /// each containing the aspect names that param must satisfy.
-    type_param_bounds: HashMap<String, Vec<Vec<GenericBound>>>,
+    /// Key: type `SymbolId`. Value: one Vec<String> per type param (same order as
+    /// `struct_type_params`), each containing the aspect names that param must satisfy.
+    type_param_bounds: HashMap<SymbolId, Vec<Vec<GenericBound>>>,
     /// Negative per-type-param aspect bounds (`T: !Aspect`) for generic structs and enums.
-    /// Key: type name. Value: one Vec<String> per type param, each containing the
+    /// Key: type `SymbolId`. Value: one Vec<String> per type param, each containing the
     /// aspect names that param must NOT satisfy (RFC-0072, issue #243).
-    neg_type_param_bounds: HashMap<String, Vec<Vec<GenericBound>>>,
-    /// Record-kinded flags for generic struct/enum params, keyed by type name and ordered
-    /// to match `struct_type_params`.
-    type_param_record_kinds: HashMap<String, Vec<bool>>,
+    neg_type_param_bounds: HashMap<SymbolId, Vec<Vec<GenericBound>>>,
+    /// Record-kinded flags for generic struct/enum params, keyed by type `SymbolId`
+    /// and ordered to match `struct_type_params`.
+    type_param_record_kinds: HashMap<SymbolId, Vec<bool>>,
     /// Aspect bounds per generic function. Key: function name.
     /// Value: map from each quantified `TypeVar` to the list of required aspect names.
     fun_bounds: HashMap<String, HashMap<TypeVar, Vec<GenericBound>>>,
@@ -2122,9 +2146,15 @@ pub struct TypeDefinitionRegistry {
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
     fun_assoc_eq_constraints: HashMap<String, AssocEqConstraints>,
-    /// Tracks which struct names were registered in each lexical scope so they
-    /// can be removed on scope exit. Empty when outside any scoped block.
-    struct_scope_stack: Vec<Vec<String>>,
+    /// Tracks which struct `SymbolId`s were registered in each lexical scope so
+    /// they can be removed on scope exit. The id is captured at registration
+    /// time, not re-resolved at cleanup (the name may no longer resolve once its
+    /// scope is being torn down). Empty when outside any scoped block.
+    struct_scope_stack: Vec<Vec<SymbolId>>,
+    /// Next id to hand out for a block-local struct/enum declaration. Counts
+    /// **down** from `u32::MAX` so a synthetic id can never collide with a
+    /// name-resolver `SymbolId` (which counts up from `USER_SYM_START`).
+    next_local_type_id: u32,
     method_env: HashMap<String, HashMap<String, InferType>>,
     method_receiver_env: HashMap<String, HashMap<String, ReceiverKind>>,
     array_method_env: HashMap<String, InferType>,
@@ -2239,17 +2269,81 @@ impl TypeDefinitionRegistry {
     }
 
     /// The name a struct/enum declaration is registered under, given a `SymbolId`
-    /// known to identify it -- mirrors `visible_decl_name`'s own inner search, for
-    /// callers that already have the id rather than a spelling to resolve.
+    /// known to identify it. `struct_env` is now id-keyed, so this is a direct
+    /// index lookup; `enum_env` is still name-keyed, so fall back to scanning
+    /// `symbols` for an enum spelling carrying this id.
     fn declared_type_name_for_id(&self, id: SymbolId) -> Option<String> {
+        if let Some(name) = self.type_decl_names.get(&id) {
+            return Some(name.clone());
+        }
         self.symbols
             .iter()
             .find_map(|((_, decl_name), candidate_id)| {
-                (*candidate_id == id
-                    && (self.struct_env.contains_key(decl_name)
-                        || self.enum_env.contains_key(decl_name)))
-                .then(|| decl_name.clone())
+                (*candidate_id == id && self.enum_env.contains_key(decl_name))
+                    .then(|| decl_name.clone())
             })
+    }
+
+    /// The declared short name of a type registered under `id`, borrowed. Only
+    /// resolves ids the registry has actually registered a struct/enum for.
+    pub(crate) fn declared_type_name(&self, id: SymbolId) -> Option<&str> {
+        self.type_decl_names.get(&id).map(String::as_str)
+    }
+
+    /// Resolve a type-position spelling to its declaring `SymbolId` from
+    /// `current_module`'s point of view — the public face of
+    /// [`resolve_type_position_id`](Self::resolve_type_position_id) for callers
+    /// outside this module that hold a spelling and need the id the
+    /// definition registries are keyed by.
+    #[must_use]
+    pub fn resolve_type_id(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        self.resolve_type_key(current_module, name)
+    }
+
+    /// The `SymbolId` the struct-definition maps are keyed by for `name` in
+    /// `current_module`: the module- and import-aware resolution first, then the
+    /// block-local index — the latter covers block-local type declarations, which
+    /// the name resolver never assigns a top-level `(module, name)` symbol.
+    ///
+    /// This is the *strict* resolver: it will not reach a type that
+    /// `current_module` cannot name. Annotation resolution, `visible_type_kind`,
+    /// and projection use it, so an unimported type still surfaces as `T0003`.
+    fn resolve_type_key(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        self.resolve_type_position_id(current_module, name)
+            .or_else(|| self.local_type_decl_ids.get(name).copied())
+    }
+
+    /// Like [`resolve_type_key`](Self::resolve_type_key) but, as a last resort,
+    /// accepts a bare declared name from *any* module.
+    ///
+    /// Field access / visibility checks start from a value whose `Type::Named`
+    /// spelling inference already bound to a real declaration — but the typed IR
+    /// does not yet carry that declaration's id (metel-core#1052), and the
+    /// spelling need not be importable from `current_module` (the value can
+    /// arrive through a function return). Until the id rides on the typed node,
+    /// those call sites fall back to the same name-approximate, cross-module
+    /// lookup the pre-#1060 name-keyed maps did.
+    fn resolve_type_key_broad(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        self.resolve_type_key(current_module, name)
+            .or_else(|| self.type_decl_ids.get(name).copied())
+    }
+
+    /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn
+    /// from the top of the `u32` space counting down so it can never collide
+    /// with a name-resolver id (those count up from `USER_SYM_START`).
+    fn fresh_local_type_id(&mut self) -> SymbolId {
+        let id = SymbolId(self.next_local_type_id);
+        self.next_local_type_id = self.next_local_type_id.saturating_sub(1);
+        id
+    }
+
+    /// Resolve a bare declared name with no module context — the
+    /// runtime-reconstruction path (`infer_named_type_args`), where only a
+    /// `Value`'s name tag is available. Mirrors the old name-keyed maps'
+    /// last-write-wins across same-named declarations.
+    #[must_use]
+    pub fn type_id_for_decl_name(&self, name: &str) -> Option<SymbolId> {
+        self.type_decl_ids.get(name).copied()
     }
 
     /// Canonicalize a type-annotation name to the same spelling a constructor
@@ -2303,12 +2397,13 @@ impl TypeDefinitionRegistry {
         ))
     }
 
-    fn resolve_struct_name_from_projection(
+    fn resolve_struct_id_from_projection(
         &self,
         current_module: &[String],
         type_name: &str,
-    ) -> Option<String> {
-        self.visible_decl_name(current_module, type_name, &self.struct_env)
+    ) -> Option<SymbolId> {
+        let id = self.resolve_type_key(current_module, type_name)?;
+        self.struct_env.contains_key(&id).then_some(id)
     }
 
     pub(crate) fn visible_type_kind(
@@ -2317,7 +2412,7 @@ impl TypeDefinitionRegistry {
         type_name: &str,
     ) -> Option<VisibleTypeKind> {
         if self
-            .resolve_struct_name_from_projection(current_module, type_name)
+            .resolve_struct_id_from_projection(current_module, type_name)
             .is_some()
         {
             return Some(VisibleTypeKind::Struct);
@@ -2331,15 +2426,18 @@ impl TypeDefinitionRegistry {
         None
     }
 
+    /// The resolved `(SymbolId, declared name, fields)` of the struct a
+    /// projection spelling names in `current_module`, or `None` if it does not
+    /// resolve to a visible struct.
     pub(crate) fn projection_struct_fields(
         &self,
         current_module: &[String],
         type_name: &str,
-    ) -> Option<(&str, &Vec<FieldEntry>)> {
-        let resolved_name = self.resolve_struct_name_from_projection(current_module, type_name)?;
-        self.struct_env
-            .get_key_value(&resolved_name)
-            .map(|(name, fields)| (name.as_str(), fields))
+    ) -> Option<(SymbolId, &str, &Vec<FieldEntry>)> {
+        let id = self.resolve_struct_id_from_projection(current_module, type_name)?;
+        let name = self.type_decl_names.get(&id)?.as_str();
+        let fields = self.struct_env.get(&id)?;
+        Some((id, name, fields))
     }
 
     #[must_use]
@@ -2347,6 +2445,9 @@ impl TypeDefinitionRegistry {
         Self {
             struct_env: HashMap::new(),
             struct_decl_modules: HashMap::new(),
+            type_decl_names: HashMap::new(),
+            type_decl_ids: HashMap::new(),
+            local_type_decl_ids: HashMap::new(),
             struct_visibility: HashMap::new(),
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
@@ -2363,6 +2464,7 @@ impl TypeDefinitionRegistry {
             fun_record_kinds: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
+            next_local_type_id: u32::MAX,
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
             array_method_env: HashMap::new(),
@@ -2494,25 +2596,51 @@ impl TypeDefinitionRegistry {
         })
     }
 
+    /// Register a struct's fields under its declaration `SymbolId`. `name` is
+    /// kept only for the reverse indices (`type_decl_names` / `type_decl_ids`)
+    /// that serve rendering and the module-less runtime-reconstruction path.
     pub fn register_struct_fields(
+        &mut self,
+        owner: SymbolId,
+        name: String,
+        fields: Vec<FieldEntry>,
+        declaring_module: Vec<String>,
+        visibility: Visibility,
+    ) {
+        self.struct_env.insert(owner, fields);
+        self.struct_decl_modules.insert(owner, declaring_module);
+        self.struct_visibility.insert(owner, visibility);
+        self.type_decl_ids.insert(name.clone(), owner);
+        self.type_decl_names.insert(owner, name);
+        if let Some(scope) = self.struct_scope_stack.last_mut() {
+            scope.push(owner);
+        }
+    }
+
+    /// Register a block-local struct declaration — one the name resolver never
+    /// assigned a top-level `(module, name)` symbol. A fresh synthetic id is
+    /// minted; the bare-name index makes it reachable within the enclosing
+    /// `push_struct_scope` / `pop_struct_scope` bracket.
+    pub fn register_local_struct_fields(
         &mut self,
         name: String,
         fields: Vec<FieldEntry>,
         declaring_module: Vec<String>,
         visibility: Visibility,
     ) {
-        self.struct_env.insert(name.clone(), fields);
-        self.struct_decl_modules
-            .insert(name.clone(), declaring_module);
-        self.struct_visibility.insert(name.clone(), visibility);
-        if let Some(scope) = self.struct_scope_stack.last_mut() {
-            scope.push(name);
-        }
+        let owner = self.fresh_local_type_id();
+        self.register_struct_fields(owner, name.clone(), fields, declaring_module, visibility);
+        self.local_type_decl_ids.insert(name, owner);
     }
 
     #[must_use]
-    pub fn struct_visibility_for(&self, name: &str) -> Option<&Visibility> {
-        self.struct_visibility.get(name)
+    pub fn struct_visibility_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Visibility> {
+        self.struct_visibility
+            .get(&self.resolve_type_key_broad(current_module, name)?)
     }
 
     pub fn push_struct_scope(&mut self) {
@@ -2520,11 +2648,19 @@ impl TypeDefinitionRegistry {
     }
 
     pub fn pop_struct_scope(&mut self) {
-        if let Some(names) = self.struct_scope_stack.pop() {
-            for name in names {
-                self.struct_env.remove(&name);
-                self.struct_decl_modules.remove(&name);
-                self.struct_visibility.remove(&name);
+        if let Some(ids) = self.struct_scope_stack.pop() {
+            for id in ids {
+                self.struct_env.remove(&id);
+                self.struct_decl_modules.remove(&id);
+                self.struct_visibility.remove(&id);
+                if let Some(name) = self.type_decl_names.remove(&id) {
+                    if self.type_decl_ids.get(&name) == Some(&id) {
+                        self.type_decl_ids.remove(&name);
+                    }
+                    if self.local_type_decl_ids.get(&name) == Some(&id) {
+                        self.local_type_decl_ids.remove(&name);
+                    }
+                }
             }
         }
     }
@@ -2561,17 +2697,22 @@ impl TypeDefinitionRegistry {
             .insert(method_name, receiver_kind);
     }
 
-    pub fn register_struct_type_params(&mut self, name: String, type_params: Vec<TypeVar>) {
-        self.struct_type_params.insert(name, type_params);
+    pub fn register_struct_type_params(&mut self, owner: SymbolId, type_params: Vec<TypeVar>) {
+        self.struct_type_params.insert(owner, type_params);
     }
 
-    pub fn register_struct_generic_names(&mut self, name: String, param_names: Vec<String>) {
-        self.struct_generic_names.insert(name, param_names);
+    pub fn register_struct_generic_names(&mut self, owner: SymbolId, param_names: Vec<String>) {
+        self.struct_generic_names.insert(owner, param_names);
     }
 
     #[must_use]
-    pub fn struct_generic_names_for(&self, name: &str) -> Option<&Vec<String>> {
-        self.struct_generic_names.get(name)
+    pub fn struct_generic_names_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<String>> {
+        self.struct_generic_names
+            .get(&self.resolve_type_key(current_module, name)?)
     }
 
     pub fn register_method_scheme(
@@ -3131,31 +3272,50 @@ impl TypeDefinitionRegistry {
         }
     }
 
-    pub fn register_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<GenericBound>>) {
-        self.type_param_bounds.insert(name, bounds);
+    pub fn register_type_param_bounds(&mut self, owner: SymbolId, bounds: Vec<Vec<GenericBound>>) {
+        self.type_param_bounds.insert(owner, bounds);
     }
 
-    pub fn register_type_param_record_kinds(&mut self, name: String, record_kinds: Vec<bool>) {
-        self.type_param_record_kinds.insert(name, record_kinds);
-    }
-
-    #[must_use]
-    pub fn type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
-        self.type_param_bounds.get(name)
+    pub fn register_type_param_record_kinds(&mut self, owner: SymbolId, record_kinds: Vec<bool>) {
+        self.type_param_record_kinds.insert(owner, record_kinds);
     }
 
     #[must_use]
-    pub fn type_param_record_kinds_for(&self, name: &str) -> Option<&Vec<bool>> {
-        self.type_param_record_kinds.get(name)
-    }
-
-    pub fn register_neg_type_param_bounds(&mut self, name: String, bounds: Vec<Vec<GenericBound>>) {
-        self.neg_type_param_bounds.insert(name, bounds);
+    pub fn type_param_bounds_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<Vec<GenericBound>>> {
+        self.type_param_bounds
+            .get(&self.resolve_type_key(current_module, name)?)
     }
 
     #[must_use]
-    pub fn neg_type_param_bounds_for(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
-        self.neg_type_param_bounds.get(name)
+    pub fn type_param_record_kinds_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<bool>> {
+        self.type_param_record_kinds
+            .get(&self.resolve_type_key(current_module, name)?)
+    }
+
+    pub fn register_neg_type_param_bounds(
+        &mut self,
+        owner: SymbolId,
+        bounds: Vec<Vec<GenericBound>>,
+    ) {
+        self.neg_type_param_bounds.insert(owner, bounds);
+    }
+
+    #[must_use]
+    pub fn neg_type_param_bounds_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<Vec<GenericBound>>> {
+        self.neg_type_param_bounds
+            .get(&self.resolve_type_key(current_module, name)?)
     }
 
     /// Returns true if `type_name` has a registered `impl AspectName` in the env.
@@ -3251,13 +3411,34 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
-    pub fn struct_fields(&self, name: &str) -> Option<&Vec<FieldEntry>> {
-        self.struct_env.get(name)
+    pub fn struct_fields(&self, current_module: &[String], name: &str) -> Option<&Vec<FieldEntry>> {
+        self.struct_env
+            .get(&self.resolve_type_key_broad(current_module, name)?)
+    }
+
+    /// Fields of the struct registered under `id`, for callers that already
+    /// resolved the declaration (e.g. from [`projection_struct_fields`]).
+    ///
+    /// [`projection_struct_fields`]: Self::projection_struct_fields
+    #[must_use]
+    pub fn struct_fields_by_id(&self, id: SymbolId) -> Option<&Vec<FieldEntry>> {
+        self.struct_env.get(&id)
     }
 
     #[must_use]
-    pub fn struct_type_params_for(&self, name: &str) -> Option<&Vec<TypeVar>> {
-        self.struct_type_params.get(name)
+    pub fn struct_type_params_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<TypeVar>> {
+        self.struct_type_params
+            .get(&self.resolve_type_key_broad(current_module, name)?)
+    }
+
+    /// Type parameters of the struct registered under `id`.
+    #[must_use]
+    pub fn struct_type_params_by_id(&self, id: SymbolId) -> Option<&Vec<TypeVar>> {
+        self.struct_type_params.get(&id)
     }
 
     #[must_use]
@@ -3295,8 +3476,13 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
-    pub fn struct_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
-        self.struct_decl_modules.get(name)
+    pub fn struct_declaring_module(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<String>> {
+        self.struct_decl_modules
+            .get(&self.resolve_type_key_broad(current_module, name)?)
     }
 
     #[must_use]
@@ -3566,11 +3752,11 @@ impl TypeDefinitionRegistry {
             .and_then(|args| args.first())
     }
 
-    pub(crate) fn raw_struct_env(&self) -> &HashMap<String, Vec<FieldEntry>> {
+    pub(crate) fn raw_struct_env(&self) -> &HashMap<SymbolId, Vec<FieldEntry>> {
         &self.struct_env
     }
 
-    pub(crate) fn raw_struct_type_params(&self) -> &HashMap<String, Vec<TypeVar>> {
+    pub(crate) fn raw_struct_type_params(&self) -> &HashMap<SymbolId, Vec<TypeVar>> {
         &self.struct_type_params
     }
 
@@ -3591,28 +3777,32 @@ impl TypeDefinitionRegistry {
     #[allow(clippy::too_many_lines)]
     pub fn merge_from(&mut self, other: &TypeDefinitionRegistry) {
         for (k, v) in &other.struct_env {
-            self.struct_env
-                .entry(k.clone())
-                .or_insert_with(|| v.clone());
+            self.struct_env.entry(*k).or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_decl_modules {
             self.struct_decl_modules
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.type_decl_names {
+            self.type_decl_names.entry(*k).or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.type_decl_ids {
+            self.type_decl_ids.entry(k.clone()).or_insert(*v);
         }
         for (k, v) in &other.struct_visibility {
             self.struct_visibility
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_type_params {
             self.struct_type_params
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.struct_generic_names {
             self.struct_generic_names
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.method_scheme_env {
@@ -3657,12 +3847,12 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.type_param_bounds {
             self.type_param_bounds
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.neg_type_param_bounds {
             self.neg_type_param_bounds
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, v) in &other.fun_bounds {
@@ -3989,13 +4179,16 @@ impl InferContext {
         })
     }
 
+    /// Register a struct declared inside a block body (see `infer_block`'s
+    /// hoist pass). These have no name-resolver symbol, so the registry mints a
+    /// synthetic local id.
     pub fn register_struct_fields(
         &mut self,
         name: String,
         fields: Vec<crate::typeinference::FieldEntry>,
         visibility: Visibility,
     ) {
-        self.registry.register_struct_fields(
+        self.registry.register_local_struct_fields(
             name,
             fields,
             self.current_module_path.clone(),
@@ -4005,7 +4198,8 @@ impl InferContext {
 
     #[must_use]
     pub fn get_struct_type_params(&self, name: &str) -> Option<&Vec<TypeVar>> {
-        self.registry.struct_type_params_for(name)
+        self.registry
+            .struct_type_params_for(&self.current_module_path, name)
     }
 
     pub fn push_struct_scope(&mut self) {
@@ -4026,7 +4220,7 @@ impl InferContext {
 
     #[must_use]
     pub fn get_struct_fields(&self, name: &str) -> Option<&Vec<crate::typeinference::FieldEntry>> {
-        self.registry.struct_fields(name)
+        self.registry.struct_fields(&self.current_module_path, name)
     }
 
     #[must_use]
@@ -4351,17 +4545,20 @@ impl InferContext {
 
     #[must_use]
     pub fn struct_generic_names_for(&self, name: &str) -> Option<&Vec<String>> {
-        self.registry.struct_generic_names_for(name)
+        self.registry
+            .struct_generic_names_for(&self.current_module_path, name)
     }
 
     #[must_use]
     pub fn get_type_param_bounds(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
-        self.registry.type_param_bounds_for(name)
+        self.registry
+            .type_param_bounds_for(&self.current_module_path, name)
     }
 
     #[must_use]
     pub fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
-        self.registry.type_param_record_kinds_for(name)
+        self.registry
+            .type_param_record_kinds_for(&self.current_module_path, name)
     }
 
     pub fn register_method_scheme(
@@ -4933,4 +5130,105 @@ pub struct TypeCtx {
     /// Accumulated type-definition registry (structs, enums, aspects, methods) visible
     /// from the module where the closure was defined.
     pub registry: TypeDefinitionRegistry,
+}
+
+#[cfg(test)]
+mod registry_identity_tests {
+    //! metel-core#1060: the struct-definition family is keyed by `SymbolId`, so
+    //! two modules declaring a same-named struct keep independent field sets and
+    //! `merge_from` never collapses one into the other.
+
+    use super::{FieldEntry, InferType, Span, SymbolId, TypeDefinitionRegistry, Visibility};
+
+    fn field(name: &str) -> FieldEntry {
+        FieldEntry {
+            name: name.to_string(),
+            ty: InferType::unit(),
+            span: Span::new(0, 0, "test"),
+            visibility: Visibility::Public,
+        }
+    }
+
+    #[test]
+    fn same_named_structs_in_two_modules_keep_distinct_field_sets() {
+        let alpha = SymbolId(1000);
+        let beta = SymbolId(1001);
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.register_struct_fields(
+            alpha,
+            "Config".to_string(),
+            vec![field("retries")],
+            vec!["alpha".to_string()],
+            Visibility::Public,
+        );
+        reg.register_struct_fields(
+            beta,
+            "Config".to_string(),
+            vec![field("timeout")],
+            vec!["beta".to_string()],
+            Visibility::Public,
+        );
+
+        let alpha_fields = reg.struct_fields_by_id(alpha).expect("alpha Config");
+        let beta_fields = reg.struct_fields_by_id(beta).expect("beta Config");
+        assert_eq!(alpha_fields.len(), 1);
+        assert_eq!(alpha_fields[0].name, "retries");
+        assert_eq!(beta_fields.len(), 1);
+        assert_eq!(beta_fields[0].name, "timeout");
+        assert_eq!(reg.declared_type_name(alpha), Some("Config"));
+        assert_eq!(reg.declared_type_name(beta), Some("Config"));
+    }
+
+    #[test]
+    fn merge_from_does_not_collapse_same_named_structs() {
+        let alpha = SymbolId(1000);
+        let beta = SymbolId(1001);
+
+        let mut base = TypeDefinitionRegistry::new();
+        base.register_struct_fields(
+            alpha,
+            "Config".to_string(),
+            vec![field("retries")],
+            vec!["alpha".to_string()],
+            Visibility::Public,
+        );
+
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.register_struct_fields(
+            beta,
+            "Config".to_string(),
+            vec![field("timeout")],
+            vec!["beta".to_string()],
+            Visibility::Public,
+        );
+        reg.merge_from(&base);
+
+        assert_eq!(
+            reg.struct_fields_by_id(alpha).map(|f| f[0].name.as_str()),
+            Some("retries"),
+        );
+        assert_eq!(
+            reg.struct_fields_by_id(beta).map(|f| f[0].name.as_str()),
+            Some("timeout"),
+        );
+    }
+
+    #[test]
+    fn block_local_type_id_is_disjoint_from_name_resolver_ids() {
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.push_struct_scope();
+        reg.register_local_struct_fields(
+            "Local".to_string(),
+            vec![field("x")],
+            vec!["m".to_string()],
+            Visibility::Private,
+        );
+        // Reachable by bare name inside the scope, via the strict resolver.
+        let fields = reg
+            .struct_fields(&["m".to_string()], "Local")
+            .expect("Local visible in scope");
+        assert_eq!(fields[0].name, "x");
+        reg.pop_struct_scope();
+        assert!(reg.struct_fields(&["m".to_string()], "Local").is_none());
+    }
 }
