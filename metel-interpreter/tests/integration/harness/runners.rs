@@ -74,13 +74,17 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     let graph = module_loader::load_root(main_source_path(path))?;
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
+    let allocation = identity::allocate_for_graph(&graph, &names);
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph_with_report(
         &normalized,
         &names,
         &typechecker::CorePrelude::default(),
-        Some(&members),
+        Some(identity::FrozenIdentity {
+            members: &members,
+            binding_spans: &allocation.binding_spans,
+        }),
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
@@ -138,13 +142,17 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     assert_graph_checks(path, &graph, &config.graph);
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
+    let allocation = identity::allocate_for_graph(&graph, &names);
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let typed = typechecker::check_graph_with_report(
         &normalized,
         &names,
         &std_prelude(config.prelude),
-        Some(&members),
+        Some(identity::FrozenIdentity {
+            members: &members,
+            binding_spans: &allocation.binding_spans,
+        }),
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {

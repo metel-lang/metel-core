@@ -630,7 +630,12 @@ pub(super) fn construct_expr(
                 // RFC-0137 slice 2 (metel-core#858): a binding with a field moved
                 // out reads at its narrowed residual type from that point on.
                 let ty = ctx.narrowed_type(name).unwrap_or(ty);
-                return Ok(TypedExpr::Ident(name.clone(), ty, span.clone()));
+                return Ok(TypedExpr::Ident(
+                    name.clone(),
+                    ctx.binding_id_at(span),
+                    ty,
+                    span.clone(),
+                ));
             }
             if let Some(fields) = ctx.get_struct_fields(name) {
                 if fields.is_empty() {
@@ -738,7 +743,12 @@ pub(super) fn construct_expr(
                                     ctx.registry,
                                     ctx.current_module,
                                 )?;
-                                return Ok(TypedExpr::Ident(name.clone(), concrete, span.clone()));
+                                return Ok(TypedExpr::Ident(
+                                    name.clone(),
+                                    ctx.binding_id_at(span),
+                                    concrete,
+                                    span.clone(),
+                                ));
                             }
                         }
                     }
@@ -762,7 +772,7 @@ pub(super) fn construct_expr(
         Expr::ResolvedPath {
             resolved,
             original,
-            symbol_id: _,
+            symbol_id,
             span,
         } => {
             let ty = ctx.lookup(resolved).cloned().ok_or_else(|| {
@@ -772,7 +782,16 @@ pub(super) fn construct_expr(
                     span,
                 )
             })?;
-            Ok(TypedExpr::Ident(resolved.clone(), ty, span.clone()))
+            // A normalized module-qualified path resolves straight to a global;
+            // the identity walk runs pre-normalization and never sees this node,
+            // so take the id from the path itself (#1052).
+            let binding = symbol_id.map(crate::identity::BindingId::Global);
+            Ok(TypedExpr::Ident(
+                resolved.clone(),
+                binding,
+                ty,
+                span.clone(),
+            ))
         }
         Expr::BinOp(lhs, op, rhs, span) => construct_binop(lhs, op, rhs, span, ctx),
         Expr::UnaryOp(op, operand, span) => {

@@ -8,7 +8,7 @@ use crate::ast::{
     AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
     Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
-use crate::identity::{FieldId, VariantId};
+use crate::identity::{BindingId, FieldId, VariantId};
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
 use crate::types::{CallMultiplicity, CallMutation, Type};
@@ -315,7 +315,13 @@ pub enum TypedPlace {
 #[derive(Debug, Clone)]
 pub enum TypedExpr {
     Literal(Literal, Type, Span),
-    Ident(String, Type, Span),
+    /// A bare value reference. The second field is the resolved identity of the
+    /// binding it denotes (ADR-0054 / metel-core#1052) — `BindingId::Local` for
+    /// a lexical binding, `BindingId::Global` for a top-level / imported
+    /// declaration. `None` when no identity context was available (the
+    /// single-program path, or a generic body reconstructed at runtime); the
+    /// spelling is retained for diagnostics and the pre-#1052 evaluator.
+    Ident(String, Option<BindingId>, Type, Span),
     Path(Vec<String>, Type, Span),
     Tuple(Vec<TypedExpr>, Type, Span),
     Array(Vec<TypedExpr>, Type, Span),
@@ -497,7 +503,7 @@ impl TypedExpr {
     pub fn ty(&self) -> &Type {
         match self {
             TypedExpr::Literal(_, ty, _)
-            | TypedExpr::Ident(_, ty, _)
+            | TypedExpr::Ident(_, _, ty, _)
             | TypedExpr::Path(_, ty, _)
             | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
@@ -533,7 +539,7 @@ impl TypedExpr {
     pub fn with_ty(mut self, new_ty: Type) -> Self {
         match &mut self {
             TypedExpr::Literal(_, ty, _)
-            | TypedExpr::Ident(_, ty, _)
+            | TypedExpr::Ident(_, _, ty, _)
             | TypedExpr::Path(_, ty, _)
             | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
@@ -567,7 +573,7 @@ impl TypedExpr {
     pub fn span(&self) -> &Span {
         match self {
             TypedExpr::Literal(_, _, s)
-            | TypedExpr::Ident(_, _, s)
+            | TypedExpr::Ident(_, _, _, s)
             | TypedExpr::Path(_, _, s)
             | TypedExpr::Tuple(_, _, s)
             | TypedExpr::Array(_, _, s)

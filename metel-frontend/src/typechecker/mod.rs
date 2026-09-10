@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::ast::{Decl, Program, Visibility};
 use crate::error::MetelError;
 use crate::error::TypeErrorCode;
-use crate::identity::MemberTable;
+use crate::identity::FrozenIdentity;
 use crate::module_loader::LoadedModule;
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
@@ -319,18 +319,16 @@ pub fn check_graph(
 /// # Errors
 /// Returns an error if any module fails to typecheck.
 ///
-/// `members` is the whole-graph [`MemberTable`] (ADR-0054 / #1051); when
-/// supplied, construction stamps each field access and enum-variant literal with
-/// its interned [`FieldId`] / [`VariantId`] (#1062). `None` — the move-check and
-/// diagnostic-tool entry points — leaves every member site's id `None`.
-///
-/// [`FieldId`]: crate::identity::FieldId
-/// [`VariantId`]: crate::identity::VariantId
+/// `identity` bundles the frozen-identity tables (ADR-0054): the member table
+/// (#1051), so construction stamps field accesses / enum-variant literals with
+/// their `FieldId` / `VariantId` (#1062), and the span → `BindingId` bridge
+/// (#1052), so `TypedExpr::Ident` carries its resolved binding. `None` — the
+/// move-check and diagnostic-tool entry points — leaves every id `None`.
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
     std_prelude: &CorePrelude,
-    members: Option<&MemberTable>,
+    identity: Option<FrozenIdentity<'_>>,
 ) -> Result<CheckGraphReport, MetelError> {
     // std::core is a real module in the graph (synthesized ahead of user code),
     // so its exports land in GlobalExports through the normal per-module loop —
@@ -367,7 +365,7 @@ pub fn check_graph_with_report(
             Some(&names.symbols),
             Some(&names.references),
             Some(&names.scopes),
-            members,
+            identity,
         )?;
         accumulate_typecheck_timings(&mut timings, report.timings);
         type_registry = report.registry;
@@ -1001,7 +999,7 @@ fn check_impl_with_report(
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     references: Option<&crate::reference_resolver::ReferenceTable>,
     scopes: Option<&HashMap<Vec<String>, crate::name_resolver::ModuleScope>>,
-    members: Option<&MemberTable>,
+    identity: Option<FrozenIdentity<'_>>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
@@ -1019,7 +1017,7 @@ fn check_impl_with_report(
     // Merge dependency type definitions so cross-module struct/enum refs resolve.
     reg.merge_from(base_registry);
     // Stamp entries with their interned identity (#1068); no-op without context.
-    reg.stamp_member_ids(members);
+    reg.stamp_member_ids(identity.map(|i| i.members));
     // Diagnose bad record projections (RFC-0116 §4) now that the registry is complete:
     // the conversion path is infallible and can only leave a stand-in behind, so precise
     // "unknown type / not a struct / no such field" reporting has to happen here.
@@ -1115,7 +1113,7 @@ fn check_impl_with_report(
         current_module_path,
         references,
         &resolved_facts,
-        members,
+        identity,
     )?;
     let construction_ns = elapsed_ns(started);
 

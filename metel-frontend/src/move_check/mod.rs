@@ -2564,7 +2564,7 @@ impl FreeRootCollector {
 
     fn expr(&mut self, expr: &TypedExpr) {
         match expr {
-            TypedExpr::Ident(name, ty, _) => self.capture_if_free(name, ty),
+            TypedExpr::Ident(name, _, ty, _) => self.capture_if_free(name, ty),
             TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.expr(item);
@@ -2824,7 +2824,7 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
 
 fn root_place_ty_from_expr(expr: &TypedExpr) -> Option<&Type> {
     match expr {
-        TypedExpr::Ident(_, ty, _) => Some(ty),
+        TypedExpr::Ident(_, _, ty, _) => Some(ty),
         TypedExpr::FieldAccess { object, .. }
         | TypedExpr::TupleAccess { object, .. }
         | TypedExpr::Index { object, .. } => root_place_ty_from_expr(object),

@@ -1245,7 +1245,7 @@ fn lvalue_field_cell(
     use crate::typed_ast::TypedExpr;
     fn walk_path(expr: &TypedExpr, path: &mut Vec<String>) -> Option<String> {
         match expr {
-            TypedExpr::Ident(name, _, _) => Some(name.clone()),
+            TypedExpr::Ident(name, _, _, _) => Some(name.clone()),
             TypedExpr::FieldAccess { object, field, .. } => {
                 let root = walk_path(object, path)?;
                 path.push(field.clone());
@@ -1293,7 +1293,7 @@ fn build_mut_path(
     span: &Span,
 ) -> Result<ControlFlow<Signal, (String, Vec<PathSegment>)>, MetelError> {
     match expr {
-        TypedExpr::Ident(name, _, _) => Ok(ControlFlow::Continue((name.clone(), vec![]))),
+        TypedExpr::Ident(name, _, _, _) => Ok(ControlFlow::Continue((name.clone(), vec![]))),
         TypedExpr::FieldAccess { object, field, .. } => {
             let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
                 ControlFlow::Continue(path) => path,
@@ -2705,7 +2705,7 @@ fn eval_method_call_expr(
             let mut field_writeback: Option<FieldWriteback> = None;
 
             let receiver_binding = match receiver {
-                TypedExpr::Ident(name, _, _) => match env.get_rc(name).map(|cell| {
+                TypedExpr::Ident(name, _, _, _) => match env.get_rc(name).map(|cell| {
                     let mut current = cell;
                     loop {
                         let inner = match &*current.borrow() {
@@ -2923,7 +2923,7 @@ pub fn eval_expr(
             Ok(Signal::Value(val))
         }
 
-        TypedExpr::Ident(name, _, span) => {
+        TypedExpr::Ident(name, _, _, span) => {
             match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
                 Some(val) => Ok(Signal::Value(val)),
                 None => Err(MetelError::panic(
@@ -3127,7 +3127,7 @@ pub fn eval_expr(
                     };
                 }
                 UnaryOp::Ref => return match &**operand {
-                    TypedExpr::Ident(name, _, _) => env.get_rc(name)
+                    TypedExpr::Ident(name, _, _, _) => env.get_rc(name)
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
@@ -3142,7 +3142,7 @@ pub fn eval_expr(
                     _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
                 },
                 UnaryOp::RefMut => return match &**operand {
-                    TypedExpr::Ident(name, _, _) => env.get_rc(name)
+                    TypedExpr::Ident(name, _, _, _) => env.get_rc(name)
                         .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {

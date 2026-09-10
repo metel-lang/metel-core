@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::flow_state::FlowState;
-use crate::identity::{FieldId, MemberTable, VariantId};
+use crate::identity::{BindingId, FieldId, FrozenIdentity, VariantId};
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl,
@@ -140,7 +140,7 @@ struct ConstructCtx<'a> {
     /// `(owning type SymbolId, member name)`. `None` for the move-check and
     /// diagnostic-tool entry points that build no identity context — every
     /// member site then carries `None`, the sanctioned recovery state.
-    members: Option<&'a MemberTable>,
+    identity: Option<FrozenIdentity<'a>>,
     /// Concrete target-type name `Self` denotes in the innermost enclosing impl-block
     /// method body (None outside one). #774 (revised): a body-internal `let x:
     /// Self.{ field }`/`Self::AssocType` annotation resolves through this the same
@@ -180,7 +180,7 @@ impl<'a> ConstructCtx<'a> {
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
-        members: Option<&'a MemberTable>,
+        identity: Option<FrozenIdentity<'a>>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -202,7 +202,7 @@ impl<'a> ConstructCtx<'a> {
             current_module,
             references,
             resolved_facts,
-            members,
+            identity,
             current_self_type_name: None,
             fn_table: vec![HashMap::new()],
             closure_owned_captures: Vec::new(),
@@ -380,7 +380,7 @@ impl<'a> ConstructCtx<'a> {
     /// field the table never interned — is the sanctioned recovery state, never
     /// a fabricated id.
     fn field_id_for(&self, object_ty: &Type, field: &str) -> Option<FieldId> {
-        let members = self.members?;
+        let members = self.identity?.members;
         let Type::Named(name, _) = peel_type_references(object_ty) else {
             return None;
         };
@@ -394,7 +394,7 @@ impl<'a> ConstructCtx<'a> {
     /// `None` for a plain struct literal (no `enum_id`), without a member table,
     /// or for a variant the table never interned — never a fabricated id.
     fn variant_id_for(&self, enum_id: Option<SymbolId>, variant: &str) -> Option<VariantId> {
-        self.members?.variant(enum_id?, variant)
+        self.identity?.members.variant(enum_id?, variant)
     }
 
     /// Interned identity of a struct field named in a pattern (ADR-0054 /
@@ -402,7 +402,7 @@ impl<'a> ConstructCtx<'a> {
     /// pattern's own nominal spelling. `None` without a member table or for an
     /// un-interned member (e.g. a block-local struct) — never fabricated.
     fn member_field_id(&self, owner: Option<SymbolId>, field: &str) -> Option<FieldId> {
-        self.members?.field(owner?, field)
+        self.identity?.members.field(owner?, field)
     }
 
     /// Interned identity of an enum-variant field named in a pattern. Variant
@@ -415,8 +415,17 @@ impl<'a> ConstructCtx<'a> {
         variant: &str,
         field: &str,
     ) -> Option<FieldId> {
-        self.members?
+        self.identity?
+            .members
             .field(enum_id?, &format!("{variant}::{field}"))
+    }
+
+    /// The resolved identity of the value reference at `span` (ADR-0054 /
+    /// #1052), from the transient span → `BindingId` bridge. `None` without
+    /// identity context, or when the span is not a recorded binding/reference
+    /// site (e.g. a construction-synthesised node).
+    fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
+        self.identity?.binding_spans.get(span)
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -945,7 +954,7 @@ pub(super) fn construct_program(
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,
-    members: Option<&MemberTable>,
+    identity: Option<FrozenIdentity<'_>>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
@@ -957,7 +966,7 @@ pub(super) fn construct_program(
         current_module,
         references,
         resolved_facts,
-        members,
+        identity,
     )?;
 
     // metel-core#736 / RFC-0138: hoist every top-level `FunDecl`'s own shape into
@@ -1396,6 +1405,7 @@ fn construct_propagate_error(
             stmts: vec![],
             tail: Some(Box::new(TypedExpr::Ident(
                 "value".to_string(),
+                None,
                 ok_ty.clone(),
                 span.clone(),
             ))),
@@ -1405,11 +1415,12 @@ fn construct_propagate_error(
     };
 
     let err_value = if source_err_ty == target_err_ty {
-        TypedExpr::Ident("error".to_string(), source_err_ty, span.clone())
+        TypedExpr::Ident("error".to_string(), None, source_err_ty, span.clone())
     } else {
         TypedExpr::Cast {
             expr: Box::new(TypedExpr::Ident(
                 "error".to_string(),
+                None,
                 source_err_ty,
                 span.clone(),
             )),

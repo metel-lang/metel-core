@@ -193,7 +193,7 @@ impl std::fmt::Display for Place {
 #[must_use]
 pub fn from_expr(expr: &TypedExpr) -> Option<Place> {
     match expr {
-        TypedExpr::Ident(name, _, _) => Some(Place::new(name.clone())),
+        TypedExpr::Ident(name, _, _, _) => Some(Place::new(name.clone())),
         TypedExpr::UnaryOp(UnaryOp::Deref, object, _, _) => {
             Some(from_expr(object)?.with_projection(Projection::Deref))
         }

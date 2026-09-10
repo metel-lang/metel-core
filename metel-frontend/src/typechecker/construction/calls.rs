@@ -52,8 +52,12 @@ pub(super) fn construct_call(
                 Some(entry) => {
                     let fun_ty =
                         crate::types::default_fun_type(entry.params.clone(), entry.ret.clone());
-                    let typed_callee =
-                        TypedExpr::Ident(name.to_string(), fun_ty, callee.span().clone());
+                    let typed_callee = TypedExpr::Ident(
+                        name.to_string(),
+                        ctx.binding_id_at(callee.span()),
+                        fun_ty,
+                        callee.span().clone(),
+                    );
                     return Ok(TypedExpr::Call {
                         callee: Box::new(typed_callee),
                         args: typed_args,
@@ -204,7 +208,12 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
-            let typed = TypedExpr::Ident(name.clone(), concrete.clone(), ident_span.clone());
+            let typed = TypedExpr::Ident(
+                name.clone(),
+                ctx.binding_id_at(ident_span),
+                concrete.clone(),
+                ident_span.clone(),
+            );
             (typed, concrete)
         }
         // Qualified static constructors like "List::new" / "List::from" registered as joined-key schemes.
@@ -347,7 +356,7 @@ pub(super) fn construct_call(
         }
         Expr::ResolvedPath {
             resolved,
-            symbol_id: _,
+            symbol_id,
             original: _,
             span: rspan,
         } if ctx.lookup(resolved).is_none() && ctx.scheme_env.contains_key(resolved.as_str()) => {
@@ -396,7 +405,12 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
-            let typed = TypedExpr::Ident(resolved.clone(), concrete.clone(), rspan.clone());
+            let typed = TypedExpr::Ident(
+                resolved.clone(),
+                symbol_id.map(crate::identity::BindingId::Global),
+                concrete.clone(),
+                rspan.clone(),
+            );
             (typed, concrete)
         }
         _ => {

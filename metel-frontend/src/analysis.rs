@@ -236,7 +236,10 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
         &normalized,
         &names,
         &CorePrelude::default(),
-        Some(&members),
+        Some(identity::FrozenIdentity {
+            members: &members,
+            binding_spans: &identity.binding_spans,
+        }),
     )?;
 
     let mut warnings = report.warnings;
@@ -545,6 +548,54 @@ mod tests {
                     );
                 }
             }
+        }
+
+        // ── binding identity on value references (#1052a-1) ───────────────────
+
+        #[test]
+        fn local_reference_carries_its_local_binding_id() {
+            let analysis = analyze(
+                "fun f(p: i64) -> i64 {\n\
+                 \tlet q := p;\n\
+                 \tq\n\
+                 }\n",
+            );
+            // `f`'s tail is the bare `q` use.
+            let TypedExpr::Ident(name, binding, _, _) = tail_expr(&analysis, "f") else {
+                panic!("expected a bare ident tail");
+            };
+            assert_eq!(name, "q");
+            let id = binding.expect("a resolved local reference carries a BindingId");
+            let crate::identity::BindingId::Local(local) = id else {
+                panic!("`q` is a lexical local, not a global");
+            };
+            // It matches the resolution map's own record for that binding.
+            assert!(
+                analysis
+                    .resolution
+                    .definitions
+                    .contains_key(&crate::identity::BindingId::Local(local)),
+                "the stamped LocalId is a real definition in the resolution map"
+            );
+        }
+
+        #[test]
+        fn global_call_callee_carries_its_symbol_binding_id() {
+            let analysis = analyze(
+                "fun helper() -> i64 { 1 }\n\
+                 fun main() -> i64 { helper() }\n",
+            );
+            let TypedExpr::Call { callee, .. } = tail_expr(&analysis, "main") else {
+                panic!("expected a call tail");
+            };
+            let TypedExpr::Ident(name, binding, _, _) = &**callee else {
+                panic!("expected an ident callee");
+            };
+            assert_eq!(name, "helper");
+            assert!(
+                matches!(binding, Some(crate::identity::BindingId::Global(_))),
+                "a top-level function reference resolves to a Global BindingId, got {binding:?}"
+            );
         }
     }
 

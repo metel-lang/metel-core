@@ -49,13 +49,32 @@ mod lexical_path;
 pub use lexical_path::{LexicalPath, LexicalSeg};
 
 mod allocate;
-pub use allocate::{allocate_graph, allocate_module, Allocation, GraphModuleNav, ModuleNav};
+pub use allocate::{
+    allocate_for_graph, allocate_graph, allocate_module, Allocation, BindingSpans, GraphModuleNav,
+    ModuleNav,
+};
 
 mod position;
 pub use position::{PositionHit, PositionIndex};
 
 mod member;
 pub use member::{collect_members, collect_members_for_graph, MemberInfo, MemberTable};
+
+/// The frozen-identity context the typed-AST construction pass consumes
+/// (ADR-0054). Bundled so the `check_graph` → `construct_program` signature
+/// chain takes one optional handle rather than a widening list of tables.
+///
+/// `Some` on the `analyze_*` and interpreter pipelines; `None` on the
+/// move-check / diagnostic-tool entry points and for runtime generic-body
+/// reconstruction — each member/binding site then carries `None`.
+#[derive(Clone, Copy)]
+pub struct FrozenIdentity<'a> {
+    /// Struct-field / enum-variant identities, keyed `(owner SymbolId, name)`.
+    pub members: &'a MemberTable,
+    /// The transient span → [`BindingId`] bridge for value references and
+    /// binding sites (metel-core#1052).
+    pub binding_spans: &'a BindingSpans,
+}
 
 #[cfg(test)]
 mod tests;

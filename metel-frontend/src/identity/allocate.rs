@@ -105,6 +105,40 @@ pub struct Allocation {
     pub resolution: ResolutionMap,
     /// Byte-offset → identity. Rebuilt per snapshot; never a semantic input.
     pub positions: PositionIndex,
+    /// The transient span → [`BindingId`] bridge for the typed-AST pass.
+    pub binding_spans: BindingSpans,
+}
+
+/// Declared-name span of every binding definition, and the use span of every
+/// *resolved* value reference, → the [`BindingId`] it denotes.
+///
+/// A **transient construction-time bridge** (metel-core#1052): the typed-AST
+/// pass stamps a node's `BindingId` by looking its span up here, then discards
+/// the table — only the `BindingId` is frozen onto the node. It is not a
+/// durable artifact and never a runtime input. `path_normalizer` and the
+/// lowering passes leave `Expr::Ident` and binding-name spans untouched, so
+/// parse-time spans match what construction sees.
+#[derive(Debug, Clone, Default)]
+pub struct BindingSpans(HashMap<Span, BindingId>);
+
+impl BindingSpans {
+    /// The binding whose definition or resolved-reference span is exactly `span`.
+    #[must_use]
+    pub fn get(&self, span: &Span) -> Option<BindingId> {
+        self.0.get(span).copied()
+    }
+
+    /// Number of recorded spans.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether nothing is recorded.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// Assign structural identities to every binding and value reference in
@@ -191,10 +225,30 @@ pub fn allocate_module(
     // T0009 determination and is populated at the post-inference freeze (#1051).
     classify_globals(&mut acc.out, &acc.positions, names);
 
+    let binding_spans = binding_spans_from(&acc.positions, &acc.out);
     Allocation {
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
+        binding_spans,
     }
+}
+
+/// Build the span → [`BindingId`] bridge (see [`Allocation::binding_spans`])
+/// from the walk's raw position entries: every definition site, plus every
+/// reference site whose resolution is `Resolved`. Run after `classify_globals`.
+fn binding_spans_from(positions: &[(Span, PositionHit)], map: &ResolutionMap) -> BindingSpans {
+    let mut out = HashMap::new();
+    for (span, hit) in positions {
+        let binding = match hit {
+            PositionHit::Definition(b) => Some(*b),
+            PositionHit::Reference(rid) => map.references.get(rid).and_then(Resolution::binding),
+            PositionHit::ModuleSegment(_) => None,
+        };
+        if let Some(b) = binding {
+            out.insert(span.clone(), b);
+        }
+    }
+    BindingSpans(out)
 }
 
 /// The three per-module accumulators the identity walk fills, bundled so
@@ -242,6 +296,7 @@ pub fn allocate_graph(
 ) -> Allocation {
     let mut resolution = ResolutionMap::default();
     let mut positions = Vec::with_capacity(modules.len());
+    let mut binding_spans = HashMap::new();
     for (module_path, decls) in modules {
         let nav = ModuleNav {
             table: graph_nav.table,
@@ -251,11 +306,46 @@ pub fn allocate_graph(
         let allocation = allocate_module(module_path, decls, names, interner, nav);
         resolution.extend_from(allocation.resolution);
         positions.push(allocation.positions);
+        binding_spans.extend(allocation.binding_spans.0);
     }
     Allocation {
         resolution,
         positions: PositionIndex::from_indices(positions),
+        binding_spans: BindingSpans(binding_spans),
     }
+}
+
+/// Convenience wrapper: run [`allocate_graph`] straight off a loaded
+/// (pre-normalization) [`ModuleGraph`], mirroring `analyze_graph`'s setup. The
+/// interpreter pipeline calls this for the span → [`BindingId`] bridge
+/// ([`Allocation::binding_spans`], metel-core#1052); it has no `Analysis` to
+/// hang the tables on and does not need module-segment navigation, so a
+/// throwaway [`ModuleTable`] backs `GraphModuleNav`.
+///
+/// [`ModuleGraph`]: crate::module_loader::ModuleGraph
+#[must_use]
+pub fn allocate_for_graph(
+    graph: &crate::module_loader::ModuleGraph,
+    names: &ResolvedNames,
+) -> Allocation {
+    let modules: Vec<(Vec<String>, &[Decl])> = graph
+        .modules
+        .iter()
+        .map(|m| (m.module_path.clone(), m.program.decls.as_slice()))
+        .collect();
+    let mut module_table = ModuleTable::new();
+    for m in &graph.modules {
+        module_table.intern(&m.module_path, None);
+    }
+    allocate_graph(
+        &modules,
+        names,
+        &mut NameInterner::new(),
+        GraphModuleNav {
+            table: &module_table,
+            aliases: &graph.path_aliases,
+        },
+    )
 }
 
 /// Walk one function-shaped body (a free function, an impl method, or an aspect
