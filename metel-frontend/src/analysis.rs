@@ -783,6 +783,62 @@ mod tests {
                 "the closure captures `base` by its LocalId: {cap_ids:?}"
             );
         }
+
+        #[test]
+        fn assignment_target_ident_carries_the_local_binding_id() {
+            use crate::typed_ast::{TypedPlace, TypedStmt};
+            let analysis = analyze(
+                "fun bump() -> i64 {\n\
+                 \tvar n := 1;\n\
+                 \tn := n + 1;\n\
+                 \tn\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(func) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "bump"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &func.body else {
+                panic!("typed body")
+            };
+            let decl_id = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Mut(md) if md.name == "n" => md.local_id,
+                    _ => None,
+                })
+                .expect("`var n` carries a LocalId");
+            let target_binding = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Stmt(s) => match &**s {
+                        TypedStmt::Expr(TypedExpr::Assign {
+                            target: TypedPlace::Ident(name, binding, _),
+                            ..
+                        }) if name == "n" => Some(*binding),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .expect("an `n := …` assignment");
+            assert_eq!(
+                target_binding,
+                Some(crate::identity::BindingId::Local(decl_id)),
+                "the assignment target resolves to the `var n` binding"
+            );
+        }
     }
 
     #[test]

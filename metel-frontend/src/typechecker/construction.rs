@@ -1873,7 +1873,11 @@ fn assign_target_to_typed_place(
     ctx: &mut ConstructCtx<'_>,
 ) -> Result<TypedPlace, MetelError> {
     match target {
-        AssignTarget::Ident(name, span) => Ok(TypedPlace::Ident(name.clone(), span.clone())),
+        AssignTarget::Ident(name, span) => Ok(TypedPlace::Ident(
+            name.clone(),
+            ctx.binding_id_at(span),
+            span.clone(),
+        )),
         AssignTarget::FieldAccess {
             object,
             field,
@@ -1960,7 +1964,11 @@ fn assign_target_to_typed_place(
 
 fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedPlace, MetelError> {
     match expr {
-        Expr::Ident(name, span) => Ok(TypedPlace::Ident(name.clone(), span.clone())),
+        Expr::Ident(name, span) => Ok(TypedPlace::Ident(
+            name.clone(),
+            ctx.binding_id_at(span),
+            span.clone(),
+        )),
         Expr::FieldAccess {
             object,
             field,
@@ -2042,7 +2050,7 @@ fn typed_place_ty(
     span: &Span,
 ) -> Result<Type, MetelError> {
     match place {
-        TypedPlace::Ident(name, ident_span) => ctx.lookup(name).cloned().ok_or_else(|| {
+        TypedPlace::Ident(name, _, ident_span) => ctx.lookup(name).cloned().ok_or_else(|| {
             MetelError::type_error(
                 TypeErrorCode::T0003,
                 format!("use of undeclared variable `{name}`"),

@@ -2593,7 +2593,7 @@ fn eval_assign_expr(
         ControlFlow::Break(signal) => return Ok(signal),
     };
     match target {
-        TypedPlace::Ident(name, ident_span) => {
+        TypedPlace::Ident(name, _, ident_span) => {
             let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
                 rhs
             } else {

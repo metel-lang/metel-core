@@ -219,7 +219,7 @@ pub fn from_expr(expr: &TypedExpr) -> Option<Place> {
 #[must_use]
 pub fn from_typed_place(place: &TypedPlace) -> Option<Place> {
     match place {
-        TypedPlace::Ident(name, _) => Some(Place::new(name.clone())),
+        TypedPlace::Ident(name, _, _) => Some(Place::new(name.clone())),
         // An assignment target carries no resolved field id yet (#1068); the
         // name still keys the place algebra, and any id-preferring reader falls
         // back to the name here.

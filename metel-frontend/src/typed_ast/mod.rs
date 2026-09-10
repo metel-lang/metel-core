@@ -300,7 +300,11 @@ pub struct TypedBlock {
 /// `eval_expr` instead of falling back to the untyped evaluator.
 #[derive(Debug, Clone)]
 pub enum TypedPlace {
-    Ident(String, Span),
+    /// An assignment target that names a binding. The second field is the
+    /// frozen identity of that binding (ADR-0054 / metel-core#1052):
+    /// `BindingId::Local` for a lexical binding, `BindingId::Global` for a
+    /// top-level `var`; `None` without identity context.
+    Ident(String, Option<BindingId>, Span),
     Deref {
         object: Box<TypedExpr>,
         span: Span,

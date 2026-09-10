@@ -27,7 +27,7 @@ pub(super) fn resolve_place_assign_root(
         span: &Span,
     ) -> Result<std::rc::Rc<std::cell::RefCell<Value>>, MetelError> {
         match place {
-            TypedPlace::Ident(name, ident_span) => {
+            TypedPlace::Ident(name, _, ident_span) => {
                 let rc = env.get_rc(name).ok_or_else(|| {
                     MetelError::panic(
                         RuntimeErrorCode::R0003,
@@ -93,7 +93,7 @@ pub(super) fn eval_typed_place_value(
     runtime: &RuntimeRegistry,
 ) -> Result<Value, MetelError> {
     match place {
-        TypedPlace::Ident(name, ident_span) => env.get(name).ok_or_else(|| {
+        TypedPlace::Ident(name, _, ident_span) => env.get(name).ok_or_else(|| {
             MetelError::panic(
                 RuntimeErrorCode::R0003,
                 format!("assign: `{name}` not found"),

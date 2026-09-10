@@ -342,7 +342,7 @@ fn place_expr_at<'a>(
         }
         TypedPlace::Index { object, index, .. } => place_expr_at(object, filename, byte_offset)
             .or_else(|| expr_at_expr(index, filename, byte_offset)),
-        TypedPlace::Ident(_, _) => None,
+        TypedPlace::Ident(_, _, _) => None,
     }
 }
 

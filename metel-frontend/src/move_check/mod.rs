@@ -1142,7 +1142,7 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         match typed_place {
-            TypedPlace::Ident(_, _) => {}
+            TypedPlace::Ident(_, _, _) => {}
             TypedPlace::Deref { object, .. } => self.observe_expr(object, current_module, state),
             TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
                 self.observe_projection_base_typed_place(object, current_module, state);
@@ -1191,7 +1191,7 @@ impl<'a> Checker<'a> {
             }
         }
         match typed_place {
-            TypedPlace::Ident(_, _) => {}
+            TypedPlace::Ident(_, _, _) => {}
             TypedPlace::Deref { object, .. } => self.observe_expr(object, current_module, state),
             TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
                 self.observe_projection_base_typed_place(object, current_module, state);
@@ -2667,7 +2667,7 @@ impl FreeRootCollector {
 
     fn place(&mut self, place: &TypedPlace) {
         match place {
-            TypedPlace::Ident(name, _) => self.capture_free_name(name),
+            TypedPlace::Ident(name, _, _) => self.capture_free_name(name),
             TypedPlace::Deref { object, .. } => self.expr(object),
             TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
                 self.place(object);
@@ -4594,7 +4594,7 @@ fun main() {
 
 fn typed_place_span(place: &TypedPlace) -> &Span {
     match place {
-        TypedPlace::Ident(_, span)
+        TypedPlace::Ident(_, _, span)
         | TypedPlace::Deref { span, .. }
         | TypedPlace::Field { span, .. }
         | TypedPlace::Tuple { span, .. }
