@@ -305,7 +305,7 @@ impl Walker<'_, '_> {
             // Multi-segment paths are handled by the path normalizer (they become
             // `ResolvedPath` carrying their own `symbol_id`); leave them here.
             // `ResolvedPath` does not exist yet at this stage but is matched for safety.
-            Expr::Path(_, _)
+            Expr::Path(..)
             | Expr::ResolvedPath { .. }
             | Expr::Literal(_, _)
             | Expr::RecordProjection { .. }

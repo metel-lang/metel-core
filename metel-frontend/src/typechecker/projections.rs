@@ -760,7 +760,7 @@ impl Cx<'_> {
         match expr {
             Expr::Literal(_, _)
             | Expr::Ident(_, _)
-            | Expr::Path(_, _)
+            | Expr::Path(..)
             | Expr::ResolvedPath { .. }
             | Expr::RecordProjection { .. }
             | Expr::Continue(_) => Ok(()),

@@ -1345,7 +1345,7 @@ pub(super) fn infer_expr(
             let _ = span;
             Ok(break_var)
         }
-        Expr::Path(segments, span) => {
+        Expr::Path(segments, _, span) => {
             // For 2-segment paths, first try TypeName::member (static methods, enum variants).
             if let [type_name, member_name] = segments.as_slice() {
                 if let Some(fun_ty) = ctx.get_method_type(type_name, member_name).cloned() {

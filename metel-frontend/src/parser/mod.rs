@@ -1444,9 +1444,14 @@ fn shift_span(span: &mut Span, base_start: usize, base_line: u32, base_col: u32)
 #[allow(clippy::too_many_lines)]
 fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col: u32) {
     match expr {
+        Expr::Path(_, seg_spans, span) => {
+            for s in seg_spans.iter_mut() {
+                shift_span(s, base_start, base_line, base_col);
+            }
+            shift_span(span, base_start, base_line, base_col);
+        }
         Expr::Literal(_, span)
         | Expr::Ident(_, span)
-        | Expr::Path(_, span)
         | Expr::Tuple(_, span)
         | Expr::Array(_, span)
         | Expr::RepeatArray(_, _, span)
@@ -1728,11 +1733,19 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
 
 fn parse_path_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
+    // One span per segment, aligned with `parts` — the module-segment
+    // go-to-definition click targets (metel-core#1070).
+    let seg_spans: Vec<Span> = pair
+        .clone()
+        .into_inner()
+        .filter(|p| matches!(p.as_rule(), Rule::path_root | Rule::ident))
+        .map(|p| Span::of(&p, filename))
+        .collect();
     let parts = collect_path_components(pair)?;
     if parts.len() == 1 {
         Ok(Expr::Ident(parts.into_iter().next().unwrap(), span))
     } else {
-        Ok(Expr::Path(parts, span))
+        Ok(Expr::Path(parts, seg_spans, span))
     }
 }
 
@@ -3412,4 +3425,68 @@ fn unescape(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod path_segment_span_tests {
+    use super::parse;
+    use crate::ast::{Decl, Expr};
+
+    /// The tail expression of `fn main`.
+    fn main_tail(src: &str) -> Expr {
+        let program = parse(src, "t.mtl").expect("parse");
+        let main = program
+            .decls
+            .iter()
+            .find_map(|d| match d {
+                Decl::Fun(f) if f.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("fn main");
+        main.body.tail.as_deref().expect("tail expr").clone()
+    }
+
+    #[test]
+    fn multi_segment_path_carries_one_span_per_segment() {
+        // `mod::inner::Thing` — three segments, each span slicing its own name.
+        let src = "fun main() -> i64 { mod::inner::Thing }\n";
+        let Expr::Path(segments, seg_spans, _) = main_tail(src) else {
+            panic!("expected an Expr::Path");
+        };
+        assert_eq!(segments, ["mod", "inner", "Thing"]);
+        assert_eq!(seg_spans.len(), 3);
+        for (name, span) in segments.iter().zip(&seg_spans) {
+            assert_eq!(&src[span.start..span.end], name);
+            assert_eq!(span.filename, "t.mtl");
+        }
+        // Segments are in source order, non-overlapping, left to right.
+        assert!(seg_spans[0].end <= seg_spans[1].start);
+        assert!(seg_spans[1].end <= seg_spans[2].start);
+    }
+
+    #[test]
+    fn keyword_root_path_spans_cover_the_root_segment() {
+        let src = "fun main() -> i64 { root::top::V }\n";
+        let Expr::Path(segments, seg_spans, _) = main_tail(src) else {
+            panic!("expected an Expr::Path");
+        };
+        assert_eq!(segments, ["root", "top", "V"]);
+        assert_eq!(seg_spans.len(), segments.len());
+        assert_eq!(&src[seg_spans[0].start..seg_spans[0].end], "root");
+    }
+
+    #[test]
+    fn two_segment_path_in_call_position_keeps_segment_spans() {
+        let src = "fun main() -> i64 { helpers::run() }\n";
+        let Expr::Call { callee, .. } = main_tail(src) else {
+            panic!("expected the tail to be a call");
+        };
+        let Expr::Path(segments, seg_spans, _) = *callee else {
+            panic!("expected the callee to be an Expr::Path");
+        };
+        assert_eq!(segments, ["helpers", "run"]);
+        assert_eq!(seg_spans.len(), 2);
+        assert_eq!(&src[seg_spans[0].start..seg_spans[0].end], "helpers");
+        assert_eq!(&src[seg_spans[1].start..seg_spans[1].end], "run");
+    }
 }

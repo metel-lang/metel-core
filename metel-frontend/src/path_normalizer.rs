@@ -202,7 +202,7 @@ fn normalize_expr(
             Ok(())
         }
 
-        Expr::Path(segments, span) => {
+        Expr::Path(segments, _seg_spans, span) => {
             if let Some((resolved, symbol_id)) =
                 try_resolve_path(segments, scope, module_names, symbols)
             {

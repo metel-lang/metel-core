@@ -447,7 +447,7 @@ impl Walker<'_> {
             // - `Path` / `ResolvedPath`: module-qualified, identity comes from
             //   path normalization and is threaded onto the typed IR by #1050;
             // - `Literal`, `Continue`, `RecordProjection`: no operand names.
-            Expr::Path(_, _)
+            Expr::Path(..)
             | Expr::ResolvedPath { .. }
             | Expr::Literal(_, _)
             | Expr::Continue(_)

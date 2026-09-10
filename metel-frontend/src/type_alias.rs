@@ -862,7 +862,7 @@ impl Expander<'_> {
             }
             // A value path (`E::Variant`, `Alias::assoc()`) or a record
             // projection (`P.{ f }`) may lead with a type-alias name.
-            Expr::Path(segs, _) => self.rewrite_value_path(segs)?,
+            Expr::Path(segs, _, _) => self.rewrite_value_path(segs)?,
             Expr::RecordProjection { path, .. } => self.rewrite_value_path(path)?,
             Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
                 for e in elems {

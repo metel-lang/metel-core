@@ -240,7 +240,7 @@ fn collect_closure_expr_uses(
         }
         Expr::Closure { .. }
         | Expr::Literal(_, _)
-        | Expr::Path(_, _)
+        | Expr::Path(..)
         | Expr::StructLiteral { .. }
         | Expr::RecordProjection { .. }
         | Expr::Continue(_) => {}
@@ -1601,7 +1601,9 @@ pub(super) fn construct_expr(
             let base_expr = if path.len() == 1 {
                 Expr::Ident(path[0].clone(), span.clone())
             } else {
-                Expr::Path(path.clone(), span.clone())
+                // Synthesised for re-typing; no per-segment spans (identity walk
+                // already ran on the parser's own `Expr::Path`).
+                Expr::Path(path.clone(), Vec::new(), span.clone())
             };
             let typed_base = construct_expr(&base_expr, None, ctx)?;
             let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {
@@ -1714,7 +1716,7 @@ pub(super) fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::Path(segments, span) => {
+        Expr::Path(segments, _, span) => {
             // For 2-segment paths, try method_env first (static methods, enum variant constructors).
             if let [type_name, member_name] = segments.as_slice() {
                 if let Some(ty) = ctx

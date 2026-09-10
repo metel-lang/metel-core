@@ -84,7 +84,7 @@ pub(super) fn construct_call(
             }
             _ => vec![None; args.len()],
         },
-        Expr::Path(segments, _) => {
+        Expr::Path(segments, _, _) => {
             let last = segments.last().map_or("", std::string::String::as_str);
             match ctx.lookup(last) {
                 Some(Type::Fun(params, ..)) if params.len() == args.len() => {
@@ -208,7 +208,7 @@ pub(super) fn construct_call(
             (typed, concrete)
         }
         // Qualified static constructors like "List::new" / "List::from" registered as joined-key schemes.
-        Expr::Path(segments, path_span)
+        Expr::Path(segments, _, path_span)
             if {
                 let joined = segments.join("::");
                 ctx.lookup(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
@@ -284,7 +284,7 @@ pub(super) fn construct_call(
             let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
             (typed, concrete)
         }
-        Expr::Path(segments, path_span)
+        Expr::Path(segments, _, path_span)
             if {
                 let last = segments.last().map_or("", std::string::String::as_str);
                 ctx.lookup(last).is_none()

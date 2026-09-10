@@ -453,7 +453,14 @@ pub struct BreakExpr {
 pub enum Expr {
     Literal(Literal, Span),
     Ident(String, Span),
-    Path(Vec<String>, Span),
+    /// A multi-segment path in expression position (`foo::Bar`,
+    /// `root::mod::item`). The second field holds one span per segment, in the
+    /// same order as the first — the click targets for module-segment
+    /// go-to-definition (metel-core#1070). It is empty for paths the parser
+    /// never produced directly (a few construction/inference passes synthesise
+    /// an `Expr::Path` from already-resolved data); the identity walk only
+    /// consults it when its length matches the segment count.
+    Path(Vec<String>, Vec<Span>, Span),
     /// Produced by the path normalizer (#185). A multi-segment `Expr::Path` that
     /// has been resolved to a single bare name. `resolved` is the name the
     /// typechecker uses for lookup; `original` is retained for error messages.
@@ -584,7 +591,7 @@ impl Expr {
         match self {
             Expr::Literal(_, s)
             | Expr::Ident(_, s)
-            | Expr::Path(_, s)
+            | Expr::Path(_, _, s)
             | Expr::ResolvedPath { span: s, .. }
             | Expr::Tuple(_, s)
             | Expr::Array(_, s)

@@ -303,7 +303,9 @@ pub(super) fn record_projection_base_expr(path: &[String], span: &Span) -> Expr 
     if path.len() == 1 {
         Expr::Ident(path[0].clone(), span.clone())
     } else {
-        Expr::Path(path.to_vec(), span.clone())
+        // Synthesised for inference; no per-segment spans (module-segment
+        // go-to-definition reads the parser's own `Expr::Path`, metel-core#1070).
+        Expr::Path(path.to_vec(), Vec::new(), span.clone())
     }
 }
 

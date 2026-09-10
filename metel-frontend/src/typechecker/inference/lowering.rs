@@ -530,7 +530,7 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
         // Leaf expressions — no sub-Expr or TypeExpr to rewrite.
         Expr::Literal(_, _)
         | Expr::Ident(_, _)
-        | Expr::Path(_, _)
+        | Expr::Path(..)
         | Expr::ResolvedPath { .. }
         | Expr::Continue(_) => expr.clone(),
         Expr::StructLiteral {
