@@ -1417,8 +1417,9 @@ pub struct Environment {
     frame: HashMap<LocalId, Rc<RefCell<Value>>>,
     /// Nested `fun`s `hoist_nested_funs` placeholdered but didn't build yet
     /// (metel-core#712). `eval_call_expr` builds one on demand if it's called before
-    /// its declaration line runs.
-    pending_funs: Vec<HashMap<String, Rc<crate::typed_ast::TypedFunDecl>>>,
+    /// its declaration line runs. Keyed by the nested function's structural
+    /// [`LocalId`] (metel-core#1052b).
+    pending_funs: Vec<HashMap<LocalId, Rc<crate::typed_ast::TypedFunDecl>>>,
     /// Type context for construction-at-call-time of generic closures. Set once per module
     /// in `run_passes`; shared via `Rc` so cloning the environment is cheap.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -1451,23 +1452,21 @@ impl Environment {
         self.pending_funs.pop();
     }
 
-    /// Record that `name` refers to a nested `fun` whose closure hasn't been built yet
-    /// (metel-core#712) — see the `pending_funs` field doc.
+    /// Record that the nested `fun` with structural identity `id` has a
+    /// placeholder but no closure yet (metel-core#712) — see the `pending_funs`
+    /// field doc.
     ///
     /// # Panics
     /// Panics if called with no scope pushed — see [`Environment::define`].
-    pub fn register_pending_fun(&mut self, name: &str, f: Rc<crate::typed_ast::TypedFunDecl>) {
-        self.pending_funs
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), f);
+    pub fn register_pending_fun(&mut self, id: LocalId, f: Rc<crate::typed_ast::TypedFunDecl>) {
+        self.pending_funs.last_mut().unwrap().insert(id, f);
     }
 
-    /// Remove and return a pending `fun` by name (innermost scope first), so it's
-    /// built at most once.
-    pub fn take_pending_fun(&mut self, name: &str) -> Option<Rc<crate::typed_ast::TypedFunDecl>> {
+    /// Remove and return a pending `fun` by its [`LocalId`] (innermost scope
+    /// first), so it is built at most once.
+    pub fn take_pending_fun(&mut self, id: LocalId) -> Option<Rc<crate::typed_ast::TypedFunDecl>> {
         for scope in self.pending_funs.iter_mut().rev() {
-            if let Some(f) = scope.remove(name) {
+            if let Some(f) = scope.remove(&id) {
                 return Some(f);
             }
         }
@@ -2243,7 +2242,7 @@ fn build_and_set_nested_fun(
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
-            env.define(&f.name, Value::Unit);
+            env.define_binding(f.local_id, &f.name, Value::Unit);
         }
     }
     let safe_to_build_eagerly = !decls
@@ -2258,7 +2257,12 @@ fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), M
     } else {
         for decl in decls {
             if let TypedDecl::Fun(f) = decl {
-                env.register_pending_fun(&f.name, Rc::new(f.clone()));
+                // A nested `fun` always carries a `LocalId` (metel-core#1052a);
+                // without one it simply cannot be deferred-built, only reached
+                // through its own declaration line.
+                if let Some(id) = f.local_id {
+                    env.register_pending_fun(id, Rc::new(f.clone()));
+                }
             }
         }
     }
@@ -2948,10 +2952,12 @@ fn eval_call_expr(
     // metel-core#712: a Unit here can be a deferred nested fun's placeholder, called
     // before its declaration line runs. Build it now instead of failing.
     let func_val = if matches!(func_val, Value::Unit) {
-        if let TypedExpr::Ident(name, ..) = callee {
-            if let Some(f) = env.take_pending_fun(name) {
+        if let TypedExpr::Ident(name, Some(crate::identity::BindingId::Local(id)), ..) = callee {
+            if let Some(f) = env.take_pending_fun(*id) {
                 build_and_set_nested_fun(&f, env)?;
-                env.get(name).unwrap_or(Value::Unit)
+                env.get_local(*id)
+                    .or_else(|| env.get(name))
+                    .unwrap_or(Value::Unit)
             } else {
                 func_val
             }

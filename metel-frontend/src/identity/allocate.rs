@@ -484,6 +484,20 @@ impl Walker<'_> {
     fn walk_block(&mut self, block: &Block) {
         let n = self.next_block();
         self.enter(LexicalSeg::Block(n));
+        // Nested `fun`s hoist: a call earlier in the block (e.g. in a `let`
+        // initializer) resolves to a function declared further down
+        // (metel-core#712). Bind every nested `fun` name before the ordered
+        // walk so those forward references get the function's `LocalId`.
+        for decl in &block.stmts {
+            if let Decl::Fun(f) = decl {
+                self.bind(
+                    &f.name,
+                    &f.span,
+                    DefinitionKind::NestedFn,
+                    LexicalSeg::NestedFn(f.name.clone()),
+                );
+            }
+        }
         for decl in &block.stmts {
             self.walk_decl(decl);
         }
@@ -514,14 +528,9 @@ impl Walker<'_> {
                 );
             }
             Decl::Fun(f) => {
-                // A nested function: record it as a binding, then walk its body
-                // under a NestedFn step with its own fresh parameter scope.
-                self.bind(
-                    &f.name,
-                    &f.span,
-                    DefinitionKind::NestedFn,
-                    LexicalSeg::NestedFn(f.name.clone()),
-                );
+                // The name is already bound by `walk_block`'s hoist pre-pass;
+                // here we only descend into the body under a NestedFn step with
+                // its own fresh parameter scope.
                 self.enter(LexicalSeg::NestedFn(f.name.clone()));
                 for (i, param) in f.params.iter().enumerate() {
                     self.bind(

@@ -785,6 +785,58 @@ mod tests {
         }
 
         #[test]
+        fn a_forward_reference_to_a_nested_fn_resolves_to_its_local_id() {
+            // metel-core#712 hoisting: the call in the `let` initializer runs
+            // before `helper`'s declaration line, but resolves to it.
+            let analysis = analyze(
+                "fun outer() -> i64 {\n\
+                 \tlet r := helper();\n\
+                 \tfun helper() -> i64 { 7 }\n\
+                 \tr\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(outer) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "outer"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            let FunBody::Typed(block) = &outer.body else {
+                panic!("typed body")
+            };
+            let helper_id = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Fun(f) if f.name == "helper" => f.local_id,
+                    _ => None,
+                })
+                .expect("nested `fun helper` carries a LocalId");
+            // The `helper()` call in the `let r := …` initializer.
+            let call_callee = block.stmts.iter().find_map(|d| match d {
+                TypedDecl::Let(ld) if ld.name == "r" => match &ld.value {
+                    TypedExpr::Call { callee, .. } => Some(&**callee),
+                    _ => None,
+                },
+                _ => None,
+            });
+            let TypedExpr::Ident(_, Some(crate::identity::BindingId::Local(used)), _, _) =
+                call_callee.expect("`let r := helper()`")
+            else {
+                panic!("the forward `helper` reference is a resolved local");
+            };
+            assert_eq!(*used, helper_id, "forward ref resolves to the nested fn");
+        }
+
+        #[test]
         fn nested_fn_carries_a_local_id_top_level_does_not() {
             let analysis = analyze(
                 "fun outer() -> i64 {\n\
