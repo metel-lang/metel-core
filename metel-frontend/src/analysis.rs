@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::coherence;
 use crate::error::MetelError;
-use crate::identity::{self, NameInterner, PositionIndex, ResolutionMap};
+use crate::identity::{self, MemberTable, NameInterner, PositionIndex, ResolutionMap};
 use crate::module_loader::{self, ModuleGraph, SourceProvider};
 use crate::move_check;
 use crate::name_resolver::{self, ResolvedNames};
@@ -41,6 +41,11 @@ pub struct Analysis {
     /// The interner used to build `resolution`, for turning a `NameId` back
     /// into a spelling.
     pub name_interner: NameInterner,
+    /// Identity for every declared struct field and enum variant
+    /// (`FieldId` / `VariantId`), keyed by `(owning SymbolId, member name)`
+    /// — the interning milestone of the resolution freeze (metel-core#1051,
+    /// ADR-0054 step 3). Not yet threaded onto the typed IR.
+    pub members: MemberTable,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
 }
@@ -196,6 +201,7 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
         .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
         .collect();
     let identity = identity::allocate_graph(&identity_modules, &names, &mut name_interner);
+    let members = identity::collect_members(&identity_modules, &names, &mut name_interner);
 
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
@@ -213,6 +219,7 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
         resolution: identity.resolution,
         positions: identity.positions,
         name_interner,
+        members,
         warnings,
     })
 }

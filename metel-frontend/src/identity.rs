@@ -54,6 +54,9 @@ pub use allocate::{allocate_graph, allocate_module, Allocation};
 mod position;
 pub use position::{PositionHit, PositionIndex};
 
+mod member;
+pub use member::{collect_members, MemberInfo, MemberTable};
+
 #[cfg(test)]
 mod tests;
 
