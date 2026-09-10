@@ -17,7 +17,7 @@ use crate::ast::Span;
 use crate::module_loader::{LoadedModule, ModuleGraph};
 use crate::name_resolver::resolve;
 
-use super::allocate::{allocate_graph, allocate_module};
+use super::allocate::{allocate_graph, allocate_module, GraphModuleNav, ModuleNav};
 use super::position::PositionHit;
 use super::{
     Allocation, BindingId, ModuleTable, NameId, NameInterner, Resolution, ResolutionMap,
@@ -49,7 +49,14 @@ impl Fixture {
         let names = resolve(&graph).expect("resolve");
         let decls = &graph.modules[0].program.decls;
         let mut interner = NameInterner::new();
-        let alloc = allocate_module(&[], decls, &names, &mut interner);
+        let mut modules = ModuleTable::new();
+        modules.intern(&[], Some(Span::new(0, 0, "test.mtl")));
+        let nav = ModuleNav {
+            table: &modules,
+            aliases: &graph.path_aliases,
+            scope: names.scopes.get(&Vec::new()),
+        };
+        let alloc = allocate_module(&[], decls, &names, &mut interner, nav);
         Self {
             alloc,
             interner,
@@ -464,12 +471,32 @@ fn graph_allocation_is_module_order_independent_and_module_unique() {
         .iter()
         .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
         .collect();
+    let mut module_table = ModuleTable::new();
+    for module in &graph.modules {
+        module_table.intern(&module.module_path, None);
+    }
     let mut forward_interner = NameInterner::new();
-    let forward = allocate_graph(&modules, &names, &mut forward_interner);
+    let forward = allocate_graph(
+        &modules,
+        &names,
+        &mut forward_interner,
+        GraphModuleNav {
+            table: &module_table,
+            aliases: &graph.path_aliases,
+        },
+    );
     let mut reversed_interner = NameInterner::new();
     let mut reversed_modules = modules.clone();
     reversed_modules.reverse();
-    let reversed = allocate_graph(&reversed_modules, &names, &mut reversed_interner);
+    let reversed = allocate_graph(
+        &reversed_modules,
+        &names,
+        &mut reversed_interner,
+        GraphModuleNav {
+            table: &module_table,
+            aliases: &graph.path_aliases,
+        },
+    );
 
     assert_eq!(
         local_ids(&forward.resolution),
@@ -512,6 +539,134 @@ fn module_id_interns_per_canonical_path_and_is_alias_insensitive() {
     assert_eq!(
         table.get(first).and_then(|i| i.decl_span.clone()),
         Some(span)
+    );
+}
+
+#[test]
+fn module_qualified_path_segment_resolves_to_its_module() {
+    // `app` calls `net::connect()`; the `net` segment of that path is a
+    // module-namespace position hit pointing at module `net` (metel-core#1070).
+    let graph = ModuleGraph {
+        root: PathBuf::from("app.mtl"),
+        modules: vec![
+            LoadedModule {
+                module_path: vec!["net".to_string()],
+                file_path: PathBuf::from("net.mtl"),
+                program: crate::parser::parse("fun connect() -> i64 { 0 }", "net.mtl")
+                    .expect("net parses"),
+            },
+            LoadedModule {
+                module_path: vec![],
+                file_path: PathBuf::from("app.mtl"),
+                program: crate::parser::parse("fun main() -> i64 { net::connect() }", "app.mtl")
+                    .expect("app parses"),
+            },
+        ],
+        path_aliases: HashMap::new(),
+    };
+    let names = resolve(&graph).expect("resolve");
+    let modules: Vec<_> = graph
+        .modules
+        .iter()
+        .map(|m| (m.module_path.clone(), m.program.decls.as_slice()))
+        .collect();
+
+    let mut module_table = ModuleTable::new();
+    for m in &graph.modules {
+        module_table.intern(
+            &m.module_path,
+            Some(Span::new(0, 0, m.file_path.to_string_lossy())),
+        );
+    }
+    let net_id = module_table
+        .lookup(&["net".to_string()])
+        .expect("net interned");
+
+    let mut interner = NameInterner::new();
+    let alloc = allocate_graph(
+        &modules,
+        &names,
+        &mut interner,
+        GraphModuleNav {
+            table: &module_table,
+            aliases: &graph.path_aliases,
+        },
+    );
+
+    let app_src = "fun main() -> i64 { net::connect() }";
+    let net_at = app_src.find("net").expect("net segment") + 1;
+    let connect_at = app_src.rfind("connect").expect("connect segment") + 1;
+
+    assert_eq!(
+        alloc.positions.resolve("app.mtl", net_at),
+        Some(PositionHit::ModuleSegment(net_id)),
+        "the `net` segment jumps to module `net`",
+    );
+    // The item segment is not a module target.
+    assert!(!matches!(
+        alloc.positions.resolve("app.mtl", connect_at),
+        Some(PositionHit::ModuleSegment(_))
+    ));
+}
+
+#[test]
+fn module_segment_hit_is_position_stable_under_reformatting() {
+    // ADR-0054 / #1048: `ModuleId` interns by canonical path, so an unrelated
+    // reformat leaves the module-segment target unchanged.
+    fn alloc_for(app_src: &str) -> (super::PositionIndex, super::ModuleId) {
+        let graph = ModuleGraph {
+            root: PathBuf::from("app.mtl"),
+            modules: vec![
+                LoadedModule {
+                    module_path: vec!["net".to_string()],
+                    file_path: PathBuf::from("net.mtl"),
+                    program: crate::parser::parse("fun connect() -> i64 { 0 }", "net.mtl")
+                        .expect("net"),
+                },
+                LoadedModule {
+                    module_path: vec![],
+                    file_path: PathBuf::from("app.mtl"),
+                    program: crate::parser::parse(app_src, "app.mtl").expect("app"),
+                },
+            ],
+            path_aliases: HashMap::new(),
+        };
+        let names = resolve(&graph).expect("resolve");
+        let modules: Vec<_> = graph
+            .modules
+            .iter()
+            .map(|m| (m.module_path.clone(), m.program.decls.as_slice()))
+            .collect();
+        let mut table = ModuleTable::new();
+        for m in &graph.modules {
+            table.intern(&m.module_path, Some(Span::new(0, 0, "x")));
+        }
+        let net_id = table.lookup(&["net".to_string()]).unwrap();
+        let mut interner = NameInterner::new();
+        let alloc = allocate_graph(
+            &modules,
+            &names,
+            &mut interner,
+            GraphModuleNav {
+                table: &table,
+                aliases: &graph.path_aliases,
+            },
+        );
+        (alloc.positions, net_id)
+    }
+
+    let tight = "fun main() -> i64 { net::connect() }";
+    let loose = "fun main() -> i64 {\n\n    net::connect()\n}\n";
+    let (tight_pos, net_a) = alloc_for(tight);
+    let (loose_pos, net_b) = alloc_for(loose);
+    assert_eq!(net_a, net_b);
+    assert_eq!(
+        tight_pos.resolve("app.mtl", tight.find("net").unwrap() + 1),
+        Some(PositionHit::ModuleSegment(net_a))
+    );
+    assert_eq!(
+        loose_pos.resolve("app.mtl", loose.find("net").unwrap() + 1),
+        Some(PositionHit::ModuleSegment(net_b))
     );
 }
 

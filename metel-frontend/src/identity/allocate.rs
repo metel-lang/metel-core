@@ -24,14 +24,78 @@ use crate::ast::{
     AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
     TypeExpr,
 };
-use crate::name_resolver::{method_symbol_name, ResolvedNames};
+use crate::name_resolver::{
+    canonical_path, method_symbol_name, BindingKind, ModuleScope, ResolvedNames,
+};
 
 use super::lexical_path::{LexicalPath, LexicalSeg};
 use super::position::{PositionHit, PositionIndex};
 use super::{
-    structural_hash, BindingId, DefinitionInfo, DefinitionKind, LocalId, NameInterner, RefId,
-    Resolution, ResolutionMap, UnresolvedCause, UnresolvedRef,
+    structural_hash, BindingId, DefinitionInfo, DefinitionKind, LocalId, ModuleId, ModuleTable,
+    NameInterner, RefId, Resolution, ResolutionMap, UnresolvedCause, UnresolvedRef,
 };
+
+/// Read-only context for turning a module-qualified path's prefix segments into
+/// [`PositionHit::ModuleSegment`] hits (metel-core#1070). Assembled per module
+/// so the current module's import scope is in hand.
+#[derive(Clone, Copy)]
+pub struct ModuleNav<'a> {
+    /// Every interned module namespace.
+    pub table: &'a ModuleTable,
+    /// Diamond-dependency alias → canonical path map (`graph.path_aliases`).
+    pub aliases: &'a HashMap<Vec<String>, Vec<String>>,
+    /// The importing module's own resolved scope, for a leading segment that is
+    /// a local module handle (`import std::math;` → `math::sin`).
+    pub scope: Option<&'a ModuleScope>,
+}
+
+/// Graph-wide inputs for module-segment resolution, from which
+/// [`allocate_graph`] derives a per-module [`ModuleNav`].
+#[derive(Clone, Copy)]
+pub struct GraphModuleNav<'a> {
+    /// Every interned module namespace.
+    pub table: &'a ModuleTable,
+    /// Diamond-dependency alias → canonical path map (`graph.path_aliases`).
+    pub aliases: &'a HashMap<Vec<String>, Vec<String>>,
+}
+
+impl ModuleNav<'_> {
+    /// The canonical path the first `len` segments of `segments` denote as a
+    /// module namespace, if any — dereferencing a leading local module handle
+    /// and diamond-dependency aliases. Keyword roots (`root` / `self` / `super`)
+    /// are not resolved here.
+    fn prefix_module_path(&self, segments: &[String], len: usize) -> Option<Vec<String>> {
+        let (first, rest) = segments.split_first()?;
+        if matches!(first.as_str(), "root" | "self" | "super") {
+            return None;
+        }
+        // A leading segment bound as a whole-module handle in this scope.
+        if let Some(binding) = self.scope.and_then(|s| s.explicit.get(first)) {
+            if binding.kind == BindingKind::Module {
+                let mut path = binding.source_module.clone();
+                path.extend_from_slice(&rest[..len.saturating_sub(1)]);
+                return Some(canonical_path(&path, self.aliases));
+            }
+        }
+        Some(canonical_path(&segments[..len], self.aliases))
+    }
+
+    /// `(segment index, ModuleId)` for every prefix of `segments` that names a
+    /// known module — the click targets for module-segment go-to-definition.
+    fn segment_hits(&self, segments: &[String]) -> Vec<(usize, ModuleId)> {
+        let mut hits = Vec::new();
+        // A path's last segment is the item, never a module target; only
+        // proper prefixes can denote a namespace.
+        for len in 1..segments.len() {
+            if let Some(path) = self.prefix_module_path(segments, len) {
+                if let Some(id) = self.table.lookup(&path) {
+                    hits.push((len - 1, id));
+                }
+            }
+        }
+        hits
+    }
+}
 
 /// The identity artefacts produced for one module: the durable identity-keyed
 /// [`ResolutionMap`] and the volatile position lookup rebuilt alongside it.
@@ -55,10 +119,9 @@ pub fn allocate_module(
     decls: &[Decl],
     names: &ResolvedNames,
     interner: &mut NameInterner,
+    nav: ModuleNav<'_>,
 ) -> Allocation {
-    let mut out = ResolutionMap::default();
-    let mut positions = Vec::new();
-    let mut collision = CollisionGuard::default();
+    let mut acc = ModuleAlloc::default();
 
     for decl in decls {
         match decl {
@@ -70,9 +133,8 @@ pub fn allocate_module(
                         &fun.params,
                         &fun.body,
                         interner,
-                        &mut out,
-                        &mut positions,
-                        &mut collision,
+                        &mut acc,
+                        nav,
                     );
                 }
             }
@@ -90,9 +152,8 @@ pub fn allocate_module(
                             &method.params,
                             &method.body,
                             interner,
-                            &mut out,
-                            &mut positions,
-                            &mut collision,
+                            &mut acc,
+                            nav,
                         );
                     }
                 }
@@ -112,9 +173,8 @@ pub fn allocate_module(
                             &method.params,
                             body,
                             interner,
-                            &mut out,
-                            &mut positions,
-                            &mut collision,
+                            &mut acc,
+                            nav,
                         );
                     }
                 }
@@ -129,12 +189,21 @@ pub fn allocate_module(
     // use that is neither a lexical local nor a resolved global stays
     // `Unresolved { NotInScope }`; `VisibilityDenied` needs the typechecker's
     // T0009 determination and is populated at the post-inference freeze (#1051).
-    classify_globals(&mut out, &positions, names);
+    classify_globals(&mut acc.out, &acc.positions, names);
 
     Allocation {
-        resolution: out,
-        positions: PositionIndex::from_entries(positions),
+        resolution: acc.out,
+        positions: PositionIndex::from_entries(acc.positions),
     }
+}
+
+/// The three per-module accumulators the identity walk fills, bundled so
+/// [`walk_body`] takes one `&mut` handle instead of three.
+#[derive(Default)]
+struct ModuleAlloc {
+    out: ResolutionMap,
+    positions: Vec<(Span, PositionHit)>,
+    collision: CollisionGuard,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -169,11 +238,17 @@ pub fn allocate_graph(
     modules: &[(Vec<String>, &[Decl])],
     names: &ResolvedNames,
     interner: &mut NameInterner,
+    graph_nav: GraphModuleNav<'_>,
 ) -> Allocation {
     let mut resolution = ResolutionMap::default();
     let mut positions = Vec::with_capacity(modules.len());
     for (module_path, decls) in modules {
-        let allocation = allocate_module(module_path, decls, names, interner);
+        let nav = ModuleNav {
+            table: graph_nav.table,
+            aliases: graph_nav.aliases,
+            scope: names.scopes.get(module_path.as_slice()),
+        };
+        let allocation = allocate_module(module_path, decls, names, interner, nav);
         resolution.extend_from(allocation.resolution);
         positions.push(allocation.positions);
     }
@@ -190,16 +265,14 @@ fn walk_body(
     params: &[Param],
     body: &Block,
     interner: &mut NameInterner,
-    out: &mut ResolutionMap,
-    positions: &mut Vec<(Span, PositionHit)>,
-    collision: &mut CollisionGuard,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
 ) {
     let mut walker = Walker {
         owner,
         interner,
-        out,
-        positions,
-        collision,
+        acc,
+        nav,
         scopes: vec![Scope::default()],
         path: LexicalPath::root(),
         block_counter: vec![0],
@@ -226,9 +299,10 @@ struct Scope {
 struct Walker<'a> {
     owner: BindingId,
     interner: &'a mut NameInterner,
-    out: &'a mut ResolutionMap,
-    positions: &'a mut Vec<(Span, PositionHit)>,
-    collision: &'a mut CollisionGuard,
+    /// The per-module `out` / `positions` / `collision` accumulators.
+    acc: &'a mut ModuleAlloc,
+    /// Module-namespace resolution context for `Expr::Path` prefix segments.
+    nav: ModuleNav<'a>,
     scopes: Vec<Scope>,
     /// The structural path to the *current* scope, relative to `owner`.
     path: LexicalPath,
@@ -262,8 +336,8 @@ impl Walker<'_> {
         let key_path = self.path.child(seg);
         let raw = structural_hash(self.owner, &key_path);
         let id = LocalId(raw);
-        self.collision.check_local(id, self.owner, &key_path);
-        self.out.definitions.insert(
+        self.acc.collision.check_local(id, self.owner, &key_path);
+        self.acc.out.definitions.insert(
             BindingId::Local(id),
             DefinitionInfo {
                 kind,
@@ -271,7 +345,8 @@ impl Walker<'_> {
                 span: span.clone(),
             },
         );
-        self.positions
+        self.acc
+            .positions
             .push((span.clone(), PositionHit::Definition(BindingId::Local(id))));
         if let Some(scope) = self.scopes.last_mut() {
             scope.names.insert(name.to_string(), id);
@@ -298,7 +373,7 @@ impl Walker<'_> {
         });
         let raw = structural_hash(self.owner, &key_path);
         let rid = RefId(raw);
-        self.collision.check_ref(rid, self.owner, &key_path);
+        self.acc.collision.check_ref(rid, self.owner, &key_path);
 
         let resolution = match self.lookup(name) {
             Some(local) => Resolution::Resolved(BindingId::Local(local)),
@@ -308,8 +383,9 @@ impl Walker<'_> {
                 cause: UnresolvedCause::NotInScope,
             }),
         };
-        self.out.references.insert(rid, resolution);
-        self.positions
+        self.acc.out.references.insert(rid, resolution);
+        self.acc
+            .positions
             .push((span.clone(), PositionHit::Reference(rid)));
     }
 
@@ -443,9 +519,21 @@ impl Walker<'_> {
     fn walk_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Ident(name, span) => self.record_use(name, span),
+            // A module-qualified path: its *value* identity comes from path
+            // normalization and rides the typed IR (#1050). Its module-prefix
+            // segments, though, each get a `ModuleSegment` position hit so an
+            // editor can jump from `foo` in `foo::Bar` to module `foo`
+            // (metel-core#1070).
+            Expr::Path(segments, seg_spans, _) if seg_spans.len() == segments.len() => {
+                for (idx, id) in self.nav.segment_hits(segments) {
+                    self.acc
+                        .positions
+                        .push((seg_spans[idx].clone(), PositionHit::ModuleSegment(id)));
+                }
+            }
             // No value references to record:
-            // - `Path` / `ResolvedPath`: module-qualified, identity comes from
-            //   path normalization and is threaded onto the typed IR by #1050;
+            // - `Path` without aligned segment spans (parser-synthesised),
+            //   `ResolvedPath`: value identity is threaded by #1050;
             // - `Literal`, `Continue`, `RecordProjection`: no operand names.
             Expr::Path(..)
             | Expr::ResolvedPath { .. }

@@ -12,7 +12,7 @@
 
 use crate::ast::Span;
 
-use super::{BindingId, RefId};
+use super::{BindingId, ModuleId, RefId};
 
 /// What sits at a source position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +21,10 @@ pub enum PositionHit {
     Definition(BindingId),
     /// A reference site (one use of a name).
     Reference(RefId),
+    /// One segment of a module-qualified path that names a module namespace
+    /// (`foo` / `foo::bar` in `foo::bar::Item`) — the go-to-definition target
+    /// is the module's source, not a value binding (ADR-0054, metel-core#1070).
+    ModuleSegment(ModuleId),
 }
 
 /// A span-sorted spine over a snapshot's definition and reference sites.

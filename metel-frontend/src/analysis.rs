@@ -9,7 +9,7 @@ use std::path::Path;
 
 use crate::coherence;
 use crate::error::MetelError;
-use crate::identity::{self, MemberTable, NameInterner, PositionIndex, ResolutionMap};
+use crate::identity::{self, MemberTable, ModuleTable, NameInterner, PositionIndex, ResolutionMap};
 use crate::module_loader::{self, ModuleGraph, SourceProvider};
 use crate::move_check;
 use crate::name_resolver::{self, ResolvedNames};
@@ -48,6 +48,11 @@ pub struct Analysis {
     /// patterns on the typed IR carry the matching id (metel-core#1062 /
     /// #1062b).
     pub members: MemberTable,
+    /// Identity for every module namespace, interned from its canonical
+    /// (alias-dereferenced) path (metel-core#1070). A module is not a value
+    /// binding; module-segment go-to-definition resolves through this, keyed by
+    /// `ModuleId`, not a `BindingId`.
+    pub modules: ModuleTable,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
 }
@@ -64,8 +69,8 @@ impl Analysis {
     }
 
     /// Where the identifier/path at a byte offset is defined — go-to-definition,
-    /// covering lexical locals and module-qualified / imported globals
-    /// (metel-core#1050).
+    /// covering lexical locals, module-qualified / imported globals
+    /// (metel-core#1050), and module-path segments (metel-core#1070).
     #[must_use]
     pub fn definition_at(
         &self,
@@ -76,6 +81,7 @@ impl Analysis {
             &self.resolution,
             &self.positions,
             &self.names,
+            &self.modules,
             filename,
             byte_offset,
         )
@@ -202,7 +208,26 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
         .iter()
         .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
         .collect();
-    let identity = identity::allocate_graph(&identity_modules, &names, &mut name_interner);
+
+    // Intern every module namespace. Its `module_path` is already canonical
+    // (the loader keeps one `LoadedModule` per physical file); its location is
+    // the module file's start, the go-to-definition target for a module-path
+    // segment (metel-core#1070).
+    let mut modules = ModuleTable::new();
+    for module in &graph.modules {
+        let file = module.file_path.to_string_lossy().into_owned();
+        modules.intern(&module.module_path, Some(crate::ast::Span::new(0, 0, file)));
+    }
+
+    let identity = identity::allocate_graph(
+        &identity_modules,
+        &names,
+        &mut name_interner,
+        identity::GraphModuleNav {
+            table: &modules,
+            aliases: &graph.path_aliases,
+        },
+    );
     let members = identity::collect_members(&identity_modules, &names, &mut name_interner);
 
     let normalized = path_normalizer::normalize(graph, &names)?;
@@ -226,6 +251,7 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
         positions: identity.positions,
         name_interner,
         members,
+        modules,
         warnings,
     })
 }

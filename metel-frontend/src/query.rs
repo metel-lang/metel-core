@@ -5,7 +5,9 @@
 //! conversion; the frontend owns the meaning of a source position.
 
 use crate::ast::Span;
-use crate::identity::{BindingId, PositionHit, PositionIndex, ResolutionMap};
+use crate::identity::{
+    BindingId, ModuleId, ModuleTable, PositionHit, PositionIndex, ResolutionMap,
+};
 use crate::name_resolver::ResolvedNames;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
@@ -20,20 +22,44 @@ pub struct Definition<'a> {
     pub span: &'a Span,
 }
 
-/// A go-to-definition target that may be a lexical binding or a global
-/// declaration — the identity-based successor to [`Definition`], covering
-/// locals and module-qualified paths (metel-core#1050).
+/// What a go-to-definition query landed on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefinitionTarget {
+    /// A value binding — a lexical local (`LocalId`) or a global declaration
+    /// (`SymbolId`).
+    Binding(BindingId),
+    /// A module namespace named by a path segment (metel-core#1070). A module
+    /// is not a value binding; its `DefinitionSite::span` locates the module
+    /// source.
+    Module(ModuleId),
+}
+
+/// A go-to-definition target — the identity-based successor to [`Definition`],
+/// covering locals, module-qualified globals (metel-core#1050), and
+/// module-path segments (metel-core#1070).
 #[derive(Debug, Clone, Copy)]
 pub struct DefinitionSite<'a> {
-    /// The binding this position refers to.
-    pub binding: BindingId,
-    /// Its declaration span.
+    /// What the position resolves to.
+    pub target: DefinitionTarget,
+    /// Its declaration / source span.
     pub span: &'a Span,
+}
+
+impl DefinitionSite<'_> {
+    /// The value binding this site resolves to, if it is one (not a module).
+    #[must_use]
+    pub fn binding(&self) -> Option<BindingId> {
+        match self.target {
+            DefinitionTarget::Binding(b) => Some(b),
+            DefinitionTarget::Module(_) => None,
+        }
+    }
 }
 
 /// The binding the identifier/path at `byte_offset` refers to, from the
 /// identity resolution map — a lexical `LocalId` or a global `SymbolId`.
-/// `None` for whitespace, comments, and unresolved names.
+/// `None` for whitespace, comments, unresolved names, and module-path segments
+/// (those are not value bindings — see [`definition`]).
 #[must_use]
 pub fn binding_at(
     resolution: &ResolutionMap,
@@ -44,28 +70,48 @@ pub fn binding_at(
     match positions.resolve(filename, byte_offset)? {
         PositionHit::Definition(binding) => Some(binding),
         PositionHit::Reference(rid) => resolution.references.get(&rid)?.binding(),
+        PositionHit::ModuleSegment(_) => None,
     }
 }
 
 /// Resolve the identifier/path at `byte_offset` to where it is defined.
 ///
-/// Unlike [`definition_at`], this covers lexical locals (via `LocalId`) and
-/// module-qualified / imported globals (via `SymbolId`) uniformly, using the
-/// identity map rather than a text match.
+/// Covers lexical locals (via `LocalId`), module-qualified / imported globals
+/// (via `SymbolId`), and module-path segments (via `ModuleId`, metel-core#1070)
+/// uniformly, using the identity map rather than a text match.
 #[must_use]
 pub fn definition<'a>(
     resolution: &'a ResolutionMap,
     positions: &PositionIndex,
     names: &'a ResolvedNames,
+    modules: &'a ModuleTable,
     filename: &str,
     byte_offset: usize,
 ) -> Option<DefinitionSite<'a>> {
-    let binding = binding_at(resolution, positions, filename, byte_offset)?;
-    let span = match binding {
-        BindingId::Local(_) => &resolution.definitions.get(&binding)?.span,
-        BindingId::Global(sym) => names.definitions.get(&sym)?,
-    };
-    Some(DefinitionSite { binding, span })
+    match positions.resolve(filename, byte_offset)? {
+        PositionHit::ModuleSegment(id) => {
+            let span = modules.get(id)?.decl_span.as_ref()?;
+            Some(DefinitionSite {
+                target: DefinitionTarget::Module(id),
+                span,
+            })
+        }
+        hit => {
+            let binding = match hit {
+                PositionHit::Definition(b) => b,
+                PositionHit::Reference(rid) => resolution.references.get(&rid)?.binding()?,
+                PositionHit::ModuleSegment(_) => unreachable!("handled above"),
+            };
+            let span = match binding {
+                BindingId::Local(_) => &resolution.definitions.get(&binding)?.span,
+                BindingId::Global(sym) => names.definitions.get(&sym)?,
+            };
+            Some(DefinitionSite {
+                target: DefinitionTarget::Binding(binding),
+                span,
+            })
+        }
+    }
 }
 
 /// Every use site of the binding at `byte_offset` (find-references). Includes
@@ -351,7 +397,7 @@ mod tests {
             .definition_at("editor.mtl", use_at + 1)
             .expect("a use of a local resolves");
         assert!(
-            matches!(site.binding, BindingId::Local(_)),
+            matches!(site.binding(), Some(BindingId::Local(_))),
             "a local use resolves to a LocalId, not a SymbolId"
         );
         assert!(
@@ -374,7 +420,7 @@ mod tests {
         let site = analysis
             .definition_at("editor.mtl", use_at + 1)
             .expect("a use of a global resolves");
-        assert!(matches!(site.binding, BindingId::Global(_)));
+        assert!(matches!(site.binding(), Some(BindingId::Global(_))));
         assert!(
             site.span.start <= decl_at && decl_at < site.span.end,
             "the definition span covers the `fun helper` declaration"
