@@ -42,6 +42,20 @@ impl PositionIndex {
         Self { entries }
     }
 
+    /// Combine position indices produced for individual modules.
+    ///
+    /// The entries remain snapshot-local metadata, so merging them only
+    /// concatenates and re-sorts their already-derived position entries.
+    #[must_use]
+    pub fn from_indices(indices: impl IntoIterator<Item = Self>) -> Self {
+        Self::from_entries(
+            indices
+                .into_iter()
+                .flat_map(|index| index.entries)
+                .collect(),
+        )
+    }
+
     /// The identity at `byte_offset` in `filename`, or `None` for whitespace,
     /// comments, and any position not covered by a definition or reference
     /// span.

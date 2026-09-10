@@ -49,7 +49,7 @@ mod lexical_path;
 pub use lexical_path::{LexicalPath, LexicalSeg};
 
 mod allocate;
-pub use allocate::{allocate_module, Allocation};
+pub use allocate::{allocate_graph, allocate_module, Allocation};
 
 mod position;
 pub use position::{PositionHit, PositionIndex};

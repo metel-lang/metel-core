@@ -1,18 +1,19 @@
 //! A parse-driven walk that assigns structural identities to the lexical
 //! bindings and value references inside a module's function bodies.
 //!
-//! This is the #1048 slice: it produces the *local* half of a [`ResolutionMap`]
-//! — every binding gets a [`LocalId`], every use gets a [`RefId`] and a
-//! [`Resolution`] — using only lexical scoping, which needs nothing from the
-//! name resolver. A use that binds lexically resolves to [`BindingId::Local`];
-//! anything else is left [`UnresolvedCause::NotInScope`] for #1049 to reclassify
-//! as a global, a visibility error, or a genuine unbound name once the
-//! resolver's module scopes are wired in.
+//! It walks free functions, impl methods, and aspect default-method bodies —
+//! including their nested blocks, functions, closures, `let` / `mut`, loop
+//! bindings, and match-arm patterns — and gives every binding a [`LocalId`] and
+//! every value use a [`RefId`] and a [`Resolution`].
 //!
-//! Coverage here is deliberately partial (free functions, their nested blocks,
-//! nested functions, closures, `let` / `mut`, loop bindings, match-arm
-//! patterns). Impl methods, `let` destructuring, captures, and the full pattern
-//! grammar are #1049.
+//! The walk itself resolves only *lexically-bound* uses, to [`BindingId::Local`].
+//! A post-pass ([`classify_globals`]) then promotes any still-`Unresolved` use
+//! whose site the name resolver already bound to a global, reusing
+//! [`ResolvedNames::references`] so no independent resolution decision is taken.
+//! A use that is neither a lexical local nor a resolved global stays
+//! [`UnresolvedCause::NotInScope`]; [`UnresolvedCause::VisibilityDenied`] needs
+//! the typechecker's T0009 determination and is filled in at the post-inference
+//! freeze (#1051).
 //!
 //! [`LocalId`]: super::LocalId
 //! [`RefId`]: super::RefId
@@ -20,9 +21,10 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Pattern, Span, Stmt,
+    AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
+    TypeExpr,
 };
-use crate::name_resolver::ResolvedNames;
+use crate::name_resolver::{method_symbol_name, ResolvedNames};
 
 use super::lexical_path::{LexicalPath, LexicalSeg};
 use super::position::{PositionHit, PositionIndex};
@@ -44,8 +46,9 @@ pub struct Allocation {
 /// Assign structural identities to every binding and value reference in
 /// `decls`, the top-level declarations of the module at `module_path`.
 ///
-/// `names` is consumed read-only, only to map an owning function's spelling to
-/// its [`SymbolId`]; no resolution decision is taken from it here.
+/// `names` is read-only: it maps an owning function's spelling to its
+/// [`SymbolId`], and its span-keyed reference table drives the global-use
+/// post-pass ([`classify_globals`]).
 #[must_use]
 pub fn allocate_module(
     module_path: &[String],
@@ -58,40 +61,160 @@ pub fn allocate_module(
     let mut collision = CollisionGuard::default();
 
     for decl in decls {
-        let Decl::Fun(fun) = decl else { continue };
-        let key = (module_path.to_vec(), fun.name.clone());
-        let Some(&sym) = names.symbols.get(&key) else {
-            // A declared free function with no interned symbol should not
-            // happen; skip rather than fabricate an owner.
-            continue;
-        };
-        let mut walker = Walker {
-            owner: BindingId::Global(sym),
-            interner,
-            out: &mut out,
-            positions: &mut positions,
-            collision: &mut collision,
-            scopes: vec![Scope::default()],
-            path: LexicalPath::root(),
-            block_counter: vec![0],
-            closure_counter: vec![0],
-            use_counter: HashMap::new(),
-        };
-        for (i, param) in fun.params.iter().enumerate() {
-            walker.bind(
-                &param.name,
-                &param.span,
-                DefinitionKind::Param,
-                LexicalSeg::Param(u32::try_from(i).unwrap_or(u32::MAX)),
-            );
+        match decl {
+            Decl::Fun(fun) => {
+                let key = (module_path.to_vec(), fun.name.clone());
+                if let Some(&sym) = names.symbols.get(&key) {
+                    walk_body(
+                        BindingId::Global(sym),
+                        &fun.params,
+                        &fun.body,
+                        interner,
+                        &mut out,
+                        &mut positions,
+                        &mut collision,
+                    );
+                }
+            }
+            Decl::Impl(impl_block) => {
+                let TypeExpr::Named(target, _) = &impl_block.target_type else {
+                    continue;
+                };
+                for method in &impl_block.methods {
+                    let method_name =
+                        method_symbol_name(target, impl_block.aspect_name.as_deref(), &method.name);
+                    let key = (module_path.to_vec(), method_name);
+                    if let Some(&sym) = names.symbols.get(&key) {
+                        walk_body(
+                            BindingId::Global(sym),
+                            &method.params,
+                            &method.body,
+                            interner,
+                            &mut out,
+                            &mut positions,
+                            &mut collision,
+                        );
+                    }
+                }
+            }
+            Decl::Aspect(aspect) => {
+                // Only default method bodies have code to walk; a bodiless
+                // `fun name(...);` declaration binds nothing.
+                for method in &aspect.methods {
+                    let Some(body) = &method.default_body else {
+                        continue;
+                    };
+                    let method_name = method_symbol_name(&aspect.name, None, &method.name);
+                    let key = (module_path.to_vec(), method_name);
+                    if let Some(&sym) = names.symbols.get(&key) {
+                        walk_body(
+                            BindingId::Global(sym),
+                            &method.params,
+                            body,
+                            interner,
+                            &mut out,
+                            &mut positions,
+                            &mut collision,
+                        );
+                    }
+                }
+            }
+            _ => {}
         }
-        walker.walk_block(&fun.body);
     }
+
+    // The lexical walk resolves only lexically-bound uses. Reclassify each
+    // still-`Unresolved` use whose site the name resolver already bound to a
+    // global (`ResolvedNames::references`, keyed by reference-site span). A
+    // use that is neither a lexical local nor a resolved global stays
+    // `Unresolved { NotInScope }`; `VisibilityDenied` needs the typechecker's
+    // T0009 determination and is populated at the post-inference freeze (#1051).
+    classify_globals(&mut out, &positions, names);
 
     Allocation {
         resolution: out,
         positions: PositionIndex::from_entries(positions),
     }
+}
+
+/// Promote `Unresolved` references that the name resolver bound to a global
+/// declaration to `Resolved(BindingId::Global(_))`, using the resolver's own
+/// span-keyed reference table so this takes no independent resolution decision.
+fn classify_globals(
+    map: &mut ResolutionMap,
+    positions: &[(Span, PositionHit)],
+    names: &ResolvedNames,
+) {
+    for (span, hit) in positions {
+        let PositionHit::Reference(rid) = hit else {
+            continue;
+        };
+        let Some(Resolution::Unresolved(_)) = map.references.get(rid) else {
+            continue;
+        };
+        if let Some(&sym) = names.references.get(span) {
+            map.references
+                .insert(*rid, Resolution::Resolved(BindingId::Global(sym)));
+        }
+    }
+}
+
+/// Allocate every module in a graph-shaped declaration collection.
+///
+/// Module-local allocations are merged by identity. Owners are global symbols,
+/// whose module path is part of their identity, so structurally identical
+/// function bodies in different modules remain distinct.
+#[must_use]
+pub fn allocate_graph(
+    modules: &[(Vec<String>, &[Decl])],
+    names: &ResolvedNames,
+    interner: &mut NameInterner,
+) -> Allocation {
+    let mut resolution = ResolutionMap::default();
+    let mut positions = Vec::with_capacity(modules.len());
+    for (module_path, decls) in modules {
+        let allocation = allocate_module(module_path, decls, names, interner);
+        resolution.extend_from(allocation.resolution);
+        positions.push(allocation.positions);
+    }
+    Allocation {
+        resolution,
+        positions: PositionIndex::from_indices(positions),
+    }
+}
+
+/// Walk one function-shaped body (a free function, an impl method, or an aspect
+/// default method): bind its parameters, then walk its block.
+fn walk_body(
+    owner: BindingId,
+    params: &[Param],
+    body: &Block,
+    interner: &mut NameInterner,
+    out: &mut ResolutionMap,
+    positions: &mut Vec<(Span, PositionHit)>,
+    collision: &mut CollisionGuard,
+) {
+    let mut walker = Walker {
+        owner,
+        interner,
+        out,
+        positions,
+        collision,
+        scopes: vec![Scope::default()],
+        path: LexicalPath::root(),
+        block_counter: vec![0],
+        closure_counter: vec![0],
+        use_counter: HashMap::new(),
+    };
+    for (i, param) in params.iter().enumerate() {
+        walker.bind(
+            &param.name,
+            &param.span,
+            DefinitionKind::Param,
+            LexicalSeg::Param(u32::try_from(i).unwrap_or(u32::MAX)),
+        );
+    }
+    walker.walk_block(body);
 }
 
 /// One lexical scope: spelling → the binding it currently denotes.
@@ -407,12 +530,7 @@ impl Walker<'_> {
         }
     }
 
-    fn walk_closure(
-        &mut self,
-        captures: &[CaptureSpec],
-        params: &[crate::ast::Param],
-        body: &Block,
-    ) {
+    fn walk_closure(&mut self, captures: &[CaptureSpec], params: &[Param], body: &Block) {
         // Captures name bindings in the *enclosing* scope: record them as uses
         // before descending into the closure body.
         for cap in captures {
@@ -479,7 +597,9 @@ impl Walker<'_> {
                     self.path.pop();
                 }
             }
-            Pattern::Struct { fields, .. } | Pattern::Record { fields, .. } => {
+            Pattern::EnumVariant { fields, .. }
+            | Pattern::Struct { fields, .. }
+            | Pattern::Record { fields, .. } => {
                 for f in fields {
                     self.bind(
                         f,
@@ -506,7 +626,7 @@ impl Walker<'_> {
                     );
                 }
             }
-            Pattern::Wildcard(_) | Pattern::Literal(_, _) | Pattern::EnumVariant { .. } => {}
+            Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         }
     }
 
