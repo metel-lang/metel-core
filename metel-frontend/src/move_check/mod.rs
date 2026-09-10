@@ -1,10 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::ast::{GenericParam, Pattern, Polarity, ReceiverKind, Span};
+use crate::ast::{GenericParam, Polarity, ReceiverKind, Span};
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
-    TypedModuleGraph, TypedPlace, TypedStmt,
+    TypedModuleGraph, TypedPattern, TypedPlace, TypedStmt,
 };
 use crate::typeinference::{
     type_to_infer, AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx,
@@ -1319,7 +1319,7 @@ impl<'a> Checker<'a> {
 
     fn apply_pattern_moves(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         scrutinee: &TypedExpr,
         current_module: &[String],
         state: &mut FlowState,
@@ -1347,7 +1347,7 @@ impl<'a> Checker<'a> {
 
     fn apply_pattern_place_move(
         &mut self,
-        pattern: &Pattern,
+        pattern: &TypedPattern,
         place: &Place,
         root_ty: &Type,
         use_span: &Span,
@@ -1355,8 +1355,8 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         match pattern {
-            Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
-            Pattern::Binding(name, _) => {
+            TypedPattern::Wildcard(_) | TypedPattern::Literal(_, _) => {}
+            TypedPattern::Binding(name, _) => {
                 self.consume_place(
                     place,
                     root_ty,
@@ -1367,7 +1367,7 @@ impl<'a> Checker<'a> {
                 );
                 state.bind(name);
             }
-            Pattern::Tuple(items, _) => {
+            TypedPattern::Tuple(items, _) => {
                 for (index, item) in items.iter().enumerate() {
                     let child = place.clone().with_projection(Projection::TupleIndex(index));
                     self.apply_pattern_place_move(
@@ -1380,7 +1380,7 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            Pattern::Record { fields, .. } | Pattern::Struct { fields, .. } => {
+            TypedPattern::Record { fields, .. } => {
                 for field in fields {
                     let child = place
                         .clone()
@@ -1396,7 +1396,23 @@ impl<'a> Checker<'a> {
                     state.bind(field);
                 }
             }
-            Pattern::EnumVariant { fields, .. } => {
+            TypedPattern::Struct { fields, .. } => {
+                for (field, _id) in fields {
+                    let child = place
+                        .clone()
+                        .with_projection(Projection::Field(field.clone()));
+                    self.consume_place(
+                        &child,
+                        root_ty,
+                        use_span,
+                        current_module,
+                        state,
+                        MoveCause::Other,
+                    );
+                    state.bind(field);
+                }
+            }
+            TypedPattern::EnumVariant { fields, .. } => {
                 if !fields.is_empty() {
                     self.consume_place(
                         place,
@@ -1406,12 +1422,12 @@ impl<'a> Checker<'a> {
                         state,
                         MoveCause::Other,
                     );
-                    for field in fields {
+                    for (field, _id) in fields {
                         state.bind(field);
                     }
                 }
             }
-            Pattern::Array { elems, rest, .. } => {
+            TypedPattern::Array { elems, rest, .. } => {
                 for item in elems {
                     let child = place.clone().with_projection(Projection::OpaqueIndex);
                     self.apply_pattern_place_move(
@@ -1430,22 +1446,25 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn observe_pattern_bindings(pattern: &Pattern, state: &mut FlowState) {
+    fn observe_pattern_bindings(pattern: &TypedPattern, state: &mut FlowState) {
         match pattern {
-            Pattern::Binding(name, _) => state.bind(name),
-            Pattern::Tuple(items, _) => {
+            TypedPattern::Binding(name, _) => state.bind(name),
+            TypedPattern::Tuple(items, _) => {
                 for item in items {
                     Self::observe_pattern_bindings(item, state);
                 }
             }
-            Pattern::Record { fields, .. }
-            | Pattern::EnumVariant { fields, .. }
-            | Pattern::Struct { fields, .. } => {
+            TypedPattern::Record { fields, .. } => {
                 for field in fields {
                     state.bind(field);
                 }
             }
-            Pattern::Array { elems, rest, .. } => {
+            TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
+                for (field, _id) in fields {
+                    state.bind(field);
+                }
+            }
+            TypedPattern::Array { elems, rest, .. } => {
                 for item in elems {
                     Self::observe_pattern_bindings(item, state);
                 }
@@ -1453,7 +1472,7 @@ impl<'a> Checker<'a> {
                     state.bind(rest);
                 }
             }
-            Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
+            TypedPattern::Wildcard(_) | TypedPattern::Literal(_, _) => {}
         }
     }
 
@@ -2763,24 +2782,27 @@ fn format_span(span: &Span) -> String {
     format!("{}:{}:{}", span.filename, span.line, span.col)
 }
 
-fn bind_pattern_names(pattern: &Pattern, into: &mut HashSet<String>) {
+fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
     match pattern {
-        Pattern::Binding(name, _) => {
+        TypedPattern::Binding(name, _) => {
             into.insert(name.clone());
         }
-        Pattern::Tuple(items, _) => {
+        TypedPattern::Tuple(items, _) => {
             for item in items {
                 bind_pattern_names(item, into);
             }
         }
-        Pattern::EnumVariant { fields, .. }
-        | Pattern::Struct { fields, .. }
-        | Pattern::Record { fields, .. } => {
+        TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
+            for (field, _id) in fields {
+                into.insert(field.clone());
+            }
+        }
+        TypedPattern::Record { fields, .. } => {
             for field in fields {
                 into.insert(field.clone());
             }
         }
-        Pattern::Array { elems, rest, .. } => {
+        TypedPattern::Array { elems, rest, .. } => {
             for item in elems {
                 bind_pattern_names(item, into);
             }
@@ -2788,7 +2810,7 @@ fn bind_pattern_names(pattern: &Pattern, into: &mut HashSet<String>) {
                 into.insert(rest.clone());
             }
         }
-        Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
+        TypedPattern::Wildcard(_) | TypedPattern::Literal(_, _) => {}
     }
 }
 

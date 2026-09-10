@@ -44,9 +44,9 @@ pub struct Analysis {
     /// Identity for every declared struct field and enum variant
     /// (`FieldId` / `VariantId`), keyed by `(owning SymbolId, member name)`
     /// — the interning milestone of the resolution freeze (metel-core#1051,
-    /// ADR-0054 step 3). Field accesses and enum-variant literals on the typed
-    /// IR carry the matching id (metel-core#1062); pattern member sites still do
-    /// not (metel-core#1063).
+    /// ADR-0054 step 3). Field accesses, enum-variant literals, and match
+    /// patterns on the typed IR carry the matching id (metel-core#1062 /
+    /// #1062b).
     pub members: MemberTable,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
@@ -254,7 +254,7 @@ mod tests {
 
     mod member_ids_on_typed_ir {
         use super::*;
-        use crate::typed_ast::{FunBody, TypedDecl, TypedExpr};
+        use crate::typed_ast::{FunBody, TypedDecl, TypedExpr, TypedMatchArm, TypedPattern};
 
         fn analyze(src: &str) -> Analysis {
             let provider = InMemorySourceProvider::new("editor.mtl", src);
@@ -381,6 +381,100 @@ mod tests {
                 *field_id, None,
                 "no id for a type the member table never saw"
             );
+        }
+
+        // ── pattern member sites (#1062b) ─────────────────────────────────────
+
+        /// Arms of the single `match` that is the tail of the root function
+        /// `fn_name`.
+        fn match_arms<'a>(analysis: &'a Analysis, fn_name: &str) -> &'a [TypedMatchArm] {
+            match tail_expr(analysis, fn_name) {
+                TypedExpr::Match(m) => &m.arms,
+                _ => panic!("`{fn_name}` tail should be a match"),
+            }
+        }
+
+        #[test]
+        fn enum_variant_patterns_carry_the_interned_variant_and_field_ids() {
+            let analysis = analyze(
+                "enum Sig { Halt, Go { code: i64 } }\n\
+                 fun handle(s: Sig) -> i64 {\n\
+                 \tmatch (s) {\n\
+                 \t\tSig::Halt => 0,\n\
+                 \t\tSig::Go { code } => code,\n\
+                 \t}\n\
+                 }\n",
+            );
+            let sig = root_sym(&analysis, "Sig");
+            let arms = match_arms(&analysis, "handle");
+
+            let TypedPattern::EnumVariant {
+                variant_id, fields, ..
+            } = &arms[0].pattern
+            else {
+                panic!("arm 0 should be an enum-variant pattern");
+            };
+            assert_eq!(*variant_id, analysis.members.variant(sig, "Halt"));
+            assert!(fields.is_empty());
+
+            let TypedPattern::EnumVariant {
+                variant_id, fields, ..
+            } = &arms[1].pattern
+            else {
+                panic!("arm 1 should be an enum-variant pattern");
+            };
+            assert_eq!(*variant_id, analysis.members.variant(sig, "Go"));
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].0, "code");
+            assert_eq!(
+                fields[0].1,
+                analysis.members.field(sig, "Go::code"),
+                "variant fields are interned variant-qualified on the enum owner"
+            );
+        }
+
+        #[test]
+        fn struct_pattern_carries_the_interned_field_ids() {
+            let analysis = analyze(
+                "struct Pt { x: i64, y: i64 }\n\
+                 fun sum(p: Pt) -> i64 {\n\
+                 \tmatch (p) {\n\
+                 \t\tPt { x, y } => x + y,\n\
+                 \t}\n\
+                 }\n",
+            );
+            let pt = root_sym(&analysis, "Pt");
+            let TypedPattern::Struct {
+                type_id, fields, ..
+            } = &match_arms(&analysis, "sum")[0].pattern
+            else {
+                panic!("expected a struct pattern");
+            };
+            assert_eq!(*type_id, Some(pt));
+            let by_name: std::collections::HashMap<_, _> =
+                fields.iter().map(|(n, id)| (n.as_str(), *id)).collect();
+            assert_eq!(by_name["x"], analysis.members.field(pt, "x"));
+            assert_eq!(by_name["y"], analysis.members.field(pt, "y"));
+            assert!(by_name["x"].is_some() && by_name["y"].is_some());
+        }
+
+        #[test]
+        fn structural_record_pattern_has_no_nominal_field_channel() {
+            // A bare `{ .. }` record pattern is structural: its labels are
+            // `LabelId`s, never nominal `FieldId`s (ADR-0054), so the typed
+            // pattern carries plain spellings with no id slot to fabricate.
+            let analysis = analyze(
+                "fun mag(p: { x: i64, y: i64 }) -> i64 {\n\
+                 \tmatch (p) {\n\
+                 \t\t{ x, y } => x + y,\n\
+                 \t}\n\
+                 }\n",
+            );
+            let TypedPattern::Record { fields, .. } = &match_arms(&analysis, "mag")[0].pattern
+            else {
+                panic!("expected a structural record pattern");
+            };
+            assert_eq!(fields, &["x".to_string(), "y".to_string()]);
         }
     }
 

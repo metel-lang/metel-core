@@ -3,7 +3,7 @@ use super::{
     construct_expr, infer_type_to_type, peel_type_references, type_to_infer, unify, ConstructCtx,
     EnumInfo, HashMap, InferType, Literal, MatchExpr, MetelError, Pattern, Span, Substitution,
     Type, TypeDefinitionRegistry, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr, TypedMatchArm,
-    TypedMatchExpr, TypedStmt, VariantInfo,
+    TypedMatchExpr, TypedPattern, TypedStmt, VariantInfo,
 };
 
 pub(super) fn builtin_pattern_method_expr(
@@ -150,8 +150,9 @@ pub(super) fn construct_match(
             None => None,
         };
         let body = construct_block(&arm.body, expected_ty, ctx)?;
+        let typed_pattern = lower_typed_pattern(&pattern, ctx);
         typed_arms.push(TypedMatchArm {
-            pattern,
+            pattern: typed_pattern,
             guard,
             body,
             span: arm.span.clone(),
@@ -189,6 +190,82 @@ pub(super) fn construct_match(
         expr_type,
         span: m.span.clone(),
     }))
+}
+
+/// Lower a resolution-rewritten `ast::Pattern` to a `TypedPattern`, stamping
+/// each nominal member site (ADR-0054 / #1062b) with its interned `FieldId` /
+/// `VariantId` from `ctx.members`. The owner `SymbolId` is resolved from the
+/// pattern's own nominal spelling — `construct_match` has already rewritten bare
+/// top-level variants/structs to their qualified form, and nested variant
+/// patterns are required to be written qualified — so no scrutinee-type context
+/// is needed here. `None` at any member site is the sanctioned recovery state
+/// (no member table, or a member the table never interned, e.g. a block-local
+/// type); it is never a fabricated id.
+fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
+    match pattern {
+        Pattern::Wildcard(span) => TypedPattern::Wildcard(span.clone()),
+        Pattern::Literal(lit, span) => TypedPattern::Literal(lit.clone(), span.clone()),
+        Pattern::Binding(name, span) => TypedPattern::Binding(name.clone(), span.clone()),
+        Pattern::EnumVariant {
+            path,
+            fields,
+            rest,
+            span,
+        } => {
+            // `path` is `[.., Enum, Variant]` after resolution rewriting.
+            let (enum_name, variant_name) = match path.as_slice() {
+                [.., e, v] => (Some(e.as_str()), v.as_str()),
+                [v] => (None, v.as_str()),
+                [] => (None, ""),
+            };
+            let enum_id = enum_name.and_then(|e| ctx.type_symbol_id(e));
+            let variant_id = ctx.variant_id_for(enum_id, variant_name);
+            let fields = fields
+                .iter()
+                .map(|f| (f.clone(), ctx.variant_field_id(enum_id, variant_name, f)))
+                .collect();
+            TypedPattern::EnumVariant {
+                path: path.clone(),
+                variant_id,
+                fields,
+                rest: *rest,
+                span: span.clone(),
+            }
+        }
+        Pattern::Struct {
+            name,
+            fields,
+            rest,
+            span,
+        } => {
+            let type_id = ctx.type_symbol_id(name);
+            let fields = fields
+                .iter()
+                .map(|f| (f.clone(), ctx.member_field_id(type_id, f)))
+                .collect();
+            TypedPattern::Struct {
+                name: name.clone(),
+                type_id,
+                fields,
+                rest: *rest,
+                span: span.clone(),
+            }
+        }
+        Pattern::Record { fields, rest, span } => TypedPattern::Record {
+            fields: fields.clone(),
+            rest: *rest,
+            span: span.clone(),
+        },
+        Pattern::Tuple(pats, span) => TypedPattern::Tuple(
+            pats.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
+            span.clone(),
+        ),
+        Pattern::Array { elems, rest, span } => TypedPattern::Array {
+            elems: elems.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
+            rest: rest.clone(),
+            span: span.clone(),
+        },
+    }
 }
 
 /// RFC-0078: a block's own type when used as an expression (`if`/`match` branch
@@ -334,12 +411,12 @@ pub(super) fn check_match_exhaustiveness(
         Type::SizedArray(_, n) => arms.iter().any(|a| {
             a.guard.is_none()
                 && match &a.pattern {
-                    Pattern::Array {
+                    TypedPattern::Array {
                         elems,
                         rest: Some(_),
                         ..
                     } => elems.iter().all(is_catch_all_pattern),
-                    Pattern::Array {
+                    TypedPattern::Array {
                         elems, rest: None, ..
                     } => elems.len() as u64 == *n && elems.iter().all(is_catch_all_pattern),
                     _ => false,
@@ -358,7 +435,7 @@ pub(super) fn check_match_exhaustiveness(
     Ok(())
 }
 
-pub(super) fn is_catch_all_pattern(pattern: &Pattern) -> bool {
+pub(super) fn is_catch_all_pattern(pattern: &TypedPattern) -> bool {
     match pattern {
         // A struct pattern, like `Record`, is irrefutable by construction: field
         // sub-patterns here are always plain bindings (no `field: subpattern` form),
@@ -366,14 +443,14 @@ pub(super) fn is_catch_all_pattern(pattern: &Pattern) -> bool {
         // trailing `..` (RFC-0032 §5) before this point is ever reached -- so an
         // unguarded arm with one always covers the entire struct type, regardless of
         // which fields it names.
-        Pattern::Wildcard(_)
-        | Pattern::Binding(_, _)
-        | Pattern::Record { .. }
-        | Pattern::Struct { .. } => true,
+        TypedPattern::Wildcard(_)
+        | TypedPattern::Binding(_, _)
+        | TypedPattern::Record { .. }
+        | TypedPattern::Struct { .. } => true,
         // A tuple pattern is irrefutable when every element is also irrefutable.
-        Pattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
+        TypedPattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
-        Pattern::Array {
+        TypedPattern::Array {
             elems,
             rest: Some(_),
             ..
@@ -382,18 +459,18 @@ pub(super) fn is_catch_all_pattern(pattern: &Pattern) -> bool {
     }
 }
 
-pub(super) fn is_bool_literal_pattern(pattern: &Pattern, expected: bool) -> bool {
-    matches!(pattern, Pattern::Literal(Literal::Boolean(b), _) if *b == expected)
+pub(super) fn is_bool_literal_pattern(pattern: &TypedPattern, expected: bool) -> bool {
+    matches!(pattern, TypedPattern::Literal(Literal::Boolean(b), _) if *b == expected)
 }
 
 /// Returns true if `pattern` (unguarded) covers variant `variant_name` of enum `enum_name`.
 pub(super) fn pattern_covers_variant(
-    pattern: &Pattern,
+    pattern: &TypedPattern,
     enum_name: &str,
     variant_name: &str,
 ) -> bool {
     match pattern {
-        Pattern::EnumVariant { path, .. } => {
+        TypedPattern::EnumVariant { path, .. } => {
             path.first().map(String::as_str) == Some(enum_name)
                 && path.get(1).map(String::as_str) == Some(variant_name)
         }

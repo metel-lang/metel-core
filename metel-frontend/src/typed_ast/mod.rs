@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use crate::ast::{
     AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
-    Pattern, Polarity, Span, TypeExpr, UnaryOp, VariantDef,
+    Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
 use crate::identity::{FieldId, VariantId};
 use crate::symbols::SymbolId;
@@ -600,6 +600,59 @@ impl TypedExpr {
 
 // ── Typed Match ───────────────────────────────────────────────────────────────
 
+/// Mirrors `ast::Pattern`, but every nominal member site carries its interned
+/// identity (ADR-0054 / #1062): a struct/enum-variant pattern records the
+/// `FieldId` / `VariantId` the checker resolved, so no later phase re-derives a
+/// member from its source spelling. `None` is the sanctioned diagnostic-recovery
+/// state (no identity context, or a member the table never interned — e.g. a
+/// block-local type); it is never a fabricated id. The spelling is retained
+/// alongside the id for diagnostics and the pre-#1052 evaluator, which still
+/// keys the runtime `Value`'s fields by name.
+#[derive(Debug, Clone)]
+pub enum TypedPattern {
+    Wildcard(Span),
+    Literal(Literal, Span),
+    Binding(String, Span),
+    /// A genuine (two-segment) enum-variant pattern. `path` is
+    /// `[.., Enum, Variant]`; one-segment bare variants are rewritten to this
+    /// form (or to [`TypedPattern::Struct`]) before lowering, exactly as the
+    /// untyped pass does.
+    EnumVariant {
+        path: Vec<String>,
+        /// Identity of the matched variant, keyed by `(enum SymbolId, variant
+        /// name)`.
+        variant_id: Option<VariantId>,
+        /// Bound field spellings, each with the id of the variant field it
+        /// names (keyed by `(enum SymbolId, "Variant::field")`).
+        fields: Vec<(String, Option<FieldId>)>,
+        rest: bool,
+        span: Span,
+    },
+    /// A named struct pattern (`Point { x, y }`, `Token { kind, .. }`).
+    Struct {
+        name: String,
+        /// Identity of the matched struct declaration.
+        type_id: Option<SymbolId>,
+        /// Bound field spellings, each with the id of the struct field it names.
+        fields: Vec<(String, Option<FieldId>)>,
+        rest: bool,
+        span: Span,
+    },
+    /// A bare, unnamed record pattern (`{ x, y }`) — structural, so its labels
+    /// carry no nominal `FieldId` (row labels are `LabelId`, ADR-0054).
+    Record {
+        fields: Vec<String>,
+        rest: bool,
+        span: Span,
+    },
+    Tuple(Vec<TypedPattern>, Span),
+    Array {
+        elems: Vec<TypedPattern>,
+        rest: Option<String>,
+        span: Span,
+    },
+}
+
 /// Mirrors `ast::MatchExpr` with typed expressions.
 #[derive(Debug, Clone)]
 pub struct TypedMatchExpr {
@@ -612,7 +665,9 @@ pub struct TypedMatchExpr {
 /// Mirrors `ast::MatchArm` with typed expressions.
 #[derive(Debug, Clone)]
 pub struct TypedMatchArm {
-    pub pattern: Pattern, // Patterns don't contain expressions, reuse as-is
+    /// Resolved-identity pattern (ADR-0054 / #1062): member sites carry their
+    /// interned `FieldId` / `VariantId`.
+    pub pattern: TypedPattern,
     pub guard: Option<TypedExpr>,
     pub body: TypedBlock,
     #[allow(dead_code)] // kept for future error messages

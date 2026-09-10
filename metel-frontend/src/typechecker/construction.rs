@@ -12,8 +12,8 @@ use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedAspectDecl, TypedBlock, TypedBreakExpr, TypedDecl, TypedEnumDecl,
     TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedFunDecl, TypedImplBlock,
-    TypedLetDecl, TypedMatchArm, TypedMatchExpr, TypedMutDecl, TypedPlace, TypedProgram,
-    TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
+    TypedLetDecl, TypedMatchArm, TypedMatchExpr, TypedMutDecl, TypedPattern, TypedPlace,
+    TypedProgram, TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::typeinference::{
     self, unify, EnumInfo, GenericBound, InferType, RowConstraint, Substitution,
@@ -395,6 +395,28 @@ impl<'a> ConstructCtx<'a> {
     /// or for a variant the table never interned — never a fabricated id.
     fn variant_id_for(&self, enum_id: Option<SymbolId>, variant: &str) -> Option<VariantId> {
         self.members?.variant(enum_id?, variant)
+    }
+
+    /// Interned identity of a struct field named in a pattern (ADR-0054 /
+    /// #1062b). `owner` is the struct declaration `SymbolId` resolved from the
+    /// pattern's own nominal spelling. `None` without a member table or for an
+    /// un-interned member (e.g. a block-local struct) — never fabricated.
+    fn member_field_id(&self, owner: Option<SymbolId>, field: &str) -> Option<FieldId> {
+        self.members?.field(owner?, field)
+    }
+
+    /// Interned identity of an enum-variant field named in a pattern. Variant
+    /// fields are interned on the enum owner under the variant-qualified key
+    /// `"Variant::field"` so `V.x` and `W.x` stay distinct (see
+    /// `identity::collect_members`).
+    fn variant_field_id(
+        &self,
+        enum_id: Option<SymbolId>,
+        variant: &str,
+        field: &str,
+    ) -> Option<FieldId> {
+        self.members?
+            .field(enum_id?, &format!("{variant}::{field}"))
     }
 
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
@@ -1307,6 +1329,27 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
     }
 }
 
+/// A synthetic single-field `Result::<variant>` pattern for the `?` desugar,
+/// carrying the interned variant / field identities (ADR-0054 / #1062b).
+fn result_variant_pattern(
+    ctx: &ConstructCtx,
+    variant: &str,
+    field: &str,
+    span: &Span,
+) -> TypedPattern {
+    let result_id = Some(crate::symbols::SYM_TYPE_RESULT);
+    TypedPattern::EnumVariant {
+        path: vec!["Result".to_string(), variant.to_string()],
+        variant_id: ctx.variant_id_for(result_id, variant),
+        fields: vec![(
+            field.to_string(),
+            ctx.variant_field_id(result_id, variant, field),
+        )],
+        rest: false,
+        span: span.clone(),
+    }
+}
+
 fn construct_propagate_error(
     expr: &Expr,
     span: &Span,
@@ -1347,12 +1390,7 @@ fn construct_propagate_error(
     };
 
     let ok_arm = TypedMatchArm {
-        pattern: Pattern::EnumVariant {
-            path: vec!["Result".to_string(), "Ok".to_string()],
-            fields: vec!["value".to_string()],
-            rest: false,
-            span: span.clone(),
-        },
+        pattern: result_variant_pattern(ctx, "Ok", "value", span),
         guard: None,
         body: TypedBlock {
             stmts: vec![],
@@ -1381,12 +1419,7 @@ fn construct_propagate_error(
         }
     };
     let err_arm = TypedMatchArm {
-        pattern: Pattern::EnumVariant {
-            path: vec!["Result".to_string(), "Err".to_string()],
-            fields: vec!["error".to_string()],
-            rest: false,
-            span: span.clone(),
-        },
+        pattern: result_variant_pattern(ctx, "Err", "error", span),
         guard: None,
         body: TypedBlock {
             stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Expr(

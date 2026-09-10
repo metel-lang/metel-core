@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{Literal, Pattern};
+use crate::ast::Literal;
+use crate::typed_ast::TypedPattern;
 
 use super::Value;
 
@@ -15,14 +16,14 @@ use super::Value;
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
 pub(super) fn match_pattern(
-    pattern: &Pattern,
+    pattern: &TypedPattern,
     value: &Value,
     out: &mut HashMap<String, Value>,
 ) -> bool {
     match pattern {
-        Pattern::Wildcard(_) => true,
+        TypedPattern::Wildcard(_) => true,
 
-        Pattern::Literal(lit, _) => match (lit, value) {
+        TypedPattern::Literal(lit, _) => match (lit, value) {
             (Literal::Int(a), Value::I64(b)) => a == b,
             (Literal::Float(a), Value::F64(b)) => a == b,
             (Literal::Char(a), Value::Char(b)) => a == b,
@@ -52,12 +53,12 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        Pattern::Binding(name, _) => {
+        TypedPattern::Binding(name, _) => {
             out.insert(name.clone(), value.clone());
             true
         }
 
-        Pattern::Tuple(sub_patterns, _) => match value {
+        TypedPattern::Tuple(sub_patterns, _) => match value {
             Value::Tuple(elems) if elems.len() == sub_patterns.len() => sub_patterns
                 .iter()
                 .zip(elems.iter())
@@ -65,7 +66,7 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        Pattern::EnumVariant { path, fields, .. } => {
+        TypedPattern::EnumVariant { path, fields, .. } => {
             let type_name = if path.len() >= 2 {
                 path[path.len() - 2].as_str()
             } else {
@@ -79,7 +80,10 @@ pub(super) fn match_pattern(
                     fields: enum_fields,
                     ..
                 } if name == type_name && variant == variant_name => {
-                    for field_name in fields {
+                    // Runtime `Value::Enum` fields are still name-keyed; the
+                    // pattern's `FieldId`s wait on the evaluator's id-indexed
+                    // frames (#1052).
+                    for (field_name, _id) in fields {
                         match enum_fields.get(field_name) {
                             Some(v) => {
                                 out.insert(field_name.clone(), v.clone());
@@ -99,7 +103,7 @@ pub(super) fn match_pattern(
         // the pattern must name every one of the struct's fields (already enforced
         // as a static exhaustiveness check in inference.rs, checked again here since
         // a Value carries no static guarantee of its own field count).
-        Pattern::Struct {
+        TypedPattern::Struct {
             name, fields, rest, ..
         } => match value {
             Value::Struct {
@@ -110,7 +114,7 @@ pub(super) fn match_pattern(
                 if !rest && struct_fields.len() != fields.len() {
                     return false;
                 }
-                for field_name in fields {
+                for (field_name, _id) in fields {
                     match struct_fields.get(field_name) {
                         Some(v) => {
                             out.insert(field_name.clone(), v.clone());
@@ -127,7 +131,7 @@ pub(super) fn match_pattern(
         // names -- the runtime value for a row-bounded generic parameter (`<record T:
         // { x: f64, .. }>`) is an ordinary `Value::Record` like any other, so the same
         // subset-match `Pattern::Struct` already does above applies here verbatim.
-        Pattern::Record { fields, rest, .. } => match value {
+        TypedPattern::Record { fields, rest, .. } => match value {
             Value::Record {
                 fields: record_fields,
             } => {
@@ -147,7 +151,7 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        Pattern::Array { elems, rest, .. } => {
+        TypedPattern::Array { elems, rest, .. } => {
             match value {
                 Value::Array(rc) => {
                     let arr = rc.borrow();
