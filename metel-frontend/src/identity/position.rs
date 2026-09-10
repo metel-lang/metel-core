@@ -70,6 +70,22 @@ impl PositionIndex {
             .map(|(_, hit)| *hit)
     }
 
+    /// The source span recorded for `hit`, if this index carries it. Used to
+    /// turn a `RefId` / `BindingId` back into a location for a find-references
+    /// result.
+    #[must_use]
+    pub fn span_of(&self, hit: PositionHit) -> Option<&Span> {
+        self.entries
+            .iter()
+            .find(|(_, h)| *h == hit)
+            .map(|(span, _)| span)
+    }
+
+    /// Every indexed `(span, hit)` site, innermost-span order per start offset.
+    pub fn sites(&self) -> impl Iterator<Item = (&Span, PositionHit)> {
+        self.entries.iter().map(|(span, hit)| (span, *hit))
+    }
+
     /// Number of indexed sites (definitions + references).
     #[must_use]
     pub fn len(&self) -> usize {

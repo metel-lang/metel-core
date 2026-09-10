@@ -5,6 +5,7 @@
 //! conversion; the frontend owns the meaning of a source position.
 
 use crate::ast::Span;
+use crate::identity::{BindingId, PositionHit, PositionIndex, ResolutionMap};
 use crate::name_resolver::ResolvedNames;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
@@ -17,6 +18,75 @@ use crate::typed_ast::{
 pub struct Definition<'a> {
     pub symbol_id: SymbolId,
     pub span: &'a Span,
+}
+
+/// A go-to-definition target that may be a lexical binding or a global
+/// declaration — the identity-based successor to [`Definition`], covering
+/// locals and module-qualified paths (metel-core#1050).
+#[derive(Debug, Clone, Copy)]
+pub struct DefinitionSite<'a> {
+    /// The binding this position refers to.
+    pub binding: BindingId,
+    /// Its declaration span.
+    pub span: &'a Span,
+}
+
+/// The binding the identifier/path at `byte_offset` refers to, from the
+/// identity resolution map — a lexical `LocalId` or a global `SymbolId`.
+/// `None` for whitespace, comments, and unresolved names.
+#[must_use]
+pub fn binding_at(
+    resolution: &ResolutionMap,
+    positions: &PositionIndex,
+    filename: &str,
+    byte_offset: usize,
+) -> Option<BindingId> {
+    match positions.resolve(filename, byte_offset)? {
+        PositionHit::Definition(binding) => Some(binding),
+        PositionHit::Reference(rid) => resolution.references.get(&rid)?.binding(),
+    }
+}
+
+/// Resolve the identifier/path at `byte_offset` to where it is defined.
+///
+/// Unlike [`definition_at`], this covers lexical locals (via `LocalId`) and
+/// module-qualified / imported globals (via `SymbolId`) uniformly, using the
+/// identity map rather than a text match.
+#[must_use]
+pub fn definition<'a>(
+    resolution: &'a ResolutionMap,
+    positions: &PositionIndex,
+    names: &'a ResolvedNames,
+    filename: &str,
+    byte_offset: usize,
+) -> Option<DefinitionSite<'a>> {
+    let binding = binding_at(resolution, positions, filename, byte_offset)?;
+    let span = match binding {
+        BindingId::Local(_) => &resolution.definitions.get(&binding)?.span,
+        BindingId::Global(sym) => names.definitions.get(&sym)?,
+    };
+    Some(DefinitionSite { binding, span })
+}
+
+/// Every use site of the binding at `byte_offset` (find-references). Includes
+/// uses only; the definition site is available from [`definition`]. Empty when
+/// the position is not on a resolved binding.
+#[must_use]
+pub fn references<'a>(
+    resolution: &ResolutionMap,
+    positions: &'a PositionIndex,
+    filename: &str,
+    byte_offset: usize,
+) -> Vec<&'a Span> {
+    let Some(binding) = binding_at(resolution, positions, filename, byte_offset) else {
+        return Vec::new();
+    };
+    let mut spans: Vec<&Span> = resolution
+        .references_to(binding)
+        .filter_map(|rid| positions.span_of(PositionHit::Reference(rid)))
+        .collect();
+    spans.sort_by_key(|s| (s.filename.clone(), s.start));
+    spans
 }
 
 /// Return the innermost typed expression containing `byte_offset` in `filename`.
@@ -39,13 +109,13 @@ pub fn expr_at<'a>(
     })
 }
 
-/// Resolve a bare identifier reference at `byte_offset` to its declaration.
+/// Resolve a bare top-level / imported identifier reference at `byte_offset` to
+/// its declaration, using the name resolver's span-keyed reference table.
 ///
-/// The current resolver records stable identities for bare top-level and
-/// imported identifiers. Module-qualified paths are intentionally not reported
-/// yet: their identity is available during normalization but is not retained in
-/// `TypedExpr::Path`; that preservation is the follow-up required for path
-/// definition queries. Local bindings likewise need stable local identities.
+/// This is the pre-#1050 query: it sees only bare global references. For
+/// locals, module-qualified paths, and find-references, use [`definition`] /
+/// [`references`], which consume the identity [`ResolutionMap`]
+/// (metel-core#1050).
 #[must_use]
 pub fn definition_at<'a>(
     names: &'a ResolvedNames,
@@ -266,5 +336,70 @@ mod tests {
             .expect("top-level reference should resolve");
         assert_eq!(definition.span.filename, "editor.mtl");
         assert!(definition.span.start < offset);
+    }
+
+    // ── identity-based queries (metel-core#1050) ────────────────────────────
+
+    #[test]
+    fn definition_resolves_a_local_binding_use_to_its_let() {
+        let source = "fun main() -> i64 { let total := 41; total + 1 }";
+        let analysis = analysis(source);
+        let let_at = source.find("total").expect("binding");
+        let use_at = source.rfind("total").expect("use");
+
+        let site = analysis
+            .definition_at("editor.mtl", use_at + 1)
+            .expect("a use of a local resolves");
+        assert!(
+            matches!(site.binding, BindingId::Local(_)),
+            "a local use resolves to a LocalId, not a SymbolId"
+        );
+        assert!(
+            site.span.start <= let_at && let_at < site.span.end,
+            "the definition span covers the `let total` binding site"
+        );
+        assert!(
+            site.span.start < use_at,
+            "the definition is upstream of the use"
+        );
+    }
+
+    #[test]
+    fn definition_resolves_a_global_use_to_its_declaration() {
+        let source = "fun helper() -> i64 { 1 } fun main() -> i64 { helper() }";
+        let analysis = analysis(source);
+        let decl_at = source.find("helper").expect("decl");
+        let use_at = source.rfind("helper").expect("call");
+
+        let site = analysis
+            .definition_at("editor.mtl", use_at + 1)
+            .expect("a use of a global resolves");
+        assert!(matches!(site.binding, BindingId::Global(_)));
+        assert!(
+            site.span.start <= decl_at && decl_at < site.span.end,
+            "the definition span covers the `fun helper` declaration"
+        );
+        assert!(site.span.start < use_at);
+    }
+
+    #[test]
+    fn references_finds_every_use_of_a_local_binding() {
+        let source = "fun main() -> i64 { let n := 2; n + n + n }";
+        let analysis = analysis(source);
+        let use_at = source.find("n +").expect("first use");
+
+        let refs = analysis.references_at("editor.mtl", use_at);
+        assert_eq!(refs.len(), 3, "`n` is used three times");
+        assert!(refs.iter().all(|s| s.filename == "editor.mtl"));
+    }
+
+    #[test]
+    fn identity_queries_return_none_off_a_name() {
+        let source = "fun main() -> i64 { let x := 1;   x }";
+        let analysis = analysis(source);
+        let ws = source.find(";   ").expect("gap") + 2; // inside the run of spaces
+
+        assert!(analysis.definition_at("editor.mtl", ws).is_none());
+        assert!(analysis.references_at("editor.mtl", ws).is_empty());
     }
 }

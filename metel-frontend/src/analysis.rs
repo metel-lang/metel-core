@@ -9,6 +9,7 @@ use std::path::Path;
 
 use crate::coherence;
 use crate::error::MetelError;
+use crate::identity::{self, NameInterner, PositionIndex, ResolutionMap};
 use crate::module_loader::{self, ModuleGraph, SourceProvider};
 use crate::move_check;
 use crate::name_resolver::{self, ResolvedNames};
@@ -30,8 +31,54 @@ pub struct Analysis {
     pub graph: TypedModuleGraph,
     /// Name-resolution facts, including definition and reference tables.
     pub names: ResolvedNames,
+    /// Structural binding identities for every lexical binding and value
+    /// reference (metel-core#1049). Identity-keyed; carries no source spans.
+    pub resolution: ResolutionMap,
+    /// Byte-offset → identity index for this snapshot (metel-core#1048). The
+    /// only position-keyed structure; rebuilt per analysis, never a semantic
+    /// input.
+    pub positions: PositionIndex,
+    /// The interner used to build `resolution`, for turning a `NameId` back
+    /// into a spelling.
+    pub name_interner: NameInterner,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
+}
+
+impl Analysis {
+    /// The innermost typed expression at a byte offset — hover.
+    #[must_use]
+    pub fn hover_at(
+        &self,
+        filename: &str,
+        byte_offset: usize,
+    ) -> Option<&crate::typed_ast::TypedExpr> {
+        crate::query::expr_at(&self.graph, filename, byte_offset)
+    }
+
+    /// Where the identifier/path at a byte offset is defined — go-to-definition,
+    /// covering lexical locals and module-qualified / imported globals
+    /// (metel-core#1050).
+    #[must_use]
+    pub fn definition_at(
+        &self,
+        filename: &str,
+        byte_offset: usize,
+    ) -> Option<crate::query::DefinitionSite<'_>> {
+        crate::query::definition(
+            &self.resolution,
+            &self.positions,
+            &self.names,
+            filename,
+            byte_offset,
+        )
+    }
+
+    /// Every use site of the binding at a byte offset — find-references.
+    #[must_use]
+    pub fn references_at(&self, filename: &str, byte_offset: usize) -> Vec<&crate::ast::Span> {
+        crate::query::references(&self.resolution, &self.positions, filename, byte_offset)
+    }
 }
 
 /// The result of an editor-oriented analysis attempt.
@@ -139,6 +186,17 @@ pub fn analyze_virtual_root_with_diagnostics<P: SourceProvider>(
 
 fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysis, MetelError> {
     let names = name_resolver::resolve(&graph)?;
+
+    // Structural identities are derived from the parsed graph, so allocate them
+    // before `path_normalizer::normalize` consumes `graph`.
+    let mut name_interner = NameInterner::new();
+    let identity_modules: Vec<(Vec<String>, &[crate::ast::Decl])> = graph
+        .modules
+        .iter()
+        .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
+        .collect();
+    let identity = identity::allocate_graph(&identity_modules, &names, &mut name_interner);
+
     let normalized = path_normalizer::normalize(graph, &names)?;
     coherence::check(&normalized, &names)?;
     let report =
@@ -152,6 +210,9 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
     Ok(Analysis {
         graph: report.graph,
         names,
+        resolution: identity.resolution,
+        positions: identity.positions,
+        name_interner,
         warnings,
     })
 }
