@@ -211,6 +211,7 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
         Pattern::EnumVariant {
             path,
             fields,
+            field_spans,
             rest,
             span,
         } => {
@@ -224,7 +225,14 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
             let variant_id = ctx.variant_id_for(enum_id, variant_name);
             let fields = fields
                 .iter()
-                .map(|f| (f.clone(), ctx.variant_field_id(enum_id, variant_name, f)))
+                .enumerate()
+                .map(|(i, f)| {
+                    (
+                        f.clone(),
+                        ctx.variant_field_id(enum_id, variant_name, f),
+                        field_spans.get(i).and_then(|s| ctx.local_binding_at(s)),
+                    )
+                })
                 .collect();
             TypedPattern::EnumVariant {
                 path: path.clone(),
@@ -237,13 +245,21 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
         Pattern::Struct {
             name,
             fields,
+            field_spans,
             rest,
             span,
         } => {
             let type_id = ctx.type_symbol_id(name);
             let fields = fields
                 .iter()
-                .map(|f| (f.clone(), ctx.member_field_id(type_id, f)))
+                .enumerate()
+                .map(|(i, f)| {
+                    (
+                        f.clone(),
+                        ctx.member_field_id(type_id, f),
+                        field_spans.get(i).and_then(|s| ctx.local_binding_at(s)),
+                    )
+                })
                 .collect();
             TypedPattern::Struct {
                 name: name.clone(),
@@ -253,8 +269,22 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
                 span: span.clone(),
             }
         }
-        Pattern::Record { fields, rest, span } => TypedPattern::Record {
-            fields: fields.clone(),
+        Pattern::Record {
+            fields,
+            field_spans,
+            rest,
+            span,
+        } => TypedPattern::Record {
+            fields: fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    (
+                        f.clone(),
+                        field_spans.get(i).and_then(|s| ctx.local_binding_at(s)),
+                    )
+                })
+                .collect(),
             rest: *rest,
             span: span.clone(),
         },
@@ -504,6 +534,7 @@ pub(in crate::typechecker) fn resolve_bare_variant(
             Pattern::EnumVariant {
                 path: vec![enum_name.to_string(), name.clone()],
                 fields: vec![],
+                field_spans: vec![],
                 rest: false,
                 span: span.clone(),
             }
@@ -511,12 +542,14 @@ pub(in crate::typechecker) fn resolve_bare_variant(
         Pattern::EnumVariant {
             path,
             fields,
+            field_spans,
             rest,
             span,
         } if path.len() == 1 && variants.iter().any(|(vn, _)| vn == &path[0]) => {
             Pattern::EnumVariant {
                 path: vec![enum_name.to_string(), path[0].clone()],
                 fields: fields.clone(),
+                field_spans: field_spans.clone(),
                 rest: *rest,
                 span: span.clone(),
             }
@@ -541,11 +574,13 @@ pub(in crate::typechecker) fn resolve_struct_pattern(
         Pattern::EnumVariant {
             path,
             fields,
+            field_spans,
             rest,
             span,
         } if path.len() == 1 && path[0] == struct_name => Pattern::Struct {
             name: struct_name.to_string(),
             fields: fields.clone(),
+            field_spans: field_spans.clone(),
             rest: *rest,
             span: span.clone(),
         },
@@ -575,6 +610,7 @@ pub(super) fn construct_pattern_bindings(
         Pattern::EnumVariant {
             path,
             fields,
+            field_spans: _,
             rest: _,
             span,
         } => {
@@ -584,10 +620,19 @@ pub(super) fn construct_pattern_bindings(
             let _ = span;
             bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Struct { name, fields, .. } => {
+        Pattern::Struct {
+            name,
+            fields,
+            field_spans: _,
+            ..
+        } => {
             bind_struct_pattern_fields(name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Record { fields, .. } => {
+        Pattern::Record {
+            fields,
+            field_spans: _,
+            ..
+        } => {
             let Type::Record(record_fields) = scrutinee_ty else {
                 return Err(MetelError::internal("record pattern on non-record type"));
             };

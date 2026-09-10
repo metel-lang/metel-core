@@ -83,7 +83,7 @@ pub(super) fn match_pattern(
                     // Runtime `Value::Enum` fields are still name-keyed; the
                     // pattern's `FieldId`s wait on the evaluator's id-indexed
                     // frames (#1052).
-                    for (field_name, _id) in fields {
+                    for (field_name, _id, _local) in fields {
                         match enum_fields.get(field_name) {
                             Some(v) => {
                                 out.insert(field_name.clone(), v.clone());
@@ -114,7 +114,7 @@ pub(super) fn match_pattern(
                 if !rest && struct_fields.len() != fields.len() {
                     return false;
                 }
-                for (field_name, _id) in fields {
+                for (field_name, _id, _local) in fields {
                     match struct_fields.get(field_name) {
                         Some(v) => {
                             out.insert(field_name.clone(), v.clone());
@@ -138,7 +138,7 @@ pub(super) fn match_pattern(
                 if !rest && record_fields.len() != fields.len() {
                     return false;
                 }
-                for field_name in fields {
+                for (field_name, _local) in fields {
                     match record_fields.get(field_name) {
                         Some(v) => {
                             out.insert(field_name.clone(), v.clone());

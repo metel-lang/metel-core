@@ -775,13 +775,31 @@ impl Walker<'_> {
                     self.path.pop();
                 }
             }
-            Pattern::EnumVariant { fields, .. }
-            | Pattern::Struct { fields, .. }
-            | Pattern::Record { fields, .. } => {
-                for f in fields {
+            Pattern::EnumVariant {
+                fields,
+                field_spans,
+                ..
+            }
+            | Pattern::Struct {
+                fields,
+                field_spans,
+                ..
+            }
+            | Pattern::Record {
+                fields,
+                field_spans,
+                ..
+            } => {
+                for (i, f) in fields.iter().enumerate() {
+                    // Real per-field spans since metel-core#1052; the sentinel is
+                    // only a fallback for a pattern the parser never produced.
+                    let span = field_spans
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| Span::new(0, 0, "<pattern>"));
                     self.bind(
                         f,
-                        &Span::new(0, 0, "<pattern>"),
+                        &span,
                         DefinitionKind::PatternBinding,
                         LexicalSeg::PatternField(f.clone()),
                     );

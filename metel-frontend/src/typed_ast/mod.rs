@@ -654,9 +654,10 @@ pub enum TypedPattern {
         /// Identity of the matched variant, keyed by `(enum SymbolId, variant
         /// name)`.
         variant_id: Option<VariantId>,
-        /// Bound field spellings, each with the id of the variant field it
-        /// names (keyed by `(enum SymbolId, "Variant::field")`).
-        fields: Vec<(String, Option<FieldId>)>,
+        /// One per bound field-shorthand: the spelling, the id of the variant
+        /// field it names (keyed by `(enum SymbolId, "Variant::field")`), and
+        /// the `LocalId` of the binding it introduces (ADR-0054 / #1052).
+        fields: Vec<(String, Option<FieldId>, Option<LocalId>)>,
         rest: bool,
         span: Span,
     },
@@ -665,15 +666,18 @@ pub enum TypedPattern {
         name: String,
         /// Identity of the matched struct declaration.
         type_id: Option<SymbolId>,
-        /// Bound field spellings, each with the id of the struct field it names.
-        fields: Vec<(String, Option<FieldId>)>,
+        /// One per bound field-shorthand: the spelling, the struct field id, and
+        /// the `LocalId` of the binding it introduces.
+        fields: Vec<(String, Option<FieldId>, Option<LocalId>)>,
         rest: bool,
         span: Span,
     },
     /// A bare, unnamed record pattern (`{ x, y }`) — structural, so its labels
-    /// carry no nominal `FieldId` (row labels are `LabelId`, ADR-0054).
+    /// carry no nominal `FieldId` (row labels are `LabelId`, ADR-0054). Each
+    /// entry pairs the label spelling with the `LocalId` of the binding it
+    /// introduces (ADR-0054 / #1052).
     Record {
-        fields: Vec<String>,
+        fields: Vec<(String, Option<LocalId>)>,
         rest: bool,
         span: Span,
     },

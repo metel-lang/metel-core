@@ -460,6 +460,11 @@ mod tests {
                 analysis.members.field(sig, "Go::code"),
                 "variant fields are interned variant-qualified on the enum owner"
             );
+            // #1052a-4: `Sig::Go { code }` also binds `code` as a local.
+            assert!(
+                fields[0].2.is_some(),
+                "the variant field-shorthand binding carries a LocalId"
+            );
         }
 
         #[test]
@@ -480,11 +485,18 @@ mod tests {
                 panic!("expected a struct pattern");
             };
             assert_eq!(*type_id, Some(pt));
-            let by_name: std::collections::HashMap<_, _> =
-                fields.iter().map(|(n, id)| (n.as_str(), *id)).collect();
-            assert_eq!(by_name["x"], analysis.members.field(pt, "x"));
-            assert_eq!(by_name["y"], analysis.members.field(pt, "y"));
-            assert!(by_name["x"].is_some() && by_name["y"].is_some());
+            let by_name: std::collections::HashMap<_, _> = fields
+                .iter()
+                .map(|(n, field_id, local_id)| (n.as_str(), (*field_id, *local_id)))
+                .collect();
+            assert_eq!(by_name["x"].0, analysis.members.field(pt, "x"));
+            assert_eq!(by_name["y"].0, analysis.members.field(pt, "y"));
+            assert!(by_name["x"].0.is_some() && by_name["y"].0.is_some());
+            // #1052a-4: each field-shorthand also introduces a lexical binding.
+            assert!(
+                by_name["x"].1.is_some() && by_name["y"].1.is_some(),
+                "struct pattern field bindings carry a LocalId"
+            );
         }
 
         #[test]
@@ -503,7 +515,10 @@ mod tests {
             else {
                 panic!("expected a structural record pattern");
             };
-            assert_eq!(fields, &["x".to_string(), "y".to_string()]);
+            let names: Vec<&str> = fields.iter().map(|(n, _)| n.as_str()).collect();
+            assert_eq!(names, ["x", "y"]);
+            // Structural: no `FieldId` channel, but each label still binds a local.
+            assert!(fields.iter().all(|(_, local)| local.is_some()));
         }
 
         // ── registry entry ids (#1068) ───────────────────────────────────────

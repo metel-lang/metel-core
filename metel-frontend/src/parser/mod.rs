@@ -1710,12 +1710,23 @@ fn shift_match_arm_span(arm: &mut MatchArm, base_start: usize, base_line: u32, b
 
 fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, base_col: u32) {
     match pattern {
-        Pattern::Wildcard(span)
-        | Pattern::Binding(_, span)
-        | Pattern::Literal(_, span)
-        | Pattern::EnumVariant { span, .. }
-        | Pattern::Struct { span, .. }
-        | Pattern::Record { span, .. } => shift_span(span, base_start, base_line, base_col),
+        Pattern::EnumVariant {
+            span, field_spans, ..
+        }
+        | Pattern::Struct {
+            span, field_spans, ..
+        }
+        | Pattern::Record {
+            span, field_spans, ..
+        } => {
+            for fs in field_spans.iter_mut() {
+                shift_span(fs, base_start, base_line, base_col);
+            }
+            shift_span(span, base_start, base_line, base_col);
+        }
+        Pattern::Wildcard(span) | Pattern::Binding(_, span) | Pattern::Literal(_, span) => {
+            shift_span(span, base_start, base_line, base_col);
+        }
         Pattern::Tuple(items, span) => {
             for item in items {
                 shift_pattern_span(item, base_start, base_line, base_col);
@@ -2449,18 +2460,25 @@ fn parse_match_arm(
 
 /// `field_pat_list = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }`
 /// (RFC-0032 §4/§5) -- shared by `record_pattern` and `enum_pattern`'s fieldful forms.
-/// Returns (named fields, whether a trailing `..` was present).
-fn parse_field_pat_list(pair: pest::iterators::Pair<Rule>) -> (Vec<String>, bool) {
+/// Returns (named fields, one span per field, whether a trailing `..` was present).
+fn parse_field_pat_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> (Vec<String>, Vec<Span>, bool) {
     let mut fields = vec![];
+    let mut field_spans = vec![];
     let mut rest = false;
     for child in pair.into_inner() {
         match child.as_rule() {
-            Rule::ident => fields.push(child.as_str().to_string()),
+            Rule::ident => {
+                field_spans.push(Span::of(&child, filename));
+                fields.push(child.as_str().to_string());
+            }
             Rule::record_rest => rest = true,
             _ => {}
         }
     }
-    (fields, rest)
+    (fields, field_spans, rest)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2493,9 +2511,14 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .into_inner()
                 .find(|p| p.as_rule() == Rule::field_pat_list)
                 .ok_or_else(|| MetelError::internal("record_pattern: missing field_pat_list"))?;
-            let (mut fields, rest) = parse_field_pat_list(field_list);
-            sort_record_labels(&mut fields, filename, &span, "record pattern")?;
-            Ok(Pattern::Record { fields, rest, span })
+            let (mut fields, mut field_spans, rest) = parse_field_pat_list(field_list, filename);
+            sort_record_pattern_fields(&mut fields, &mut field_spans, filename, &span)?;
+            Ok(Pattern::Record {
+                fields,
+                field_spans,
+                rest,
+                span,
+            })
         }
         Rule::enum_pattern => {
             let span = Span::of(&pair, filename);
@@ -2510,13 +2533,15 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             // its own `Rule::field_pat_list` arm.
             let mut path = vec![];
             let mut fields = vec![];
+            let mut field_spans = vec![];
             let mut rest = false;
             for child in pair.into_inner() {
                 match child.as_rule() {
                     Rule::ident => path.push(child.as_str().to_string()),
                     Rule::field_pat_list => {
-                        let (f, r) = parse_field_pat_list(child);
+                        let (f, s, r) = parse_field_pat_list(child, filename);
                         fields = f;
+                        field_spans = s;
                         rest = r;
                     }
                     _ => {}
@@ -2525,6 +2550,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             Ok(Pattern::EnumVariant {
                 path,
                 fields,
+                field_spans,
                 rest,
                 span,
             })
@@ -2939,6 +2965,33 @@ fn sort_record_labels(
                 &pair[0], filename, span, context,
             ));
         }
+    }
+    Ok(())
+}
+
+/// Like [`sort_record_labels`] but keeps `field_spans` aligned to `fields`
+/// through the sort (metel-core#1052).
+fn sort_record_pattern_fields(
+    fields: &mut Vec<String>,
+    field_spans: &mut Vec<Span>,
+    filename: &str,
+    span: &Span,
+) -> Result<(), MetelError> {
+    let mut paired: Vec<(String, Span)> = fields.drain(..).zip(field_spans.drain(..)).collect();
+    paired.sort_by(|a, b| a.0.cmp(&b.0));
+    for w in paired.windows(2) {
+        if w[0].0 == w[1].0 {
+            return Err(record_duplicate_label_error(
+                &w[0].0,
+                filename,
+                span,
+                "record pattern",
+            ));
+        }
+    }
+    for (name, sp) in paired {
+        fields.push(name);
+        field_spans.push(sp);
     }
     Ok(())
 }

@@ -106,6 +106,7 @@ pub(super) fn infer_pattern(
         Pattern::EnumVariant {
             path,
             fields,
+            field_spans: _,
             rest: _,
             span: pat_span,
         } => {
@@ -128,6 +129,7 @@ pub(super) fn infer_pattern(
         Pattern::Struct {
             name,
             fields,
+            field_spans: _,
             rest,
             span: pat_span,
         } => {
@@ -135,6 +137,7 @@ pub(super) fn infer_pattern(
         }
         Pattern::Record {
             fields,
+            field_spans: _,
             rest,
             span: pat_span,
         } => {

@@ -1395,9 +1395,12 @@ fn result_variant_pattern(
     TypedPattern::EnumVariant {
         path: vec!["Result".to_string(), variant.to_string()],
         variant_id: ctx.variant_id_for(result_id, variant),
+        // Synthetic `?`-desugar binding — no source span, so no `LocalId`; the
+        // desugar's match stays name-keyed (isolated construct).
         fields: vec![(
             field.to_string(),
             ctx.variant_field_id(result_id, variant, field),
+            None,
         )],
         rest: false,
         span: span.clone(),

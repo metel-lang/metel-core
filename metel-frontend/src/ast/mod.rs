@@ -648,6 +648,11 @@ pub enum Pattern {
     EnumVariant {
         path: Vec<String>,
         fields: Vec<String>,
+        /// One span per entry of `fields`, in the same order — the declaration
+        /// site of each field-shorthand binding (metel-core#1052). Empty for
+        /// patterns not produced directly by the parser; a consumer zips only
+        /// when the lengths match.
+        field_spans: Vec<Span>,
         /// RFC-0032 §4/§5: a trailing bare `..`, omitting the fields not named.
         /// A one-segment `path` here is ambiguous until name resolution/
         /// inference sees the scrutinee's type: it's a bare fieldful variant
@@ -666,6 +671,8 @@ pub enum Pattern {
     Struct {
         name: String,
         fields: Vec<String>,
+        /// See `EnumVariant::field_spans`.
+        field_spans: Vec<Span>,
         rest: bool,
         span: Span,
     },
@@ -673,6 +680,8 @@ pub enum Pattern {
     /// matching `Type::Record`, never a named struct.
     Record {
         fields: Vec<String>,
+        /// See `EnumVariant::field_spans`.
+        field_spans: Vec<Span>,
         rest: bool,
         span: Span,
     },

@@ -1381,7 +1381,7 @@ impl<'a> Checker<'a> {
                 }
             }
             TypedPattern::Record { fields, .. } => {
-                for field in fields {
+                for (field, _local) in fields {
                     let child = place
                         .clone()
                         .with_projection(Projection::field(field.clone()));
@@ -1397,7 +1397,7 @@ impl<'a> Checker<'a> {
                 }
             }
             TypedPattern::Struct { fields, .. } => {
-                for (field, id) in fields {
+                for (field, id, _local) in fields {
                     let child = place
                         .clone()
                         .with_projection(Projection::field_with_id(field.clone(), *id));
@@ -1422,7 +1422,7 @@ impl<'a> Checker<'a> {
                         state,
                         MoveCause::Other,
                     );
-                    for (field, _id) in fields {
+                    for (field, _id, _local) in fields {
                         state.bind(field);
                     }
                 }
@@ -1455,12 +1455,12 @@ impl<'a> Checker<'a> {
                 }
             }
             TypedPattern::Record { fields, .. } => {
-                for field in fields {
+                for (field, _local) in fields {
                     state.bind(field);
                 }
             }
             TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
-                for (field, _id) in fields {
+                for (field, _id, _local) in fields {
                     state.bind(field);
                 }
             }
@@ -2801,12 +2801,12 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
             }
         }
         TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
-            for (field, _id) in fields {
+            for (field, _id, _local) in fields {
                 into.insert(field.clone());
             }
         }
         TypedPattern::Record { fields, .. } => {
-            for field in fields {
+            for (field, _local) in fields {
                 into.insert(field.clone());
             }
         }
