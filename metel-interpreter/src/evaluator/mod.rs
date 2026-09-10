@@ -435,6 +435,13 @@ pub struct RuntimeRegistry {
     /// set is exactly what distinguishes that case from an unconditional internal
     /// error (see the `TypedExpr::Call` handling in `eval_expr`).
     let_mut_def_ids: std::collections::HashSet<SymbolId>,
+    /// Live, cell-backed storage for every top-level `let` / `var`, keyed by its
+    /// `def_id` (metel-core#1052b). The cell is shared with the module
+    /// environment's name entry, so a reassignment through either key is seen by
+    /// both. This is what lets a function body resolve a module-level binding by
+    /// its frozen `SymbolId` — a non-`main` function captures a pre-Pass-2
+    /// snapshot of the module env and so never had the name in scope.
+    global_value_slots: HashMap<SymbolId, Rc<RefCell<Value>>>,
 }
 
 type FieldWriteback = (Rc<RefCell<Value>>, Vec<String>, Rc<RefCell<Value>>);
@@ -466,6 +473,20 @@ impl RuntimeRegistry {
     #[must_use]
     pub fn is_let_mut_def_id(&self, id: SymbolId) -> bool {
         self.let_mut_def_ids.contains(&id)
+    }
+
+    /// Publish the live cell of a top-level `let` / `var` under its `def_id`
+    /// (metel-core#1052b). Called from Pass 2 right after the initializer runs,
+    /// with the same `Rc` the module environment holds by name.
+    pub fn register_global_slot(&mut self, id: SymbolId, cell: Rc<RefCell<Value>>) {
+        self.global_value_slots.insert(id, cell);
+    }
+
+    /// The live cell of the top-level `let` / `var` whose identity is `id`, if
+    /// its initializer has run.
+    #[must_use]
+    pub fn global_slot(&self, id: SymbolId) -> Option<&Rc<RefCell<Value>>> {
+        self.global_value_slots.get(&id)
     }
 
     pub fn register_module_value(
@@ -2085,6 +2106,21 @@ fn run_passes(
                     runtime.register_symbol_value(id, value);
                 }
             }
+            // metel-core#1052b: publish the live cell of every top-level
+            // `let` / `var` under its `def_id` so a function body can resolve
+            // the binding by its frozen identity. The cell is shared with the
+            // module env's name entry, so a `var` reassignment through either
+            // key is visible to both (fixes the read-from-non-`main` gap).
+            let global = match decl {
+                TypedDecl::Let(d) => d.def_id.map(|id| (id, d.name.as_str())),
+                TypedDecl::Mut(d) => d.def_id.map(|id| (id, d.name.as_str())),
+                _ => None,
+            };
+            if let Some((id, name)) = global {
+                if let Some(cell) = env.get_rc(name) {
+                    runtime.register_global_slot(id, cell);
+                }
+            }
         }
     }
 
@@ -3057,19 +3093,18 @@ pub fn eval_expr(
                         return Ok(Signal::Value(val));
                     }
                 }
-                // A top-level `let` / `var` is reassignable and its
-                // `symbol_values` entry is a one-time snapshot, so it is read
-                // through the name map (mirrors `eval_call_expr`). Every other
-                // global — `fn`, constructor, imported name — is a stable
-                // registered value.
-                Some(crate::identity::BindingId::Global(sym))
-                    if !runtime.is_let_mut_def_id(*sym) =>
-                {
+                Some(crate::identity::BindingId::Global(sym)) => {
+                    // A top-level `let` / `var` has a live cell in the global
+                    // slot table; every other global — `fn`, constructor,
+                    // imported name — is a stable registered value.
+                    if let Some(cell) = runtime.global_slot(*sym) {
+                        return Ok(Signal::Value(cell.borrow().clone()));
+                    }
                     if let Some(val) = runtime.get_symbol_value(*sym).cloned() {
                         return Ok(Signal::Value(val));
                     }
                 }
-                Some(crate::identity::BindingId::Global(_)) | None => {}
+                None => {}
             }
             match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
                 Some(val) => Ok(Signal::Value(val)),
