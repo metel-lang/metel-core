@@ -1,7 +1,12 @@
-// metel-core#1052b-3a: a global value reference resolves through the SymbolId
-// value registry rather than a source-name lookup. Exercises a top-level fn
-// passed as a first-class value and invoked, and mutually-recursive globals
-// where one is referenced before its own declaration.
+// metel-core#1052b: a global value reference resolves through the SymbolId
+// value registry / live global slot rather than a source-name lookup.
+// Covers: a top-level fn passed as a first-class value; mutually-recursive
+// globals with a forward reference; and a top-level `let` read from a
+// non-`main` function body — previously an R0003 "undefined variable"
+// (metel-core#1081), because a non-`main` function captures a pre-Pass-2
+// snapshot of the module environment.
+
+let SCALE: i64 := 10;
 
 fun double(n: i64) -> i64 {
     n * 2
@@ -20,6 +25,11 @@ fun is_odd(n: i64) -> boolean {
     if (n == 0) { false } else { is_even(n - 1) }
 }
 
+// Reads a module-level `let` from a body other than `main`.
+fun scaled(n: i64) -> i64 {
+    n * SCALE
+}
+
 fun main() {
     // Top-level fn passed by value and invoked through a parameter.
     assert(apply_twice(double, 3) == 12);
@@ -31,4 +41,8 @@ fun main() {
 
     // The global `double` invoked directly.
     assert(double(21) == 42);
+
+    // A module-level constant is visible inside a non-`main` function.
+    assert(scaled(4) == 40);
+    assert(scaled(SCALE) == 100);
 }
