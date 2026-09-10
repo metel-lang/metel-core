@@ -339,7 +339,10 @@ impl<'a> ConstructCtx<'a> {
         if let Some(module) = self
             .registry
             .struct_declaring_module(self.current_module, type_name)
-            .or_else(|| self.registry.enum_declaring_module(type_name))
+            .or_else(|| {
+                self.registry
+                    .enum_declaring_module(self.current_module, type_name)
+            })
         {
             return symbols
                 .get(&(module.clone(), type_name.to_string()))
@@ -436,13 +439,16 @@ fn resolve_expected_enum<'a>(
     })?;
     match expected_ty {
         Type::Named(enum_name, _) => {
-            let enum_info = ctx.registry.enum_info(enum_name).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    format!("expected enum type, found `{expected_ty}`"),
-                    span,
-                )
-            })?;
+            let enum_info = ctx
+                .registry
+                .enum_info(ctx.current_module, enum_name)
+                .ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        format!("expected enum type, found `{expected_ty}`"),
+                        span,
+                    )
+                })?;
             Ok((enum_name, enum_info))
         }
         _ => Err(MetelError::type_error(
@@ -1571,7 +1577,7 @@ fn maybe_singleton_coerce(
     let Type::Named(name, type_args) = &actual_ty else {
         return Ok(actual);
     };
-    let Some(enum_info) = registry.enum_info(name) else {
+    let Some(enum_info) = registry.enum_info_by_decl_name(name) else {
         return Ok(actual);
     };
     if enum_info.variants.len() <= 1 {

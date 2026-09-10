@@ -1710,7 +1710,10 @@ pub(super) fn construct_expr(
                     return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
                 }
                 // Also check enum variants via enum_env.
-                if let Some(info) = ctx.registry.enum_info(type_name.as_str()) {
+                if let Some(info) = ctx
+                    .registry
+                    .enum_info(ctx.current_module, type_name.as_str())
+                {
                     if let Some(variant) = info.variants.iter().find(|v| &v.name == member_name) {
                         if variant.fields.is_empty() {
                             // A unit enum variant is a value, not a constructor: emit it as

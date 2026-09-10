@@ -2,8 +2,8 @@ use super::{
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_block,
     construct_expr, infer_type_to_type, peel_type_references, type_to_infer, unify, ConstructCtx,
     EnumInfo, HashMap, InferType, Literal, MatchExpr, MetelError, Pattern, Span, Substitution,
-    Type, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr, TypedMatchArm, TypedMatchExpr,
-    TypedStmt, VariantInfo,
+    Type, TypeDefinitionRegistry, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr, TypedMatchArm,
+    TypedMatchExpr, TypedStmt, VariantInfo,
 };
 
 pub(super) fn builtin_pattern_method_expr(
@@ -96,15 +96,19 @@ pub(super) fn construct_match(
     // reference-peeled, RFC-0108) scrutinee type; `None` here means the scrutinee
     // isn't a known enum, so patterns are left exactly as written.
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = match &scrutinee_ty {
-        Type::Named(enum_name, _) => ctx.registry.enum_info(enum_name).map(|info| {
-            (
-                enum_name.clone(),
-                info.variants
-                    .iter()
-                    .map(|v| (v.name.clone(), v.fields.is_empty()))
-                    .collect(),
-            )
-        }),
+        Type::Named(enum_name, _) => {
+            ctx.registry
+                .enum_info(ctx.current_module, enum_name)
+                .map(|info| {
+                    (
+                        enum_name.clone(),
+                        info.variants
+                            .iter()
+                            .map(|v| (v.name.clone(), v.fields.is_empty()))
+                            .collect(),
+                    )
+                })
+        }
         _ => None,
     };
     // RFC-0032 §4/§5, RFC-0034 §5: same idea, for a struct rather than an enum --
@@ -162,7 +166,8 @@ pub(super) fn construct_match(
     check_match_exhaustiveness(
         &typed_arms,
         &scrutinee_ty,
-        ctx.registry.raw_enum_env(),
+        ctx.registry,
+        ctx.current_module,
         &m.span,
     )?;
     // RFC-0078 §3.4: if all arms diverge, the match's type is `!`. An empty match
@@ -284,7 +289,8 @@ pub(super) fn is_variant_uninhabited(
 pub(super) fn check_match_exhaustiveness(
     arms: &[TypedMatchArm],
     scrutinee_ty: &Type,
-    enum_env: &HashMap<String, EnumInfo>,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
     span: &Span,
 ) -> Result<(), MetelError> {
     if arms
@@ -309,7 +315,7 @@ pub(super) fn check_match_exhaustiveness(
         // special case, rather than hardcoding `Result`/`Perhaps` separately —
         // both are ordinary entries in `enum_env` like any user enum.
         Type::Named(name, type_args) => {
-            if let Some(enum_info) = enum_env.get(name.as_str()) {
+            if let Some(enum_info) = registry.enum_info(current_module, name) {
                 let remap = enum_variant_type_param_remap(enum_info, type_args);
                 enum_info.variants.iter().all(|v| {
                     is_variant_uninhabited(v, &remap, span)
@@ -559,13 +565,16 @@ pub(super) fn construct_enum_literal_ty(
 ) -> Result<Type, MetelError> {
     // Resolve concrete type arguments using the same instantiate-then-unify
     // pattern as instantiate_scheme_for_call.
-    let enum_info = ctx.registry.enum_info(enum_name).ok_or_else(|| {
-        MetelError::type_error(
-            TypeErrorCode::T0003,
-            format!("unknown enum `{enum_name}`"),
-            span,
-        )
-    })?;
+    let enum_info = ctx
+        .registry
+        .enum_info(ctx.current_module, enum_name)
+        .ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("unknown enum `{enum_name}`"),
+                span,
+            )
+        })?;
     let variant = enum_info
         .variants
         .iter()
@@ -727,7 +736,7 @@ pub(super) fn bind_enum_variant_fields(
 ) -> Result<(), MetelError> {
     let enum_info = ctx
         .registry
-        .enum_info(enum_name)
+        .enum_info(ctx.current_module, enum_name)
         .ok_or_else(|| MetelError::internal(format!("unknown enum `{enum_name}`")))?
         .clone();
     let variant = enum_info

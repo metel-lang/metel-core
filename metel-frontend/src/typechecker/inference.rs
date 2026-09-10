@@ -553,7 +553,10 @@ fn check_copy_impl_eligibility(
             for (param, arg) in struct_params.iter().zip(target_args.iter()) {
                 type_param_args.insert(*param, arg);
             }
-        } else if let Some(enum_info) = ctx.registry().enum_info(target_name) {
+        } else if let Some(enum_info) = ctx
+            .registry()
+            .enum_info(ctx.current_module_path(), target_name)
+        {
             for (param, arg) in enum_info.type_params.iter().zip(target_args.iter()) {
                 type_param_args.insert(*param, arg);
             }
@@ -1729,7 +1732,10 @@ fn infer_enum_variant_literal(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
-    let enum_decl_module = ctx.registry().enum_declaring_module(enum_name).cloned();
+    let enum_decl_module = ctx
+        .registry()
+        .enum_declaring_module(ctx.current_module_path(), enum_name)
+        .cloned();
     let enum_info = ctx
         .get_enum(enum_name)
         .ok_or_else(|| {
@@ -2090,7 +2096,10 @@ fn infer_enum_variant_pattern(
     pat_span: &Span,
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
-    let enum_decl_module = ctx.registry().enum_declaring_module(enum_name).cloned();
+    let enum_decl_module = ctx
+        .registry()
+        .enum_declaring_module(ctx.current_module_path(), enum_name)
+        .cloned();
     let enum_info = ctx
         .get_enum(enum_name)
         .ok_or_else(|| {

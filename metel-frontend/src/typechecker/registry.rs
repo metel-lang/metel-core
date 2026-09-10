@@ -471,15 +471,16 @@ fn register_program_decls(
                 let record_kinds =
                     collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());
                 let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
-                registry.register_enum(
-                    ed.name.clone(),
-                    EnumInfo {
-                        type_params,
-                        variants,
-                    },
-                    current_module_path.to_vec(),
-                );
                 if let Some(sym) = enum_sym {
+                    registry.register_enum(
+                        sym,
+                        ed.name.clone(),
+                        EnumInfo {
+                            type_params,
+                            variants,
+                        },
+                        current_module_path.to_vec(),
+                    );
                     if record_kinds.iter().any(|flag| *flag) {
                         registry.register_type_param_record_kinds(sym, record_kinds);
                     }
@@ -793,7 +794,7 @@ fn register_generic_impl_method_schemes(
         .cloned()
     {
         tps
-    } else if let Some(info) = registry.enum_info(target_name) {
+    } else if let Some(info) = registry.enum_info(current_module_path, target_name) {
         info.type_params.clone()
     } else if target_id.is_some_and(|id| registry.raw_struct_env().contains_key(&id)) {
         Vec::new()

@@ -900,7 +900,7 @@ pub fn infer_named_type_args(
 
     let (type_params, field_templates): (&[TypeVar], &[crate::typeinference::FieldEntry]) =
         match variant {
-            Some(variant_name) => match registry.enum_info(name) {
+            Some(variant_name) => match registry.enum_info_by_decl_name(name) {
                 Some(info) => match info.variants.iter().find(|v| v.name == variant_name) {
                     Some(v) => (&info.type_params, &v.fields),
                     None => return vec![],

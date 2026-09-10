@@ -1361,7 +1361,7 @@ pub(crate) fn singleton_coerce_field_ty(
         InferType::Named(n, targs) => (n.as_str(), targs.clone()),
         _ => return None,
     };
-    let enum_info = registry.enum_info(name)?;
+    let enum_info = registry.enum_info_by_decl_name(name)?;
     if enum_info.variants.len() <= 1 {
         return None;
     }
@@ -2159,10 +2159,17 @@ pub struct TypeDefinitionRegistry {
     method_receiver_env: HashMap<String, HashMap<String, ReceiverKind>>,
     array_method_env: HashMap<String, InferType>,
     array_method_receiver_env: HashMap<String, ReceiverKind>,
-    enum_env: HashMap<String, EnumInfo>,
-    variant_declaring_enums: HashMap<String, Vec<String>>,
-    /// enum name → declaring module path.
-    enum_decl_modules: HashMap<String, Vec<String>>,
+    /// enum `SymbolId` → its variants and type params (metel-core#1061). Like
+    /// `struct_env`, keyed by the declaration id so two modules' same-named
+    /// enums stay distinct; a spelling reaches it through `resolve_type_key`.
+    enum_env: HashMap<SymbolId, EnumInfo>,
+    /// bare variant spelling → the `SymbolId`s of every enum that declares a
+    /// variant of that name. The **key stays a spelling**: an unqualified `Red`
+    /// has no id until an enum is chosen for it. The values are ids
+    /// (metel-core#1061).
+    variant_declaring_enums: HashMap<String, Vec<SymbolId>>,
+    /// enum `SymbolId` → declaring module path.
+    enum_decl_modules: HashMap<SymbolId, Vec<String>>,
     /// aspect short name → one entry per declaring module (metel-core#989).
     ///
     /// Keyed by the bare, unqualified name, but a `Vec` because two modules may each
@@ -2269,19 +2276,11 @@ impl TypeDefinitionRegistry {
     }
 
     /// The name a struct/enum declaration is registered under, given a `SymbolId`
-    /// known to identify it. `struct_env` is now id-keyed, so this is a direct
-    /// index lookup; `enum_env` is still name-keyed, so fall back to scanning
-    /// `symbols` for an enum spelling carrying this id.
+    /// known to identify it. Both `struct_env` and `enum_env` are id-keyed and
+    /// record their declared name in `type_decl_names`, so this is a direct
+    /// index lookup (metel-core#1060, metel-core#1061).
     fn declared_type_name_for_id(&self, id: SymbolId) -> Option<String> {
-        if let Some(name) = self.type_decl_names.get(&id) {
-            return Some(name.clone());
-        }
-        self.symbols
-            .iter()
-            .find_map(|((_, decl_name), candidate_id)| {
-                (*candidate_id == id && self.enum_env.contains_key(decl_name))
-                    .then(|| decl_name.clone())
-            })
+        self.type_decl_names.get(&id).cloned()
     }
 
     /// The declared short name of a type registered under `id`, borrowed. Only
@@ -2326,6 +2325,14 @@ impl TypeDefinitionRegistry {
     fn resolve_type_key_broad(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
         self.resolve_type_key(current_module, name)
             .or_else(|| self.type_decl_ids.get(name).copied())
+    }
+
+    /// `enum_info` for a bare declared name with no module context — the same
+    /// name-approximate path as [`type_id_for_decl_name`](Self::type_id_for_decl_name),
+    /// for constraint-solving hooks that see only a `Type::Named` spelling.
+    #[must_use]
+    pub fn enum_info_by_decl_name(&self, name: &str) -> Option<&EnumInfo> {
+        self.enum_env.get(&self.type_decl_ids.get(name).copied()?)
     }
 
     /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn
@@ -2406,6 +2413,13 @@ impl TypeDefinitionRegistry {
         self.struct_env.contains_key(&id).then_some(id)
     }
 
+    /// The `SymbolId` `type_name` resolves to in `current_module`, if it names a
+    /// visible enum. Mirrors [`resolve_struct_id_from_projection`] for enums.
+    fn resolve_enum_id(&self, current_module: &[String], type_name: &str) -> Option<SymbolId> {
+        let id = self.resolve_type_key(current_module, type_name)?;
+        self.enum_env.contains_key(&id).then_some(id)
+    }
+
     pub(crate) fn visible_type_kind(
         &self,
         current_module: &[String],
@@ -2417,10 +2431,7 @@ impl TypeDefinitionRegistry {
         {
             return Some(VisibleTypeKind::Struct);
         }
-        if self
-            .visible_decl_name(current_module, type_name, &self.enum_env)
-            .is_some()
-        {
+        if self.resolve_enum_id(current_module, type_name).is_some() {
             return Some(VisibleTypeKind::Enum);
         }
         None
@@ -2653,6 +2664,14 @@ impl TypeDefinitionRegistry {
                 self.struct_env.remove(&id);
                 self.struct_decl_modules.remove(&id);
                 self.struct_visibility.remove(&id);
+                // A block-local id lives in exactly one of the struct / enum
+                // families; removing from both is safe.
+                if self.enum_env.remove(&id).is_some() {
+                    self.enum_decl_modules.remove(&id);
+                    for enums in self.variant_declaring_enums.values_mut() {
+                        enums.retain(|owner| *owner != id);
+                    }
+                }
                 if let Some(name) = self.type_decl_names.remove(&id) {
                     if self.type_decl_ids.get(&name) == Some(&id) {
                         self.type_decl_ids.remove(&name);
@@ -3396,18 +3415,46 @@ impl TypeDefinitionRegistry {
         self.fun_assoc_eq_constraints.get(name)
     }
 
-    pub fn register_enum(&mut self, name: String, info: EnumInfo, declaring_module: Vec<String>) {
+    /// Register an enum under its declaration `SymbolId`. `name` is kept for the
+    /// reverse indices (`type_decl_names` / `type_decl_ids`), the same as
+    /// `register_struct_fields`.
+    pub fn register_enum(
+        &mut self,
+        owner: SymbolId,
+        name: String,
+        info: EnumInfo,
+        declaring_module: Vec<String>,
+    ) {
         for variant in &info.variants {
             let entry = self
                 .variant_declaring_enums
                 .entry(variant.name.clone())
                 .or_default();
-            if !entry.contains(&name) {
-                entry.push(name.clone());
+            if !entry.contains(&owner) {
+                entry.push(owner);
             }
         }
-        self.enum_env.insert(name.clone(), info);
-        self.enum_decl_modules.insert(name, declaring_module);
+        self.enum_env.insert(owner, info);
+        self.enum_decl_modules.insert(owner, declaring_module);
+        self.type_decl_ids.insert(name.clone(), owner);
+        self.type_decl_names.insert(owner, name);
+    }
+
+    /// Register a block-local enum declaration (see `infer_block`'s hoist pass) —
+    /// one with no name-resolver symbol. Mints a synthetic local id, tracked in
+    /// `local_type_decl_ids` so it is reachable by bare name within its scope.
+    pub fn register_local_enum(
+        &mut self,
+        name: String,
+        info: EnumInfo,
+        declaring_module: Vec<String>,
+    ) {
+        let owner = self.fresh_local_type_id();
+        self.register_enum(owner, name.clone(), info, declaring_module);
+        self.local_type_decl_ids.insert(name, owner);
+        if let Some(scope) = self.struct_scope_stack.last_mut() {
+            scope.push(owner);
+        }
     }
 
     #[must_use]
@@ -3466,13 +3513,28 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
-    pub fn enum_info(&self, name: &str) -> Option<&EnumInfo> {
-        self.enum_env.get(name)
+    pub fn enum_info(&self, current_module: &[String], name: &str) -> Option<&EnumInfo> {
+        self.enum_env
+            .get(&self.resolve_type_key_broad(current_module, name)?)
+    }
+
+    /// Variants and type params of the enum registered under `id`, for callers
+    /// that already resolved the declaration.
+    #[must_use]
+    pub fn enum_info_by_id(&self, id: SymbolId) -> Option<&EnumInfo> {
+        self.enum_env.get(&id)
     }
 
     #[must_use]
     pub fn has_variant_named(&self, variant_name: &str) -> bool {
         self.variant_declaring_enums.contains_key(variant_name)
+    }
+
+    /// The `SymbolId` of the enum `name` names in `current_module`, if it is a
+    /// visible enum. `None` for a non-enum or unresolvable name.
+    #[must_use]
+    pub fn enum_id(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        self.resolve_enum_id(current_module, name)
     }
 
     #[must_use]
@@ -3486,8 +3548,13 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
-    pub fn enum_declaring_module(&self, name: &str) -> Option<&Vec<String>> {
-        self.enum_decl_modules.get(name)
+    pub fn enum_declaring_module(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<String>> {
+        self.enum_decl_modules
+            .get(&self.resolve_type_key_broad(current_module, name)?)
     }
 
     /// Record everything the registry knows about one aspect declaration
@@ -3760,10 +3827,6 @@ impl TypeDefinitionRegistry {
         &self.struct_type_params
     }
 
-    pub(crate) fn raw_enum_env(&self) -> &HashMap<String, EnumInfo> {
-        &self.enum_env
-    }
-
     pub(crate) fn raw_method_env(&self) -> &HashMap<String, HashMap<String, InferType>> {
         &self.method_env
     }
@@ -3902,22 +3965,22 @@ impl TypeDefinitionRegistry {
                 .or_insert_with(|| receiver.clone());
         }
         for (k, v) in &other.enum_env {
-            self.enum_env.entry(k.clone()).or_insert_with(|| v.clone());
+            self.enum_env.entry(*k).or_insert_with(|| v.clone());
         }
-        for (variant_name, enum_names) in &other.variant_declaring_enums {
+        for (variant_name, enum_ids) in &other.variant_declaring_enums {
             let entry = self
                 .variant_declaring_enums
                 .entry(variant_name.clone())
                 .or_default();
-            for enum_name in enum_names {
-                if !entry.contains(enum_name) {
-                    entry.push(enum_name.clone());
+            for enum_id in enum_ids {
+                if !entry.contains(enum_id) {
+                    entry.push(*enum_id);
                 }
             }
         }
         for (k, v) in &other.enum_decl_modules {
             self.enum_decl_modules
-                .entry(k.clone())
+                .entry(*k)
                 .or_insert_with(|| v.clone());
         }
         for (k, entries) in &other.aspects {
@@ -4247,14 +4310,17 @@ impl InferContext {
         self.registry.array_method_receiver_kind(method_name)
     }
 
+    /// Register an enum declared inside a block body (see `infer_block`'s hoist
+    /// pass). These have no name-resolver symbol, so the registry mints a
+    /// synthetic local id.
     pub fn register_enum(&mut self, name: String, info: EnumInfo) {
         self.registry
-            .register_enum(name, info, self.current_module_path.clone());
+            .register_local_enum(name, info, self.current_module_path.clone());
     }
 
     #[must_use]
     pub fn get_enum(&self, name: &str) -> Option<&EnumInfo> {
-        self.registry.enum_info(name)
+        self.registry.enum_info(&self.current_module_path, name)
     }
 
     #[must_use]
@@ -5134,11 +5200,15 @@ pub struct TypeCtx {
 
 #[cfg(test)]
 mod registry_identity_tests {
-    //! metel-core#1060: the struct-definition family is keyed by `SymbolId`, so
-    //! two modules declaring a same-named struct keep independent field sets and
-    //! `merge_from` never collapses one into the other.
+    //! metel-core#1060 / #1061: the struct- and enum-definition families are
+    //! keyed by `SymbolId`, so two modules declaring a same-named struct or enum
+    //! keep independent members and `merge_from` never collapses one into the
+    //! other.
 
-    use super::{FieldEntry, InferType, Span, SymbolId, TypeDefinitionRegistry, Visibility};
+    use super::{
+        EnumInfo, FieldEntry, InferType, Span, SymbolId, TypeDefinitionRegistry, VariantInfo,
+        Visibility,
+    };
 
     fn field(name: &str) -> FieldEntry {
         FieldEntry {
@@ -5230,5 +5300,59 @@ mod registry_identity_tests {
         assert_eq!(fields[0].name, "x");
         reg.pop_struct_scope();
         assert!(reg.struct_fields(&["m".to_string()], "Local").is_none());
+    }
+
+    fn variant(name: &str) -> VariantInfo {
+        VariantInfo {
+            name: name.to_string(),
+            fields: vec![],
+        }
+    }
+
+    #[test]
+    fn same_named_enums_in_two_modules_keep_distinct_variant_sets() {
+        let alpha = SymbolId(1000);
+        let beta = SymbolId(1001);
+        let mut base = TypeDefinitionRegistry::new();
+        base.register_enum(
+            alpha,
+            "Mode".to_string(),
+            EnumInfo {
+                type_params: vec![],
+                variants: vec![variant("Fast"), variant("Slow")],
+            },
+            vec!["alpha".to_string()],
+        );
+
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.register_enum(
+            beta,
+            "Mode".to_string(),
+            EnumInfo {
+                type_params: vec![],
+                variants: vec![variant("Sync"), variant("Async")],
+            },
+            vec!["beta".to_string()],
+        );
+        reg.merge_from(&base);
+
+        let alpha_variants: Vec<&str> = reg
+            .enum_info_by_id(alpha)
+            .expect("alpha Mode")
+            .variants
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
+        let beta_variants: Vec<&str> = reg
+            .enum_info_by_id(beta)
+            .expect("beta Mode")
+            .variants
+            .iter()
+            .map(|v| v.name.as_str())
+            .collect();
+        assert_eq!(alpha_variants, ["Fast", "Slow"]);
+        assert_eq!(beta_variants, ["Sync", "Async"]);
+        assert_eq!(reg.declared_type_name(alpha), Some("Mode"));
+        assert_eq!(reg.declared_type_name(beta), Some("Mode"));
     }
 }
