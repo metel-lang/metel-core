@@ -148,6 +148,12 @@ pub struct TypedFunDecl {
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub return_type: Option<TypeExpr>,
     pub body: FunBody,
+    /// Lexical identity of a **nested** function's own binding (ADR-0054 /
+    /// metel-core#1052). `Some` for a `fun` declared inside another body — the
+    /// evaluator keys its deferred-build slot and its references by this id;
+    /// `None` for top-level functions (they use `def_id` / `symbol_id`) and
+    /// for methods.
+    pub local_id: Option<LocalId>,
     /// `Some` only for overloaded free-function definitions (METEL-180): the
     /// evaluator registers the definition under this id (names cannot
     /// disambiguate overloads) and call sites dispatch via `Call::callee_id`.

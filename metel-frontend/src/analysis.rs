@@ -785,6 +785,60 @@ mod tests {
         }
 
         #[test]
+        fn nested_fn_carries_a_local_id_top_level_does_not() {
+            let analysis = analyze(
+                "fun outer() -> i64 {\n\
+                 \tfun helper(n: i64) -> i64 { n + 1 }\n\
+                 \thelper(41)\n\
+                 }\n",
+            );
+            let root = analysis
+                .graph
+                .modules
+                .iter()
+                .find(|m| m.module_path.is_empty())
+                .unwrap();
+            let TypedDecl::Fun(outer) = root
+                .decls
+                .iter()
+                .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "outer"))
+                .unwrap()
+            else {
+                unreachable!()
+            };
+            assert!(
+                outer.local_id.is_none(),
+                "a top-level fn has no lexical LocalId"
+            );
+            let FunBody::Typed(block) = &outer.body else {
+                panic!("typed body")
+            };
+            let helper = block
+                .stmts
+                .iter()
+                .find_map(|d| match d {
+                    TypedDecl::Fun(f) if f.name == "helper" => Some(f),
+                    _ => None,
+                })
+                .expect("nested `fun helper`");
+            let helper_id = helper.local_id.expect("a nested fn carries a LocalId");
+
+            // The call to `helper` in the tail resolves to that same LocalId.
+            let TypedExpr::Call { callee, .. } = block.tail.as_deref().unwrap() else {
+                panic!("tail is a call");
+            };
+            let TypedExpr::Ident(_, Some(crate::identity::BindingId::Local(used)), _, _) =
+                &**callee
+            else {
+                panic!("callee `helper` is a local reference");
+            };
+            assert_eq!(
+                *used, helper_id,
+                "the call and the nested fn share one LocalId"
+            );
+        }
+
+        #[test]
         fn assignment_target_ident_carries_the_local_binding_id() {
             use crate::typed_ast::{TypedPlace, TypedStmt};
             let analysis = analyze(
