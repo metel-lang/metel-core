@@ -3041,13 +3041,29 @@ pub fn eval_expr(
         }
 
         TypedExpr::Ident(name, binding, _, span) => {
-            // Prefer the id-indexed frame when the reference resolved to a
-            // lexical local (metel-core#1052b); fall back to the name map for
-            // globals, still-unmigrated sites, and stdlib.
-            if let Some(crate::identity::BindingId::Local(id)) = binding {
-                if let Some(val) = env.get_local(*id) {
-                    return Ok(Signal::Value(val));
+            // Resolve by frozen identity first (metel-core#1052b): a lexical
+            // local through the id-indexed frame, a global through the
+            // `SymbolId` value registry. The name map / stdlib remain the
+            // fallback for still-unmigrated sites and for a `None` binding.
+            match binding {
+                Some(crate::identity::BindingId::Local(id)) => {
+                    if let Some(val) = env.get_local(*id) {
+                        return Ok(Signal::Value(val));
+                    }
                 }
+                // A top-level `let` / `var` is reassignable and its
+                // `symbol_values` entry is a one-time snapshot, so it is read
+                // through the name map (mirrors `eval_call_expr`). Every other
+                // global — `fn`, constructor, imported name — is a stable
+                // registered value.
+                Some(crate::identity::BindingId::Global(sym))
+                    if !runtime.is_let_mut_def_id(*sym) =>
+                {
+                    if let Some(val) = runtime.get_symbol_value(*sym).cloned() {
+                        return Ok(Signal::Value(val));
+                    }
+                }
+                Some(crate::identity::BindingId::Global(_)) | None => {}
             }
             match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
                 Some(val) => Ok(Signal::Value(val)),
