@@ -1,11 +1,17 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::ast::Literal;
+use crate::identity::LocalId;
 use crate::typed_ast::TypedPattern;
 
 use super::Value;
+
+/// One binding produced by a successful pattern match: the spelling, its
+/// lexical identity when identity allocation stamped one, and the bound value
+/// (metel-core#1052b). The caller installs each into the environment by
+/// [`LocalId`] in the id-indexed frame, falling back to the name.
+pub(super) type PatternBinding = (String, Option<LocalId>, Value);
 
 // Float literal patterns (e.g. `1.0 => ...`) match by exact IEEE-754 equality,
 // matching the same exact-comparison semantics as `==` (see `eval_binop`) --
@@ -18,7 +24,7 @@ use super::Value;
 pub(super) fn match_pattern(
     pattern: &TypedPattern,
     value: &Value,
-    out: &mut HashMap<String, Value>,
+    out: &mut Vec<PatternBinding>,
 ) -> bool {
     match pattern {
         TypedPattern::Wildcard(_) => true,
@@ -53,8 +59,8 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        TypedPattern::Binding(name, _, _) => {
-            out.insert(name.clone(), value.clone());
+        TypedPattern::Binding(name, local_id, _) => {
+            out.push((name.clone(), *local_id, value.clone()));
             true
         }
 
@@ -82,11 +88,12 @@ pub(super) fn match_pattern(
                 } if name == type_name && variant == variant_name => {
                     // Runtime `Value::Enum` fields are still name-keyed; the
                     // pattern's `FieldId`s wait on the evaluator's id-indexed
-                    // frames (#1052).
-                    for (field_name, _id, _local) in fields {
+                    // frames (#1052). The shorthand binding's `LocalId` is
+                    // carried through so the match arm can install it by id.
+                    for (field_name, _id, local) in fields {
                         match enum_fields.get(field_name) {
                             Some(v) => {
-                                out.insert(field_name.clone(), v.clone());
+                                out.push((field_name.clone(), *local, v.clone()));
                             }
                             None => return false,
                         }
@@ -114,10 +121,10 @@ pub(super) fn match_pattern(
                 if !rest && struct_fields.len() != fields.len() {
                     return false;
                 }
-                for (field_name, _id, _local) in fields {
+                for (field_name, _id, local) in fields {
                     match struct_fields.get(field_name) {
                         Some(v) => {
-                            out.insert(field_name.clone(), v.clone());
+                            out.push((field_name.clone(), *local, v.clone()));
                         }
                         None => return false,
                     }
@@ -138,10 +145,10 @@ pub(super) fn match_pattern(
                 if !rest && record_fields.len() != fields.len() {
                     return false;
                 }
-                for (field_name, _local) in fields {
+                for (field_name, local) in fields {
                     match record_fields.get(field_name) {
                         Some(v) => {
-                            out.insert(field_name.clone(), v.clone());
+                            out.push((field_name.clone(), *local, v.clone()));
                         }
                         None => return false,
                     }
@@ -172,15 +179,65 @@ pub(super) fn match_pattern(
                             return false;
                         }
                     }
-                    // Bind rest to the remaining tail.
+                    // Bind rest to the remaining tail. The array rest binding
+                    // has no `LocalId` channel yet (#1052), so it stays
+                    // name-only and resolves through the name-map fallback.
                     if let Some(rest_name) = rest {
                         let tail: Vec<Value> = arr[elems.len()..].to_vec();
-                        out.insert(rest_name.clone(), Value::Array(Rc::new(RefCell::new(tail))));
+                        out.push((
+                            rest_name.clone(),
+                            None,
+                            Value::Array(Rc::new(RefCell::new(tail))),
+                        ));
                     }
                     true
                 }
                 _ => false,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{match_pattern, LocalId, TypedPattern, Value};
+    use crate::ast::Span;
+
+    #[test]
+    fn binding_pattern_carries_its_local_id() {
+        let pat = TypedPattern::Binding("x".to_string(), Some(LocalId(5)), Span::new(0, 0, "t"));
+        let mut out = Vec::new();
+        assert!(match_pattern(&pat, &Value::I64(9), &mut out));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "x");
+        assert_eq!(out[0].1, Some(LocalId(5)));
+    }
+
+    #[test]
+    fn struct_field_shorthand_bindings_carry_their_local_ids() {
+        use std::collections::HashMap;
+        let pat = TypedPattern::Struct {
+            name: "P".to_string(),
+            type_id: None,
+            fields: vec![
+                ("a".to_string(), None, Some(LocalId(1))),
+                ("b".to_string(), None, Some(LocalId(2))),
+            ],
+            rest: false,
+            span: Span::new(0, 0, "t"),
+        };
+        let mut fields = HashMap::new();
+        fields.insert("a".to_string(), Value::I64(1));
+        fields.insert("b".to_string(), Value::I64(2));
+        let value = Value::Struct {
+            name: "P".to_string(),
+            type_id: None,
+            fields,
+        };
+        let mut out = Vec::new();
+        assert!(match_pattern(&pat, &value, &mut out));
+        let ids: Vec<_> = out.iter().map(|(n, id, _)| (n.as_str(), *id)).collect();
+        assert!(ids.contains(&("a", Some(LocalId(1)))));
+        assert!(ids.contains(&("b", Some(LocalId(2)))));
     }
 }

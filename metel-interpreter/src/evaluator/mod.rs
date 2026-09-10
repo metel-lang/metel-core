@@ -823,6 +823,12 @@ impl RuntimeRegistry {
 pub struct ClosureValue {
     pub name: Option<String>,
     pub captures: Vec<CaptureSpec>,
+    /// Structural [`LocalId`] of each capture's *enclosing* binding, positionally
+    /// aligned with `captures` (metel-core#1052b). A closure body's reference to
+    /// a captured variable resolves to that enclosing id, so the capture cell is
+    /// installed in the id-indexed frame under this key. `None` where identity
+    /// allocation had nothing to stamp.
+    pub capture_ids: Vec<Option<LocalId>>,
     pub params: Vec<Param>,
     /// Structural [`LocalId`] of each parameter binding, positionally aligned
     /// with `params` (metel-core#1052b). `None` where identity allocation had
@@ -861,12 +867,15 @@ fn deep_clone_value(v: Value) -> Value {
             Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
                 name: closure.name.clone(),
                 captures: closure.captures.clone(),
+                capture_ids: closure.capture_ids.clone(),
                 params: closure.params.clone(),
                 param_ids: closure.param_ids.clone(),
                 body: closure.body.clone(),
                 // A Copy closure is copied as a value, not Rc-aliased. Its owned
                 // environment cells therefore begin as equal but independent state.
-                captured: closure.captured.capture_closure_copy(&closure.captures),
+                captured: closure
+                    .captured
+                    .capture_closure_copy(&closure.captures, &closure.capture_ids),
                 call_mutation: closure.call_mutation,
                 in_call: Cell::new(false),
                 type_ctx: closure.type_ctx.clone(),
@@ -1602,20 +1611,36 @@ impl Environment {
 
     /// Copy a closure environment. By-value capture cells are independent in the
     /// copy; explicit `&` / `&var` captures retain the referent cell they borrowed.
+    ///
+    /// `capture_ids` is positionally aligned with `captures`; each capture's cell
+    /// (the re-pointed one for a by-ref capture) is mirrored into the id-indexed
+    /// frame under its enclosing [`LocalId`] so a body reference resolves there
+    /// (metel-core#1052b).
     #[must_use]
-    pub fn capture_closure_copy(&self, captures: &[CaptureSpec]) -> Self {
+    pub fn capture_closure_copy(
+        &self,
+        captures: &[CaptureSpec],
+        capture_ids: &[Option<LocalId>],
+    ) -> Self {
         let mut copied = self.capture_clone();
-        for capture in captures {
-            let name = match capture {
-                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => name,
-                CaptureSpec::Owned { .. } | CaptureSpec::Clone { .. } => continue,
+        for (i, capture) in captures.iter().enumerate() {
+            let (name, shared) = match capture {
+                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
+                    (name, self.get_rc(name))
+                }
+                CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => (name, None),
             };
-            if let Some(source) = self.get_rc(name) {
+            if let Some(source) = shared {
                 for scope in copied.scopes.iter_mut().rev() {
                     if scope.contains_key(name) {
                         scope.insert(name.clone(), source);
                         break;
                     }
+                }
+            }
+            if let Some(id) = capture_ids.get(i).copied().flatten() {
+                if let Some(cell) = copied.get_rc(name) {
+                    copied.frame.insert(id, cell);
                 }
             }
         }
@@ -1627,9 +1652,15 @@ impl Environment {
     /// # Errors
     ///
     /// Returns a runtime error when a capture is not available in this environment.
+    ///
+    /// `capture_ids` is positionally aligned with `captures`; each capture is
+    /// installed in the id-indexed frame under its enclosing [`LocalId`] as well
+    /// as by name, on one shared cell, so a closure-body reference resolves
+    /// through the frame (metel-core#1052b).
     pub fn capture_closure(
         &self,
         captures: &[CaptureSpec],
+        capture_ids: &[Option<LocalId>],
         span: &Span,
     ) -> Result<Self, MetelError> {
         if captures.is_empty() {
@@ -1640,7 +1671,8 @@ impl Environment {
             .pending_funs
             .clone_from(&self.pending_funs);
         closure_environment.type_ctx.clone_from(&self.type_ctx);
-        for capture in captures {
+        for (i, capture) in captures.iter().enumerate() {
+            let id = capture_ids.get(i).copied().flatten();
             match capture {
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
                     let value = self.get(name).ok_or_else(|| {
@@ -1650,7 +1682,7 @@ impl Environment {
                             span,
                         )
                     })?;
-                    closure_environment.define(name, value);
+                    closure_environment.define_binding(id, name, value);
                 }
                 CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
                     let cell = self.get_rc(name).ok_or_else(|| {
@@ -1660,7 +1692,7 @@ impl Environment {
                             span,
                         )
                     })?;
-                    closure_environment.define_rc(name, cell);
+                    closure_environment.define_binding_rc(id, name, cell);
                 }
             }
         }
@@ -1836,6 +1868,7 @@ fn run_passes(
                 let value = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
                     name: Some(f.name.clone()),
                     captures: vec![],
+                    capture_ids: vec![],
                     params: f.params.clone(),
                     param_ids: f.param_ids.clone(),
                     body,
@@ -1870,6 +1903,7 @@ fn run_passes(
                             FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
                                 name: Some(method.name.clone()),
                                 captures: vec![],
+                                capture_ids: vec![],
                                 params: method.params.clone(),
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
@@ -1883,6 +1917,7 @@ fn run_passes(
                                 RuntimeCallable::Closure(Rc::new(ClosureValue {
                                     name: Some(method.name.clone()),
                                     captures: vec![],
+                                    capture_ids: vec![],
                                     params: method.params.clone(),
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
@@ -1940,6 +1975,7 @@ fn run_passes(
                             FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
                                 name: Some(method.name.clone()),
                                 captures: vec![],
+                                capture_ids: vec![],
                                 params: method.params.clone(),
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
@@ -1953,6 +1989,7 @@ fn run_passes(
                                 RuntimeCallable::Closure(Rc::new(ClosureValue {
                                     name: Some(method.name.clone()),
                                     captures: vec![],
+                                    capture_ids: vec![],
                                     params: method.params.clone(),
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
@@ -2155,6 +2192,7 @@ fn build_and_set_nested_fun(
     let closure = Value::Callable(RuntimeCallable::Closure(Rc::new(ClosureValue {
         name: Some(f.name.clone()),
         captures: vec![],
+        capture_ids: vec![],
         params: f.params.clone(),
         param_ids: f.param_ids.clone(),
         body,
@@ -3431,15 +3469,15 @@ pub fn eval_expr(
             };
             let scrutinee = deref_value(&scrutinee_raw, &m.span)?.unwrap_or(scrutinee_raw);
             for arm in &m.arms {
-                let mut bindings = HashMap::new();
+                let mut bindings: Vec<pattern::PatternBinding> = Vec::new();
                 if !pattern::match_pattern(&arm.pattern, &scrutinee, &mut bindings) {
                     continue;
                 }
                 // Evaluate the guard (if any) in a scope that includes pattern bindings.
                 if let Some(guard) = &arm.guard {
                     env.push_scope();
-                    for (k, v) in &bindings {
-                        env.define(k, v.clone());
+                    for (name, id, v) in &bindings {
+                        env.define_binding(*id, name, v.clone());
                     }
                     let guard_val = match eval_to_value(guard, env, runtime)? {
                         ControlFlow::Continue(value) => value,
@@ -3459,8 +3497,8 @@ pub fn eval_expr(
                 }
                 // Execute the arm body in a scope with pattern bindings.
                 env.push_scope();
-                for (k, v) in bindings {
-                    env.define(&k, v);
+                for (name, id, v) in bindings {
+                    env.define_binding(id, &name, v);
                 }
                 let result = eval_block(&arm.body, env, runtime);
                 env.pop_scope();
@@ -3614,6 +3652,7 @@ pub fn eval_expr(
 
         TypedExpr::Closure {
             captures,
+            capture_ids,
             call_mutation,
             params,
             param_ids,
@@ -3622,11 +3661,12 @@ pub fn eval_expr(
             span,
             ..
         } => {
-            let captured = env.capture_closure(captures, span)?;
+            let captured = env.capture_closure(captures, capture_ids, span)?;
             Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
                 Rc::new(ClosureValue {
                     name: None,
                     captures: captures.clone(),
+                    capture_ids: capture_ids.clone(),
                     params: params.clone(),
                     param_ids: param_ids.clone(),
                     body: ClosureBody::Typed(body.clone()),
@@ -3642,6 +3682,7 @@ pub fn eval_expr(
         TypedExpr::GenericClosure {
             name,
             captures,
+            capture_ids,
             call_mutation,
             params,
             param_ids,
@@ -3649,11 +3690,12 @@ pub fn eval_expr(
             span,
             ..
         } => {
-            let captured = env.capture_closure(captures, span)?;
+            let captured = env.capture_closure(captures, capture_ids, span)?;
             Ok(Signal::Value(Value::Callable(RuntimeCallable::Closure(
                 Rc::new(ClosureValue {
                     name: name.clone(),
                     captures: captures.clone(),
+                    capture_ids: capture_ids.clone(),
                     params: params.clone(),
                     param_ids: param_ids.clone(),
                     body: ClosureBody::Untyped(body.clone()),
@@ -3728,5 +3770,42 @@ mod frame_tests {
         let snapshot = env.capture_clone();
         assert!(snapshot.get_local(id).is_none());
         assert_eq!(as_i64(snapshot.get("c")), Some(5));
+    }
+
+    #[test]
+    fn capture_closure_installs_captures_in_the_frame_by_enclosing_id() {
+        // metel-core#1052b-2: a closure body's reference to a captured variable
+        // resolves to the *enclosing* binding's `LocalId`, so that id keys the
+        // capture cell in the closure environment's frame.
+        use crate::ast::{CaptureSpec, Span};
+        let mut outer = Environment::new();
+        let n_id = LocalId(7);
+        outer.define_binding(Some(n_id), "n", Value::I64(3));
+        let sp = Span::new(0, 0, "t");
+        let caps = vec![CaptureSpec::Clone {
+            name: "n".to_string(),
+            span: sp.clone(),
+        }];
+        let closure_env = outer.capture_closure(&caps, &[Some(n_id)], &sp).unwrap();
+        assert_eq!(as_i64(closure_env.get_local(n_id)), Some(3));
+        assert_eq!(as_i64(closure_env.get("n")), Some(3));
+    }
+
+    #[test]
+    fn mut_ref_capture_shares_one_cell_across_name_and_id() {
+        use crate::ast::{CaptureSpec, Span};
+        let mut outer = Environment::new();
+        let n_id = LocalId(8);
+        outer.define_binding(Some(n_id), "n", Value::I64(0));
+        let sp = Span::new(0, 0, "t");
+        let caps = vec![CaptureSpec::MutRef {
+            name: "n".to_string(),
+            span: sp.clone(),
+        }];
+        let closure_env = outer.capture_closure(&caps, &[Some(n_id)], &sp).unwrap();
+        // One cell backs both keys: a write via the name map is seen by the
+        // id-indexed read.
+        assert!(closure_env.set("n", Value::I64(42)));
+        assert_eq!(as_i64(closure_env.get_local(n_id)), Some(42));
     }
 }
