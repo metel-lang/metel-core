@@ -1686,10 +1686,15 @@ impl Environment {
     ) -> Self {
         let mut copied = self.capture_clone();
         for (i, capture) in captures.iter().enumerate() {
+            let id = capture_ids.get(i).copied().flatten();
             let (name, shared) = match capture {
-                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
-                    (name, self.get_rc(name))
-                }
+                // `id`, when known, is this capture's own LocalId in `self`
+                // (metel-core#1052b) — read from `self`'s own frame first.
+                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => (
+                    name,
+                    id.and_then(|id| self.get_local_rc(id))
+                        .or_else(|| self.get_rc(name)),
+                ),
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => (name, None),
             };
             if let Some(source) = shared {
@@ -1700,7 +1705,7 @@ impl Environment {
                     }
                 }
             }
-            if let Some(id) = capture_ids.get(i).copied().flatten() {
+            if let Some(id) = id {
                 if let Some(cell) = copied.get_rc(name) {
                     copied.frame.insert(id, cell);
                 }
@@ -1734,26 +1739,37 @@ impl Environment {
             .clone_from(&self.pending_funs);
         closure_environment.type_ctx.clone_from(&self.type_ctx);
         for (i, capture) in captures.iter().enumerate() {
+            // `id`, when known, is this capture's *own* LocalId in `self` — the
+            // same id `define_binding`/`define_binding_rc` would have filed it
+            // under when the enclosing binding was created — so it is read from
+            // `self`'s own frame first, falling back to the name map
+            // (metel-core#1052b).
             let id = capture_ids.get(i).copied().flatten();
             match capture {
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
-                    let value = self.get(name).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
-                            format!("undefined variable `{name}`"),
-                            span,
-                        )
-                    })?;
+                    let value = id
+                        .and_then(|id| self.get_local(id))
+                        .or_else(|| self.get(name))
+                        .ok_or_else(|| {
+                            MetelError::panic(
+                                RuntimeErrorCode::R0003,
+                                format!("undefined variable `{name}`"),
+                                span,
+                            )
+                        })?;
                     closure_environment.define_binding(id, name, value);
                 }
                 CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
-                    let cell = self.get_rc(name).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
-                            format!("undefined variable `{name}`"),
-                            span,
-                        )
-                    })?;
+                    let cell = id
+                        .and_then(|id| self.get_local_rc(id))
+                        .or_else(|| self.get_rc(name))
+                        .ok_or_else(|| {
+                            MetelError::panic(
+                                RuntimeErrorCode::R0003,
+                                format!("undefined variable `{name}`"),
+                                span,
+                            )
+                        })?;
                     closure_environment.define_binding_rc(id, name, cell);
                 }
             }
