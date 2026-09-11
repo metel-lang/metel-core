@@ -694,7 +694,10 @@ pub enum TypedPattern {
     Tuple(Vec<TypedPattern>, Span),
     Array {
         elems: Vec<TypedPattern>,
-        rest: Option<String>,
+        /// The rest-binding's spelling and the `LocalId` it introduces
+        /// (metel-core#1097); `None` in the second slot without identity
+        /// context, mirroring every other pattern binding site.
+        rest: Option<(String, Option<LocalId>)>,
         span: Span,
     },
 }

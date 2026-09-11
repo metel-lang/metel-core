@@ -688,7 +688,11 @@ pub enum Pattern {
     Tuple(Vec<Pattern>, Span),
     Array {
         elems: Vec<Pattern>,
-        rest: Option<String>,
+        /// The rest-binding's name paired with its own declaration span
+        /// (metel-core#1097) — the span lets identity allocation and
+        /// construction stamp it with a real `LocalId`, the same as every
+        /// other pattern binding site.
+        rest: Option<(String, Span)>,
         span: Span,
     },
 }

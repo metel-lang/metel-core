@@ -294,7 +294,9 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
         ),
         Pattern::Array { elems, rest, span } => TypedPattern::Array {
             elems: elems.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
-            rest: rest.clone(),
+            rest: rest
+                .as_ref()
+                .map(|(name, rest_span)| (name.clone(), ctx.local_binding_at(rest_span))),
             span: span.clone(),
         },
     }
@@ -647,7 +649,7 @@ pub(super) fn construct_pattern_bindings(
                 Type::Array(t) | Type::SizedArray(t, _) => *t.clone(),
                 _ => return Err(MetelError::internal("array pattern on non-array type")),
             };
-            if let Some(rest_name) = rest {
+            if let Some((rest_name, _)) = rest {
                 ctx.bind(rest_name, Type::Array(Box::new(elem_ty.clone())));
             }
             for pat in elems {

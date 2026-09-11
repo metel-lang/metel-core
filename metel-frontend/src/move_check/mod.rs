@@ -1443,7 +1443,7 @@ impl<'a> Checker<'a> {
                         state,
                     );
                 }
-                if let Some(rest) = rest {
+                if let Some((rest, _)) = rest {
                     state.bind(rest);
                 }
             }
@@ -1472,7 +1472,7 @@ impl<'a> Checker<'a> {
                 for item in elems {
                     Self::observe_pattern_bindings(item, state);
                 }
-                if let Some(rest) = rest {
+                if let Some((rest, _)) = rest {
                     state.bind(rest);
                 }
             }
@@ -2818,7 +2818,7 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
             for item in elems {
                 bind_pattern_names(item, into);
             }
-            if let Some(rest) = rest {
+            if let Some((rest, _)) = rest {
                 into.insert(rest.clone());
             }
         }

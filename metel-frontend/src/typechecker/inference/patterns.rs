@@ -256,7 +256,7 @@ pub(super) fn infer_pattern(
                     InferType::Array(Box::new(elem_var.clone())),
                     pat_span.clone(),
                 );
-                if let Some(rest_name) = rest {
+                if let Some((rest_name, _)) = rest {
                     ctx.bind_mono(
                         rest_name,
                         InferType::Array(Box::new(elem_var.clone())),

@@ -443,7 +443,7 @@ fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
             for p in elems {
                 bind_pattern(p, bind);
             }
-            if let Some(rest) = rest {
+            if let Some((rest, _)) = rest {
                 bind(rest);
             }
         }

@@ -822,10 +822,10 @@ impl Walker<'_> {
                     self.bind_pattern(e);
                     self.path.pop();
                 }
-                if let Some(name) = rest {
+                if let Some((name, rest_span)) = rest {
                     self.bind(
                         name,
-                        &Span::new(0, 0, "<pattern>"),
+                        rest_span,
                         DefinitionKind::PatternBinding,
                         LexicalSeg::PatternField(name.clone()),
                     );

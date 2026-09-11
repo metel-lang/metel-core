@@ -264,7 +264,7 @@ fn collect_pattern_bindings(
             for item in elems {
                 collect_pattern_bindings(item, bound);
             }
-            if let Some(rest) = rest {
+            if let Some((rest, _)) = rest {
                 bound.insert(rest.clone());
             }
         }

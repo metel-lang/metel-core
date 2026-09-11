@@ -179,14 +179,13 @@ pub(super) fn match_pattern(
                             return false;
                         }
                     }
-                    // Bind rest to the remaining tail. The array rest binding
-                    // has no `LocalId` channel yet (#1052), so it stays
-                    // name-only and resolves through the name-map fallback.
-                    if let Some(rest_name) = rest {
+                    // Bind rest to the remaining tail, by its LocalId when
+                    // identity allocation stamped one (metel-core#1097).
+                    if let Some((rest_name, rest_id)) = rest {
                         let tail: Vec<Value> = arr[elems.len()..].to_vec();
                         out.push((
                             rest_name.clone(),
-                            None,
+                            *rest_id,
                             Value::Array(Rc::new(RefCell::new(tail))),
                         ));
                     }
@@ -239,5 +238,32 @@ mod tests {
         let ids: Vec<_> = out.iter().map(|(n, id, _)| (n.as_str(), *id)).collect();
         assert!(ids.contains(&("a", Some(LocalId(1)))));
         assert!(ids.contains(&("b", Some(LocalId(2)))));
+    }
+
+    #[test]
+    fn array_rest_binding_carries_its_local_id() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let pat = TypedPattern::Array {
+            elems: vec![TypedPattern::Binding(
+                "head".to_string(),
+                Some(LocalId(1)),
+                Span::new(0, 0, "t"),
+            )],
+            rest: Some(("tail".to_string(), Some(LocalId(2)))),
+            span: Span::new(0, 0, "t"),
+        };
+        let value = Value::Array(Rc::new(RefCell::new(vec![
+            Value::I64(1),
+            Value::I64(2),
+            Value::I64(3),
+        ])));
+        let mut out = Vec::new();
+        assert!(match_pattern(&pat, &value, &mut out));
+        let rest_binding = out
+            .iter()
+            .find(|(name, ..)| name == "tail")
+            .expect("rest binding present");
+        assert_eq!(rest_binding.1, Some(LocalId(2)));
     }
 }

@@ -2593,13 +2593,12 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 match child.as_rule() {
                     Rule::pattern => elems.push(parse_pattern(child, filename)?),
                     Rule::rest_pat => {
-                        let name = child
+                        let ident_pair = child
                             .into_inner()
                             .find(|p| p.as_rule() == Rule::ident)
-                            .ok_or_else(|| MetelError::internal("rest_pat: expected ident"))?
-                            .as_str()
-                            .to_string();
-                        rest = Some(name);
+                            .ok_or_else(|| MetelError::internal("rest_pat: expected ident"))?;
+                        let ident_span = Span::of(&ident_pair, filename);
+                        rest = Some((ident_pair.as_str().to_string(), ident_span));
                     }
                     _ => {}
                 }
