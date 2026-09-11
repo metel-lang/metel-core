@@ -1,0 +1,10 @@
+// metel-core#1052b-3f: an explicitly-imported std::core native, aliased under
+// a local name, resolves through the same identity path as any other
+// explicit import — the last untested combination before the evaluator's
+// name-map import/alias bridges could be shown redundant on the whole suite.
+import std::core::clock as get_time;
+
+fun main() {
+    let t := get_time();
+    assert(t >= 0);
+}

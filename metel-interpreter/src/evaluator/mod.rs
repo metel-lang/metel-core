@@ -49,8 +49,8 @@ use crate::elaborator::ElaboratedModuleGraph;
 use crate::identity::LocalId;
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
-    FunBody, MethodDispatch, ResolvedImportRef, TypedBlock, TypedDecl, TypedExpr, TypedForInit,
-    TypedProgram, TypedStmt,
+    FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedProgram,
+    TypedStmt,
 };
 
 // ── Runtime values ────────────────────────────────────────────────────────────
@@ -1849,21 +1849,15 @@ pub fn evaluate_graph_with_options(
             });
         }
 
-        // Seed names imported from already-initialised dependency modules.
-        for (local_name, import_ref) in &module.imported_names {
-            let ResolvedImportRef {
-                source_module,
-                canonical_name,
-                ..
-            } = import_ref;
-            if let Some(src_env) = module_envs.get(source_module) {
-                if let Some(val) = src_env.get(canonical_name) {
-                    env.define(local_name, val);
-                }
-            } else if let Some(val) = runtime.get_module_value(source_module, canonical_name) {
-                env.define(local_name, val);
-            }
-        }
+        // An imported name's own reference sites already carry the exporting
+        // module's `SymbolId` (explicit imports directly; glob imports via
+        // metel-core#1052a-9) and resolve through the shared `runtime`'s
+        // `SymbolId`-keyed registries — the same ones the exporting module's
+        // own Pass 1b/Pass 2 populates before this (importing) module runs.
+        // `module.imported_names` needs no cross-link into this module's own
+        // name map for that to work (metel-core#1052b-3f; verified by
+        // disabling this block and running the full fixture suite before
+        // removing it, both before and after #1052a-9).
 
         // Build type context for construction-at-call-time of generic function bodies.
         let type_ctx = std::rc::Rc::new(TypeCtx {
@@ -1873,14 +1867,8 @@ pub fn evaluate_graph_with_options(
             binding_spans: identity.map(|i| Rc::clone(&i.binding_spans)),
         });
 
-        // Run the standard 3-pass + alias evaluation on this module's decls.
-        run_passes(
-            &module.decls,
-            &module.import_aliases,
-            &mut env,
-            &mut runtime,
-            Some(type_ctx),
-        )?;
+        // Run the standard 3-pass evaluation on this module's decls.
+        run_passes(&module.decls, &mut env, &mut runtime, Some(type_ctx))?;
 
         module_envs.insert(module.module_path, env);
     }
@@ -1906,7 +1894,6 @@ pub fn evaluate_graph_with_options(
 ///
 /// Pass 1a: placeholder bindings so closures can capture each other's Rc.
 /// Pass 1b: replace placeholders with real closures ("ties the knot").
-/// Alias registration: bind aliased import names after closures exist.
 /// Pass 2: evaluate top-level let/mut/stmt declarations in order.
 ///
 /// `type_ctx` must be set on `env` before calling so that generic function bodies
@@ -1917,7 +1904,6 @@ pub fn evaluate_graph_with_options(
 #[allow(clippy::too_many_lines)]
 fn run_passes(
     decls: &TypedProgram,
-    aliases: &std::collections::HashMap<String, String>,
     env: &mut Environment,
     runtime: &mut RuntimeRegistry,
     type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -2153,17 +2139,10 @@ fn run_passes(
         }
     }
 
-    // Alias registration
-    for (alias, canonical) in aliases {
-        if let Some(val) = env
-            .get(canonical)
-            .or_else(|| std_core_lookup(canonical, runtime))
-        {
-            if env.get(alias).is_none() {
-                env.define(alias, val);
-            }
-        }
-    }
+    // A `use x as y;` alias's own reference sites already carry `x`'s
+    // SymbolId (identical construction to an ordinary import — see the
+    // module-init comment above) and resolve through the shared `runtime`,
+    // needing no local-name rebinding here (metel-core#1052b-3f).
 
     // Pass 2
     for decl in decls {
