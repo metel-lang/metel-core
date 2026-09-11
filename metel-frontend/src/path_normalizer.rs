@@ -58,6 +58,7 @@ pub fn normalize(
         normalize_program_decls(
             &mut loaded.program.decls,
             scope,
+            &loaded.module_path,
             &module_names,
             &names.symbols,
         )?;
@@ -70,11 +71,12 @@ pub fn normalize(
 fn normalize_program_decls(
     decls: &mut Vec<Decl>,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     for decl in decls {
-        normalize_decl(decl, scope, module_names, symbols)?;
+        normalize_decl(decl, scope, current_module, module_names, symbols)?;
     }
     Ok(())
 }
@@ -82,15 +84,20 @@ fn normalize_program_decls(
 fn normalize_decl(
     decl: &mut Decl,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     match decl {
-        Decl::Let(ld) => normalize_expr(&mut ld.value, scope, module_names, symbols),
-        Decl::Mut(md) => normalize_expr(&mut md.value, scope, module_names, symbols),
-        Decl::Fun(fd) => normalize_fun(fd, scope, module_names, symbols),
-        Decl::Impl(ib) => normalize_impl(ib, scope, module_names, symbols),
-        Decl::Stmt(s) => normalize_stmt(s, scope, module_names, symbols),
+        Decl::Let(ld) => {
+            normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
+        }
+        Decl::Mut(md) => {
+            normalize_expr(&mut md.value, scope, current_module, module_names, symbols)
+        }
+        Decl::Fun(fd) => normalize_fun(fd, scope, current_module, module_names, symbols),
+        Decl::Impl(ib) => normalize_impl(ib, scope, current_module, module_names, symbols),
+        Decl::Stmt(s) => normalize_stmt(s, scope, current_module, module_names, symbols),
         Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) => Ok(()),
         Decl::TypeAlias(_) => {
             unreachable!("RFC-0160 type aliases are expanded before path normalization")
@@ -101,20 +108,22 @@ fn normalize_decl(
 fn normalize_fun(
     fun: &mut FunDecl,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
-    normalize_block(&mut fun.body, scope, module_names, symbols)
+    normalize_block(&mut fun.body, scope, current_module, module_names, symbols)
 }
 
 fn normalize_impl(
     ib: &mut ImplBlock,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     for method in &mut ib.methods {
-        normalize_fun(method, scope, module_names, symbols)?;
+        normalize_fun(method, scope, current_module, module_names, symbols)?;
     }
     Ok(())
 }
@@ -122,14 +131,15 @@ fn normalize_impl(
 fn normalize_block(
     block: &mut Block,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     for decl in &mut block.stmts {
-        normalize_decl(decl, scope, module_names, symbols)?;
+        normalize_decl(decl, scope, current_module, module_names, symbols)?;
     }
     if let Some(tail) = &mut block.tail {
-        normalize_expr(tail, scope, module_names, symbols)?;
+        normalize_expr(tail, scope, current_module, module_names, symbols)?;
     }
     Ok(())
 }
@@ -137,34 +147,53 @@ fn normalize_block(
 fn normalize_stmt(
     stmt: &mut Stmt,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     match stmt {
-        Stmt::Expr(e) => normalize_expr(e, scope, module_names, symbols),
+        Stmt::Expr(e) => normalize_expr(e, scope, current_module, module_names, symbols),
         Stmt::While(w) => {
-            normalize_expr(&mut w.condition, scope, module_names, symbols)?;
-            normalize_block(&mut w.body, scope, module_names, symbols)
+            normalize_expr(
+                &mut w.condition,
+                scope,
+                current_module,
+                module_names,
+                symbols,
+            )?;
+            normalize_block(&mut w.body, scope, current_module, module_names, symbols)
         }
         Stmt::For(f) => {
             if let Some(init) = &mut f.init {
                 match init {
-                    ForInit::Expr(e) => normalize_expr(e, scope, module_names, symbols)?,
-                    ForInit::Let(ld) => normalize_let_decl(ld, scope, module_names, symbols)?,
-                    ForInit::Mut(md) => normalize_mut_decl(md, scope, module_names, symbols)?,
+                    ForInit::Expr(e) => {
+                        normalize_expr(e, scope, current_module, module_names, symbols)?;
+                    }
+                    ForInit::Let(ld) => {
+                        normalize_let_decl(ld, scope, current_module, module_names, symbols)?;
+                    }
+                    ForInit::Mut(md) => {
+                        normalize_mut_decl(md, scope, current_module, module_names, symbols)?;
+                    }
                 }
             }
             if let Some(cond) = &mut f.condition {
-                normalize_expr(cond, scope, module_names, symbols)?;
+                normalize_expr(cond, scope, current_module, module_names, symbols)?;
             }
             if let Some(step) = &mut f.step {
-                normalize_expr(step, scope, module_names, symbols)?;
+                normalize_expr(step, scope, current_module, module_names, symbols)?;
             }
-            normalize_block(&mut f.body, scope, module_names, symbols)
+            normalize_block(&mut f.body, scope, current_module, module_names, symbols)
         }
         Stmt::ForIn(fi) => {
-            normalize_expr(&mut fi.iterable, scope, module_names, symbols)?;
-            normalize_block(&mut fi.body, scope, module_names, symbols)
+            normalize_expr(
+                &mut fi.iterable,
+                scope,
+                current_module,
+                module_names,
+                symbols,
+            )?;
+            normalize_block(&mut fi.body, scope, current_module, module_names, symbols)
         }
     }
 }
@@ -172,19 +201,21 @@ fn normalize_stmt(
 fn normalize_mut_decl(
     md: &mut MutDecl,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
-    normalize_expr(&mut md.value, scope, module_names, symbols)
+    normalize_expr(&mut md.value, scope, current_module, module_names, symbols)
 }
 
 fn normalize_let_decl(
     ld: &mut LetDecl,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
-    normalize_expr(&mut ld.value, scope, module_names, symbols)
+    normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
 }
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
@@ -194,6 +225,7 @@ fn normalize_let_decl(
 fn normalize_expr(
     expr: &mut Expr,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
@@ -204,7 +236,7 @@ fn normalize_expr(
 
         Expr::Path(segments, _seg_spans, span) => {
             if let Some((resolved, symbol_id)) =
-                try_resolve_path(segments, scope, module_names, symbols)
+                try_resolve_path(segments, scope, current_module, module_names, symbols)
             {
                 let original = std::mem::take(segments);
                 *expr = Expr::ResolvedPath {
@@ -219,46 +251,52 @@ fn normalize_expr(
 
         Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
             for e in elems {
-                normalize_expr(e, scope, module_names, symbols)?;
+                normalize_expr(e, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
         Expr::RecordLiteral { fields, .. } => {
             for (_, expr) in fields {
-                normalize_expr(expr, scope, module_names, symbols)?;
+                normalize_expr(expr, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
-        Expr::RepeatArray(elem, _, _) => normalize_expr(elem, scope, module_names, symbols),
+        Expr::RepeatArray(elem, _, _) => {
+            normalize_expr(elem, scope, current_module, module_names, symbols)
+        }
         Expr::BinOp(lhs, _, rhs, _) => {
-            normalize_expr(lhs, scope, module_names, symbols)?;
-            normalize_expr(rhs, scope, module_names, symbols)
+            normalize_expr(lhs, scope, current_module, module_names, symbols)?;
+            normalize_expr(rhs, scope, current_module, module_names, symbols)
         }
-        Expr::UnaryOp(_, operand, _) => normalize_expr(operand, scope, module_names, symbols),
+        Expr::UnaryOp(_, operand, _) => {
+            normalize_expr(operand, scope, current_module, module_names, symbols)
+        }
         Expr::Cast { expr: inner, .. } | Expr::Ascribe { expr: inner, .. } => {
-            normalize_expr(inner, scope, module_names, symbols)
+            normalize_expr(inner, scope, current_module, module_names, symbols)
         }
-        Expr::Assign { value, .. } => normalize_expr(value, scope, module_names, symbols),
+        Expr::Assign { value, .. } => {
+            normalize_expr(value, scope, current_module, module_names, symbols)
+        }
         Expr::Call { callee, args, .. } => {
-            normalize_expr(callee, scope, module_names, symbols)?;
+            normalize_expr(callee, scope, current_module, module_names, symbols)?;
             for a in args {
-                normalize_expr(a, scope, module_names, symbols)?;
+                normalize_expr(a, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
         Expr::MethodCall { receiver, args, .. } => {
-            normalize_expr(receiver, scope, module_names, symbols)?;
+            normalize_expr(receiver, scope, current_module, module_names, symbols)?;
             for a in args {
-                normalize_expr(a, scope, module_names, symbols)?;
+                normalize_expr(a, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
         Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
-            normalize_expr(object, scope, module_names, symbols)
+            normalize_expr(object, scope, current_module, module_names, symbols)
         }
         Expr::Index { object, index, .. } => {
-            normalize_expr(object, scope, module_names, symbols)?;
-            normalize_expr(index, scope, module_names, symbols)
+            normalize_expr(object, scope, current_module, module_names, symbols)?;
+            normalize_expr(index, scope, current_module, module_names, symbols)
         }
         Expr::If {
             condition,
@@ -266,20 +304,26 @@ fn normalize_expr(
             else_branch,
             ..
         } => {
-            normalize_expr(condition, scope, module_names, symbols)?;
-            normalize_block(then_branch, scope, module_names, symbols)?;
+            normalize_expr(condition, scope, current_module, module_names, symbols)?;
+            normalize_block(then_branch, scope, current_module, module_names, symbols)?;
             if let Some(eb) = else_branch {
-                normalize_block(eb, scope, module_names, symbols)?;
+                normalize_block(eb, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
         Expr::Loop { body, .. } | Expr::Closure { body, .. } => {
-            normalize_block(body, scope, module_names, symbols)
+            normalize_block(body, scope, current_module, module_names, symbols)
         }
         Expr::Match(m) => {
-            normalize_expr(&mut m.scrutinee, scope, module_names, symbols)?;
+            normalize_expr(
+                &mut m.scrutinee,
+                scope,
+                current_module,
+                module_names,
+                symbols,
+            )?;
             for arm in &mut m.arms {
-                normalize_arm(arm, scope, module_names, symbols)?;
+                normalize_arm(arm, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
@@ -310,25 +354,27 @@ fn normalize_expr(
                 }
             }
             for (_, v) in fields {
-                normalize_expr(v, scope, module_names, symbols)?;
+                normalize_expr(v, scope, current_module, module_names, symbols)?;
             }
             Ok(())
         }
         Expr::RecordProjection { path, .. } => {
             if let Some((resolved, _symbol_id)) =
-                try_resolve_path(path, scope, module_names, symbols)
+                try_resolve_path(path, scope, current_module, module_names, symbols)
             {
                 *path = vec![resolved];
             }
             Ok(())
         }
-        Expr::PropagateError { expr, .. } => normalize_expr(expr, scope, module_names, symbols),
+        Expr::PropagateError { expr, .. } => {
+            normalize_expr(expr, scope, current_module, module_names, symbols)
+        }
         Expr::Return(r) => match &mut r.value {
-            Some(v) => normalize_expr(v, scope, module_names, symbols),
+            Some(v) => normalize_expr(v, scope, current_module, module_names, symbols),
             None => Ok(()),
         },
         Expr::Break(b) => match &mut b.value {
-            Some(v) => normalize_expr(v, scope, module_names, symbols),
+            Some(v) => normalize_expr(v, scope, current_module, module_names, symbols),
             None => Ok(()),
         },
     }
@@ -337,13 +383,14 @@ fn normalize_expr(
 fn normalize_arm(
     arm: &mut MatchArm,
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &std::collections::HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 ) -> Result<(), MetelError> {
     if let Some(guard) = &mut arm.guard {
-        normalize_expr(guard, scope, module_names, symbols)?;
+        normalize_expr(guard, scope, current_module, module_names, symbols)?;
     }
-    normalize_block(&mut arm.body, scope, module_names, symbols)
+    normalize_block(&mut arm.body, scope, current_module, module_names, symbols)
 }
 
 // ── Path resolution logic ─────────────────────────────────────────────────────
@@ -356,6 +403,11 @@ fn normalize_arm(
 fn try_resolve_path(
     segments: &[String],
     scope: Option<&ModuleScope>,
+    // The module this path appears in — needed to resolve `self::name` to its
+    // own declaration's `SymbolId` (metel-core#1052b-3f / #1054): unlike an
+    // import, there is no `ImportBinding` to read one from, since `self::`
+    // refers to a same-module declaration rather than an imported name.
+    current_module: &[String],
     module_names: &HashSet<String>,
     // An explicit import's `symbol_id` comes straight off the module scope's
     // binding; a glob-imported name has no such binding to read one from, so
@@ -383,7 +435,20 @@ fn try_resolve_path(
                 return Some((local.clone(), Some(binding.symbol_id)));
             }
         }
-        return Some((declared_name.clone(), None));
+        // `self::name` with no explicit alias refers to this same module's own
+        // declaration — look its `SymbolId` up directly rather than leaving it
+        // `None` (which forced evaluation back onto the name map). `root`/
+        // `super` aren't resolved to a module here (this pass doesn't track
+        // module hierarchy), so they keep the pre-existing `None` and rely on
+        // downstream name resolution, same as before.
+        let symbol_id = if first == "self" {
+            symbols
+                .get(&(current_module.to_vec(), declared_name.clone()))
+                .copied()
+        } else {
+            None
+        };
+        return Some((declared_name.clone(), symbol_id));
     }
 
     // Accept if `first` is either a loaded module name OR the first segment of a glob path
@@ -597,6 +662,25 @@ mod tests {
             explicit, glob,
             "the same declaration resolves to the same SymbolId regardless \
              of whether it reached this module via an explicit or a glob import"
+        );
+    }
+
+    #[test]
+    fn self_qualified_call_carries_a_symbol_id() {
+        // metel-core#1054: `self::name` (no explicit alias to read a SymbolId
+        // off of, unlike an import) previously always normalized to `None`,
+        // forcing the call to resolve by name alone.
+        let id = resolved_path_symbol_id(
+            "main.mtl",
+            &[(
+                "main.mtl",
+                "fun answer() -> i64 { 42 }\nfun main() -> i64 { self::answer() }\n",
+            )],
+        );
+        assert!(
+            id.is_some(),
+            "a self::-qualified same-module call should carry its own \
+             declaration's SymbolId, not resolve by name alone"
         );
     }
 }
