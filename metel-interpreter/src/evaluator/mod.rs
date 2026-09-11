@@ -1591,6 +1591,33 @@ impl Environment {
             .insert(name.to_string(), cell);
     }
 
+    /// [`define_binding`](Self::define_binding), additionally returning the
+    /// freshly created cell. For a caller that also needs to register the
+    /// binding elsewhere by identity (e.g. a module-level `let`/`var`'s
+    /// `SymbolId` slot in the runtime registry), this lets it hand the cell
+    /// straight to that registration instead of reading the value back out
+    /// of the name map right after defining it (metel-core#1052b-3f).
+    ///
+    /// # Panics
+    /// Panics if called with no scope pushed — see [`Environment::define`].
+    #[must_use]
+    pub fn define_binding_get_cell(
+        &mut self,
+        id: Option<LocalId>,
+        name: &str,
+        value: Value,
+    ) -> Rc<RefCell<Value>> {
+        let cell = Rc::new(RefCell::new(deep_clone_value(value)));
+        if let Some(id) = id {
+            self.frame.insert(id, Rc::clone(&cell));
+        }
+        self.scopes
+            .last_mut()
+            .unwrap()
+            .insert(name.to_string(), Rc::clone(&cell));
+        cell
+    }
+
     /// Look up a binding by its structural [`LocalId`] in the id-indexed frame
     /// (metel-core#1052b). `None` means no id-keyed slot — the caller falls
     /// back to the name map.
@@ -2146,52 +2173,59 @@ fn run_passes(
 
     // Pass 2
     for decl in decls {
-        if !matches!(decl, TypedDecl::Fun(_) | TypedDecl::Impl(_)) {
-            eval_decl(decl, env, runtime)?;
-            // ADR-0042: register a top-level `let`'s value by SymbolId too, right
-            // after its initializer runs — the same moment `env.define` already binds
-            // it by name. This is what lets `Call::callee_id` dispatch work for a
-            // module-level first-class function value the same way it already does
-            // for `fn` declarations, without changing when the binding becomes
-            // available (a call before this line executes still misses, exactly as
-            // it does today via `env`).
-            //
-            // Deliberately `Let` only, not `Mut`: a `let` is immutable, so caching its
-            // value once is permanently correct. A top-level `mut` can be reassigned
-            // later (`TypedPlace::Ident` assignment updates `env` only, never
-            // `symbol_values` — reworking that is a bigger change than this fix
-            // warrants), so caching its value here would go stale and silently
-            // resurrect an old value through `Call::callee_id` dispatch after a
-            // reassignment, exactly the kind of silent-wrong-behavior bug this ADR
-            // exists to close, not reintroduce. A `mut`'s id is still marked in
-            // `let_mut_def_ids` (Pass 0) so a miss on it is correctly treated as
-            // legitimate rather than an internal-error bug — it's simply never
-            // registered, so every call through it falls back to `env`, same as
-            // before this ADR's work, which is the only place its current value
-            // actually lives.
-            let stamped = match decl {
-                TypedDecl::Let(d) => d.def_id.map(|id| (id, d.name.as_str())),
-                _ => None,
-            };
-            if let Some((id, name)) = stamped {
-                if let Some(value) = env.get(name) {
-                    runtime.register_symbol_value(id, value);
+        match decl {
+            TypedDecl::Fun(_) | TypedDecl::Impl(_) => {}
+            // A top-level `let`/`var`'s initializer result is defined and
+            // registered by identity directly off the value `eval_to_value`
+            // just produced — no read-back through the name map afterwards
+            // (metel-core#1052b-3f; previously `eval_decl` defined the
+            // binding by name and this loop then re-fetched it via
+            // `env.get`/`env.get_rc` to seed the id-keyed registries).
+            TypedDecl::Let(d) => {
+                if let ControlFlow::Continue(val) = eval_to_value(&d.value, env, runtime)? {
+                    let cell = env.define_binding_get_cell(d.local_id, &d.name, val.clone());
+                    if let Some(id) = d.def_id {
+                        // ADR-0042: register a top-level `let`'s value by
+                        // SymbolId too, at the same moment it's bound by
+                        // name/id. This is what lets `Call::callee_id`
+                        // dispatch work for a module-level first-class
+                        // function value the same way it already does for
+                        // `fn` declarations, without changing when the
+                        // binding becomes available (a call before this line
+                        // executes still misses, exactly as it does today).
+                        runtime.register_symbol_value(id, val);
+                        // metel-core#1052b: publish the live cell under its
+                        // `def_id` too, so a function body can resolve the
+                        // binding by its frozen identity. The cell is shared
+                        // with the module env's name entry, so a read
+                        // through either key sees the same value.
+                        runtime.register_global_slot(id, cell);
+                    }
                 }
             }
-            // metel-core#1052b: publish the live cell of every top-level
-            // `let` / `var` under its `def_id` so a function body can resolve
-            // the binding by its frozen identity. The cell is shared with the
-            // module env's name entry, so a `var` reassignment through either
-            // key is visible to both (fixes the read-from-non-`main` gap).
-            let global = match decl {
-                TypedDecl::Let(d) => d.def_id.map(|id| (id, d.name.as_str())),
-                TypedDecl::Mut(d) => d.def_id.map(|id| (id, d.name.as_str())),
-                _ => None,
-            };
-            if let Some((id, name)) = global {
-                if let Some(cell) = env.get_rc(name) {
-                    runtime.register_global_slot(id, cell);
+            TypedDecl::Mut(d) => {
+                if let ControlFlow::Continue(val) = eval_to_value(&d.value, env, runtime)? {
+                    let cell = env.define_binding_get_cell(d.local_id, &d.name, val);
+                    if let Some(id) = d.def_id {
+                        // Deliberately no `register_symbol_value` here: a
+                        // top-level `mut` can be reassigned later
+                        // (`TypedPlace::Ident` assignment updates the global
+                        // slot cell, never `symbol_values` — reworking that
+                        // is a bigger change than this fix warrants), so
+                        // caching its value once would go stale and silently
+                        // resurrect an old value through `Call::callee_id`
+                        // dispatch after a reassignment, exactly the kind of
+                        // silent-wrong-behavior bug ADR-0042 exists to close,
+                        // not reintroduce. Its id is still marked in
+                        // `let_mut_def_ids` (Pass 0) so a miss on it is
+                        // correctly treated as legitimate rather than an
+                        // internal-error bug.
+                        runtime.register_global_slot(id, cell);
+                    }
                 }
+            }
+            _ => {
+                eval_decl(decl, env, runtime)?;
             }
         }
     }
