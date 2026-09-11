@@ -1552,4 +1552,96 @@ mod tests {
             "apply_fn(41) should still dispatch via Call::callee_id"
         );
     }
+
+    /// metel-core#1096: an implicit (no `[...]` list) closure's free
+    /// `Copy`-typed variables are materialized as `CaptureSpec::Clone`
+    /// entries (`verify_closure_capture_list`'s new return value), each
+    /// carrying the same `LocalId` as its enclosing binding — here,
+    /// `make_adder`'s own parameter `x`, captured implicitly by the closure
+    /// it returns.
+    #[test]
+    fn implicit_copy_capture_carries_the_enclosing_local_id() {
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{FunBody, TypedExpr};
+
+        let root = "implicit_capture.mtl";
+        let source = "fun make_adder(x: i64) -> |i64| -> i64 {\n\
+                       \t|y: i64| -> i64 { x + y }\n\
+                       }\n\
+                       fun main() -> i64 {\n\
+                       \tlet add5 := make_adder(5);\n\
+                       \tadd5(3)\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let module = typed_report
+            .graph
+            .modules
+            .iter()
+            .find(|m| {
+                m.decls
+                    .iter()
+                    .any(|d| matches!(d, TypedDecl::Fun(f) if f.name == "make_adder"))
+            })
+            .expect("the module declaring `make_adder`");
+        let TypedDecl::Fun(fun) = module
+            .decls
+            .iter()
+            .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "make_adder"))
+            .expect("`make_adder`")
+        else {
+            unreachable!()
+        };
+        let FunBody::Typed(body) = &fun.body else {
+            panic!("make_adder should have a typed body");
+        };
+        let TypedExpr::Closure {
+            captures,
+            capture_ids,
+            ..
+        } = body.tail.as_deref().unwrap()
+        else {
+            panic!(
+                "make_adder's tail should be the inner closure, got {:?}",
+                body.tail
+            );
+        };
+        assert_eq!(
+            captures.len(),
+            1,
+            "the implicit closure should materialize one capture for `x`, got {captures:?}"
+        );
+        assert!(
+            matches!(&captures[0], crate::ast::CaptureSpec::Clone { name, .. } if name == "x"),
+            "the materialized capture should be a Clone of `x`, got {:?}",
+            captures[0]
+        );
+        assert_eq!(
+            capture_ids, &fun.param_ids,
+            "the materialized capture's LocalId should match make_adder's own \
+             parameter x's LocalId — same binding, same identity"
+        );
+        assert!(
+            matches!(capture_ids[0], Some(_)),
+            "the capture should carry a real LocalId, not None"
+        );
+    }
 }

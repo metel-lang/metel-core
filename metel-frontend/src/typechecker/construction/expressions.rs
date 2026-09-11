@@ -31,18 +31,21 @@ fn collect_closure_body_uses(
     bound: &mut std::collections::BTreeSet<String>,
     reads: &mut std::collections::BTreeSet<String>,
     writes: &mut std::collections::BTreeSet<String>,
+    spans: &mut std::collections::HashMap<String, Span>,
 ) {
     for decl in &block.stmts {
         match decl {
             crate::ast::Decl::Let(ld) => {
-                collect_closure_expr_uses(&ld.value, bound, reads, writes);
+                collect_closure_expr_uses(&ld.value, bound, reads, writes, spans);
                 bound.insert(ld.name.clone());
             }
             crate::ast::Decl::Mut(md) => {
-                collect_closure_expr_uses(&md.value, bound, reads, writes);
+                collect_closure_expr_uses(&md.value, bound, reads, writes, spans);
                 bound.insert(md.name.clone());
             }
-            crate::ast::Decl::Stmt(stmt) => collect_closure_stmt_uses(stmt, bound, reads, writes),
+            crate::ast::Decl::Stmt(stmt) => {
+                collect_closure_stmt_uses(stmt, bound, reads, writes, spans);
+            }
             crate::ast::Decl::Fun(fun) => {
                 bound.insert(fun.name.clone());
             }
@@ -54,7 +57,7 @@ fn collect_closure_body_uses(
         }
     }
     if let Some(tail) = &block.tail {
-        collect_closure_expr_uses(tail, bound, reads, writes);
+        collect_closure_expr_uses(tail, bound, reads, writes, spans);
     }
 }
 
@@ -63,43 +66,46 @@ fn collect_closure_stmt_uses(
     bound: &mut std::collections::BTreeSet<String>,
     reads: &mut std::collections::BTreeSet<String>,
     writes: &mut std::collections::BTreeSet<String>,
+    spans: &mut std::collections::HashMap<String, Span>,
 ) {
     match stmt {
-        crate::ast::Stmt::Expr(expr) => collect_closure_expr_uses(expr, bound, reads, writes),
+        crate::ast::Stmt::Expr(expr) => {
+            collect_closure_expr_uses(expr, bound, reads, writes, spans);
+        }
         crate::ast::Stmt::While(ws) => {
-            collect_closure_expr_uses(&ws.condition, bound, reads, writes);
-            collect_closure_body_uses(&ws.body, &mut bound.clone(), reads, writes);
+            collect_closure_expr_uses(&ws.condition, bound, reads, writes, spans);
+            collect_closure_body_uses(&ws.body, &mut bound.clone(), reads, writes, spans);
         }
         crate::ast::Stmt::For(fs) => {
             let mut loop_bound = bound.clone();
             if let Some(init) = &fs.init {
                 match init {
                     crate::ast::ForInit::Let(ld) => {
-                        collect_closure_expr_uses(&ld.value, &mut loop_bound, reads, writes);
+                        collect_closure_expr_uses(&ld.value, &mut loop_bound, reads, writes, spans);
                         loop_bound.insert(ld.name.clone());
                     }
                     crate::ast::ForInit::Mut(md) => {
-                        collect_closure_expr_uses(&md.value, &mut loop_bound, reads, writes);
+                        collect_closure_expr_uses(&md.value, &mut loop_bound, reads, writes, spans);
                         loop_bound.insert(md.name.clone());
                     }
                     crate::ast::ForInit::Expr(expr) => {
-                        collect_closure_expr_uses(expr, &mut loop_bound, reads, writes);
+                        collect_closure_expr_uses(expr, &mut loop_bound, reads, writes, spans);
                     }
                 }
             }
             if let Some(condition) = &fs.condition {
-                collect_closure_expr_uses(condition, &mut loop_bound, reads, writes);
+                collect_closure_expr_uses(condition, &mut loop_bound, reads, writes, spans);
             }
             if let Some(step) = &fs.step {
-                collect_closure_expr_uses(step, &mut loop_bound, reads, writes);
+                collect_closure_expr_uses(step, &mut loop_bound, reads, writes, spans);
             }
-            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes);
+            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes, spans);
         }
         crate::ast::Stmt::ForIn(fs) => {
-            collect_closure_expr_uses(&fs.iterable, bound, reads, writes);
+            collect_closure_expr_uses(&fs.iterable, bound, reads, writes, spans);
             let mut loop_bound = bound.clone();
             loop_bound.insert(fs.binding.clone());
-            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes);
+            collect_closure_body_uses(&fs.body, &mut loop_bound, reads, writes, spans);
         }
     }
 }
@@ -109,35 +115,50 @@ fn collect_assign_target_uses(
     bound: &std::collections::BTreeSet<String>,
     reads: &mut std::collections::BTreeSet<String>,
     writes: &mut std::collections::BTreeSet<String>,
+    spans: &mut std::collections::HashMap<String, Span>,
 ) {
     match target {
-        crate::ast::AssignTarget::Ident(name, _) => {
+        crate::ast::AssignTarget::Ident(name, span) => {
             if !bound.contains(name) {
                 writes.insert(name.clone());
+                spans.entry(name.clone()).or_insert_with(|| span.clone());
             }
         }
         crate::ast::AssignTarget::FieldAccess { object, .. }
         | crate::ast::AssignTarget::TupleAccess { object, .. }
         | crate::ast::AssignTarget::Deref { object, .. } => {
-            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes);
-            if let crate::ast::Expr::Ident(name, _) = object.as_ref() {
+            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes, spans);
+            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref() {
                 if !bound.contains(name) {
                     writes.insert(name.clone());
+                    spans
+                        .entry(name.clone())
+                        .or_insert_with(|| ident_span.clone());
                 }
             }
         }
         crate::ast::AssignTarget::Index { object, index, .. } => {
-            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes);
-            collect_closure_expr_uses(index, &mut bound.clone(), reads, writes);
-            if let crate::ast::Expr::Ident(name, _) = object.as_ref() {
+            collect_closure_expr_uses(object, &mut bound.clone(), reads, writes, spans);
+            collect_closure_expr_uses(index, &mut bound.clone(), reads, writes, spans);
+            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref() {
                 if !bound.contains(name) {
                     writes.insert(name.clone());
+                    spans
+                        .entry(name.clone())
+                        .or_insert_with(|| ident_span.clone());
                 }
             }
         }
     }
 }
 
+/// Walks an unlisted closure body's free-variable uses, alongside
+/// `verify_closure_capture_list`'s existing `bound`/`reads`/`writes` sets:
+/// `spans` records each free name's first reference span, so an implicit
+/// (no `[...]` list) `Copy` capture can be resolved to its enclosing
+/// binding's `LocalId` the same way an explicit capture-list entry already
+/// is (metel-core#1096) — `ctx.local_binding_at` looks up exactly this kind
+/// of ordinary reference span, no new identity-walk machinery needed.
 // clippy-allow: closure body use walker keeps one exhaustive AST traversal table.
 #[allow(clippy::too_many_lines)]
 fn collect_closure_expr_uses(
@@ -145,11 +166,13 @@ fn collect_closure_expr_uses(
     bound: &mut std::collections::BTreeSet<String>,
     reads: &mut std::collections::BTreeSet<String>,
     writes: &mut std::collections::BTreeSet<String>,
+    spans: &mut std::collections::HashMap<String, Span>,
 ) {
     match expr {
-        Expr::Ident(name, _) => {
+        Expr::Ident(name, span) => {
             if !bound.contains(name) {
                 reads.insert(name.clone());
+                spans.entry(name.clone()).or_insert_with(|| span.clone());
             }
         }
         Expr::ResolvedPath { resolved, .. } => {
@@ -159,12 +182,12 @@ fn collect_closure_expr_uses(
         }
         Expr::Tuple(items, _) | Expr::Array(items, _) => {
             for item in items {
-                collect_closure_expr_uses(item, bound, reads, writes);
+                collect_closure_expr_uses(item, bound, reads, writes, spans);
             }
         }
         Expr::RecordLiteral { fields, .. } => {
             for (_, value) in fields {
-                collect_closure_expr_uses(value, bound, reads, writes);
+                collect_closure_expr_uses(value, bound, reads, writes, spans);
             }
         }
         Expr::RepeatArray(value, _, _)
@@ -172,7 +195,7 @@ fn collect_closure_expr_uses(
         | Expr::Cast { expr: value, .. }
         | Expr::Ascribe { expr: value, .. }
         | Expr::PropagateError { expr: value, .. } => {
-            collect_closure_expr_uses(value, bound, reads, writes);
+            collect_closure_expr_uses(value, bound, reads, writes, spans);
         }
         Expr::BinOp(left, _, right, _)
         | Expr::Index {
@@ -180,37 +203,37 @@ fn collect_closure_expr_uses(
             index: right,
             ..
         } => {
-            collect_closure_expr_uses(left, bound, reads, writes);
-            collect_closure_expr_uses(right, bound, reads, writes);
+            collect_closure_expr_uses(left, bound, reads, writes, spans);
+            collect_closure_expr_uses(right, bound, reads, writes, spans);
         }
         Expr::Assign { target, value, .. } => {
-            collect_assign_target_uses(target, bound, reads, writes);
-            collect_closure_expr_uses(value, bound, reads, writes);
+            collect_assign_target_uses(target, bound, reads, writes, spans);
+            collect_closure_expr_uses(value, bound, reads, writes, spans);
         }
         Expr::Call { callee, args, .. } => {
-            collect_closure_expr_uses(callee, bound, reads, writes);
+            collect_closure_expr_uses(callee, bound, reads, writes, spans);
             for arg in args {
-                collect_closure_expr_uses(arg, bound, reads, writes);
+                collect_closure_expr_uses(arg, bound, reads, writes, spans);
             }
         }
         Expr::MethodCall { receiver, args, .. } => {
-            collect_closure_expr_uses(receiver, bound, reads, writes);
+            collect_closure_expr_uses(receiver, bound, reads, writes, spans);
             for arg in args {
-                collect_closure_expr_uses(arg, bound, reads, writes);
+                collect_closure_expr_uses(arg, bound, reads, writes, spans);
             }
         }
         Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
-            collect_closure_expr_uses(object, bound, reads, writes);
+            collect_closure_expr_uses(object, bound, reads, writes, spans);
         }
         Expr::Match(m) => {
-            collect_closure_expr_uses(&m.scrutinee, bound, reads, writes);
+            collect_closure_expr_uses(&m.scrutinee, bound, reads, writes, spans);
             for arm in &m.arms {
                 let mut arm_bound = bound.clone();
                 collect_pattern_bindings(&arm.pattern, &mut arm_bound);
                 if let Some(guard) = &arm.guard {
-                    collect_closure_expr_uses(guard, &mut arm_bound, reads, writes);
+                    collect_closure_expr_uses(guard, &mut arm_bound, reads, writes, spans);
                 }
-                collect_closure_body_uses(&arm.body, &mut arm_bound, reads, writes);
+                collect_closure_body_uses(&arm.body, &mut arm_bound, reads, writes, spans);
             }
         }
         Expr::If {
@@ -219,27 +242,54 @@ fn collect_closure_expr_uses(
             else_branch,
             ..
         } => {
-            collect_closure_expr_uses(condition, bound, reads, writes);
-            collect_closure_body_uses(then_branch, &mut bound.clone(), reads, writes);
+            collect_closure_expr_uses(condition, bound, reads, writes, spans);
+            collect_closure_body_uses(then_branch, &mut bound.clone(), reads, writes, spans);
             if let Some(else_branch) = else_branch {
-                collect_closure_body_uses(else_branch, &mut bound.clone(), reads, writes);
+                collect_closure_body_uses(else_branch, &mut bound.clone(), reads, writes, spans);
             }
         }
         Expr::Loop { body, .. } => {
-            collect_closure_body_uses(body, &mut bound.clone(), reads, writes);
+            collect_closure_body_uses(body, &mut bound.clone(), reads, writes, spans);
         }
         Expr::Return(ret) => {
             if let Some(value) = &ret.value {
-                collect_closure_expr_uses(value, bound, reads, writes);
+                collect_closure_expr_uses(value, bound, reads, writes, spans);
             }
         }
         Expr::Break(brk) => {
             if let Some(value) = &brk.value {
-                collect_closure_expr_uses(value, bound, reads, writes);
+                collect_closure_expr_uses(value, bound, reads, writes, spans);
             }
         }
-        Expr::Closure { .. }
-        | Expr::Literal(_, _)
+        // A nested closure's own free variables cross *this* closure's
+        // boundary too, transitively (metel-core#1096) — `n + x` inside an
+        // inner closure, itself inside an outer implicit closure, still
+        // needs `n` relayed through the outer one. An explicit inner list is
+        // the contract of what crosses; without one, recurse into the inner
+        // body as if inlined (minus its own params).
+        Expr::Closure {
+            captures: inner_captures,
+            params: inner_params,
+            body: inner_body,
+            ..
+        } => {
+            if inner_captures.is_empty() {
+                let mut inner_bound = bound.clone();
+                inner_bound.extend(inner_params.iter().map(|p| p.name.clone()));
+                collect_closure_body_uses(inner_body, &mut inner_bound, reads, writes, spans);
+            } else {
+                for capture in inner_captures {
+                    let name = capture_name(capture);
+                    if !bound.contains(name) {
+                        reads.insert(name.to_string());
+                        spans
+                            .entry(name.to_string())
+                            .or_insert_with(|| capture_span(capture).clone());
+                    }
+                }
+            }
+        }
+        Expr::Literal(_, _)
         | Expr::Path(..)
         | Expr::StructLiteral { .. }
         | Expr::RecordProjection { .. }
@@ -285,13 +335,14 @@ fn verify_closure_capture_list(
     body: &crate::ast::Block,
     span: &Span,
     ctx: &mut ConstructCtx,
-) -> Result<(), MetelError> {
+) -> Result<Vec<crate::ast::CaptureSpec>, MetelError> {
     verify_capture_specs(capture_specs, call_mutation, ctx)?;
     let mut bound: std::collections::BTreeSet<String> =
         params.iter().map(|param| param.name.clone()).collect();
     let mut reads = std::collections::BTreeSet::new();
     let mut writes = std::collections::BTreeSet::new();
-    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes);
+    let mut use_spans = std::collections::HashMap::new();
+    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes, &mut use_spans);
     let used: std::collections::BTreeSet<_> = reads.union(&writes).cloned().collect();
     let listed: std::collections::BTreeSet<_> = capture_specs
         .iter()
@@ -370,7 +421,37 @@ fn verify_closure_capture_list(
         }
     }
 
-    Ok(())
+    // An implicit (no `[...]` list) closure's free variables are, by the
+    // Copy check above, all Copy-typed — materialize the genuinely *local*
+    // ones as `CaptureSpec::Clone` entries at their own first-use span so
+    // the runtime learns which `LocalId`s to copy into the closure's frame
+    // at capture time (metel-core#1096). Without this, `captures` stayed
+    // empty and the evaluator's `capture_clone` fallback relied entirely on
+    // the name map to make free variables visible inside the body.
+    //
+    // Filtered by `ctx.local_binding_at`, not `ctx.lookup`: a free name that
+    // resolves to a *global* (an imported function, say) is also in
+    // `ctx.env` — `ctx.lookup` can't tell the two apart — but a global needs
+    // no runtime capture at all, resolving through its own `SymbolId`
+    // independent of any environment. Materializing a capture for one would
+    // give it no `LocalId` to install (its `binding_spans` entry is
+    // `Global`, not `Local`) and the runtime would fall back to a name map
+    // that, post-#1092, nothing populates for it anymore.
+    if capture_specs.is_empty() {
+        Ok(used
+            .iter()
+            .filter_map(|name| {
+                let use_span = use_spans.get(name)?;
+                ctx.local_binding_at(use_span)?;
+                Some(crate::ast::CaptureSpec::Clone {
+                    name: name.clone(),
+                    span: use_span.clone(),
+                })
+            })
+            .collect())
+    } else {
+        Ok(capture_specs.to_vec())
+    }
 }
 
 fn verify_capture_specs(
@@ -1804,7 +1885,14 @@ pub(super) fn construct_expr(
                 }
                 _ => (*call_multiplicity, *call_mutation),
             };
-            verify_closure_capture_list(
+            // For an implicit (no `[...]` list) closure, this also
+            // materializes the body's free Copy-typed variables as
+            // `CaptureSpec::Clone` entries, each resolvable to its enclosing
+            // binding's `LocalId` (metel-core#1096) — `captures` itself
+            // stays empty (the AST, and every other reader of it, is
+            // unaffected); only the typed IR built below sees the
+            // materialized list.
+            let effective_captures = verify_closure_capture_list(
                 captures,
                 effective_multiplicity,
                 effective_mutation,
@@ -1893,8 +1981,8 @@ pub(super) fn construct_expr(
                 effective_mutation,
             );
             Ok(TypedExpr::Closure {
-                captures: captures.clone(),
-                capture_ids: ctx.capture_local_ids(captures),
+                capture_ids: ctx.capture_local_ids(&effective_captures),
+                captures: effective_captures,
                 call_multiplicity: effective_multiplicity,
                 call_mutation: effective_mutation,
                 params: params.clone(),

@@ -1735,27 +1735,54 @@ impl Environment {
         let mut copied = self.capture_clone();
         for (i, capture) in captures.iter().enumerate() {
             let id = capture_ids.get(i).copied().flatten();
-            let (name, shared) = match capture {
+            match capture {
                 // `id`, when known, is this capture's own LocalId in `self`
                 // (metel-core#1052b) — read from `self`'s own frame first.
-                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => (
-                    name,
-                    id.and_then(|id| self.get_local_rc(id))
-                        .or_else(|| self.get_rc(name)),
-                ),
-                CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => (name, None),
-            };
-            if let Some(source) = shared {
-                for scope in copied.scopes.iter_mut().rev() {
-                    if scope.contains_key(name) {
-                        scope.insert(name.clone(), source);
-                        break;
+                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
+                    let source = id
+                        .and_then(|id| self.get_local_rc(id))
+                        .or_else(|| self.get_rc(name));
+                    if let Some(source) = &source {
+                        for scope in copied.scopes.iter_mut().rev() {
+                            if scope.contains_key(name) {
+                                scope.insert(name.clone(), Rc::clone(source));
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(id) = id {
+                        if let Some(cell) = source.or_else(|| copied.get_rc(name)) {
+                            copied.frame.insert(id, cell);
+                        }
                     }
                 }
-            }
-            if let Some(id) = id {
-                if let Some(cell) = copied.get_rc(name) {
-                    copied.frame.insert(id, cell);
+                // A value capture (metel-core#1096): re-derive the deep-cloned
+                // cell straight from this capture's own LocalId in `self` when
+                // known, rather than depending on `copied`'s name-map entry
+                // (the one `capture_clone()` already deep-cloned) to still be
+                // there — a capture materialized for an implicit (no `[...]`
+                // list) closure has no *other* name-keyed source to read back.
+                // `copied.get_rc(name)` is the fallback for a capture identity
+                // allocation had nothing to stamp.
+                CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
+                    if let Some(id) = id {
+                        let cell = self
+                            .get_local(id)
+                            .map(|value| Rc::new(RefCell::new(deep_clone_value(value))))
+                            .or_else(|| copied.get_rc(name));
+                        if let Some(cell) = cell {
+                            copied.frame.insert(id, Rc::clone(&cell));
+                            // Keep the name map in step too (same one-shared-cell
+                            // pattern `define_binding` uses), so a still-
+                            // unmigrated reader sees the identical cell.
+                            for scope in copied.scopes.iter_mut().rev() {
+                                if scope.contains_key(name) {
+                                    scope.insert(name.clone(), cell);
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -3996,6 +4023,26 @@ mod frame_tests {
         let closure_env = outer.capture_closure(&caps, &[Some(n_id)], &sp).unwrap();
         assert_eq!(as_i64(closure_env.get_local(n_id)), Some(3));
         assert_eq!(as_i64(closure_env.get("n")), Some(3));
+    }
+
+    #[test]
+    fn capture_closure_copy_installs_a_clone_capture_by_id_without_the_name_map() {
+        // metel-core#1096: capture_closure_copy's Owned/Clone reinstallation
+        // used to read the source value only from `copied`'s name map (the
+        // one `capture_clone()` already deep-cloned) — it now re-derives the
+        // cell straight from the capture's own LocalId in `self` first.
+        use crate::ast::{CaptureSpec, Span};
+        let mut outer = Environment::new();
+        let n_id = LocalId(9);
+        outer.define_binding(Some(n_id), "n", Value::I64(3));
+        let sp = Span::new(0, 0, "t");
+        let caps = vec![CaptureSpec::Clone {
+            name: "n".to_string(),
+            span: sp,
+        }];
+        let copied = outer.capture_closure_copy(&caps, &[Some(n_id)]);
+        assert_eq!(as_i64(copied.get_local(n_id)), Some(3));
+        assert_eq!(as_i64(copied.get("n")), Some(3));
     }
 
     #[test]
