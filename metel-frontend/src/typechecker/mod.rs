@@ -1652,8 +1652,9 @@ mod tests {
     /// `TypeExpr::Named` targets, silently skipping `TypeExpr::Array` ones.
     /// With no owner `SymbolId` to hash against, every local inside such a
     /// method's body -- including `self` -- got no `LocalId` at all. Both
-    /// now key these under "Array", matching the evaluator's own existing
-    /// naming convention for the same methods (`runtime_method_from_decl`).
+    /// now key these under a synthetic owner name ("[]Array" as of
+    /// metel-core#1121, originally the bare "Array" until that collided with
+    /// a literal `extend Array: Aspect { ... }` nominal target).
     #[test]
     fn array_extend_method_self_param_carries_a_local_id() {
         use crate::identity::{self, FrozenIdentity};
@@ -1716,6 +1717,100 @@ mod tests {
         assert!(
             method.param_ids[0].is_some(),
             "the self param should carry a real LocalId, not None"
+        );
+    }
+
+    #[test]
+    fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
+        // metel-core#1121: a literal `extend Array: Aspect { ... }` (a real,
+        // reachable nominal impl target -- `Array` is accepted as a written
+        // type name, see `conversions.rs`'s `("Array", 1)` case) used to be
+        // keyed under the exact same synthetic owner name ("Array") as
+        // `extend<T> T[]: Aspect { ... }` (the structural array-pattern
+        // target, metel-core#1101). With the same owner and the same lexical
+        // shape (one `var` binding named `n`), both methods' locals hashed
+        // to the *same* LocalId. Fixed by keying the structural case under
+        // "[]Array" instead, a string no `TypeExpr::Named` target can ever
+        // spell (Metel identifiers can't contain `[`/`]`).
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+
+        let root = "array_owner_collision.mtl";
+        let source = "aspect Show {\n\
+                       \tfun show(&self) -> i64;\n\
+                       }\n\
+                       extend Array: Show {\n\
+                       \tfun show(&self) -> i64 {\n\
+                       \t\tvar n := 1;\n\
+                       \t\tn\n\
+                       \t}\n\
+                       }\n\
+                       extend<T> T[]: Show {\n\
+                       \tfun show(&self) -> i64 {\n\
+                       \t\tvar n := 2;\n\
+                       \t\tn\n\
+                       \t}\n\
+                       }\n\
+                       fun main() -> i64 {\n\
+                       \t[1, 2, 3].show()\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        // Search across every module's decls, not just the root's own --
+        // std::core's prelude has its own `extend<T> T[]: ...` impls loaded
+        // alongside it, so restricting to "the first module with an Impl
+        // decl" would find the wrong module entirely.
+        let all_decls = typed_report
+            .graph
+            .modules
+            .iter()
+            .flat_map(|m| m.decls.iter());
+        let nominal_self_id = all_decls
+            .clone()
+            .find_map(|d| match d {
+                TypedDecl::Impl(ib)
+                    if matches!(&ib.target_type, crate::ast::TypeExpr::Named(n, _) if n == "Array") =>
+                {
+                    ib.methods.iter().find(|f| f.name == "show")
+                }
+                _ => None,
+            })
+            .expect("the nominal `extend Array` impl's `show` method")
+            .param_ids[0]
+            .expect("nominal self param should carry a real LocalId");
+        let structural_self_id = all_decls
+            .clone()
+            .find_map(|d| match d {
+                TypedDecl::Impl(ib) if matches!(ib.target_type, crate::ast::TypeExpr::Array(_)) => {
+                    ib.methods.iter().find(|f| f.name == "show")
+                }
+                _ => None,
+            })
+            .expect("the structural `extend<T> T[]` impl's `show` method")
+            .param_ids[0]
+            .expect("structural self param should carry a real LocalId");
+
+        assert_ne!(
+            nominal_self_id, structural_self_id,
+            "the nominal and structural Array impls' self params must not \
+             collide onto the same LocalId"
         );
     }
 

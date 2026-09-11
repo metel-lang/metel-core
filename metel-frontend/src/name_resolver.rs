@@ -301,14 +301,23 @@ fn impl_target_name(target: &TypeExpr) -> Option<&str> {
     match target {
         TypeExpr::Named(name, _) => Some(name.as_str()),
         // `extend<T> T[]: Aspect { ... }` — the structural array-pattern
-        // target, keyed under the same "Array" name the evaluator's own
-        // runtime method registration already uses (metel-core#1101). This
-        // SymbolId is never surfaced for dispatch (impl methods still carry
-        // no top-level identity, same as a named-type impl's own methods —
-        // see `method_fun_decl`); it exists only so the identity walk has a
-        // real owner to hash each method body's locals against, instead of
-        // silently skipping these bodies the way it used to.
-        TypeExpr::Array(_) => Some("Array"),
+        // target, keyed under a synthetic owner name (metel-core#1101).
+        // This SymbolId is never surfaced for dispatch (impl methods still
+        // carry no top-level identity, same as a named-type impl's own
+        // methods — see `method_fun_decl`); it exists only so the identity
+        // walk has a real owner to hash each method body's locals against,
+        // instead of silently skipping these bodies the way it used to.
+        //
+        // Deliberately NOT the bare string "Array": that collided with a
+        // literal `extend Array: Aspect { ... }` (a real, reachable nominal
+        // impl target — Metel accepts `Array` as a type name in written-type
+        // position, see `conversions.rs`'s `("Array", 1)` case), which
+        // `TypeExpr::Named(name, _) => Some(name.as_str())` above also maps
+        // to the identical string "Array" (metel-core#1121). `[]` can't
+        // appear in a Metel identifier, so no `TypeExpr::Named` target can
+        // ever collide with this one; `identity/allocate.rs`'s `Decl::Impl`
+        // arm must keep computing this exact same string.
+        TypeExpr::Array(_) => Some("[]Array"),
         _ => None,
     }
 }
