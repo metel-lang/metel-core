@@ -696,7 +696,18 @@ impl RuntimeRegistry {
 
     #[must_use]
     pub fn get_type_value(&self, type_name: &str, name: &str) -> Option<Value> {
-        let type_entry = self.types.get(&self.type_id_for_name(type_name)?)?;
+        self.get_type_value_by_id(self.type_id_for_name(type_name)?, name)
+    }
+
+    /// Identity-first counterpart of `get_type_value` (metel-core#1093): the
+    /// caller already has the owning type's `SymbolId` (from a `TypedExpr::
+    /// Path`'s `type_id`), so this skips the name→`SymbolId` lookup
+    /// `type_id_for_name` does. The member itself stays name-keyed within the
+    /// type entry — methods carry no top-level identity of their own (same as
+    /// #1101's array-impl methods).
+    #[must_use]
+    pub fn get_type_value_by_id(&self, type_id: SymbolId, name: &str) -> Option<Value> {
+        let type_entry = self.types.get(&type_id)?;
         type_entry
             .associated_values
             .get(name)
@@ -3293,7 +3304,9 @@ pub fn eval_expr(
             }
         }
 
-        TypedExpr::Path(segments, _, _) => {
+        TypedExpr::Path {
+            segments, type_id, ..
+        } => {
             // Unit enum variant: `Colour::Red` → Value::Enum { name: "Colour", variant: "Red", fields: {} }
             // A single-segment path is treated as an ident lookup.
             if segments.len() == 1 {
@@ -3308,8 +3321,14 @@ pub fn eval_expr(
                     )),
                 }
             } else {
-                if let Some(val) = runtime
-                    .resolve_path_value(segments)
+                // metel-core#1093: identity-first — resolve the owning type by
+                // its carried SymbolId, skipping the name string lookup, before
+                // falling back to the name-based paths unchanged.
+                if let Some(val) = type_id
+                    .and_then(|id| {
+                        runtime.get_type_value_by_id(id, segments.last().map_or("", String::as_str))
+                    })
+                    .or_else(|| runtime.resolve_path_value(segments))
                     .or_else(|| env.get(&segments.join("::")))
                 {
                     return Ok(Signal::Value(val));

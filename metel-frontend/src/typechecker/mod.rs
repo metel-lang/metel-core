@@ -1718,4 +1718,98 @@ mod tests {
             "the self param should carry a real LocalId, not None"
         );
     }
+
+    #[test]
+    fn qualified_path_static_method_call_carries_a_type_id() {
+        // metel-core#1093: a static-method reference (`Type::method`,
+        // resolved via `ctx.method_env`) constructs a `TypedExpr::Path` — it
+        // should carry the owning type's SymbolId.
+        //
+        // The sibling case (a fieldful enum-variant path used as a curried
+        // constructor value, e.g. `Colour::Custom`) is stamped by the same
+        // construction code with a `variant_id` too, but isn't covered here:
+        // that surface form doesn't type-check at all today (metel-core#1108,
+        // a separate, pre-existing inference gap found while writing this
+        // test) — every real fieldful-variant reference in the codebase goes
+        // through `match` or an immediate struct literal instead, neither of
+        // which builds a `TypedExpr::Path`.
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{FunBody, TypedExpr};
+
+        let root = "qualified_path.mtl";
+        let source = "struct Point {\n\
+                       \tx: i64,\n\
+                       }\n\
+                       extend Point {\n\
+                       \tfun origin() -> Point {\n\
+                       \t\tPoint { x = 0 }\n\
+                       \t}\n\
+                       }\n\
+                       fun main() -> i64 {\n\
+                       \tlet p := Point::origin();\n\
+                       \tp.x\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let main_body = typed_report
+            .graph
+            .modules
+            .iter()
+            .find_map(|m| {
+                m.decls.iter().find_map(|d| match d {
+                    TypedDecl::Fun(f) if f.name == "main" => match &f.body {
+                        FunBody::Typed(block) => Some(block),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+            })
+            .expect("typed `main` body");
+
+        let value = main_body
+            .stmts
+            .iter()
+            .find_map(|d| match d {
+                TypedDecl::Let(l) if l.name == "p" => Some(&l.value),
+                _ => None,
+            })
+            .expect("`let p` not found");
+        let (type_id, variant_id) = match value {
+            TypedExpr::Call { callee, .. } => match callee.as_ref() {
+                TypedExpr::Path {
+                    type_id,
+                    variant_id,
+                    ..
+                } => (*type_id, *variant_id),
+                other => panic!("callee is not a Path: {other:?}"),
+            },
+            other => panic!("`p`'s value is not a Call: {other:?}"),
+        };
+        assert!(
+            type_id.is_some(),
+            "Point::origin()'s callee Path should carry Point's SymbolId"
+        );
+        assert!(
+            variant_id.is_none(),
+            "a static method is not a variant constructor"
+        );
+    }
 }

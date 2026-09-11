@@ -322,7 +322,7 @@ fn expr_at_expr<'a>(
             .and_then(|value| expr_at_expr(value, filename, byte_offset)),
         TypedExpr::Literal(..)
         | TypedExpr::Ident(..)
-        | TypedExpr::Path(..)
+        | TypedExpr::Path { .. }
         | TypedExpr::GenericClosure { .. }
         | TypedExpr::Continue(_) => None,
     };

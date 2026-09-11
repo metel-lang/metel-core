@@ -1828,7 +1828,16 @@ pub(super) fn construct_expr(
                     .and_then(|m| m.get(member_name.as_str()))
                     .cloned()
                 {
-                    return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
+                    // metel-core#1093: a static-method reference carries the
+                    // owning type's SymbolId (no per-method identity — methods
+                    // have none, same as #1101's array-impl methods).
+                    return Ok(TypedExpr::Path {
+                        segments: segments.clone(),
+                        type_id: ctx.type_symbol_id(type_name),
+                        variant_id: None,
+                        ty,
+                        span: span.clone(),
+                    });
                 }
                 // Also check enum variants via enum_env.
                 if let Some(info) = ctx
@@ -1861,7 +1870,18 @@ pub(super) fn construct_expr(
                             field_types,
                             Type::Named(type_name.clone(), vec![]),
                         );
-                        return Ok(TypedExpr::Path(segments.clone(), ty, span.clone()));
+                        // metel-core#1093: a tuple-variant constructor carries
+                        // both the owning enum's SymbolId and the variant's own
+                        // VariantId, same helpers as the unit-variant literal
+                        // above.
+                        let type_id = ctx.type_symbol_id(type_name);
+                        return Ok(TypedExpr::Path {
+                            segments: segments.clone(),
+                            type_id,
+                            variant_id: ctx.variant_id_for(type_id, member_name),
+                            ty,
+                            span: span.clone(),
+                        });
                     }
                 }
             }

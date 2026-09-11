@@ -346,7 +346,23 @@ pub enum TypedExpr {
     /// single-program path, or a generic body reconstructed at runtime); the
     /// spelling is retained for diagnostics and the pre-#1052 evaluator.
     Ident(String, Option<BindingId>, Type, Span),
-    Path(Vec<String>, Type, Span),
+    /// A qualified path denoting a static-method reference (`Type::method`) or
+    /// a non-unit enum-variant tuple constructor (`Colour::Custom`) — the one
+    /// other "bare reference" node besides `Ident` (metel-core#1093). `type_id`
+    /// is the owning type's `SymbolId`, resolved the same way `StructLiteral`'s
+    /// is; `variant_id` is additionally set for the tuple-constructor case.
+    /// Both are `None` off the clean 2-segment `[type, member]` shape (a
+    /// module-qualified path with more segments), or without resolver context —
+    /// never a fabricated id. The member itself stays name-keyed within its
+    /// owning type's runtime entry (methods carry no top-level identity, same
+    /// as #1101's array-impl methods); only the type lookup is identity-first.
+    Path {
+        segments: Vec<String>,
+        type_id: Option<SymbolId>,
+        variant_id: Option<VariantId>,
+        ty: Type,
+        span: Span,
+    },
     Tuple(Vec<TypedExpr>, Type, Span),
     Array(Vec<TypedExpr>, Type, Span),
     RecordLiteral {
@@ -537,7 +553,7 @@ impl TypedExpr {
         match self {
             TypedExpr::Literal(_, ty, _)
             | TypedExpr::Ident(_, _, ty, _)
-            | TypedExpr::Path(_, ty, _)
+            | TypedExpr::Path { ty, .. }
             | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
             | TypedExpr::RecordLiteral { ty, .. }
@@ -573,7 +589,7 @@ impl TypedExpr {
         match &mut self {
             TypedExpr::Literal(_, ty, _)
             | TypedExpr::Ident(_, _, ty, _)
-            | TypedExpr::Path(_, ty, _)
+            | TypedExpr::Path { ty, .. }
             | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
             | TypedExpr::RecordLiteral { ty, .. }
@@ -607,7 +623,7 @@ impl TypedExpr {
         match self {
             TypedExpr::Literal(_, _, s)
             | TypedExpr::Ident(_, _, _, s)
-            | TypedExpr::Path(_, _, s)
+            | TypedExpr::Path { span: s, .. }
             | TypedExpr::Tuple(_, _, s)
             | TypedExpr::Array(_, _, s)
             | TypedExpr::RecordLiteral { span: s, .. }

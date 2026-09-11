@@ -743,7 +743,7 @@ impl<'a> Checker<'a> {
             self.record_whole_use_if_moved(&place, expr.span(), state, narrowed);
         }
         match expr {
-            TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path(..) => {}
+            TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path { .. } => {}
             TypedExpr::Continue(_) => self.reach_back_edge(state),
             TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
                 for item in items {
@@ -2665,7 +2665,7 @@ impl FreeRootCollector {
                     self.expr(value);
                 }
             }
-            TypedExpr::Literal(..) | TypedExpr::Path(..) | TypedExpr::Continue(_) => {}
+            TypedExpr::Literal(..) | TypedExpr::Path { .. } | TypedExpr::Continue(_) => {}
         }
     }
 

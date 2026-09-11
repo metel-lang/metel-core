@@ -449,7 +449,7 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
         | TypedExpr::Continue(_)
         | TypedExpr::Literal(..)
         | TypedExpr::Ident(..)
-        | TypedExpr::Path(..) => {}
+        | TypedExpr::Path { .. } => {}
     }
 }
 

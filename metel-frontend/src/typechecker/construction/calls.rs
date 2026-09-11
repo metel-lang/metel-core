@@ -290,7 +290,20 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
-            let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
+            // metel-core#1093: identity only for the clean 2-segment shape
+            // (`Type::member`), matching `expressions.rs`'s own boundary —
+            // `None` for anything module-qualified, never guessed.
+            let type_id = match segments.as_slice() {
+                [type_name, _] => ctx.type_symbol_id(type_name),
+                _ => None,
+            };
+            let typed = TypedExpr::Path {
+                segments: segments.clone(),
+                type_id,
+                variant_id: None,
+                ty: concrete.clone(),
+                span: path_span.clone(),
+            };
             (typed, concrete)
         }
         Expr::Path(segments, _, path_span)
@@ -351,7 +364,18 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
-            let typed = TypedExpr::Path(segments.clone(), concrete.clone(), path_span.clone());
+            // metel-core#1093: same 2-segment-only boundary as above.
+            let type_id = match segments.as_slice() {
+                [type_name, _] => ctx.type_symbol_id(type_name),
+                _ => None,
+            };
+            let typed = TypedExpr::Path {
+                segments: segments.clone(),
+                type_id,
+                variant_id: None,
+                ty: concrete.clone(),
+                span: path_span.clone(),
+            };
             (typed, concrete)
         }
         Expr::ResolvedPath {
