@@ -3002,6 +3002,32 @@ fn eval_method_call_expr(
     }
 }
 
+/// Resolve a static-method callee's value directly by identity, without the
+/// `eval_to_value`/`eval_expr` round trip through the generic `Path` arm
+/// (metel-core#1107). `callee`'s own `Path` node already carries the owning
+/// type's `SymbolId` on `type_id` (metel-core#1093); this is a *local* fast
+/// path, not a widening of `Call::callee_id` itself, which stays
+/// `SymbolId`-only (top-level fns/overloads) -- methods carry no top-level
+/// identity of their own (same design as #1101's array-impl methods).
+/// `None` for anything other than a 2+-segment `Path` with `type_id: Some`,
+/// or when the type has no such member (a `Path` built by
+/// construction-at-call-time with no identity context, or a genuinely
+/// unresolved name): the caller falls back to `eval_to_value` unchanged.
+fn static_method_callee_fast_path(callee: &TypedExpr, runtime: &RuntimeRegistry) -> Option<Value> {
+    let TypedExpr::Path {
+        segments,
+        type_id: Some(id),
+        ..
+    } = callee
+    else {
+        return None;
+    };
+    if segments.len() < 2 {
+        return None;
+    }
+    runtime.get_type_value_by_id(*id, segments.last().map_or("", String::as_str))
+}
+
 #[inline(never)]
 fn eval_call_expr(
     callee: &TypedExpr,
@@ -3012,8 +3038,8 @@ fn eval_call_expr(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
-    let func_val = match callee_id {
-        Some(id) => match runtime.get_symbol_value(id).cloned() {
+    let func_val = if let Some(id) = callee_id {
+        match runtime.get_symbol_value(id).cloned() {
             Some(value) => value,
             None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
                 return Err(MetelError::internal(format!(
@@ -3029,11 +3055,14 @@ fn eval_call_expr(
                     "no runtime value registered for callable symbol {id:?}"
                 )));
             }
-        },
-        None => match eval_to_value(callee, env, runtime)? {
+        }
+    } else if let Some(value) = static_method_callee_fast_path(callee, runtime) {
+        value
+    } else {
+        match eval_to_value(callee, env, runtime)? {
             ControlFlow::Continue(value) => value,
             ControlFlow::Break(signal) => return Ok(signal),
-        },
+        }
     };
     // metel-core#712: a Unit here can be a deferred nested fun's placeholder, called
     // before its declaration line runs. Build it now instead of failing.
