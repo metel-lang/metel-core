@@ -300,6 +300,15 @@ pub(crate) fn resolve_name_provided_by_module(
 fn impl_target_name(target: &TypeExpr) -> Option<&str> {
     match target {
         TypeExpr::Named(name, _) => Some(name.as_str()),
+        // `extend<T> T[]: Aspect { ... }` — the structural array-pattern
+        // target, keyed under the same "Array" name the evaluator's own
+        // runtime method registration already uses (metel-core#1101). This
+        // SymbolId is never surfaced for dispatch (impl methods still carry
+        // no top-level identity, same as a named-type impl's own methods —
+        // see `method_fun_decl`); it exists only so the identity walk has a
+        // real owner to hash each method body's locals against, instead of
+        // silently skipping these bodies the way it used to.
+        TypeExpr::Array(_) => Some("Array"),
         _ => None,
     }
 }

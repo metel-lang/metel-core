@@ -185,8 +185,15 @@ pub fn allocate_module(
                 }
             }
             Decl::Impl(impl_block) => {
-                let TypeExpr::Named(target, _) = &impl_block.target_type else {
-                    continue;
+                // `extend<T> T[]: Aspect { ... }` (the structural array
+                // target) is keyed under "Array" here too, mirroring
+                // name_resolver.rs's `impl_target_name` — the two must agree
+                // or `names.symbols.get(&key)` below finds nothing
+                // (metel-core#1101).
+                let target: &str = match &impl_block.target_type {
+                    TypeExpr::Named(target, _) => target,
+                    TypeExpr::Array(_) => "Array",
+                    _ => continue,
                 };
                 for method in &impl_block.methods {
                     let method_name =

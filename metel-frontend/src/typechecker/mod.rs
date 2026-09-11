@@ -1644,4 +1644,78 @@ mod tests {
             "the capture should carry a real LocalId, not None"
         );
     }
+
+    /// metel-core#1101: `extend<T> T[]: Aspect { ... }` (the structural
+    /// array-pattern target) previously had no `SymbolId` interned for its
+    /// methods at all -- `name_resolver.rs`'s `impl_target_name` and
+    /// `identity/allocate.rs`'s `allocate_module` both only recognized
+    /// `TypeExpr::Named` targets, silently skipping `TypeExpr::Array` ones.
+    /// With no owner `SymbolId` to hash against, every local inside such a
+    /// method's body -- including `self` -- got no `LocalId` at all. Both
+    /// now key these under "Array", matching the evaluator's own existing
+    /// naming convention for the same methods (`runtime_method_from_decl`).
+    #[test]
+    fn array_extend_method_self_param_carries_a_local_id() {
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+
+        let root = "array_extend.mtl";
+        let source = "aspect Show {\n\
+                       \tfun show(&self) -> i64;\n\
+                       }\n\
+                       extend<T> T[]: Show {\n\
+                       \tfun show(&self) -> i64 {\n\
+                       \t\tvar n := 0;\n\
+                       \t\tfor (item in self) {\n\
+                       \t\t\tn += 1;\n\
+                       \t\t}\n\
+                       \t\treturn n;\n\
+                       \t}\n\
+                       }\n\
+                       fun main() -> i64 {\n\
+                       \t[1, 2, 3].show()\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let method = typed_report
+            .graph
+            .modules
+            .iter()
+            .find_map(|m| {
+                m.decls.iter().find_map(|d| match d {
+                    TypedDecl::Impl(ib)
+                        if matches!(ib.target_type, crate::ast::TypeExpr::Array(_)) =>
+                    {
+                        ib.methods.iter().find(|f| f.name == "show")
+                    }
+                    _ => None,
+                })
+            })
+            .expect("the array-extend impl's `show` method");
+        assert!(
+            !method.param_ids.is_empty(),
+            "show(&self) should have at least one param_ids entry"
+        );
+        assert!(
+            method.param_ids[0].is_some(),
+            "the self param should carry a real LocalId, not None"
+        );
+    }
 }
