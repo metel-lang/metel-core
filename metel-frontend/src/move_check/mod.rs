@@ -1827,7 +1827,7 @@ impl<'a> Checker<'a> {
         &self,
         receiver_ty: &Type,
         method: &str,
-        _current_module: &[String],
+        current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<ReceiverKind> {
         if let Some((_, method_def, _)) = self.symbolic_aspect_method(receiver_ty, method) {
@@ -1838,9 +1838,15 @@ impl<'a> Checker<'a> {
         }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self.registry.array_method_receiver_kind(method).cloned(),
-            Type::Named(name, _) => self.registry.method_receiver_kind(name, method).cloned(),
-            other => primitive_type_name(other)
-                .and_then(|name| self.registry.method_receiver_kind(&name, method).cloned()),
+            Type::Named(name, _) => self
+                .registry
+                .method_receiver_kind(current_module, name, method)
+                .cloned(),
+            other => primitive_type_name(other).and_then(|name| {
+                self.registry
+                    .method_receiver_kind(current_module, &name, method)
+                    .cloned()
+            }),
         }
     }
 
@@ -1848,7 +1854,7 @@ impl<'a> Checker<'a> {
         &self,
         receiver_ty: &Type,
         method: &str,
-        _current_module: &[String],
+        current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<Vec<Type>> {
         if let Some((aspect, method_def, placeholder)) =
@@ -1870,11 +1876,11 @@ impl<'a> Checker<'a> {
                 .and_then(infer_method_arg_types),
             Type::Named(name, _) => self
                 .registry
-                .method_type(name, method)
+                .method_type(current_module, name, method)
                 .and_then(infer_method_arg_types),
             other => primitive_type_name(other).and_then(|name| {
                 self.registry
-                    .method_type(&name, method)
+                    .method_type(current_module, &name, method)
                     .and_then(infer_method_arg_types)
             }),
         }
@@ -2011,14 +2017,19 @@ fn type_ctx_with_symbolic_aspect_methods(
             ) else {
                 continue;
             };
+            // metel-core#1124: `placeholder` names a generic parameter, not a
+            // real declaration -- the name resolver never assigns it a
+            // `SymbolId`, so mint/reuse a local placeholder one to register
+            // these methods under (the method tables are `SymbolId`-keyed).
+            let owner = enriched.registry.local_placeholder_id(placeholder);
             enriched.registry.register_method_scheme(
-                placeholder.clone(),
+                owner,
                 method.name.clone(),
                 method_scheme.clone(),
                 Vec::new(),
             );
             enriched.registry.register_method_scheme_variant(
-                placeholder.clone(),
+                owner,
                 method.name.clone(),
                 method_scheme,
                 Vec::new(),
@@ -2030,11 +2041,9 @@ fn type_ctx_with_symbolic_aspect_methods(
                 .first()
                 .and_then(|param| param.receiver.clone())
             {
-                enriched.registry.register_method_receiver(
-                    placeholder.clone(),
-                    method.name.clone(),
-                    receiver,
-                );
+                enriched
+                    .registry
+                    .register_method_receiver(owner, method.name.clone(), receiver);
             }
         }
     }

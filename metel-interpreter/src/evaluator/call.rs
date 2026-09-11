@@ -251,7 +251,7 @@ pub(super) fn call_method_function(
                                 _ => receiver_type_name(&receiver_type).and_then(|tn| {
                                     type_ctx
                                         .registry
-                                        .method_scheme_for(tn, name)
+                                        .method_scheme_for(&type_ctx.current_module, tn, name)
                                         .map(|(s, _)| s)
                                 }),
                             };

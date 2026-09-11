@@ -312,10 +312,10 @@ pub(super) fn construct_call(
                 ctx.lookup(last).is_none()
                 && ctx.scheme_env.contains_key(last)
                 // Only use scheme instantiation if method_env doesn't have it
-                && !(segments.len() == 2 && ctx.method_env
-                    .get(segments[0].as_str())
-                    .and_then(|m| m.get(segments[1].as_str()))
-                    .is_some())
+                && !(segments.len() == 2
+                    && ctx
+                        .concrete_method(segments[0].as_str(), segments[1].as_str())
+                        .is_some())
             } =>
         {
             let last = segments.last().unwrap().clone();

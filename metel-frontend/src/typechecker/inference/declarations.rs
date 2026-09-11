@@ -1345,13 +1345,13 @@ pub(super) fn infer_impl_method(
             );
         } else {
             ctx.register_method_scheme(
-                target_name.to_string(),
+                target_name,
                 method.name.clone(),
                 scheme.clone(),
                 struct_tvars_resolved.clone(),
             );
             ctx.register_method_scheme_variant(
-                target_name.to_string(),
+                target_name,
                 method.name.clone(),
                 scheme,
                 struct_tvars_resolved,
@@ -1362,11 +1362,7 @@ pub(super) fn infer_impl_method(
     } else if array_target_generic_name.is_some() {
         ctx.register_array_method(method.name.clone(), resolved_fun_ty);
     } else {
-        ctx.register_method(
-            target_name.to_string(),
-            method.name.clone(),
-            resolved_fun_ty,
-        );
+        ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     }
     Ok(())
 }
@@ -1545,10 +1541,6 @@ pub(super) fn infer_default_aspect_method(
     let partial_subst = ctx.default_literal_vars(&solved);
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
-    ctx.register_method(
-        target_name.to_string(),
-        method.name.clone(),
-        resolved_fun_ty,
-    );
+    ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     Ok(())
 }

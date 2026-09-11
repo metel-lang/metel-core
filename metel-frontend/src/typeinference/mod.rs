@@ -2113,16 +2113,25 @@ pub struct TypeDefinitionRegistry {
     /// Used when setting up impl method scopes so param names resolve to `TypeVars`.
     struct_generic_names: HashMap<SymbolId, Vec<String>>,
     /// Polymorphic method schemes for methods on generic structs that reference the struct's
-    /// type params. Key: (`type_name`, `method_name`) → (scheme, `struct_tvars_ordered`).
+    /// type params. Key: (type `SymbolId`, `method_name`) → (scheme, `struct_tvars_ordered`).
     /// `struct_tvars_ordered`[i] corresponds to the i-th type arg of the receiver at the call site.
-    method_scheme_env: HashMap<String, HashMap<String, (TypeScheme, Vec<TypeVar>)>>,
+    ///
+    /// Keyed by `SymbolId`, not surface name (metel-core#1051/#1124): two modules
+    /// each declaring a same-named generic struct/enum must not conflate their
+    /// method schemes the way a name key made them (last-write-wins). A surface
+    /// spelling reaches this map through [`resolve_type_key_broad`](Self::resolve_type_key_broad),
+    /// the same fallback `struct_fields`/`enum_info` already use.
+    method_scheme_env: HashMap<SymbolId, HashMap<String, (TypeScheme, Vec<TypeVar>)>>,
     /// RFC-0036 §3.1: multiple conditional impls of the same aspect for the same struct
-    /// providing the same method name. Key: (`type_name`, `method_name`) → Vec of
+    /// providing the same method name. Key: (type `SymbolId`, `method_name`) → Vec of
     /// (scheme, `struct_tvars`). `register_method_scheme_variant` pushes; `method_scheme_for`
     /// (singular) keeps returning the last-registered entry for backward compatibility.
     /// NOTE: nothing currently reads this list back to disambiguate between variants —
     /// see the open question flagged in commit e20718e / issue #264.
-    method_scheme_variants: HashMap<String, HashMap<String, Vec<MethodSchemeVariant>>>,
+    ///
+    /// Keyed by `SymbolId` for the same reason as `method_scheme_env` above
+    /// (metel-core#1124).
+    method_scheme_variants: HashMap<SymbolId, HashMap<String, Vec<MethodSchemeVariant>>>,
     /// Method schemes for structural array targets (`impl<T> Aspect for T[]`). The
     /// pinned vars correspond to the receiver array's element type positions.
     array_method_scheme_env: HashMap<String, (TypeScheme, Vec<TypeVar>)>,
@@ -2165,8 +2174,13 @@ pub struct TypeDefinitionRegistry {
     /// **down** from `u32::MAX` so a synthetic id can never collide with a
     /// name-resolver `SymbolId` (which counts up from `USER_SYM_START`).
     next_local_type_id: u32,
-    method_env: HashMap<String, HashMap<String, InferType>>,
-    method_receiver_env: HashMap<String, HashMap<String, ReceiverKind>>,
+    /// Concrete (non-generic) method signatures. Key: (type `SymbolId`,
+    /// `method_name`). Keyed by `SymbolId`, not surface name (metel-core#1124),
+    /// for the same reason as `method_scheme_env` above.
+    method_env: HashMap<SymbolId, HashMap<String, InferType>>,
+    /// Receiver kind (`self`/`&self`/`&var self`) per concrete method, mirroring
+    /// `method_env`'s keying (metel-core#1124).
+    method_receiver_env: HashMap<SymbolId, HashMap<String, ReceiverKind>>,
     array_method_env: HashMap<String, InferType>,
     array_method_receiver_env: HashMap<String, ReceiverKind>,
     /// enum `SymbolId` → its variants and type params (metel-core#1061). Like
@@ -2309,6 +2323,21 @@ impl TypeDefinitionRegistry {
         self.resolve_type_key(current_module, name)
     }
 
+    /// Like [`resolve_type_id`](Self::resolve_type_id), but with
+    /// [`resolve_type_key_broad`](Self::resolve_type_key_broad)'s fallback:
+    /// accepts a bare declared name from *any* module as a last resort.
+    ///
+    /// For a construction pass reconstructing a generic body away from its
+    /// call site (metel-core#1124/#1125's `construct_generic_body`): a
+    /// substituted type argument's spelling need not be nameable from the
+    /// generic's own declaring module (e.g. `std::core`'s own `Array: Eq`
+    /// impl, instantiated with a caller-module `T`), the same gap
+    /// `resolve_type_key_broad`'s other callers already accept.
+    #[must_use]
+    pub fn resolve_type_id_broad(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
+        self.resolve_type_key_broad(current_module, name)
+    }
+
     /// The `SymbolId` the struct-definition maps are keyed by for `name` in
     /// `current_module`: the module- and import-aware resolution first, then the
     /// block-local index — the latter covers block-local type declarations, which
@@ -2351,6 +2380,27 @@ impl TypeDefinitionRegistry {
     fn fresh_local_type_id(&mut self) -> SymbolId {
         let id = SymbolId(self.next_local_type_id);
         self.next_local_type_id = self.next_local_type_id.saturating_sub(1);
+        id
+    }
+
+    /// The `SymbolId` for a bare name with no true declaration at all --
+    /// minting and caching a fresh local one (via `local_type_decl_ids`, the
+    /// same table block-local struct/enum declarations use) on first request.
+    ///
+    /// For callers with a genuine placeholder rather than a real struct/enum
+    /// spelling (metel-core#1124): the move-checker's symbolic-aspect-method
+    /// enrichment registers methods against a generic parameter's own
+    /// placeholder name, which the name resolver never assigns a `SymbolId`
+    /// to. `register_method`/`register_method_scheme`/etc. now key on
+    /// `SymbolId`, so this is what that enrichment resolves the placeholder
+    /// to before registering, and what `resolve_type_key`/`resolve_type_key_broad`
+    /// resolve it back to afterward.
+    pub fn local_placeholder_id(&mut self, name: &str) -> SymbolId {
+        if let Some(id) = self.local_type_decl_ids.get(name) {
+            return *id;
+        }
+        let id = self.fresh_local_type_id();
+        self.local_type_decl_ids.insert(name.to_string(), id);
         id
     }
 
@@ -2694,21 +2744,24 @@ impl TypeDefinitionRegistry {
         }
     }
 
-    pub fn register_method(&mut self, type_name: String, method_name: String, fun_ty: InferType) {
+    /// `owner`: the target type's `SymbolId` (metel-core#1124). Callers resolve
+    /// it once via [`resolve_type_id`](Self::resolve_type_id) before registering.
+    pub fn register_method(&mut self, owner: SymbolId, method_name: String, fun_ty: InferType) {
         self.method_env
-            .entry(type_name)
+            .entry(owner)
             .or_default()
             .insert(method_name, fun_ty);
     }
 
+    /// `owner`: see [`register_method`](Self::register_method)'s doc.
     pub fn register_method_receiver(
         &mut self,
-        type_name: String,
+        owner: SymbolId,
         method_name: String,
         receiver_kind: ReceiverKind,
     ) {
         self.method_receiver_env
-            .entry(type_name)
+            .entry(owner)
             .or_default()
             .insert(method_name, receiver_kind);
     }
@@ -2744,32 +2797,41 @@ impl TypeDefinitionRegistry {
             .get(&self.resolve_type_key(current_module, name)?)
     }
 
+    /// `owner`: see [`register_method`](Self::register_method)'s doc.
     pub fn register_method_scheme(
         &mut self,
-        type_name: String,
+        owner: SymbolId,
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
     ) {
         self.method_scheme_env
-            .entry(type_name)
+            .entry(owner)
             .or_default()
             .insert(method_name, (scheme, struct_tvars));
     }
 
+    /// `type_name` is resolved from `current_module`'s scope, falling back to
+    /// the bare-name index when it can't be named there (metel-core#1124) --
+    /// the same [`resolve_type_key_broad`](Self::resolve_type_key_broad)
+    /// fallback `struct_fields`/`enum_info` already use.
     #[must_use]
     pub fn method_scheme_for(
         &self,
+        current_module: &[String],
         type_name: &str,
         method_name: &str,
     ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
-        self.method_scheme_env.get(type_name)?.get(method_name)
+        self.method_scheme_env
+            .get(&self.resolve_type_key_broad(current_module, type_name)?)?
+            .get(method_name)
     }
 
     /// Push a variant method scheme (RFC-0036 §3.1 multi-impl dispatch).
+    /// `owner`: see [`register_method`](Self::register_method)'s doc.
     pub fn register_method_scheme_variant(
         &mut self,
-        type_name: String,
+        owner: SymbolId,
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
@@ -2779,7 +2841,7 @@ impl TypeDefinitionRegistry {
         self.generic_method_schemes_by_span
             .insert(method_span, scheme.clone());
         self.method_scheme_variants
-            .entry(type_name)
+            .entry(owner)
             .or_default()
             .entry(method_name)
             .or_default()
@@ -2843,15 +2905,21 @@ impl TypeDefinitionRegistry {
     /// All registered schemes for `(type_name, method_name)` on a generic
     /// struct/enum target (issue #272) -- see
     /// `array_method_scheme_variants_for`'s doc for why a caller needs the
-    /// full list rather than `method_scheme_for`'s single slot.
+    /// full list rather than `method_scheme_for`'s single slot. `type_name`
+    /// is resolved the same broad, `current_module`-first way as
+    /// `method_scheme_for` (metel-core#1124).
     #[must_use]
     pub fn method_scheme_variants_for(
         &self,
+        current_module: &[String],
         type_name: &str,
         method_name: &str,
     ) -> &[MethodSchemeVariant] {
+        let Some(owner) = self.resolve_type_key_broad(current_module, type_name) else {
+            return &[];
+        };
         self.method_scheme_variants
-            .get(type_name)
+            .get(&owner)
             .and_then(|m| m.get(method_name))
             .map_or(&[], Vec::as_slice)
     }
@@ -3513,9 +3581,18 @@ impl TypeDefinitionRegistry {
         self.struct_type_params.get(&id)
     }
 
+    /// `type_name` is resolved the same broad, `current_module`-first way as
+    /// `struct_fields`/`method_scheme_for` (metel-core#1124).
     #[must_use]
-    pub fn method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
-        self.method_env.get(type_name)?.get(method_name)
+    pub fn method_type(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+        method_name: &str,
+    ) -> Option<&InferType> {
+        self.method_env
+            .get(&self.resolve_type_key_broad(current_module, type_name)?)?
+            .get(method_name)
     }
 
     #[must_use]
@@ -3523,13 +3600,18 @@ impl TypeDefinitionRegistry {
         self.array_method_env.get(method_name)
     }
 
+    /// `type_name` is resolved the same broad, `current_module`-first way as
+    /// `method_type` above (metel-core#1124).
     #[must_use]
     pub fn method_receiver_kind(
         &self,
+        current_module: &[String],
         type_name: &str,
         method_name: &str,
     ) -> Option<&ReceiverKind> {
-        self.method_receiver_env.get(type_name)?.get(method_name)
+        self.method_receiver_env
+            .get(&self.resolve_type_key_broad(current_module, type_name)?)?
+            .get(method_name)
     }
 
     #[must_use]
@@ -3852,7 +3934,7 @@ impl TypeDefinitionRegistry {
         &self.struct_type_params
     }
 
-    pub(crate) fn raw_method_env(&self) -> &HashMap<String, HashMap<String, InferType>> {
+    pub(crate) fn raw_method_env(&self) -> &HashMap<SymbolId, HashMap<String, InferType>> {
         &self.method_env
     }
 
@@ -3899,7 +3981,7 @@ impl TypeDefinitionRegistry {
             // module's registry) while `other` carries that type's bodied methods
             // (List::map/filter/... checked in std::core). A type-level or_insert
             // would drop the latter entirely.
-            let entry = self.method_scheme_env.entry(k.clone()).or_default();
+            let entry = self.method_scheme_env.entry(*k).or_default();
             for (method_name, scheme) in v {
                 entry
                     .entry(method_name.clone())
@@ -3909,7 +3991,7 @@ impl TypeDefinitionRegistry {
         for (k, v) in &other.method_scheme_variants {
             // Concatenate variant lists (cross-module conditional impls for the
             // same method are legitimate).
-            let entry = self.method_scheme_variants.entry(k.clone()).or_default();
+            let entry = self.method_scheme_variants.entry(*k).or_default();
             for (method_name, variants) in v {
                 entry
                     .entry(method_name.clone())
@@ -3964,7 +4046,7 @@ impl TypeDefinitionRegistry {
             // same foreign type (e.g. `impl Shower for Point` in one module and
             // `impl Debugger for Point` in another). A type-level or_insert would
             // silently drop whichever one is merged second.
-            let entry = self.method_env.entry(k.clone()).or_default();
+            let entry = self.method_env.entry(*k).or_default();
             for (method_name, ty) in v {
                 entry
                     .entry(method_name.clone())
@@ -3972,7 +4054,7 @@ impl TypeDefinitionRegistry {
             }
         }
         for (k, v) in &other.method_receiver_env {
-            let entry = self.method_receiver_env.entry(k.clone()).or_default();
+            let entry = self.method_receiver_env.entry(*k).or_default();
             for (method_name, receiver) in v {
                 entry
                     .entry(method_name.clone())
@@ -4330,9 +4412,19 @@ impl InferContext {
         self.registry.pop_struct_scope();
     }
 
-    pub fn register_method(&mut self, type_name: String, method_name: String, fun_ty: InferType) {
-        self.registry
-            .register_method(type_name, method_name, fun_ty);
+    /// `type_name` is resolved from `current_module_path`'s own scope
+    /// (falling back to the bare-name index) to the `SymbolId` the method
+    /// tables are actually keyed by (metel-core#1124). A no-op if `type_name`
+    /// isn't resolvable at all -- shouldn't happen for a legitimate `extend`
+    /// whose target type-checked.
+    pub fn register_method(&mut self, type_name: &str, method_name: String, fun_ty: InferType) {
+        let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, type_name)
+        else {
+            return;
+        };
+        self.registry.register_method(owner, method_name, fun_ty);
     }
 
     pub fn register_array_method(&mut self, method_name: String, fun_ty: InferType) {
@@ -4346,7 +4438,8 @@ impl InferContext {
 
     #[must_use]
     pub fn get_method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
-        self.registry.method_type(type_name, method_name)
+        self.registry
+            .method_type(&self.current_module_path, type_name, method_name)
     }
 
     #[must_use]
@@ -4360,7 +4453,8 @@ impl InferContext {
         type_name: &str,
         method_name: &str,
     ) -> Option<&ReceiverKind> {
-        self.registry.method_receiver_kind(type_name, method_name)
+        self.registry
+            .method_receiver_kind(&self.current_module_path, type_name, method_name)
     }
 
     #[must_use]
@@ -4685,15 +4779,23 @@ impl InferContext {
             .type_param_record_kinds_for(&self.current_module_path, name)
     }
 
+    /// `type_name` is resolved the same way as [`register_method`](Self::register_method)
+    /// (metel-core#1124).
     pub fn register_method_scheme(
         &mut self,
-        type_name: String,
+        type_name: &str,
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
     ) {
+        let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, type_name)
+        else {
+            return;
+        };
         self.registry
-            .register_method_scheme(type_name, method_name, scheme, struct_tvars);
+            .register_method_scheme(owner, method_name, scheme, struct_tvars);
     }
 
     pub fn register_array_method_scheme(
@@ -4706,17 +4808,25 @@ impl InferContext {
             .register_array_method_scheme(method_name, scheme, element_tvars);
     }
 
+    /// `type_name` is resolved the same way as [`register_method`](Self::register_method)
+    /// (metel-core#1124).
     pub fn register_method_scheme_variant(
         &mut self,
-        type_name: String,
+        type_name: &str,
         method_name: String,
         scheme: TypeScheme,
         struct_tvars: Vec<TypeVar>,
         aspect_name: Option<String>,
         method_span: Span,
     ) {
+        let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, type_name)
+        else {
+            return;
+        };
         self.registry.register_method_scheme_variant(
-            type_name,
+            owner,
             method_name,
             scheme,
             struct_tvars,
@@ -4748,7 +4858,8 @@ impl InferContext {
         type_name: &str,
         method_name: &str,
     ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
-        self.registry.method_scheme_for(type_name, method_name)
+        self.registry
+            .method_scheme_for(&self.current_module_path, type_name, method_name)
     }
 
     #[must_use]

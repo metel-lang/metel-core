@@ -639,9 +639,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     // -- e.g. `extend<T> Wrapper<T>: Iterable<T> { ... }` -- whose
                     // `next` is only registered there, not in method_env.
                     let next_ret = ctx
-                        .method_env
-                        .get(type_name.as_str())
-                        .and_then(|m| m.get("next"))
+                        .concrete_method(type_name.as_str(), "next")
                         .and_then(|ty| {
                             if let Type::Fun(_, ret, ..) = ty {
                                 Some(ret.as_ref().clone())
@@ -650,8 +648,11 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                             }
                         })
                         .or_else(|| {
-                            let (scheme, struct_tvars) =
-                                ctx.registry.method_scheme_for(type_name.as_str(), "next")?;
+                            let (scheme, struct_tvars) = ctx.registry.method_scheme_for(
+                                ctx.current_module,
+                                type_name.as_str(),
+                                "next",
+                            )?;
                             let mut subst = Substitution::new();
                             for (&tv, concrete) in struct_tvars.iter().zip(type_args.iter()) {
                                 subst.bind(tv, type_to_infer(concrete));
@@ -1455,12 +1456,7 @@ pub(super) fn construct_expr(
             // Two cases: a concrete method already in method_env (fast path), or a
             // polymorphic scheme on a generic struct/enum (slow path).
             let (method_fun_ty, typed_args, dispatch): (Type, Vec<TypedExpr>, MethodDispatch) =
-                if let Some(ty) = ctx
-                    .method_env
-                    .get(&struct_name)
-                    .and_then(|m| m.get(method.as_str()))
-                    .cloned()
-                {
+                if let Some(ty) = ctx.concrete_method(&struct_name, method.as_str()).cloned() {
                     if explicit_method_tys.is_some() {
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0004,
@@ -1479,7 +1475,7 @@ pub(super) fn construct_expr(
                     // receiver's concrete type args actually satisfy.
                     let candidates = ctx
                         .registry
-                        .method_scheme_variants_for(&struct_name, method)
+                        .method_scheme_variants_for(ctx.current_module, &struct_name, method)
                         .to_vec();
                     if candidates.is_empty() {
                         return Err(MetelError::internal(format!(
@@ -1833,9 +1829,7 @@ pub(super) fn construct_expr(
             // For 2-segment paths, try method_env first (static methods, enum variant constructors).
             if let [type_name, member_name] = segments.as_slice() {
                 if let Some(ty) = ctx
-                    .method_env
-                    .get(type_name.as_str())
-                    .and_then(|m| m.get(member_name.as_str()))
+                    .concrete_method(type_name.as_str(), member_name.as_str())
                     .cloned()
                 {
                     // metel-core#1093: a static-method reference carries the

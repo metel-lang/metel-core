@@ -69,12 +69,12 @@ pub(super) fn build_concrete_struct_env(
 pub(super) fn build_concrete_method_env(
     registry: &TypeDefinitionRegistry,
     subst: &Substitution,
-) -> Result<HashMap<String, HashMap<String, Type>>, MetelError> {
+) -> Result<HashMap<SymbolId, HashMap<String, Type>>, MetelError> {
     let dummy = Span::new(0, 0, "");
     registry
         .raw_method_env()
         .iter()
-        .map(|(type_name, methods)| {
+        .map(|(owner, methods)| {
             let concrete: HashMap<_, _> = methods
                 .iter()
                 .filter_map(|(mname, mty)| {
@@ -88,7 +88,7 @@ pub(super) fn build_concrete_method_env(
                         .map(|t| (mname.clone(), t))
                 })
                 .collect();
-            Ok((type_name.clone(), concrete))
+            Ok((*owner, concrete))
         })
         .collect()
 }
@@ -106,7 +106,10 @@ struct ConstructCtx<'a> {
     struct_scopes: Vec<ConcreteStructEnv>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
     registry: &'a TypeDefinitionRegistry,
-    method_env: HashMap<String, HashMap<String, Type>>,
+    /// Concrete method-type map derived from the registry's own `method_env`
+    /// (metel-core#1124: keyed by the target's `SymbolId`, resolved from a
+    /// spelling via [`concrete_method`](Self::concrete_method)).
+    method_env: HashMap<SymbolId, HashMap<String, Type>>,
     /// Shared generator continued from Pass 1; keeps `TypeVar` identities globally unique.
     gen: TypeVarGenerator,
     /// Return type of the innermost enclosing function (None = unit / unknown).
@@ -369,6 +372,23 @@ impl<'a> ConstructCtx<'a> {
 
     fn can_be_unqualified_variant(&self, name: &str) -> bool {
         self.registry.has_variant_named(name)
+    }
+
+    /// Concrete (non-generic) method type registered for `type_name` in
+    /// `self.method_env` -- the derived, per-construction-pass copy of the
+    /// registry's own `method_env` (metel-core#1124: both are keyed by the
+    /// target's `SymbolId`). Resolved the same broad, `current_module`-first
+    /// way as the registry's own `method_type`/`method_scheme_for`
+    /// (metel-core#1125's `resolve_type_id_broad`) -- needed because a
+    /// reconstructed generic body's `current_module` is its own declaring
+    /// module, which need not be able to name a substituted type argument
+    /// that came from the call site instead (see `resolve_type_id_broad`'s
+    /// doc).
+    fn concrete_method(&self, type_name: &str, method_name: &str) -> Option<&Type> {
+        let owner = self
+            .registry
+            .resolve_type_id_broad(self.current_module, type_name)?;
+        self.method_env.get(&owner)?.get(method_name)
     }
 
     /// Interned identity of the field selected by `object.field` (ADR-0054 /

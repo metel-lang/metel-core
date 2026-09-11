@@ -551,7 +551,13 @@ fn register_program_decls(
                         registry,
                     );
                 } else {
-                    register_impl_methods(ib.methods.iter(), target_name, gen, registry);
+                    register_impl_methods(
+                        ib.methods.iter(),
+                        target_name,
+                        current_module_path,
+                        gen,
+                        registry,
+                    );
                     if ib.polarity == Polarity::Positive {
                         register_default_aspect_methods(
                             ib,
@@ -847,6 +853,14 @@ fn register_generic_impl_method_schemes(
         let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) else {
             continue;
         };
+        // metel-core#1124: the method tables are keyed by the target's own
+        // `SymbolId`. `target_id` was resolved once above; if the target
+        // somehow isn't resolvable (shouldn't happen for a legitimate `extend`
+        // whose target type-checked), there is no id to register these
+        // methods under -- skip rather than inventing one.
+        let Some(owner) = target_id else {
+            continue;
+        };
         // Method-level generics (e.g. `U` in `fun map<U>`) get their own fresh
         // quantified vars in addition to the type's params.
         let mut gen_map = type_gen_map.clone();
@@ -905,20 +919,20 @@ fn register_generic_impl_method_schemes(
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
         registry.register_method_scheme(
-            target_name.to_string(),
+            owner,
             method.name.clone(),
             scheme.clone(),
             struct_tvars.clone(),
         );
         registry.register_method_scheme_variant(
-            target_name.to_string(),
+            owner,
             method.name.clone(),
             scheme,
             struct_tvars,
             ib.aspect_name.clone(),
             method.span.clone(),
         );
-        registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
+        registry.register_method_receiver(owner, method.name.clone(), receiver);
     }
 }
 
@@ -1094,6 +1108,7 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
 fn register_impl_methods<'a>(
     methods: impl Iterator<Item = &'a crate::ast::FunDecl>,
     target_name: &str,
+    current_module_path: &[String],
     gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
@@ -1104,6 +1119,14 @@ fn register_impl_methods<'a>(
             || InferType::Named(target_name.to_string(), vec![]),
             InferType::Concrete,
         )
+    };
+    // metel-core#1124: the method tables are keyed by the target's own
+    // `SymbolId` -- resolved once here (covers both nominal structs/enums and
+    // std::core's pre-seeded primitive ids). If the target somehow isn't
+    // resolvable, there is no id to register these methods under; skip
+    // rather than inventing one.
+    let Some(owner) = registry.resolve_type_id(current_module_path, target_name) else {
+        return;
     };
     for method in methods {
         let mut param_types = vec![];
@@ -1124,16 +1147,12 @@ fn register_impl_methods<'a>(
                 type_expr_to_infer_with_self(ann, target_name)
             });
         registry.register_method(
-            target_name.to_string(),
+            owner,
             method.name.clone(),
             InferType::fun(param_types, ret_ty),
         );
         if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
-            registry.register_method_receiver(
-                target_name.to_string(),
-                method.name.clone(),
-                receiver,
-            );
+            registry.register_method_receiver(owner, method.name.clone(), receiver);
         }
     }
 }
@@ -1184,6 +1203,10 @@ fn register_default_aspect_method(
     // signatures (e.g. `Item` in `fun get_twice(self) -> Item { ... }`, sugar for
     // `Self::Item`) must resolve to the concrete binding this specific impl gave
     // for `Item`, not fall through to a dangling `Named("Item", [])`.
+    // metel-core#1124: see `register_impl_methods`'s matching comment.
+    let Some(owner) = registry.resolve_type_id(current_module_path, target_name) else {
+        return;
+    };
     let assoc_ctx = AssocResolveCtx {
         registry,
         current_module: current_module_path,
@@ -1211,12 +1234,12 @@ fn register_default_aspect_method(
             type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         });
     registry.register_method(
-        target_name.to_string(),
+        owner,
         method.name.clone(),
         InferType::fun(param_types, ret_ty),
     );
     if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
-        registry.register_method_receiver(target_name.to_string(), method.name.clone(), receiver);
+        registry.register_method_receiver(owner, method.name.clone(), receiver);
     }
 }
 
