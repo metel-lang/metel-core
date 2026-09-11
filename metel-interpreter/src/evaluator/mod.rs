@@ -1283,6 +1283,27 @@ fn std_core_lookup(name: &str, runtime: &RuntimeRegistry) -> Option<Value> {
     runtime.get_module_value(&["std".to_string(), "core".to_string()], name)
 }
 
+/// Resolve a bare identifier's storage cell for `&` / `&var` reference-taking
+/// on it, preferring the id-indexed frame or the live global slot over the
+/// name map (metel-core#1052b).
+fn ident_rc(
+    name: &str,
+    binding: Option<crate::identity::BindingId>,
+    env: &Environment,
+    runtime: &RuntimeRegistry,
+) -> Option<Rc<RefCell<Value>>> {
+    match binding {
+        Some(crate::identity::BindingId::Local(id)) => {
+            env.get_local_rc(id).or_else(|| env.get_rc(name))
+        }
+        Some(crate::identity::BindingId::Global(sym)) => runtime
+            .global_slot(sym)
+            .cloned()
+            .or_else(|| env.get_rc(name)),
+        None => env.get_rc(name),
+    }
+}
+
 // For a FieldAccess receiver like `a.b.c`, returns:
 //   (struct_cell, ["a","b","c"], leaf_cell)
 // where struct_cell is the Rc for the root variable (pointer-followed if needed),
@@ -1606,6 +1627,14 @@ impl Environment {
             }
         }
         None
+    }
+
+    /// The shared cell of a lexical local by its [`LocalId`], for `&`/`&var`
+    /// reference-taking on an identifier that resolved to a local
+    /// (metel-core#1052b).
+    #[must_use]
+    pub fn get_local_rc(&self, id: LocalId) -> Option<Rc<RefCell<Value>>> {
+        self.frame.get(&id).map(Rc::clone)
     }
 
     #[must_use]
@@ -2893,31 +2922,33 @@ fn eval_method_call_expr(
             let mut field_writeback: Option<FieldWriteback> = None;
 
             let receiver_binding = match receiver {
-                TypedExpr::Ident(name, _, _, _) => match env.get_rc(name).map(|cell| {
-                    let mut current = cell;
-                    loop {
-                        let inner = match &*current.borrow() {
-                            Value::Reference(inner) | Value::MutReference(inner) => {
-                                Some(Rc::clone(inner))
+                TypedExpr::Ident(name, binding, _, _) => {
+                    match ident_rc(name, *binding, env, runtime).map(|cell| {
+                        let mut current = cell;
+                        loop {
+                            let inner = match &*current.borrow() {
+                                Value::Reference(inner) | Value::MutReference(inner) => {
+                                    Some(Rc::clone(inner))
+                                }
+                                // An owned `dyn Aspect` binding's own cell holds the
+                                // fat pointer, not the concrete value -- `self`
+                                // inside the method body must bind to `data`
+                                // (RFC-0008 §2), or field access there would try to
+                                // read a field off the wrapper itself.
+                                Value::DynAspect { data, .. } => Some(Rc::clone(data)),
+                                _ => None,
+                            };
+                            match inner {
+                                Some(inner) => current = inner,
+                                None => break,
                             }
-                            // An owned `dyn Aspect` binding's own cell holds the
-                            // fat pointer, not the concrete value -- `self`
-                            // inside the method body must bind to `data`
-                            // (RFC-0008 §2), or field access there would try to
-                            // read a field off the wrapper itself.
-                            Value::DynAspect { data, .. } => Some(Rc::clone(data)),
-                            _ => None,
-                        };
-                        match inner {
-                            Some(inner) => current = inner,
-                            None => break,
                         }
+                        current
+                    }) {
+                        Some(cell) => call::ReceiverBinding::Shared(cell),
+                        None => call::ReceiverBinding::Value(recv_type_view.clone()),
                     }
-                    current
-                }) {
-                    Some(cell) => call::ReceiverBinding::Shared(cell),
-                    None => call::ReceiverBinding::Value(recv_type_view.clone()),
-                },
+                }
                 TypedExpr::FieldAccess { .. } => match lvalue_field_cell(receiver, env) {
                     Some((struct_cell, path, leaf_cell)) => {
                         let binding = call::ReceiverBinding::Shared(Rc::clone(&leaf_cell));
@@ -3340,7 +3371,7 @@ pub fn eval_expr(
                     };
                 }
                 UnaryOp::Ref => return match &**operand {
-                    TypedExpr::Ident(name, _, _, _) => env.get_rc(name)
+                    TypedExpr::Ident(name, binding, _, _) => ident_rc(name, *binding, env, runtime)
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
@@ -3355,7 +3386,7 @@ pub fn eval_expr(
                     _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
                 },
                 UnaryOp::RefMut => return match &**operand {
-                    TypedExpr::Ident(name, _, _, _) => env.get_rc(name)
+                    TypedExpr::Ident(name, binding, _, _) => ident_rc(name, *binding, env, runtime)
                         .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
@@ -3895,5 +3926,26 @@ mod frame_tests {
         // id-indexed read.
         assert!(closure_env.set("n", Value::I64(42)));
         assert_eq!(as_i64(closure_env.get_local(n_id)), Some(42));
+    }
+
+    #[test]
+    fn ident_rc_prefers_the_frame_cell_over_the_name_map() {
+        // `&x` / `&var x` resolves the same cell the frame holds for a local
+        // binding, without a name lookup, when the id is known.
+        use super::{ident_rc, RuntimeRegistry};
+        use crate::identity::BindingId;
+
+        let mut env = Environment::new();
+        let id = LocalId(99);
+        env.define_binding(Some(id), "x", Value::I64(3));
+        let runtime = RuntimeRegistry::new();
+        let cell =
+            ident_rc("x", Some(BindingId::Local(id)), &env, &runtime).expect("resolves by id");
+        assert_eq!(as_i64(Some(cell.borrow().clone())), Some(3));
+
+        // A name the frame doesn't know about still falls back to the name map.
+        env.define("y", Value::I64(9));
+        let cell = ident_rc("y", None, &env, &runtime).expect("falls back by name");
+        assert_eq!(as_i64(Some(cell.borrow().clone())), Some(9));
     }
 }
