@@ -1700,13 +1700,23 @@ pub(super) fn construct_expr(
                 span: span.clone(),
             })
         }
-        Expr::RecordProjection { path, fields, span } => {
+        Expr::RecordProjection {
+            path,
+            path_span,
+            fields,
+            span,
+        } => {
+            // metel-core#1054: re-typed with `path_span`, not the whole
+            // projection's `span` -- the identity walk recorded this base's
+            // use at `path_span` (`identity::allocate`'s own
+            // `Expr::RecordProjection` arm), so `ctx.binding_id_at` only
+            // finds it there.
             let base_expr = if path.len() == 1 {
-                Expr::Ident(path[0].clone(), span.clone())
+                Expr::Ident(path[0].clone(), path_span.clone())
             } else {
                 // Synthesised for re-typing; no per-segment spans (identity walk
                 // already ran on the parser's own `Expr::Path`).
-                Expr::Path(path.clone(), Vec::new(), span.clone())
+                Expr::Path(path.clone(), Vec::new(), path_span.clone())
             };
             let typed_base = construct_expr(&base_expr, None, ctx)?;
             let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {

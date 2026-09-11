@@ -1172,8 +1172,13 @@ pub(super) fn infer_expr(
                 infer_struct_literal(struct_name, fields, span, ctx, fun_generalizations)
             }
         }
-        Expr::RecordProjection { path, fields, span } => {
-            let base_expr = record_projection_base_expr(path, span);
+        Expr::RecordProjection {
+            path,
+            path_span,
+            fields,
+            span,
+        } => {
+            let base_expr = record_projection_base_expr(path, path_span);
             let base_ty = infer_expr(&base_expr, ctx, fun_generalizations)?;
             let base_ty = ctx.solve()?.apply(&base_ty);
             // RFC-0137 slice 2: re-projecting a narrowed residual is fine, as long

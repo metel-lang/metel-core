@@ -562,6 +562,12 @@ pub enum Expr {
     },
     RecordProjection {
         path: Vec<String>,
+        /// The span of `path` alone, not including the trailing `.{ fields }`
+        /// (metel-core#1054's record-projection identity slice). Distinct from
+        /// `span` (the whole projection) because construction re-types the
+        /// base as a synthesised `Ident`/`Path` node and needs the exact span
+        /// the identity walker recorded a use at, not the enclosing one.
+        path_span: Span,
         fields: Vec<String>,
         span: Span,
     },

@@ -1812,4 +1812,94 @@ mod tests {
             "a static method is not a variant constructor"
         );
     }
+
+    #[test]
+    fn record_projection_base_carries_its_binding_id() {
+        // metel-core#1054 (record-projection identity slice): `self.{ fd }`'s
+        // base is re-typed as a synthesised `Ident` node; it should resolve
+        // to `self`'s own `LocalId`, the same as any other reference to
+        // `self` in the method body, not `None`.
+        use crate::identity::{self, BindingId, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{FunBody, TypedExpr};
+
+        let root = "record_projection.mtl";
+        let source = "struct Handle {\n\
+                       \tfd: i64,\n\
+                       }\n\
+                       extend Handle {\n\
+                       \tfun narrow(self) -> i64 {\n\
+                       \t\tlet r := self.{ fd };\n\
+                       \t\tr.fd\n\
+                       \t}\n\
+                       }\n\
+                       fun main() -> i64 {\n\
+                       \tHandle { fd = 5 }.narrow()\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let narrow_body = typed_report
+            .graph
+            .modules
+            .iter()
+            .find_map(|m| {
+                m.decls.iter().find_map(|d| match d {
+                    TypedDecl::Impl(ib) => ib.methods.iter().find_map(|f| {
+                        if f.name == "narrow" {
+                            match &f.body {
+                                FunBody::Typed(block) => Some(block),
+                                _ => None,
+                            }
+                        } else {
+                            None
+                        }
+                    }),
+                    _ => None,
+                })
+            })
+            .expect("typed `narrow` body");
+
+        let value = narrow_body
+            .stmts
+            .iter()
+            .find_map(|d| match d {
+                TypedDecl::Let(l) if l.name == "r" => Some(&l.value),
+                _ => None,
+            })
+            .expect("`let r` not found");
+        let object = match value {
+            TypedExpr::RecordLiteral { fields, .. } => match fields.as_slice() {
+                [(_, TypedExpr::FieldAccess { object, .. })] => object.as_ref(),
+                other => panic!("expected one projected field, got {other:?}"),
+            },
+            other => panic!("`r`'s value is not a RecordLiteral: {other:?}"),
+        };
+        match object {
+            TypedExpr::Ident(name, binding, ..) => {
+                assert_eq!(name, "self");
+                assert!(
+                    matches!(binding, Some(BindingId::Local(_))),
+                    "self.{{ fd }}'s base should carry self's LocalId, not {binding:?}"
+                );
+            }
+            other => panic!("projection base is not an Ident: {other:?}"),
+        }
+    }
 }

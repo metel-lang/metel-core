@@ -544,8 +544,14 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             symbol_id: *symbol_id,
             span: span.clone(),
         },
-        Expr::RecordProjection { path, fields, span } => Expr::RecordProjection {
+        Expr::RecordProjection {
+            path,
+            path_span,
+            fields,
+            span,
+        } => Expr::RecordProjection {
             path: path.clone(),
+            path_span: path_span.clone(),
             fields: fields.clone(),
             span: span.clone(),
         },

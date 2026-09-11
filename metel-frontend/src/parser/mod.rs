@@ -2034,10 +2034,16 @@ fn parse_record_projection_expr(
     let path_pair = inner
         .next()
         .ok_or_else(|| MetelError::internal("record_projection_expr: expected path"))?;
+    let path_span = Span::of(&path_pair, filename);
     let path = collect_path_components(path_pair)?;
     let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
     sort_record_labels(&mut fields, filename, &span, "record projection")?;
-    Ok(Expr::RecordProjection { path, fields, span })
+    Ok(Expr::RecordProjection {
+        path,
+        path_span,
+        fields,
+        span,
+    })
 }
 
 fn collect_path_components(pair: pest::iterators::Pair<Rule>) -> Result<Vec<String>, MetelError> {

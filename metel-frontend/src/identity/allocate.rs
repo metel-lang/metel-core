@@ -668,6 +668,10 @@ impl Walker<'_> {
         }
     }
 
+    // clippy-allow: one exhaustive match over every `Expr` variant; splitting
+    // it scatters the walk with no clarity gain (same precedent as
+    // `move_check::Checker::observe_expr`, `path_normalizer::normalize_expr`).
+    #[allow(clippy::too_many_lines)]
     fn walk_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Ident(name, span) => self.record_use(name, span),
@@ -686,12 +690,25 @@ impl Walker<'_> {
             // No value references to record:
             // - `Path` without aligned segment spans (parser-synthesised),
             //   `ResolvedPath`: value identity is threaded by #1050;
-            // - `Literal`, `Continue`, `RecordProjection`: no operand names.
+            // - `Literal`, `Continue`: no operand names.
             Expr::Path(..)
             | Expr::ResolvedPath { .. }
             | Expr::Literal(_, _)
-            | Expr::Continue(_)
-            | Expr::RecordProjection { .. } => {}
+            | Expr::Continue(_) => {}
+            // `P.{ f }`'s base (metel-core#1054): a single-segment path is a
+            // lexical local (`self`, a `let`-bound value) and gets recorded as
+            // a use at `path_span`, the same span construction re-types it at
+            // -- otherwise `binding_spans` never has an entry for it and
+            // construction's synthesised `Expr::Ident` resolves to nothing. A
+            // multi-segment path is a qualified value path, not a lexical
+            // local; nothing to record here, same as a bare `Expr::Path`.
+            Expr::RecordProjection {
+                path, path_span, ..
+            } => {
+                if let [name] = path.as_slice() {
+                    self.record_use(name, path_span);
+                }
+            }
             Expr::Tuple(xs, _) | Expr::Array(xs, _) => {
                 for x in xs {
                     self.walk_expr(x);
