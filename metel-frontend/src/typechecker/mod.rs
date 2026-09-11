@@ -1902,4 +1902,72 @@ mod tests {
             other => panic!("projection base is not an Ident: {other:?}"),
         }
     }
+
+    #[test]
+    fn toplevel_bare_statement_reference_carries_a_symbol_id() {
+        // metel-core#1116: a bare top-level statement (`w.get();`, outside any
+        // `fun`) referencing an earlier top-level `let` -- the identity
+        // walker's own module-level dispatch never visits `Decl::Stmt` at all
+        // (it only descends into `Fun`/`Let`/`Mut`/`Impl`/`Aspect` bodies), so
+        // this reference has no `binding_spans` entry of its own. Construction
+        // falls back to the reference-resolver's separate `Def` table (a
+        // whole-module walk that does cover bare statements) -- verified here
+        // by checking the receiver Ident still carries a real SymbolId.
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{TypedExpr, TypedStmt};
+
+        let root = "toplevel_stmt.mtl";
+        let source = "struct Wrapper {\n\
+                       \tn: i64,\n\
+                       }\n\
+                       extend Wrapper {\n\
+                       \tfun get(self) -> i64 {\n\
+                       \t\tself.n\n\
+                       \t}\n\
+                       }\n\
+                       let w := Wrapper { n = 5 };\n\
+                       w.get();\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let stmt = typed_report
+            .graph
+            .modules
+            .iter()
+            .find_map(|m| {
+                m.decls.iter().find_map(|d| match d {
+                    TypedDecl::Stmt(s) => Some(s.as_ref()),
+                    _ => None,
+                })
+            })
+            .expect("the top-level `w.get();` statement");
+        let binding = match stmt {
+            TypedStmt::Expr(TypedExpr::MethodCall { receiver, .. }) => match receiver.as_ref() {
+                TypedExpr::Ident(_, binding, ..) => *binding,
+                other => panic!("receiver is not an Ident: {other:?}"),
+            },
+            other => panic!("not a MethodCall statement: {other:?}"),
+        };
+        assert!(
+            binding.is_some(),
+            "w's reference in the top-level statement should carry a real BindingId, not None"
+        );
+    }
 }

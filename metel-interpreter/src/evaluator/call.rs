@@ -19,16 +19,16 @@ fn bind_method_params(
     receiver: ReceiverBinding,
     args: &[Value],
 ) {
-    if let Some(param) = closure.params.first() {
+    if !closure.params.is_empty() {
         let id = closure.param_ids.first().copied().flatten();
         match receiver {
-            ReceiverBinding::Value(value) => call_env.define_binding(id, &param.name, value),
-            ReceiverBinding::Shared(cell) => call_env.define_binding_rc(id, &param.name, cell),
+            ReceiverBinding::Value(value) => call_env.define_binding(id, value),
+            ReceiverBinding::Shared(cell) => call_env.define_binding_rc(id, cell),
         }
     }
-    for (i, (param, val)) in closure.params.iter().skip(1).zip(args.iter()).enumerate() {
+    for (i, val) in args.iter().enumerate() {
         let id = closure.param_ids.get(i + 1).copied().flatten();
-        call_env.define_binding(id, &param.name, val.clone());
+        call_env.define_binding(id, val.clone());
     }
 }
 
@@ -84,9 +84,9 @@ fn call_runtime_callable(
             push_frame(fn_name, span.clone());
             let mut call_env = closure.captured.clone();
             call_env.push_scope();
-            for (i, (param, val)) in closure.params.iter().zip(args.iter()).enumerate() {
+            for (i, val) in args.iter().enumerate() {
                 let id = closure.param_ids.get(i).copied().flatten();
-                call_env.define_binding(id, &param.name, val.clone());
+                call_env.define_binding(id, val.clone());
             }
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),

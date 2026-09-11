@@ -421,11 +421,21 @@ impl<'a> ConstructCtx<'a> {
     }
 
     /// The resolved identity of the value reference at `span` (ADR-0054 /
-    /// #1052), from the transient span → `BindingId` bridge. `None` without
-    /// identity context, or when the span is not a recorded binding/reference
-    /// site (e.g. a construction-synthesised node).
+    /// #1052), from the transient span → `BindingId` bridge. Falls back to
+    /// the reference-resolver's own `Def` table (metel-core#1116) when the
+    /// identity walker has nothing at this span: that pass's walk isn't
+    /// scoped to `Fun`/`Let`/`Mut`/`Impl`/`Aspect` bodies the way the
+    /// identity walker's is, so a top-level bare statement's reference to a
+    /// module-level declaration (`add5.print();` outside any `fun`) resolves
+    /// here even though the identity walker never visited that statement at
+    /// all. The reference table only ever holds `Def` (global) entries, never
+    /// `Local` ones, so this can't shadow a real local's identity. `None`
+    /// when neither source has anything for this span (e.g. a
+    /// construction-synthesised node, or a genuinely unresolved name).
     fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
-        self.identity?.binding_spans.get(span)
+        self.identity
+            .and_then(|identity| identity.binding_spans.get(span))
+            .or_else(|| self.references?.get(span).copied().map(BindingId::Global))
     }
 
     /// The lexical identity of the binding *defined* at `span` (a `let` / `mut`

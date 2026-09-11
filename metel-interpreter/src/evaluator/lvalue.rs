@@ -28,10 +28,9 @@ pub(super) fn resolve_place_assign_root(
     ) -> Result<std::rc::Rc<std::cell::RefCell<Value>>, MetelError> {
         match place {
             TypedPlace::Ident(name, binding, ident_span) => {
-                // A top-level `let` / `var` reached from a non-`main` body is
-                // absent from the name map; use its live global slot cell. A
-                // local's frame cell is the one `env.get_rc` would find by
-                // name anyway, so prefer it directly (metel-core#1052b).
+                // A top-level `let` / `var`'s live global slot cell, or a
+                // local's frame cell, by identity (metel-core#1052b). No
+                // name-map fallback remains (metel-core#1054).
                 let id_cell = match binding {
                     Some(crate::identity::BindingId::Global(sym)) => {
                         runtime.global_slot(*sym).cloned()
@@ -39,16 +38,13 @@ pub(super) fn resolve_place_assign_root(
                     Some(crate::identity::BindingId::Local(id)) => env.get_local_rc(*id),
                     None => None,
                 };
-                let rc = match id_cell {
-                    Some(cell) => cell,
-                    None => env.get_rc(name).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
-                            format!("assign: `{name}` not found"),
-                            ident_span,
-                        )
-                    })?,
-                };
+                let rc = id_cell.ok_or_else(|| {
+                    MetelError::panic(
+                        RuntimeErrorCode::R0003,
+                        format!("assign: `{name}` not found"),
+                        ident_span,
+                    )
+                })?;
                 // Auto-deref: if the binding holds a &mut reference, follow it.
                 let inner = {
                     let v = rc.borrow();
@@ -121,13 +117,11 @@ pub(super) fn eval_typed_place_value(
                 }
                 None => {}
             }
-            env.get(name).ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0003,
-                    format!("assign: `{name}` not found"),
-                    ident_span,
-                )
-            })
+            Err(MetelError::panic(
+                RuntimeErrorCode::R0003,
+                format!("assign: `{name}` not found"),
+                ident_span,
+            ))
         }
         TypedPlace::Deref {
             object,

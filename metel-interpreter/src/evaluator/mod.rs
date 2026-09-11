@@ -1295,23 +1295,18 @@ fn std_core_lookup(name: &str, runtime: &RuntimeRegistry) -> Option<Value> {
 }
 
 /// Resolve a bare identifier's storage cell for `&` / `&var` reference-taking
-/// on it, preferring the id-indexed frame or the live global slot over the
-/// name map (metel-core#1052b).
+/// on it: the id-indexed frame for a local, the live global slot for a
+/// global (metel-core#1052b). `None` without identity (metel-core#1054
+/// deleted the name-map fallback that used to catch that case).
 fn ident_rc(
-    name: &str,
     binding: Option<crate::identity::BindingId>,
     env: &Environment,
     runtime: &RuntimeRegistry,
 ) -> Option<Rc<RefCell<Value>>> {
     match binding {
-        Some(crate::identity::BindingId::Local(id)) => {
-            env.get_local_rc(id).or_else(|| env.get_rc(name))
-        }
-        Some(crate::identity::BindingId::Global(sym)) => runtime
-            .global_slot(sym)
-            .cloned()
-            .or_else(|| env.get_rc(name)),
-        None => env.get_rc(name),
+        Some(crate::identity::BindingId::Local(id)) => env.get_local_rc(id),
+        Some(crate::identity::BindingId::Global(sym)) => runtime.global_slot(sym).cloned(),
+        None => None,
     }
 }
 
@@ -1326,30 +1321,33 @@ fn lvalue_field_cell(
     runtime: &RuntimeRegistry,
 ) -> Option<FieldWriteback> {
     use crate::typed_ast::TypedExpr;
-    // metel-core#1113: the root's own `BindingId` rides along with its name,
-    // not just for symmetry -- `ident_rc` below needs it to resolve the
-    // writeback target identity-first, the same as every other binding
-    // lookup (this one had been missed: reads through a nested `&var self`
-    // receiver worked via `eval_to_value`, but the *writeback* cell was
-    // still found purely by name).
+    // metel-core#1113/#1054: the root's own `BindingId` is what `ident_rc`
+    // below resolves the writeback target from -- purely by identity, no
+    // name-map fallback left (this one had been missed: reads through a
+    // nested `&var self` receiver worked via `eval_to_value`, but the
+    // *writeback* cell was still found purely by name, until #1113).
+    // `Result<Option<BindingId>, ()>`, not `Option<Option<BindingId>>`
+    // (clippy::option_option): the outer state is "is this an lvalue path at
+    // all", the inner is "does its root carry identity" -- two different
+    // questions, not one Option's worth.
     fn walk_path(
         expr: &TypedExpr,
         path: &mut Vec<String>,
-    ) -> Option<(String, Option<crate::identity::BindingId>)> {
+    ) -> Result<Option<crate::identity::BindingId>, ()> {
         match expr {
-            TypedExpr::Ident(name, binding, _, _) => Some((name.clone(), *binding)),
+            TypedExpr::Ident(_, binding, _, _) => Ok(*binding),
             TypedExpr::FieldAccess { object, field, .. } => {
                 let root = walk_path(object, path)?;
                 path.push(field.clone());
-                Some(root)
+                Ok(root)
             }
-            _ => None,
+            _ => Err(()),
         }
     }
     let mut path = Vec::new();
-    let (root, root_binding) = walk_path(receiver, &mut path)?;
+    let root_binding = walk_path(receiver, &mut path).ok()?;
 
-    let root_cell = ident_rc(&root, root_binding, env, runtime)?;
+    let root_cell = ident_rc(root_binding, env, runtime)?;
     let struct_cell = {
         let inner = match &*root_cell.borrow() {
             Value::Reference(c) | Value::MutReference(c) => Some(Rc::clone(c)),
@@ -1481,20 +1479,27 @@ fn eval_to_value(
 
 // ── Environment ───────────────────────────────────────────────────────────────
 
-/// Lexically-scoped environment — a stack of hashmaps.
-/// Runtime storage stays cell-backed, but closure capture chooses whether to
-/// clone cells by value (`capture_clone`) or share them explicitly (`define_rc`,
-/// pointers, reference receivers).
+/// Activation environment — an id-indexed binding frame.
+/// Runtime storage stays cell-backed; closure capture chooses whether to
+/// clone cells by value (`capture_clone`) or share them explicitly
+/// (`define_binding_rc`, pointers, reference receivers).
+///
+/// Until metel-core#1054, this also carried a lexically-scoped name map
+/// (`scopes: Vec<HashMap<String, Rc<RefCell<Value>>>>`) as a parallel,
+/// name-keyed store — a legacy of the pre-#1052 evaluator, kept in step as a
+/// fallback while identity carriage was still being extended to every
+/// construction. #1054's disable-scopes diagnostic (stub every name-map read
+/// to `None` and run the full fixture suite) found nothing left depending on
+/// it, so it was deleted outright rather than kept as permanent dead-code
+/// insurance.
 #[derive(Debug, Clone)]
 pub struct Environment {
-    scopes: Vec<HashMap<String, Rc<RefCell<Value>>>>,
-    /// Activation-flat, id-indexed binding slots (metel-core#1052b). Written
-    /// alongside `scopes` whenever a binding's [`LocalId`] is known; `eval`
-    /// consults it before the name map and falls back to the name map on a
-    /// miss. A `LocalId` hashes the binding's full lexical path, so shadowing
-    /// and block nesting need no runtime nesting here — the map is flat and
+    /// Activation-flat, id-indexed binding slots (metel-core#1052b). A
+    /// `LocalId` hashes the binding's full lexical path, so shadowing and
+    /// block nesting need no runtime nesting here — the map is flat and
     /// lives for a single call activation (each call clones a fresh
-    /// environment from the closure's captured one).
+    /// environment from the closure's captured one). The sole binding store
+    /// since #1054.
     frame: HashMap<LocalId, Rc<RefCell<Value>>>,
     /// Nested `fun`s `hoist_nested_funs` placeholdered but didn't build yet
     /// (metel-core#712). `eval_call_expr` builds one on demand if it's called before
@@ -1516,7 +1521,6 @@ impl Environment {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            scopes: vec![HashMap::new()],
             frame: HashMap::new(),
             pending_funs: vec![HashMap::new()],
             type_ctx: None,
@@ -1524,12 +1528,10 @@ impl Environment {
     }
 
     pub fn push_scope(&mut self) {
-        self.scopes.push(HashMap::new());
         self.pending_funs.push(HashMap::new());
     }
 
     pub fn pop_scope(&mut self) {
-        self.scopes.pop();
         self.pending_funs.pop();
     }
 
@@ -1554,62 +1556,27 @@ impl Environment {
         None
     }
 
-    /// Define a new binding in the current scope.
-    /// Arrays are deep-cloned so each binding has an independent copy.
-    ///
-    /// # Panics
-    /// Panics if called with no scope pushed — cannot happen through normal use,
-    /// since `Environment::new` always starts with one scope and callers never pop
-    /// past it.
-    pub fn define(&mut self, name: &str, value: Value) {
-        let cell = Rc::new(RefCell::new(deep_clone_value(value)));
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), cell);
-    }
-
-    /// # Panics
-    /// Panics if called with no scope pushed — see [`Environment::define`].
-    pub fn define_rc(&mut self, name: &str, cell: Rc<RefCell<Value>>) {
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), cell);
-    }
-
-    /// [`define`](Self::define), also recording the binding in the id-indexed
-    /// `frame` when its [`LocalId`] is known (metel-core#1052b). The name map
-    /// stays in step so the not-yet-migrated lookup and assignment paths keep
-    /// working.
-    ///
-    /// # Panics
-    /// Panics if called with no scope pushed — see [`Environment::define`].
-    pub fn define_binding(&mut self, id: Option<LocalId>, name: &str, value: Value) {
-        let cell = Rc::new(RefCell::new(deep_clone_value(value)));
+    /// Define a new binding by its structural [`LocalId`] in the id-indexed
+    /// frame (metel-core#1052b). `id: None` means identity allocation had
+    /// nothing to stamp for this binding site — the binding is then simply
+    /// not stored, rather than falling back to a name-keyed slot the way the
+    /// deleted `scopes` name map used to (#1054's disable-scopes diagnostic
+    /// found no currently-reachable binding site without an id). Arrays are
+    /// deep-cloned so each binding has an independent copy.
+    pub fn define_binding(&mut self, id: Option<LocalId>, value: Value) {
         if let Some(id) = id {
-            self.frame.insert(id, Rc::clone(&cell));
+            self.frame
+                .insert(id, Rc::new(RefCell::new(deep_clone_value(value))));
         }
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), cell);
     }
 
-    /// [`define_rc`](Self::define_rc), also recording the shared cell in the
-    /// id-indexed `frame` when the binding's [`LocalId`] is known
-    /// (metel-core#1052b).
-    ///
-    /// # Panics
-    /// Panics if called with no scope pushed — see [`Environment::define`].
-    pub fn define_binding_rc(&mut self, id: Option<LocalId>, name: &str, cell: Rc<RefCell<Value>>) {
+    /// [`define_binding`](Self::define_binding) for an already-shared cell
+    /// (e.g. a `&`/`&var` receiver binding, or a re-pointed capture) rather
+    /// than a fresh value to wrap.
+    pub fn define_binding_rc(&mut self, id: Option<LocalId>, cell: Rc<RefCell<Value>>) {
         if let Some(id) = id {
-            self.frame.insert(id, Rc::clone(&cell));
+            self.frame.insert(id, cell);
         }
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), cell);
     }
 
     /// [`define_binding`](Self::define_binding), additionally returning the
@@ -1617,25 +1584,17 @@ impl Environment {
     /// binding elsewhere by identity (e.g. a module-level `let`/`var`'s
     /// `SymbolId` slot in the runtime registry), this lets it hand the cell
     /// straight to that registration instead of reading the value back out
-    /// of the name map right after defining it (metel-core#1052b-3f).
-    ///
-    /// # Panics
-    /// Panics if called with no scope pushed — see [`Environment::define`].
+    /// of the frame right after defining it (metel-core#1052b-3f).
     #[must_use]
     pub fn define_binding_get_cell(
         &mut self,
         id: Option<LocalId>,
-        name: &str,
         value: Value,
     ) -> Rc<RefCell<Value>> {
         let cell = Rc::new(RefCell::new(deep_clone_value(value)));
         if let Some(id) = id {
             self.frame.insert(id, Rc::clone(&cell));
         }
-        self.scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.to_string(), Rc::clone(&cell));
         cell
     }
 
@@ -1663,41 +1622,6 @@ impl Environment {
         }
     }
 
-    /// Look up a binding, searching from innermost to outermost scope.
-    #[must_use]
-    pub fn get(&self, name: &str) -> Option<Value> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(cell) = scope.get(name) {
-                return Some(cell.borrow().clone());
-            }
-        }
-        None
-    }
-
-    /// Assign to an existing binding anywhere in the scope chain.
-    /// Arrays are deep-cloned so each binding has an independent copy.
-    #[must_use]
-    pub fn set(&self, name: &str, value: Value) -> bool {
-        for scope in self.scopes.iter().rev() {
-            if let Some(cell) = scope.get(name) {
-                *cell.borrow_mut() = deep_clone_value(value);
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Return the Rc for a binding (used by closures to share mutable state).
-    #[must_use]
-    pub fn get_rc(&self, name: &str) -> Option<Rc<RefCell<Value>>> {
-        for scope in self.scopes.iter().rev() {
-            if let Some(cell) = scope.get(name) {
-                return Some(Rc::clone(cell));
-            }
-        }
-        None
-    }
-
     /// The shared cell of a lexical local by its [`LocalId`], for `&`/`&var`
     /// reference-taking on an identifier that resolved to a local
     /// (metel-core#1052b).
@@ -1708,33 +1632,15 @@ impl Environment {
 
     #[must_use]
     pub fn capture_clone(&self) -> Self {
-        let scopes = self
-            .scopes
-            .iter()
-            .map(|scope| {
-                scope
-                    .iter()
-                    .map(|(name, cell)| {
-                        let cloned = deep_clone_value(cell.borrow().clone());
-                        (name.clone(), Rc::new(RefCell::new(cloned)))
-                    })
-                    .collect()
-            })
-            .collect();
         Self {
-            scopes,
-            // The id-indexed frame is an activation-local mirror of the name
-            // map (metel-core#1052b). A capture snapshot rebuilds bindings under
-            // fresh name-keyed cells; re-deriving the id keys here would need a
-            // name↔LocalId map this method does not have, and a parallel set of
-            // cells would drift out of sync with `scopes`. Leave it empty — a
-            // body reference to a captured binding then falls back to the name
-            // map, which this snapshot does populate. #1052b-2 threads
-            // `capture_ids` through so captures land in the frame directly.
+            // A capture snapshot's frame starts empty (metel-core#1054): with
+            // no name map left to fall back to, a body reference to a
+            // captured binding resolves only through a frame slot
+            // `capture_closure`/`capture_closure_copy` installed by id —
+            // #1052b-2 threads `capture_ids` through for exactly that.
             frame: HashMap::new(),
-            // AST reference data, immutable once produced — sharing the `Rc`s across
-            // this deep-cloned environment is fine, only `scopes`' runtime values need
-            // independent cells.
+            // AST reference data, immutable once produced — sharing the `Rc`s
+            // across this snapshot is fine.
             pending_funs: self.pending_funs.clone(),
             type_ctx: self.type_ctx.clone(),
         }
@@ -1755,54 +1661,28 @@ impl Environment {
     ) -> Self {
         let mut copied = self.capture_clone();
         for (i, capture) in captures.iter().enumerate() {
-            let id = capture_ids.get(i).copied().flatten();
+            // Every capture installs by id only (metel-core#1054: no name-map
+            // fallback left) — `id` is this capture's own LocalId in `self`,
+            // the same one `define_binding`/`define_binding_rc` filed the
+            // enclosing binding under.
+            let Some(id) = capture_ids.get(i).copied().flatten() else {
+                continue;
+            };
             match capture {
-                // `id`, when known, is this capture's own LocalId in `self`
-                // (metel-core#1052b) — read from `self`'s own frame first.
-                CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
-                    let source = id
-                        .and_then(|id| self.get_local_rc(id))
-                        .or_else(|| self.get_rc(name));
-                    if let Some(source) = &source {
-                        for scope in copied.scopes.iter_mut().rev() {
-                            if scope.contains_key(name) {
-                                scope.insert(name.clone(), Rc::clone(source));
-                                break;
-                            }
-                        }
-                    }
-                    if let Some(id) = id {
-                        if let Some(cell) = source.or_else(|| copied.get_rc(name)) {
-                            copied.frame.insert(id, cell);
-                        }
+                CaptureSpec::SharedRef { .. } | CaptureSpec::MutRef { .. } => {
+                    if let Some(cell) = self.get_local_rc(id) {
+                        copied.frame.insert(id, cell);
                     }
                 }
                 // A value capture (metel-core#1096): re-derive the deep-cloned
-                // cell straight from this capture's own LocalId in `self` when
-                // known, rather than depending on `copied`'s name-map entry
-                // (the one `capture_clone()` already deep-cloned) to still be
-                // there — a capture materialized for an implicit (no `[...]`
-                // list) closure has no *other* name-keyed source to read back.
-                // `copied.get_rc(name)` is the fallback for a capture identity
-                // allocation had nothing to stamp.
-                CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
-                    if let Some(id) = id {
-                        let cell = self
-                            .get_local(id)
-                            .map(|value| Rc::new(RefCell::new(deep_clone_value(value))))
-                            .or_else(|| copied.get_rc(name));
-                        if let Some(cell) = cell {
-                            copied.frame.insert(id, Rc::clone(&cell));
-                            // Keep the name map in step too (same one-shared-cell
-                            // pattern `define_binding` uses), so a still-
-                            // unmigrated reader sees the identical cell.
-                            for scope in copied.scopes.iter_mut().rev() {
-                                if scope.contains_key(name) {
-                                    scope.insert(name.clone(), cell);
-                                    break;
-                                }
-                            }
-                        }
+                // cell straight from this capture's own LocalId in `self` --
+                // a capture materialized for an implicit (no `[...]` list)
+                // closure has no other source to read back.
+                CaptureSpec::Owned { .. } | CaptureSpec::Clone { .. } => {
+                    if let Some(value) = self.get_local(id) {
+                        copied
+                            .frame
+                            .insert(id, Rc::new(RefCell::new(deep_clone_value(value))));
                     }
                 }
             }
@@ -1837,36 +1717,30 @@ impl Environment {
         for (i, capture) in captures.iter().enumerate() {
             // `id`, when known, is this capture's *own* LocalId in `self` — the
             // same id `define_binding`/`define_binding_rc` would have filed it
-            // under when the enclosing binding was created — so it is read from
-            // `self`'s own frame first, falling back to the name map
-            // (metel-core#1052b).
+            // under when the enclosing binding was created (metel-core#1052b).
+            // No name-map fallback remains (metel-core#1054): a `None` id, or
+            // an id with no frame entry, is the undefined-variable error.
             let id = capture_ids.get(i).copied().flatten();
             match capture {
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
-                    let value = id
-                        .and_then(|id| self.get_local(id))
-                        .or_else(|| self.get(name))
-                        .ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0003,
-                                format!("undefined variable `{name}`"),
-                                span,
-                            )
-                        })?;
-                    closure_environment.define_binding(id, name, value);
+                    let value = id.and_then(|id| self.get_local(id)).ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("undefined variable `{name}`"),
+                            span,
+                        )
+                    })?;
+                    closure_environment.define_binding(id, value);
                 }
                 CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
-                    let cell = id
-                        .and_then(|id| self.get_local_rc(id))
-                        .or_else(|| self.get_rc(name))
-                        .ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0003,
-                                format!("undefined variable `{name}`"),
-                                span,
-                            )
-                        })?;
-                    closure_environment.define_binding_rc(id, name, cell);
+                    let cell = id.and_then(|id| self.get_local_rc(id)).ok_or_else(|| {
+                        MetelError::panic(
+                            RuntimeErrorCode::R0003,
+                            format!("undefined variable `{name}`"),
+                            span,
+                        )
+                    })?;
+                    closure_environment.define_binding_rc(id, cell);
                 }
             }
         }
@@ -1875,19 +1749,6 @@ impl Environment {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-
-/// Evaluate a typed module graph produced by `check_graph`.
-///
-/// Each module is initialised in its own `Environment` seeded with builtins,
-/// then cross-linked via the `imported_names` table populated by `check_graph`.
-/// Modules are processed in topological order (dependencies before dependents).
-/// See ADR-0029 for the isolation design and ADR-0019 for the superseded flat-merge approach.
-///
-/// # Errors
-/// Returns an error if evaluating any module raises an unhandled runtime error.
-pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelError> {
-    evaluate_graph_with_options(elaborated, EvaluationOptions::default(), None).map(|_| ())
-}
 
 /// # Errors
 /// Returns an error if evaluating any module raises an unhandled runtime error.
@@ -2008,34 +1869,30 @@ fn run_passes(
             _ => {}
         }
     }
-    // Pass 1a. Overloaded definitions (symbol_id set) are dispatched through
-    // the runtime's symbol registry, never by name — no env binding for them.
-    for decl in decls {
-        if let TypedDecl::Fun(f) = decl {
-            if f.symbol_id.is_none() {
-                env.define(&f.name, Value::Unit);
-            }
-        }
-    }
-
-    // Pass 1b
+    // Pass 1b. Every module-level `fn` is registered by identity (`symbol_id`
+    // for an overloaded definition, `def_id` for an ordinary one — mutually
+    // exclusive, and both `None` only for a method, a nested/local function,
+    // or the single-program path with no resolver, none of which reach this
+    // loop: `Decl::Fun` at module level is always the ordinary or overloaded
+    // case). Before metel-core#1054 this also bound the function by name
+    // into `env`'s scopes (a placeholder pass ahead of this one, then
+    // overwritten in place here) so a sibling function's `captured: env.
+    // clone()` snapshot, taken before this function's own value existed,
+    // would still see it once the placeholder cell was mutated in place --
+    // moot once every function has an id: `runtime`'s registries are shared
+    // across the whole evaluation, not per-`Environment`, so a lookup by id
+    // at *call* time already sees the final value regardless of when any
+    // closure's own environment snapshot was taken. The disable-scopes
+    // diagnostic that preceded this deletion confirmed nothing still needed
+    // the name-map version.
     for decl in decls {
         match decl {
             TypedDecl::Fun(f) => {
                 // Native functions bind directly to their host implementation.
-                // Overloaded ones (symbol_id set) go to the symbol registry.
                 if let FunBody::Native(key) = &f.body {
                     let value = Value::Callable(crate::evaluator::builtins::native_host_impl(*key));
-                    if let Some(id) = f.symbol_id {
+                    if let Some(id) = f.symbol_id.or(f.def_id) {
                         runtime.register_symbol_value(id, value);
-                    } else {
-                        // Ordinary top-level fn: bind by name (first-class uses) and,
-                        // when it has a stable identity, also register it by SymbolId so
-                        // direct calls dispatch through `callee_id` (METEL-187).
-                        if let Some(id) = f.def_id {
-                            runtime.register_symbol_value(id, value.clone());
-                        }
-                        let _ = env.set(&f.name, value);
                     }
                     continue;
                 }
@@ -2058,13 +1915,8 @@ fn run_passes(
                     type_ctx: ctx,
                     fun_type: None,
                 })));
-                if let Some(id) = f.symbol_id {
+                if let Some(id) = f.symbol_id.or(f.def_id) {
                     runtime.register_symbol_value(id, value);
-                } else {
-                    if let Some(id) = f.def_id {
-                        runtime.register_symbol_value(id, value.clone());
-                    }
-                    let _ = env.set(&f.name, value);
                 }
             }
             TypedDecl::Impl(impl_block) => match &impl_block.target_type {
@@ -2237,7 +2089,7 @@ fn run_passes(
             // `env.get`/`env.get_rc` to seed the id-keyed registries).
             TypedDecl::Let(d) => {
                 if let ControlFlow::Continue(val) = eval_to_value(&d.value, env, runtime)? {
-                    let cell = env.define_binding_get_cell(d.local_id, &d.name, val.clone());
+                    let cell = env.define_binding_get_cell(d.local_id, val.clone());
                     if let Some(id) = d.def_id {
                         // ADR-0042: register a top-level `let`'s value by
                         // SymbolId too, at the same moment it's bound by
@@ -2259,7 +2111,7 @@ fn run_passes(
             }
             TypedDecl::Mut(d) => {
                 if let ControlFlow::Continue(val) = eval_to_value(&d.value, env, runtime)? {
-                    let cell = env.define_binding_get_cell(d.local_id, &d.name, val);
+                    let cell = env.define_binding_get_cell(d.local_id, val);
                     if let Some(id) = d.def_id {
                         // Deliberately no `register_symbol_value` here: a
                         // top-level `mut` can be reassigned later
@@ -2304,13 +2156,11 @@ fn run_main(
     // top-level call would: a top-level `let`/`var` (the R0002 "not a
     // function" case, metel-core#1112) has its live cell in the global slot
     // table, `fn main` a stable registered value -- same order as
-    // `TypedExpr::Ident`'s own `BindingId::Global` arm. The name map is the
-    // fallback for the single-program path, which has no resolver and so no
-    // `SymbolId` at all.
+    // `TypedExpr::Ident`'s own `BindingId::Global` arm. No name-map fallback
+    // remains (metel-core#1054).
     let main_value = main_def_id
         .and_then(|id| runtime.global_slot(id).map(|cell| cell.borrow().clone()))
-        .or_else(|| main_def_id.and_then(|id| runtime.get_symbol_value(id).cloned()))
-        .or_else(|| env.get("main"));
+        .or_else(|| main_def_id.and_then(|id| runtime.get_symbol_value(id).cloned()));
     let (main_body, main_params, main_type_ctx) = match main_value {
         Some(Value::Callable(RuntimeCallable::Closure(rc))) => {
             (rc.body.clone(), rc.params.clone(), rc.type_ctx.clone())
@@ -2413,13 +2263,12 @@ fn build_and_set_nested_fun(
         fun_type: None,
     })));
     // `f.local_id` is the same id `hoist_nested_funs` filed the placeholder
-    // under, so `set_local` reaches the same frame cell `env.set` would find
-    // by name (metel-core#1052b).
-    let written = f
-        .local_id
-        .is_some_and(|id| env.set_local(id, closure.clone()));
-    if !written {
-        let _ = env.set(&f.name, closure);
+    // under (metel-core#1052b). No name-map fallback remains for a `None`
+    // id (metel-core#1054) — a nested `fun` always carries a `LocalId`
+    // (metel-core#1052a), so this is unreachable in practice, not a
+    // silently-dropped write.
+    if let Some(id) = f.local_id {
+        let _ = env.set_local(id, closure);
     }
     Ok(())
 }
@@ -2461,7 +2310,7 @@ fn build_and_set_nested_fun(
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
-            env.define_binding(f.local_id, &f.name, Value::Unit);
+            env.define_binding(f.local_id, Value::Unit);
         }
     }
     let safe_to_build_eagerly = !decls
@@ -2528,14 +2377,14 @@ fn eval_decl(
     match decl {
         TypedDecl::Let(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
-                env.define_binding(d.local_id, &d.name, val);
+                env.define_binding(d.local_id, val);
                 Ok(Signal::Value(Value::Unit))
             }
             other => Ok(other),
         },
         TypedDecl::Mut(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
-                env.define_binding(d.local_id, &d.name, val);
+                env.define_binding(d.local_id, val);
                 Ok(Signal::Value(Value::Unit))
             }
             other => Ok(other),
@@ -2607,14 +2456,14 @@ pub fn eval_stmt(
                             ControlFlow::Continue(value) => value,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        env.define_binding(d.local_id, &d.name, val);
+                        env.define_binding(d.local_id, val);
                     }
                     TypedForInit::Mut(d) => {
                         let val = match eval_to_value(&d.value, env, runtime)? {
                             ControlFlow::Continue(value) => value,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        env.define_binding(d.local_id, &d.name, val);
+                        env.define_binding(d.local_id, val);
                     }
                     TypedForInit::Expr(e) => {
                         eval_expr(e, env, runtime)?;
@@ -2663,7 +2512,6 @@ fn eval_for_in(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
-    let binding = fi.binding.as_str();
     let binding_id = fi.binding_id;
     let body = &fi.body;
     let span = &fi.span;
@@ -2686,7 +2534,7 @@ fn eval_for_in(
 
     if let Some(items) = fast_items {
         for item in items {
-            match run_for_in_iteration(binding_id, binding, item, body, env, runtime)? {
+            match run_for_in_iteration(binding_id, item, body, env, runtime)? {
                 ControlFlow::Continue(()) => {}
                 ControlFlow::Break(sig) => return Ok(sig),
             }
@@ -2750,12 +2598,10 @@ fn eval_for_in(
         };
         match maybe_item {
             None => break,
-            Some(item) => {
-                match run_for_in_iteration(binding_id, binding, item, body, env, runtime)? {
-                    ControlFlow::Continue(()) => {}
-                    ControlFlow::Break(sig) => return Ok(sig),
-                }
-            }
+            Some(item) => match run_for_in_iteration(binding_id, item, body, env, runtime)? {
+                ControlFlow::Continue(()) => {}
+                ControlFlow::Break(sig) => return Ok(sig),
+            },
         }
     }
     Ok(Signal::Value(Value::Unit))
@@ -2767,14 +2613,13 @@ fn eval_for_in(
 /// (`Unit` for a plain `break`, the returned value for a `return`).
 fn run_for_in_iteration(
     binding_id: Option<LocalId>,
-    binding: &str,
     item: Value,
     body: &TypedBlock,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<ControlFlow<Signal, ()>, MetelError> {
     env.push_scope();
-    env.define_binding(binding_id, binding, item);
+    env.define_binding(binding_id, item);
     let sig = eval_block(body, env, runtime)?;
     env.pop_scope();
     Ok(match sig {
@@ -2817,12 +2662,9 @@ fn eval_assign_expr(
     };
     match target {
         TypedPlace::Ident(name, binding, ident_span) => {
-            // A top-level `let` / `var` assigned from a non-`main` function is
-            // absent from this activation's name map (that body captured a
-            // pre-Pass-2 snapshot); write its live global slot directly. A
-            // local's frame cell is the same one the name entry points at, so
-            // `set_local` and `env.set` are equivalent for it — id-keyed is
-            // preferred, name map as the fallback (metel-core#1052b).
+            // A top-level `let` / `var`'s live global slot cell, or a
+            // local's frame cell, by identity (metel-core#1052b). No
+            // name-map fallback remains (metel-core#1054).
             let global_cell = match binding {
                 Some(crate::identity::BindingId::Global(sym)) => runtime.global_slot(*sym).cloned(),
                 _ => None,
@@ -2838,7 +2680,6 @@ fn eval_assign_expr(
                     .as_ref()
                     .map(|c| c.borrow().clone())
                     .or_else(|| local_id.and_then(|id| env.get_local(id)))
-                    .or_else(|| env.get(name))
                     .ok_or_else(|| {
                         MetelError::panic(
                             RuntimeErrorCode::R0003,
@@ -2852,7 +2693,7 @@ fn eval_assign_expr(
                 *cell.borrow_mut() = deep_clone_value(new_val);
             } else {
                 let written = local_id.is_some_and(|id| env.set_local(id, new_val.clone()));
-                if !written && !env.set(name, new_val) {
+                if !written {
                     return Err(MetelError::panic(
                         RuntimeErrorCode::R0003,
                         format!("assign: undefined `{name}`"),
@@ -3069,8 +2910,8 @@ fn eval_method_call_expr(
             let mut field_writeback: Option<FieldWriteback> = None;
 
             let receiver_binding = match receiver {
-                TypedExpr::Ident(name, binding, _, _) => {
-                    match ident_rc(name, *binding, env, runtime).map(|cell| {
+                TypedExpr::Ident(_, binding, _, _) => {
+                    match ident_rc(*binding, env, runtime).map(|cell| {
                         let mut current = cell;
                         loop {
                             let inner = match &*current.borrow() {
@@ -3197,12 +3038,10 @@ fn eval_call_expr(
     // metel-core#712: a Unit here can be a deferred nested fun's placeholder, called
     // before its declaration line runs. Build it now instead of failing.
     let func_val = if matches!(func_val, Value::Unit) {
-        if let TypedExpr::Ident(name, Some(crate::identity::BindingId::Local(id)), ..) = callee {
+        if let TypedExpr::Ident(_, Some(crate::identity::BindingId::Local(id)), ..) = callee {
             if let Some(f) = env.take_pending_fun(*id) {
                 build_and_set_nested_fun(&f, env)?;
-                env.get_local(*id)
-                    .or_else(|| env.get(name))
-                    .unwrap_or(Value::Unit)
+                env.get_local(*id).unwrap_or(Value::Unit)
             } else {
                 func_val
             }
@@ -3315,7 +3154,7 @@ pub fn eval_expr(
                 }
                 None => {}
             }
-            match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
+            match std_core_lookup(name, runtime) {
                 Some(val) => Ok(Signal::Value(val)),
                 None => Err(MetelError::panic(
                     RuntimeErrorCode::R0003,
@@ -3333,7 +3172,7 @@ pub fn eval_expr(
             if segments.len() == 1 {
                 let name = &segments[0];
                 let span = expr.span();
-                match env.get(name).or_else(|| std_core_lookup(name, runtime)) {
+                match std_core_lookup(name, runtime) {
                     Some(val) => Ok(Signal::Value(val)),
                     None => Err(MetelError::panic(
                         RuntimeErrorCode::R0003,
@@ -3344,13 +3183,13 @@ pub fn eval_expr(
             } else {
                 // metel-core#1093: identity-first — resolve the owning type by
                 // its carried SymbolId, skipping the name string lookup, before
-                // falling back to the name-based paths unchanged.
+                // falling back to the name-based path unchanged. No name-map
+                // fallback remains (metel-core#1054).
                 if let Some(val) = type_id
                     .and_then(|id| {
                         runtime.get_type_value_by_id(id, segments.last().map_or("", String::as_str))
                     })
                     .or_else(|| runtime.resolve_path_value(segments))
-                    .or_else(|| env.get(&segments.join("::")))
                 {
                     return Ok(Signal::Value(val));
                 }
@@ -3526,7 +3365,7 @@ pub fn eval_expr(
                     };
                 }
                 UnaryOp::Ref => return match &**operand {
-                    TypedExpr::Ident(name, binding, _, _) => ident_rc(name, *binding, env, runtime)
+                    TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
@@ -3534,14 +3373,14 @@ pub fn eval_expr(
                             ControlFlow::Continue(path) => path,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        let root = ident_rc(&root_name, root_binding, env, runtime).ok_or_else(|| MetelError::panic(
+                        let root = ident_rc(root_binding, env, runtime).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::FieldReference { root, path }))
                     }
                     _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
                 },
                 UnaryOp::RefMut => return match &**operand {
-                    TypedExpr::Ident(name, binding, _, _) => ident_rc(name, *binding, env, runtime)
+                    TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
                         .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
@@ -3549,7 +3388,7 @@ pub fn eval_expr(
                             ControlFlow::Continue(path) => path,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        let root = ident_rc(&root_name, root_binding, env, runtime).ok_or_else(|| MetelError::panic(
+                        let root = ident_rc(root_binding, env, runtime).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::MutFieldReference { root, path }))
                     }
@@ -3750,8 +3589,8 @@ pub fn eval_expr(
                 // Evaluate the guard (if any) in a scope that includes pattern bindings.
                 if let Some(guard) = &arm.guard {
                     env.push_scope();
-                    for (name, id, v) in &bindings {
-                        env.define_binding(*id, name, v.clone());
+                    for (_name, id, v) in &bindings {
+                        env.define_binding(*id, v.clone());
                     }
                     let guard_val = match eval_to_value(guard, env, runtime)? {
                         ControlFlow::Continue(value) => value,
@@ -3771,8 +3610,8 @@ pub fn eval_expr(
                 }
                 // Execute the arm body in a scope with pattern bindings.
                 env.push_scope();
-                for (name, id, v) in bindings {
-                    env.define_binding(id, &name, v);
+                for (_name, id, v) in bindings {
+                    env.define_binding(id, v);
                 }
                 let result = eval_block(&arm.body, env, runtime);
                 env.pop_scope();
@@ -3986,11 +3825,13 @@ pub fn eval_expr(
 
 #[cfg(test)]
 mod frame_tests {
-    //! metel-core#1052b -- the id-indexed activation frame and its name-map
-    //! fallback.
+    //! metel-core#1052b/#1054 -- the id-indexed activation frame, the sole
+    //! binding store since `Environment.scopes` (the legacy name map) was
+    //! deleted.
 
     use super::{Environment, Value};
     use crate::identity::LocalId;
+    use std::rc::Rc;
 
     fn as_i64(v: Option<Value>) -> Option<i64> {
         match v {
@@ -4003,47 +3844,44 @@ mod frame_tests {
     fn define_binding_is_readable_by_local_id() {
         let mut env = Environment::new();
         let id = LocalId(0x1234);
-        env.define_binding(Some(id), "x", Value::I64(7));
+        env.define_binding(Some(id), Value::I64(7));
         assert_eq!(as_i64(env.get_local(id)), Some(7));
-        // The name map is written in step so unmigrated paths keep working.
-        assert_eq!(as_i64(env.get("x")), Some(7));
     }
 
     #[test]
-    fn a_name_only_binding_has_no_frame_slot() {
+    fn a_binding_with_no_id_is_simply_not_stored() {
+        // metel-core#1054: `id: None` means identity allocation had nothing
+        // to stamp for this binding site -- with no name-map fallback left,
+        // the binding is dropped rather than fabricating a slot for it.
         let mut env = Environment::new();
-        env.define("y", Value::I64(1));
+        env.define_binding(None, Value::I64(1));
         assert!(env.get_local(LocalId(0x9999)).is_none());
-        assert_eq!(as_i64(env.get("y")), Some(1));
     }
 
     #[test]
-    fn distinct_local_ids_do_not_alias_when_the_name_is_reused() {
-        // Two bindings that share the spelling `n` but sit at different
-        // lexical paths hash to different `LocalId`s and keep independent
-        // slots, even though the later one shadows the former in the name map.
+    fn distinct_local_ids_do_not_alias() {
+        // Two bindings at different lexical paths hash to different
+        // `LocalId`s and keep independent frame slots.
         let mut env = Environment::new();
         let outer = LocalId(1);
         let inner = LocalId(2);
-        env.define_binding(Some(outer), "n", Value::I64(10));
-        env.define_binding(Some(inner), "n", Value::I64(20));
+        env.define_binding(Some(outer), Value::I64(10));
+        env.define_binding(Some(inner), Value::I64(20));
         assert_eq!(as_i64(env.get_local(outer)), Some(10));
         assert_eq!(as_i64(env.get_local(inner)), Some(20));
-        assert_eq!(as_i64(env.get("n")), Some(20));
     }
 
     #[test]
-    fn capture_clone_drops_frame_slots_but_keeps_the_name_snapshot() {
-        // A capture snapshot rebuilds bindings under fresh name-keyed cells;
-        // the id frame is intentionally cleared so a body reference to a
-        // captured binding resolves through the name-map fallback rather than
-        // a cell that has drifted out of sync.
+    fn capture_clone_starts_with_an_empty_frame() {
+        // A capture snapshot's frame is intentionally empty -- #1052b-2
+        // threads `capture_ids` through `capture_closure`/
+        // `capture_closure_copy` so captures land in it directly, rather
+        // than this snapshot pre-populating every currently-visible binding.
         let mut env = Environment::new();
         let id = LocalId(42);
-        env.define_binding(Some(id), "c", Value::I64(5));
+        env.define_binding(Some(id), Value::I64(5));
         let snapshot = env.capture_clone();
         assert!(snapshot.get_local(id).is_none());
-        assert_eq!(as_i64(snapshot.get("c")), Some(5));
     }
 
     #[test]
@@ -4054,7 +3892,7 @@ mod frame_tests {
         use crate::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(7);
-        outer.define_binding(Some(n_id), "n", Value::I64(3));
+        outer.define_binding(Some(n_id), Value::I64(3));
         let sp = Span::new(0, 0, "t");
         let caps = vec![CaptureSpec::Clone {
             name: "n".to_string(),
@@ -4062,19 +3900,18 @@ mod frame_tests {
         }];
         let closure_env = outer.capture_closure(&caps, &[Some(n_id)], &sp).unwrap();
         assert_eq!(as_i64(closure_env.get_local(n_id)), Some(3));
-        assert_eq!(as_i64(closure_env.get("n")), Some(3));
     }
 
     #[test]
-    fn capture_closure_copy_installs_a_clone_capture_by_id_without_the_name_map() {
+    fn capture_closure_copy_installs_a_clone_capture_by_id() {
         // metel-core#1096: capture_closure_copy's Owned/Clone reinstallation
-        // used to read the source value only from `copied`'s name map (the
-        // one `capture_clone()` already deep-cloned) — it now re-derives the
-        // cell straight from the capture's own LocalId in `self` first.
+        // re-derives the cell straight from the capture's own LocalId in
+        // `self` -- the only source since #1054 deleted the name map it used
+        // to also fall back to.
         use crate::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(9);
-        outer.define_binding(Some(n_id), "n", Value::I64(3));
+        outer.define_binding(Some(n_id), Value::I64(3));
         let sp = Span::new(0, 0, "t");
         let caps = vec![CaptureSpec::Clone {
             name: "n".to_string(),
@@ -4082,46 +3919,48 @@ mod frame_tests {
         }];
         let copied = outer.capture_closure_copy(&caps, &[Some(n_id)]);
         assert_eq!(as_i64(copied.get_local(n_id)), Some(3));
-        assert_eq!(as_i64(copied.get("n")), Some(3));
     }
 
     #[test]
-    fn mut_ref_capture_shares_one_cell_across_name_and_id() {
+    fn mut_ref_capture_shares_one_cell_with_the_source() {
+        // A `&var` capture re-points the closure's frame slot at the exact
+        // same `Rc` cell the source binding holds -- not a copy -- so a
+        // mutation through either side is visible through the other.
         use crate::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(8);
-        outer.define_binding(Some(n_id), "n", Value::I64(0));
+        outer.define_binding(Some(n_id), Value::I64(0));
         let sp = Span::new(0, 0, "t");
         let caps = vec![CaptureSpec::MutRef {
             name: "n".to_string(),
             span: sp.clone(),
         }];
         let closure_env = outer.capture_closure(&caps, &[Some(n_id)], &sp).unwrap();
-        // One cell backs both keys: a write via the name map is seen by the
-        // id-indexed read.
-        assert!(closure_env.set("n", Value::I64(42)));
-        assert_eq!(as_i64(closure_env.get_local(n_id)), Some(42));
+        assert!(Rc::ptr_eq(
+            &outer.get_local_rc(n_id).unwrap(),
+            &closure_env.get_local_rc(n_id).unwrap()
+        ));
+        assert!(closure_env.set_local(n_id, Value::I64(42)));
+        assert_eq!(as_i64(outer.get_local(n_id)), Some(42));
     }
 
     #[test]
-    fn ident_rc_prefers_the_frame_cell_over_the_name_map() {
-        // `&x` / `&var x` resolves the same cell the frame holds for a local
-        // binding, without a name lookup, when the id is known.
+    fn ident_rc_resolves_by_identity_only() {
+        // `&x` / `&var x` resolves the frame cell for a local binding by its
+        // LocalId. No name-map fallback remains (metel-core#1054): a `None`
+        // binding, or an id with no frame entry, resolves to `None`.
         use super::{ident_rc, RuntimeRegistry};
         use crate::identity::BindingId;
 
         let mut env = Environment::new();
         let id = LocalId(99);
-        env.define_binding(Some(id), "x", Value::I64(3));
+        env.define_binding(Some(id), Value::I64(3));
         let runtime = RuntimeRegistry::new();
-        let cell =
-            ident_rc("x", Some(BindingId::Local(id)), &env, &runtime).expect("resolves by id");
+        let cell = ident_rc(Some(BindingId::Local(id)), &env, &runtime).expect("resolves by id");
         assert_eq!(as_i64(Some(cell.borrow().clone())), Some(3));
 
-        // A name the frame doesn't know about still falls back to the name map.
-        env.define("y", Value::I64(9));
-        let cell = ident_rc("y", None, &env, &runtime).expect("falls back by name");
-        assert_eq!(as_i64(Some(cell.borrow().clone())), Some(9));
+        assert!(ident_rc(None, &env, &runtime).is_none());
+        assert!(ident_rc(Some(BindingId::Local(LocalId(0xdead))), &env, &runtime).is_none());
     }
 
     #[test]
@@ -4180,17 +4019,16 @@ mod frame_tests {
 
     #[test]
     fn set_local_mutates_the_shared_cell_in_place() {
-        // The write must land in the same cell the name map and any capture
-        // of it observe — replacing the map entry instead would silently
+        // The write must land in the same cell any alias of it (e.g. a
+        // capture) observes — replacing the map entry instead would silently
         // desync anything still holding the old cell (metel-core#1052b).
         let mut env = Environment::new();
         let id = LocalId(7);
-        env.define_binding(Some(id), "n", Value::I64(1));
+        env.define_binding(Some(id), Value::I64(1));
         let aliased_cell = env.get_local_rc(id).expect("the binding has a frame cell");
 
         assert!(env.set_local(id, Value::I64(2)));
         assert_eq!(as_i64(env.get_local(id)), Some(2));
-        assert_eq!(as_i64(env.get("n")), Some(2));
         assert_eq!(as_i64(Some(aliased_cell.borrow().clone())), Some(2));
 
         assert!(!env.set_local(LocalId(8), Value::I64(99)));
