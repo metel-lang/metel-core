@@ -1834,9 +1834,20 @@ pub fn evaluate_graph_with_options(
         .last()
         .map(|m| m.module_path.clone())
         .unwrap_or_default();
+    // `main`'s stable identity (metel-core#1052b), read off the root module's
+    // own declarations while they're still in scope — `run_main` then resolves
+    // it by id first, the same as every other top-level lookup.
+    let mut main_def_id: Option<SymbolId> = None;
 
     for module in graph.modules {
         let mut env = Environment::new();
+
+        if module.module_path == root_path {
+            main_def_id = module.decls.iter().find_map(|d| match d {
+                TypedDecl::Fun(f) if f.name == "main" => f.def_id,
+                _ => None,
+            });
+        }
 
         // Seed names imported from already-initialised dependency modules.
         for (local_name, import_ref) in &module.imported_names {
@@ -1885,7 +1896,7 @@ pub fn evaluate_graph_with_options(
     let env = module_envs.get_mut(&root_path).ok_or_else(|| {
         MetelError::panic(RuntimeErrorCode::R0001, "root module not found", &dummy)
     })?;
-    let result = run_main(env, &runtime);
+    let result = run_main(env, &runtime, main_def_id);
     let profile = finish_profile();
     result?;
     Ok(EvaluationReport { profile })
@@ -2210,7 +2221,11 @@ fn run_passes(
 }
 
 /// Locate and execute `main()` in `env`. Called after all passes complete.
-fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), MetelError> {
+fn run_main(
+    env: &mut Environment,
+    runtime: &RuntimeRegistry,
+    main_def_id: Option<SymbolId>,
+) -> Result<(), MetelError> {
     let dummy = Span {
         start: 0,
         end: 0,
@@ -2218,7 +2233,13 @@ fn run_main(env: &mut Environment, runtime: &RuntimeRegistry) -> Result<(), Mete
         line: 0,
         col: 0,
     };
-    let (main_body, main_params, main_type_ctx) = match env.get("main") {
+    // `main`'s `def_id` (metel-core#1052b) resolves it the same way any other
+    // top-level call would; the name map is the fallback for the
+    // single-program path, which has no resolver and so no `SymbolId` at all.
+    let main_value = main_def_id
+        .and_then(|id| runtime.get_symbol_value(id).cloned())
+        .or_else(|| env.get("main"));
+    let (main_body, main_params, main_type_ctx) = match main_value {
         Some(Value::Callable(RuntimeCallable::Closure(rc))) => {
             (rc.body.clone(), rc.params.clone(), rc.type_ctx.clone())
         }
@@ -2319,7 +2340,15 @@ fn build_and_set_nested_fun(
         type_ctx: ctx,
         fun_type: None,
     })));
-    let _ = env.set(&f.name, closure);
+    // `f.local_id` is the same id `hoist_nested_funs` filed the placeholder
+    // under, so `set_local` reaches the same frame cell `env.set` would find
+    // by name (metel-core#1052b).
+    let written = f
+        .local_id
+        .is_some_and(|id| env.set_local(id, closure.clone()));
+    if !written {
+        let _ = env.set(&f.name, closure);
+    }
     Ok(())
 }
 
