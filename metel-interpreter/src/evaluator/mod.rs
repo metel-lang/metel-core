@@ -1355,34 +1355,39 @@ fn lvalue_field_cell(
 
 use crate::typed_ast::is_lvalue_path as is_lvalue_path_typed;
 
+/// A lvalue path's root binding (name + identity, metel-core#1052b) and its
+/// segment list (root-to-leaf order).
+type MutPathRoot = (String, Option<crate::identity::BindingId>, Vec<PathSegment>);
+
 /// Recursively walk a typed lvalue path, collecting `PathSegment`s.
-/// Returns the root binding name and the full segment list (root-to-leaf order).
 fn build_mut_path(
     expr: &TypedExpr,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
     span: &Span,
-) -> Result<ControlFlow<Signal, (String, Vec<PathSegment>)>, MetelError> {
+) -> Result<ControlFlow<Signal, MutPathRoot>, MetelError> {
     match expr {
-        TypedExpr::Ident(name, _, _, _) => Ok(ControlFlow::Continue((name.clone(), vec![]))),
+        TypedExpr::Ident(name, binding, _, _) => {
+            Ok(ControlFlow::Continue((name.clone(), *binding, vec![])))
+        }
         TypedExpr::FieldAccess { object, field, .. } => {
-            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+            let (root, binding, mut path) = match build_mut_path(object, env, runtime, span)? {
                 ControlFlow::Continue(path) => path,
                 ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
             };
             path.push(PathSegment::Field(field.clone()));
-            Ok(ControlFlow::Continue((root, path)))
+            Ok(ControlFlow::Continue((root, binding, path)))
         }
         TypedExpr::TupleAccess { object, index, .. } => {
-            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+            let (root, binding, mut path) = match build_mut_path(object, env, runtime, span)? {
                 ControlFlow::Continue(path) => path,
                 ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
             };
             path.push(PathSegment::TupleIndex(*index));
-            Ok(ControlFlow::Continue((root, path)))
+            Ok(ControlFlow::Continue((root, binding, path)))
         }
         TypedExpr::Index { object, index, .. } => {
-            let (root, mut path) = match build_mut_path(object, env, runtime, span)? {
+            let (root, binding, mut path) = match build_mut_path(object, env, runtime, span)? {
                 ControlFlow::Continue(path) => path,
                 ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
             };
@@ -1402,7 +1407,7 @@ fn build_mut_path(
                 }
             };
             path.push(PathSegment::ArrayIndex(i));
-            Ok(ControlFlow::Continue((root, path)))
+            Ok(ControlFlow::Continue((root, binding, path)))
         }
         TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => {
             build_mut_path(object, env, runtime, span)
@@ -3416,11 +3421,11 @@ pub fn eval_expr(
                         .map(|rc| Signal::Value(Value::Reference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
-                        let (root_name, path) = match build_mut_path(other, env, runtime, span)? {
+                        let (root_name, root_binding, path) = match build_mut_path(other, env, runtime, span)? {
                             ControlFlow::Continue(path) => path,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
+                        let root = ident_rc(&root_name, root_binding, env, runtime).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::FieldReference { root, path }))
                     }
@@ -3431,11 +3436,11 @@ pub fn eval_expr(
                         .map(|rc| Signal::Value(Value::MutReference(rc)))
                         .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
                     other if is_lvalue_path_typed(other) => {
-                        let (root_name, path) = match build_mut_path(other, env, runtime, span)? {
+                        let (root_name, root_binding, path) = match build_mut_path(other, env, runtime, span)? {
                             ControlFlow::Continue(path) => path,
                             ControlFlow::Break(signal) => return Ok(signal),
                         };
-                        let root = env.get_rc(&root_name).ok_or_else(|| MetelError::panic(
+                        let root = ident_rc(&root_name, root_binding, env, runtime).ok_or_else(|| MetelError::panic(
                             RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
                         Ok(Signal::Value(Value::MutFieldReference { root, path }))
                     }
