@@ -3196,7 +3196,18 @@ impl TypeDefinitionRegistry {
             }
             InferType::Named(name, inner_args) => {
                 let name = name.as_str();
-                if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+                // metel-core#1125: a generic body reconstructed at call time
+                // (`construct_generic_body`) is bound-checked against its
+                // *own* declaring module (so a literal name written in the
+                // body still resolves lexically -- metel-core#1120), but a
+                // substituted type argument can come from any calling
+                // module. Aspect impls are a global coherence fact once a
+                // concrete type's identity is known, so resolution here
+                // falls back to the bare-name index (`resolve_type_key_broad`,
+                // the same "no reliable module context" fallback
+                // `resolve_type_key_broad`'s other callers already use) when
+                // the declaring module can't name it directly.
+                if let Some(target_id) = self.resolve_type_key_broad(current_module, name) {
                     if let Some(entries) = self
                         .neg_conditional_impl_bounds
                         .get(&(target_id, aspect_name.to_string()))
@@ -3220,7 +3231,7 @@ impl TypeDefinitionRegistry {
                 if self.impl_aspect_env_has(current_module, name, aspect_name) {
                     return true;
                 }
-                if let Some(target_id) = self.resolve_type_position_id(current_module, name) {
+                if let Some(target_id) = self.resolve_type_key_broad(current_module, name) {
                     if let Some(entries) = self
                         .conditional_impl_bounds
                         .get(&(target_id, aspect_name.to_string()))
@@ -3268,7 +3279,7 @@ impl TypeDefinitionRegistry {
                     Type::F64 => "f64",
                     _ => return false,
                 };
-                let Some(target_id) = self.resolve_type_position_id(current_module, name) else {
+                let Some(target_id) = self.resolve_type_key_broad(current_module, name) else {
                     return false;
                 };
                 if let Some(entries) = self
@@ -3358,7 +3369,11 @@ impl TypeDefinitionRegistry {
         type_name: &str,
         aspect_name: &str,
     ) -> bool {
-        let Some(type_id) = self.resolve_type_position_id(current_module, type_name) else {
+        // metel-core#1125: see the matching comment in
+        // `infer_type_satisfies_aspect`'s `InferType::Named` arm -- aspect
+        // impls are a global coherence fact once a concrete type's identity
+        // is known, so this falls back past `current_module`'s own scope.
+        let Some(type_id) = self.resolve_type_key_broad(current_module, type_name) else {
             return false;
         };
         self.impl_aspect_env
@@ -5227,6 +5242,11 @@ impl Default for InferContext {
 
 // ── TypeCtx ───────────────────────────────────────────────────────────────────
 
+/// The name resolver's canonical `(module path, name) -> SymbolId` table
+/// (metel-core#1125). Aliased purely to keep `TypeCtx::symbols`'s type
+/// under clippy's `type_complexity` threshold once wrapped in `Option<Rc<_>>`.
+pub type SymbolTable = HashMap<(Vec<String>, String), SymbolId>;
+
 /// Type context carried by generic closures to support construction-at-call-time.
 ///
 /// When a generic function body (`FunBody::Generic`) is stored as `ClosureBody::Untyped`,
@@ -5251,6 +5271,23 @@ pub struct TypeCtx {
     /// paired with `members` — see its doc. Spans carry their filename, so one
     /// shared, `Rc`-cloned table is safe across every module's `TypeCtx`.
     pub binding_spans: Option<Rc<BindingSpans>>,
+    /// The name resolver's canonical `(module path, name) -> SymbolId` table
+    /// (metel-core#1125), paired with `current_module` below. `Some` on the
+    /// interpreter's evaluation path (mirroring `members`/`binding_spans`),
+    /// so `construct_generic_body`'s `ConstructCtx::type_symbol_id` resolves
+    /// a static-method/constructor `Path`'s owning type correctly instead of
+    /// unconditionally returning `None` and falling back to `runtime`'s own
+    /// global, cross-module, bare-name-keyed type table. `None` for the
+    /// move-checker's own reconstruction, same as `members`.
+    pub symbols: Option<Rc<SymbolTable>>,
+    /// The module path of the generic declaration this `TypeCtx` was built
+    /// for -- *not* the call site's module. `type_symbol_id` resolves a
+    /// written type name relative to this module (its declaring-module
+    /// index, then this module directly), the same way ordinary
+    /// (non-generic) construction resolves relative to `current_module`.
+    /// Empty (never `None`) for the move-checker's own reconstruction, which
+    /// has no `symbols` to resolve against regardless.
+    pub current_module: Vec<String>,
 }
 
 #[cfg(test)]

@@ -1307,6 +1307,8 @@ mod tests {
             registry: typed_report.graph.type_registry.clone(),
             members: Some(Rc::new(members)),
             binding_spans: Some(Rc::new(allocation.binding_spans)),
+            symbols: Some(Rc::new(names.symbols.clone())),
+            current_module: typed_module.module_path.clone(),
         };
 
         let typed_block = construct_generic_body(

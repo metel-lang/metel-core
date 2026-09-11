@@ -112,6 +112,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let runtime_identity = RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
+        symbols: std::rc::Rc::new(names.symbols.clone()),
     };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(
@@ -199,6 +200,7 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let runtime_identity = RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
+        symbols: std::rc::Rc::new(names.symbols.clone()),
     };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(
@@ -276,6 +278,7 @@ pub fn run_evaluator_fixture(
     let runtime_identity = RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
+        symbols: std::rc::Rc::new(names.symbols.clone()),
     };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(

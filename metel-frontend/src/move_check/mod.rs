@@ -248,6 +248,11 @@ impl<'a> Checker<'a> {
             // context — see `TypeCtx::members`'s doc.
             members: None,
             binding_spans: None,
+            // metel-core#1125: the move-checker never had a `symbols` table
+            // to draw on to begin with (unlike `evaluate_graph_with_options`'s
+            // `RuntimeIdentity`), so this stays empty, same as `members` above.
+            symbols: None,
+            current_module: module.module_path.clone(),
         });
         state.push_scope();
         for decl in &module.decls {

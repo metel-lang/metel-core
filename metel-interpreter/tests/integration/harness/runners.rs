@@ -164,6 +164,7 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     let runtime_identity = evaluator::RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
+        symbols: std::rc::Rc::new(names.symbols.clone()),
     };
     evaluator::evaluate_graph_with_options(
         elaborated,

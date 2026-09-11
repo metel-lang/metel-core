@@ -973,9 +973,16 @@ pub(super) fn construct_generic_body(
         &type_ctx.scheme_env,
         &type_ctx.registry,
         gen,
-        None,
+        // metel-core#1125: pass the frozen generic's own `symbols`/
+        // `current_module` through so a static-method/constructor `Path`
+        // inside the reconstructed body resolves its owning type by
+        // identity (`ctx.type_symbol_id`) instead of falling back to
+        // `runtime`'s global, cross-module, bare-name-keyed type table --
+        // the root cause of metel-core#1120. `None`/empty only on the
+        // move-checker's own reconstruction, which has no `symbols` table.
+        type_ctx.symbols.as_deref(),
         &empty_overloads,
-        &[],
+        &type_ctx.current_module,
         None,
         &resolved_facts,
         identity,

@@ -174,13 +174,19 @@ pub struct EvaluationOptions {
 /// the pipeline from the same `Allocation` used for the ahead-of-time
 /// construction pass. `Rc`-shared into every module's `TypeCtx`, so
 /// `construct_generic_body`'s runtime reconstruction of a generic body — the
-/// evaluator's one identity-free construction path — gets a real `BindingId`
-/// at every binding site too, closing the last gap the dual-path evaluator
-/// (metel-core#1052b) relied on a name-keyed fallback for.
+/// evaluator's one identity-free construction path — gets real member/local
+/// identity at every binding site too.
 #[derive(Debug, Clone)]
 pub struct RuntimeIdentity {
     pub members: Rc<crate::identity::MemberTable>,
     pub binding_spans: Rc<crate::identity::BindingSpans>,
+    /// The name resolver's canonical `(module path, name) -> SymbolId` table
+    /// (metel-core#1125). `construct_generic_body`'s `ConstructCtx` used to
+    /// be built with `symbols: None`, so `ctx.type_symbol_id` returned `None`
+    /// unconditionally inside a reconstructed generic body -- the *type*-
+    /// level identity gap `members`/`binding_spans` above never covered
+    /// (those are for `FieldId`/`VariantId`/`LocalId`, not `SymbolId`).
+    pub symbols: Rc<HashMap<(Vec<String>, String), crate::symbols::SymbolId>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1810,6 +1816,8 @@ pub fn evaluate_graph_with_options(
             registry: graph.type_registry.clone(),
             members: identity.map(|i| Rc::clone(&i.members)),
             binding_spans: identity.map(|i| Rc::clone(&i.binding_spans)),
+            symbols: identity.map(|i| Rc::clone(&i.symbols)),
+            current_module: module.module_path.clone(),
         });
 
         // Run the standard 3-pass evaluation on this module's decls.

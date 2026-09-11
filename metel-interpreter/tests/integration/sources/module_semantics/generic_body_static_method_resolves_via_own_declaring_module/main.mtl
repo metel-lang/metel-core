@@ -1,0 +1,16 @@
+import lib::use;
+
+// A same-named, but unrelated, `Point` shadowing `lib::Point` from this
+// (calling) module's point of view. Before metel-core#1125, `use<T>`'s
+// reconstructed body resolved `Point::origin()` against *this* module
+// instead of `lib`'s own -- returning `2` (this module's `Point::origin`)
+// instead of `1` (lib's).
+struct Point { n: i64 }
+extend Point {
+    fun origin() -> Point { Point { n = 2 } }
+    fun kind(self) -> i64 { self.n }
+}
+
+fun main() {
+    assert(use(0) == 1);
+}

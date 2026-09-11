@@ -1,0 +1,12 @@
+// metel-core#1120: `lib`'s own `Point` must be what `use<T>`'s body resolves
+// `Point::origin()` to, even though the caller (main.mtl) declares an
+// unrelated, same-named `Point` of its own.
+public struct Point { public n: i64 }
+extend Point {
+    public fun origin() -> Point { Point { n = 1 } }
+    public fun kind(self) -> i64 { self.n }
+}
+public fun use<T>(value: T) -> i64 {
+    let point := Point::origin();
+    point.kind()
+}
