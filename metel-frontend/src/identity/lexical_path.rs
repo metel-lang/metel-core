@@ -48,6 +48,13 @@ pub enum LexicalSeg {
     /// A binding introduced by a positional pattern element (`(a, b)` → 0, 1;
     /// array rest → its own step).
     PatternElem(u32),
+    /// The synthesized unwrapped-value binding of a `?`-desugared expression
+    /// (metel-core#1098), the n-th `?` encountered in the current scope —
+    /// an ordinal, not a byte position, so reformatting doesn't move it.
+    /// Construction shares one id between the desugar's `Ok`-arm value and
+    /// `Err`-arm error: the two are mutually exclusive at runtime, so one
+    /// frame slot for both is sound, not just convenient.
+    PropagateError(u32),
     /// The leaf of a *reference* path: one use of this spelling in expression
     /// position, disambiguated by its ordinal among like-spelled uses in the
     /// same immediate scope.

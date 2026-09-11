@@ -367,6 +367,7 @@ fn walk_body(
         path: LexicalPath::root(),
         block_counter: vec![0],
         closure_counter: vec![0],
+        propagate_counter: vec![0],
         use_counter: HashMap::new(),
     };
     for (i, param) in params.iter().enumerate() {
@@ -400,6 +401,7 @@ struct Walker<'a> {
     /// an ordinal among blocks rather than among all statements.
     block_counter: Vec<u32>,
     closure_counter: Vec<u32>,
+    propagate_counter: Vec<u32>,
     /// `(scope path, name)` → uses seen, for [`LexicalSeg::Use`] disambiguation.
     use_counter: HashMap<(Vec<LexicalSeg>, String), u32>,
 }
@@ -412,6 +414,7 @@ impl Walker<'_> {
         self.scopes.push(Scope::default());
         self.block_counter.push(0);
         self.closure_counter.push(0);
+        self.propagate_counter.push(0);
     }
 
     fn leave(&mut self) {
@@ -419,6 +422,7 @@ impl Walker<'_> {
         self.scopes.pop();
         self.block_counter.pop();
         self.closure_counter.pop();
+        self.propagate_counter.pop();
     }
 
     fn bind(&mut self, name: &str, span: &Span, kind: DefinitionKind, seg: LexicalSeg) {
@@ -649,8 +653,28 @@ impl Walker<'_> {
             | Expr::FieldAccess { object: x, .. }
             | Expr::TupleAccess { object: x, .. }
             | Expr::Cast { expr: x, .. }
-            | Expr::Ascribe { expr: x, .. }
-            | Expr::PropagateError { expr: x, .. } => self.walk_expr(x),
+            | Expr::Ascribe { expr: x, .. } => self.walk_expr(x),
+            Expr::PropagateError { expr: x, span } => {
+                // Construction desugars `x?` into a synthesized match with an
+                // `Ok`-arm `value` binding and an `Err`-arm `error` binding
+                // (metel-core#1098) — no source pattern for either to hang an
+                // id off, so bind one synthetic id here, at the `?`'s own
+                // span, ordinal-disambiguated among sibling `?`s in this
+                // scope. Construction looks it up by this same span and
+                // shares it between both arms (mutually exclusive at
+                // runtime, so one frame slot is sound for both).
+                let n = self.propagate_counter.last().copied().unwrap_or(0);
+                if let Some(c) = self.propagate_counter.last_mut() {
+                    *c += 1;
+                }
+                self.bind(
+                    "?",
+                    span,
+                    DefinitionKind::PatternBinding,
+                    LexicalSeg::PropagateError(n),
+                );
+                self.walk_expr(x);
+            }
             Expr::RecordLiteral { fields, .. } | Expr::StructLiteral { fields, .. } => {
                 for (_, v) in fields {
                     self.walk_expr(v);

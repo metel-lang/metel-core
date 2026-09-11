@@ -1366,4 +1366,93 @@ mod tests {
             "the same source binding keeps one LocalId across monomorphizations"
         );
     }
+
+    /// metel-core#1098: `expr?` desugars (in `construct_propagate_error`) into
+    /// a synthesized match with an `Ok`-arm `value` binding and an `Err`-arm
+    /// `error` binding — neither has a source pattern to hang an id off, so
+    /// the identity walk binds one synthetic id at the `?`'s own span
+    /// (`allocate.rs`'s `PropagateError` case) and construction shares it
+    /// between both arms, since they're mutually exclusive at runtime.
+    #[test]
+    fn propagate_error_desugar_shares_one_local_id_between_arms() {
+        use crate::identity::{self, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{FunBody, TypedExpr, TypedPattern};
+
+        let root = "prop.mtl";
+        let source = "fun get_id() -> Result<i64, i64> { Result::Ok { value = 5 } }\n\
+                       fun use_it() -> Result<i64, i64> {\n\
+                       \tlet v := get_id()?;\n\
+                       \tResult::Ok { value = v }\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let module = typed_report
+            .graph
+            .modules
+            .iter()
+            .find(|m| {
+                m.decls
+                    .iter()
+                    .any(|d| matches!(d, TypedDecl::Fun(f) if f.name == "use_it"))
+            })
+            .expect("the module declaring `use_it`");
+        let TypedDecl::Fun(fun) = module
+            .decls
+            .iter()
+            .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "use_it"))
+            .expect("`use_it`")
+        else {
+            unreachable!()
+        };
+        let FunBody::Typed(body) = &fun.body else {
+            panic!("use_it should have a typed body");
+        };
+        let match_expr = body
+            .stmts
+            .iter()
+            .find_map(|d| match d {
+                TypedDecl::Let(ld) if ld.name == "v" => match &ld.value {
+                    TypedExpr::Match(m) => Some(m),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .expect("the `?` desugars to a match assigned to `v`");
+
+        let ok_id = match &match_expr.arms[0].pattern {
+            TypedPattern::EnumVariant { fields, .. } => fields[0].2,
+            other => panic!("expected the Ok-arm's EnumVariant pattern, got {other:?}"),
+        };
+        let err_id = match &match_expr.arms[1].pattern {
+            TypedPattern::EnumVariant { fields, .. } => fields[0].2,
+            other => panic!("expected the Err-arm's EnumVariant pattern, got {other:?}"),
+        };
+        assert!(
+            ok_id.is_some(),
+            "the `?` desugar's Ok-arm binding should carry a LocalId"
+        );
+        assert_eq!(
+            ok_id, err_id,
+            "the Ok-arm value and Err-arm error share one LocalId \
+             (mutually exclusive match arms, safe to share one frame slot)"
+        );
+    }
 }

@@ -1402,18 +1402,17 @@ fn result_variant_pattern(
     ctx: &ConstructCtx,
     variant: &str,
     field: &str,
+    local_id: Option<crate::identity::LocalId>,
     span: &Span,
 ) -> TypedPattern {
     let result_id = Some(crate::symbols::SYM_TYPE_RESULT);
     TypedPattern::EnumVariant {
         path: vec!["Result".to_string(), variant.to_string()],
         variant_id: ctx.variant_id_for(result_id, variant),
-        // Synthetic `?`-desugar binding — no source span, so no `LocalId`; the
-        // desugar's match stays name-keyed (isolated construct).
         fields: vec![(
             field.to_string(),
             ctx.variant_field_id(result_id, variant, field),
-            None,
+            local_id,
         )],
         rest: false,
         span: span.clone(),
@@ -1425,6 +1424,11 @@ fn construct_propagate_error(
     span: &Span,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
+    // The `?`-desugar's synthesized `Ok`-arm `value` and `Err`-arm `error`
+    // bindings share one id, bound by the identity walk at the `?`'s own
+    // span (metel-core#1098 / allocate.rs's `PropagateError` case) — the two
+    // are mutually exclusive match arms, so one frame slot serves both.
+    let local_id = ctx.local_binding_at(span);
     let scrutinee = construct_expr(expr, None, ctx)?;
     let (ok_ty, source_err_ty) = match scrutinee.ty() {
         Type::Named(name, args) if name == "Result" && args.len() == 2 => {
@@ -1460,13 +1464,13 @@ fn construct_propagate_error(
     };
 
     let ok_arm = TypedMatchArm {
-        pattern: result_variant_pattern(ctx, "Ok", "value", span),
+        pattern: result_variant_pattern(ctx, "Ok", "value", local_id, span),
         guard: None,
         body: TypedBlock {
             stmts: vec![],
             tail: Some(Box::new(TypedExpr::Ident(
                 "value".to_string(),
-                None,
+                local_id.map(crate::identity::BindingId::Local),
                 ok_ty.clone(),
                 span.clone(),
             ))),
@@ -1476,12 +1480,17 @@ fn construct_propagate_error(
     };
 
     let err_value = if source_err_ty == target_err_ty {
-        TypedExpr::Ident("error".to_string(), None, source_err_ty, span.clone())
+        TypedExpr::Ident(
+            "error".to_string(),
+            local_id.map(crate::identity::BindingId::Local),
+            source_err_ty,
+            span.clone(),
+        )
     } else {
         TypedExpr::Cast {
             expr: Box::new(TypedExpr::Ident(
                 "error".to_string(),
-                None,
+                local_id.map(crate::identity::BindingId::Local),
                 source_err_ty,
                 span.clone(),
             )),
@@ -1491,7 +1500,7 @@ fn construct_propagate_error(
         }
     };
     let err_arm = TypedMatchArm {
-        pattern: result_variant_pattern(ctx, "Err", "error", span),
+        pattern: result_variant_pattern(ctx, "Err", "error", local_id, span),
         guard: None,
         body: TypedBlock {
             stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Expr(
