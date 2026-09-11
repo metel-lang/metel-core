@@ -1455,4 +1455,101 @@ mod tests {
              (mutually exclusive match arms, safe to share one frame slot)"
         );
     }
+
+    /// metel-core#1100: a top-level `let`/`mut`'s own initializer expression
+    /// is now walked by the identity allocator (`allocate.rs`'s
+    /// `walk_value_body`, wired into `allocate_module`'s top-level loop) —
+    /// previously only `Decl::Fun`/`Impl`/`Aspect` bodies were, so a
+    /// reference *inside* a top-level initializer (e.g. `let apply_fn :=
+    /// add_one;`) never got a `PositionHit::Reference` entry to promote and
+    /// stayed `BindingId`-less. This also fixed metel-core#1099 as a side
+    /// effect: a top-level `let`-bound closure literal's own parameters are
+    /// inside that same never-walked initializer.
+    #[test]
+    fn toplevel_let_initializer_reference_carries_a_symbol_id() {
+        use crate::identity::{self, BindingId, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::{FunBody, TypedExpr};
+
+        let root = "toplevel_init.mtl";
+        let source = "fun add_one(x: i64) -> i64 { x + 1 }\n\
+                       let apply_fn := add_one;\n\
+                       fun main() -> i64 {\n\
+                       \tapply_fn(41)\n\
+                       }\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        let module = typed_report
+            .graph
+            .modules
+            .iter()
+            .find(|m| {
+                m.decls
+                    .iter()
+                    .any(|d| matches!(d, TypedDecl::Let(ld) if ld.name == "apply_fn"))
+            })
+            .expect("the module declaring `apply_fn`");
+        let TypedDecl::Let(apply_fn) = module
+            .decls
+            .iter()
+            .find(|d| matches!(d, TypedDecl::Let(ld) if ld.name == "apply_fn"))
+            .expect("`let apply_fn`")
+        else {
+            unreachable!()
+        };
+        let TypedExpr::Ident(name, binding, ..) = &apply_fn.value else {
+            panic!(
+                "apply_fn's initializer should be a bare Ident reference to `add_one`, got {:?}",
+                apply_fn.value
+            );
+        };
+        assert_eq!(name, "add_one");
+        assert!(
+            matches!(binding, Some(BindingId::Global(_))),
+            "the `add_one` reference inside apply_fn's own initializer should \
+             carry its declaration's SymbolId, not stay identity-less"
+        );
+
+        // The call inside `main` still resolves through `Call::callee_id`, as
+        // it did before this fix (this file's earlier check makes sure the
+        // fix didn't regress the already-working case).
+        let TypedDecl::Fun(main) = module
+            .decls
+            .iter()
+            .find(|d| matches!(d, TypedDecl::Fun(f) if f.name == "main"))
+            .expect("`main`")
+        else {
+            unreachable!()
+        };
+        let FunBody::Typed(body) = &main.body else {
+            panic!("main should have a typed body");
+        };
+        let TypedExpr::Call { callee_id, .. } = body.tail.as_deref().unwrap() else {
+            panic!(
+                "main's tail should be the apply_fn(41) call, got {:?}",
+                body.tail
+            );
+        };
+        assert!(
+            callee_id.is_some(),
+            "apply_fn(41) should still dispatch via Call::callee_id"
+        );
+    }
 }

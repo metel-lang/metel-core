@@ -172,6 +172,18 @@ pub fn allocate_module(
                     );
                 }
             }
+            Decl::Let(d) => {
+                let key = (module_path.to_vec(), d.name.clone());
+                if let Some(&sym) = names.symbols.get(&key) {
+                    walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
+                }
+            }
+            Decl::Mut(d) => {
+                let key = (module_path.to_vec(), d.name.clone());
+                if let Some(&sym) = names.symbols.get(&key) {
+                    walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
+                }
+            }
             Decl::Impl(impl_block) => {
                 let TypeExpr::Named(target, _) = &impl_block.target_type else {
                     continue;
@@ -379,6 +391,36 @@ fn walk_body(
         );
     }
     walker.walk_block(body);
+}
+
+/// Walk a top-level `let`/`mut`'s own initializer expression (metel-core#1100)
+/// — no parameters, no enclosing block, just the expression itself, owned by
+/// the declaration's own `SymbolId`. Without this, any reference *inside*
+/// such an initializer (e.g. `let apply_fn := add_one;`) is never visited by
+/// the identity walk at all: `allocate_module`'s top-level loop previously
+/// only descended into `Decl::Fun`/`Impl`/`Aspect` bodies, so a name used
+/// only here got no `PositionHit::Reference` entry to promote and stayed
+/// `BindingId`-less on the typed IR, forcing a name-map lookup at runtime.
+fn walk_value_body(
+    owner: BindingId,
+    value: &Expr,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    let mut walker = Walker {
+        owner,
+        interner,
+        acc,
+        nav,
+        scopes: vec![Scope::default()],
+        path: LexicalPath::root(),
+        block_counter: vec![0],
+        closure_counter: vec![0],
+        propagate_counter: vec![0],
+        use_counter: HashMap::new(),
+    };
+    walker.walk_expr(value);
 }
 
 /// One lexical scope: spelling → the binding it currently denotes.
