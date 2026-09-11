@@ -1594,6 +1594,22 @@ impl Environment {
         self.frame.get(&id).map(|cell| cell.borrow().clone())
     }
 
+    /// Assign to an existing local binding's frame cell in place, by its
+    /// [`LocalId`] (metel-core#1052b). Mutating the cell in place (rather than
+    /// replacing the map entry) is what keeps a capture that shares this cell
+    /// seeing the write. Returns whether the id had a frame entry — `false`
+    /// means the caller falls back to the name map.
+    #[must_use]
+    pub fn set_local(&self, id: LocalId, value: Value) -> bool {
+        match self.frame.get(&id) {
+            Some(cell) => {
+                *cell.borrow_mut() = deep_clone_value(value);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Look up a binding, searching from innermost to outermost scope.
     #[must_use]
     pub fn get(&self, name: &str) -> Option<Value> {
@@ -2697,11 +2713,16 @@ fn eval_assign_expr(
         TypedPlace::Ident(name, binding, ident_span) => {
             // A top-level `let` / `var` assigned from a non-`main` function is
             // absent from this activation's name map (that body captured a
-            // pre-Pass-2 snapshot); write its live global slot directly
-            // (metel-core#1052b). Locals stay on `env.set` — the frame and the
-            // name entry share one cell.
+            // pre-Pass-2 snapshot); write its live global slot directly. A
+            // local's frame cell is the same one the name entry points at, so
+            // `set_local` and `env.set` are equivalent for it — id-keyed is
+            // preferred, name map as the fallback (metel-core#1052b).
             let global_cell = match binding {
                 Some(crate::identity::BindingId::Global(sym)) => runtime.global_slot(*sym).cloned(),
+                _ => None,
+            };
+            let local_id = match binding {
+                Some(crate::identity::BindingId::Local(id)) => Some(*id),
                 _ => None,
             };
             let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
@@ -2710,6 +2731,7 @@ fn eval_assign_expr(
                 let cur = global_cell
                     .as_ref()
                     .map(|c| c.borrow().clone())
+                    .or_else(|| local_id.and_then(|id| env.get_local(id)))
                     .or_else(|| env.get(name))
                     .ok_or_else(|| {
                         MetelError::panic(
@@ -2722,12 +2744,15 @@ fn eval_assign_expr(
             };
             if let Some(cell) = &global_cell {
                 *cell.borrow_mut() = deep_clone_value(new_val);
-            } else if !env.set(name, new_val) {
-                return Err(MetelError::panic(
-                    RuntimeErrorCode::R0003,
-                    format!("assign: undefined `{name}`"),
-                    ident_span,
-                ));
+            } else {
+                let written = local_id.is_some_and(|id| env.set_local(id, new_val.clone()));
+                if !written && !env.set(name, new_val) {
+                    return Err(MetelError::panic(
+                        RuntimeErrorCode::R0003,
+                        format!("assign: undefined `{name}`"),
+                        ident_span,
+                    ));
+                }
             }
             Ok(Signal::Value(Value::Unit))
         }
@@ -3963,5 +3988,23 @@ mod frame_tests {
         env.define("y", Value::I64(9));
         let cell = ident_rc("y", None, &env, &runtime).expect("falls back by name");
         assert_eq!(as_i64(Some(cell.borrow().clone())), Some(9));
+    }
+
+    #[test]
+    fn set_local_mutates_the_shared_cell_in_place() {
+        // The write must land in the same cell the name map and any capture
+        // of it observe — replacing the map entry instead would silently
+        // desync anything still holding the old cell (metel-core#1052b).
+        let mut env = Environment::new();
+        let id = LocalId(7);
+        env.define_binding(Some(id), "n", Value::I64(1));
+        let aliased_cell = env.get_local_rc(id).expect("the binding has a frame cell");
+
+        assert!(env.set_local(id, Value::I64(2)));
+        assert_eq!(as_i64(env.get_local(id)), Some(2));
+        assert_eq!(as_i64(env.get("n")), Some(2));
+        assert_eq!(as_i64(Some(aliased_cell.borrow().clone())), Some(2));
+
+        assert!(!env.set_local(LocalId(8), Value::I64(99)));
     }
 }

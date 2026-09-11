@@ -29,15 +29,17 @@ pub(super) fn resolve_place_assign_root(
         match place {
             TypedPlace::Ident(name, binding, ident_span) => {
                 // A top-level `let` / `var` reached from a non-`main` body is
-                // absent from the name map; use its live global slot cell
-                // (metel-core#1052b).
-                let global_cell = match binding {
+                // absent from the name map; use its live global slot cell. A
+                // local's frame cell is the one `env.get_rc` would find by
+                // name anyway, so prefer it directly (metel-core#1052b).
+                let id_cell = match binding {
                     Some(crate::identity::BindingId::Global(sym)) => {
                         runtime.global_slot(*sym).cloned()
                     }
-                    _ => None,
+                    Some(crate::identity::BindingId::Local(id)) => env.get_local_rc(*id),
+                    None => None,
                 };
-                let rc = match global_cell {
+                let rc = match id_cell {
                     Some(cell) => cell,
                     None => env.get_rc(name).ok_or_else(|| {
                         MetelError::panic(
@@ -106,10 +108,18 @@ pub(super) fn eval_typed_place_value(
 ) -> Result<Value, MetelError> {
     match place {
         TypedPlace::Ident(name, binding, ident_span) => {
-            if let Some(crate::identity::BindingId::Global(sym)) = binding {
-                if let Some(cell) = runtime.global_slot(*sym) {
-                    return Ok(cell.borrow().clone());
+            match binding {
+                Some(crate::identity::BindingId::Global(sym)) => {
+                    if let Some(cell) = runtime.global_slot(*sym) {
+                        return Ok(cell.borrow().clone());
+                    }
                 }
+                Some(crate::identity::BindingId::Local(id)) => {
+                    if let Some(v) = env.get_local(*id) {
+                        return Ok(v);
+                    }
+                }
+                None => {}
             }
             env.get(name).ok_or_else(|| {
                 MetelError::panic(
