@@ -413,7 +413,16 @@ pub fn check_graph_with_report(
                             ResolvedImportRef {
                                 source_module: glob_module.clone(),
                                 canonical_name: name.clone(),
-                                symbol_id: None,
+                                // A glob-imported name is still a reference to
+                                // its declaring module's own canonical
+                                // declaration (ADR-0054 / metel-core#1052) —
+                                // look its SymbolId up the same way an
+                                // explicit import's binding already carries
+                                // one, instead of leaving it `None`.
+                                symbol_id: names
+                                    .symbols
+                                    .get(&(glob_module.clone(), name.clone()))
+                                    .copied(),
                             },
                         );
                     }
