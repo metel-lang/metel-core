@@ -1323,11 +1323,21 @@ fn ident_rc(
 fn lvalue_field_cell(
     receiver: &crate::typed_ast::TypedExpr,
     env: &Environment,
+    runtime: &RuntimeRegistry,
 ) -> Option<FieldWriteback> {
     use crate::typed_ast::TypedExpr;
-    fn walk_path(expr: &TypedExpr, path: &mut Vec<String>) -> Option<String> {
+    // metel-core#1113: the root's own `BindingId` rides along with its name,
+    // not just for symmetry -- `ident_rc` below needs it to resolve the
+    // writeback target identity-first, the same as every other binding
+    // lookup (this one had been missed: reads through a nested `&var self`
+    // receiver worked via `eval_to_value`, but the *writeback* cell was
+    // still found purely by name).
+    fn walk_path(
+        expr: &TypedExpr,
+        path: &mut Vec<String>,
+    ) -> Option<(String, Option<crate::identity::BindingId>)> {
         match expr {
-            TypedExpr::Ident(name, _, _, _) => Some(name.clone()),
+            TypedExpr::Ident(name, binding, _, _) => Some((name.clone(), *binding)),
             TypedExpr::FieldAccess { object, field, .. } => {
                 let root = walk_path(object, path)?;
                 path.push(field.clone());
@@ -1337,9 +1347,9 @@ fn lvalue_field_cell(
         }
     }
     let mut path = Vec::new();
-    let root = walk_path(receiver, &mut path)?;
+    let (root, root_binding) = walk_path(receiver, &mut path)?;
 
-    let root_cell = env.get_rc(&root)?;
+    let root_cell = ident_rc(&root, root_binding, env, runtime)?;
     let struct_cell = {
         let inner = match &*root_cell.borrow() {
             Value::Reference(c) | Value::MutReference(c) => Some(Rc::clone(c)),
@@ -3086,7 +3096,7 @@ fn eval_method_call_expr(
                         None => call::ReceiverBinding::Value(recv_type_view.clone()),
                     }
                 }
-                TypedExpr::FieldAccess { .. } => match lvalue_field_cell(receiver, env) {
+                TypedExpr::FieldAccess { .. } => match lvalue_field_cell(receiver, env, runtime) {
                     Some((struct_cell, path, leaf_cell)) => {
                         let binding = call::ReceiverBinding::Shared(Rc::clone(&leaf_cell));
                         field_writeback = Some((struct_cell, path, leaf_cell));
@@ -4112,6 +4122,60 @@ mod frame_tests {
         env.define("y", Value::I64(9));
         let cell = ident_rc("y", None, &env, &runtime).expect("falls back by name");
         assert_eq!(as_i64(Some(cell.borrow().clone())), Some(9));
+    }
+
+    #[test]
+    fn lvalue_field_cell_resolves_a_nested_receiver_root_by_id_without_the_name_map() {
+        // metel-core#1113: a `&var self` method call through a chained field
+        // access (`pair.a.tick()`) resolves its writeback root by LocalId,
+        // not by a name-map lookup -- put the struct in the frame only (no
+        // `define`/`define_binding` name-map entry for "pair" at all) and
+        // confirm the receiver still resolves, and that the returned cell is
+        // the *same* cell the frame holds (aliased, so a write through it is
+        // observed by later reads), not a disconnected clone.
+        use super::{lvalue_field_cell, RuntimeRegistry};
+        use crate::ast::Span;
+        use crate::identity::BindingId;
+        use crate::typed_ast::TypedExpr;
+        use crate::types::Type;
+        use std::cell::RefCell;
+        use std::collections::HashMap;
+        use std::rc::Rc;
+
+        let mut env = Environment::new();
+        let id = LocalId(7);
+        let mut fields = HashMap::new();
+        fields.insert("value".to_string(), Value::I64(3));
+        let struct_val = Value::Struct {
+            name: "Counter".to_string(),
+            type_id: None,
+            fields,
+        };
+        env.frame.insert(id, Rc::new(RefCell::new(struct_val)));
+
+        let sp = Span::new(0, 0, "t");
+        let receiver = TypedExpr::FieldAccess {
+            object: Box::new(TypedExpr::Ident(
+                "pair".to_string(),
+                Some(BindingId::Local(id)),
+                Type::Unit,
+                sp.clone(),
+            )),
+            field: "value".to_string(),
+            field_id: None,
+            ty: Type::I64,
+            span: sp,
+        };
+
+        let runtime = RuntimeRegistry::new();
+        let (struct_cell, path, leaf_cell) = lvalue_field_cell(&receiver, &env, &runtime)
+            .expect("resolves the receiver root by LocalId alone, no name-map entry exists");
+        assert_eq!(path, vec!["value".to_string()]);
+        assert_eq!(as_i64(Some(leaf_cell.borrow().clone())), Some(3));
+        assert!(
+            Rc::ptr_eq(&struct_cell, &env.get_local_rc(id).unwrap()),
+            "struct_cell must alias the frame's own cell, not a disconnected clone"
+        );
     }
 
     #[test]
