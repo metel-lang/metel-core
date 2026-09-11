@@ -5,7 +5,7 @@
 
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
-use crate::identity::{FieldId, MemberTable, VariantId};
+use crate::identity::{BindingSpans, FieldId, MemberTable, VariantId};
 use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
 use crate::symbols::SymbolId;
 use crate::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
@@ -5239,6 +5239,18 @@ pub struct TypeCtx {
     /// Accumulated type-definition registry (structs, enums, aspects, methods) visible
     /// from the module where the closure was defined.
     pub registry: TypeDefinitionRegistry,
+    /// Program-wide frozen member identity (ADR-0054 / metel-core#1052),
+    /// `Rc`-shared from the one table the ahead-of-time pipeline already built.
+    /// `Some` on the interpreter's evaluation path, so `construct_generic_body`'s
+    /// runtime reconstruction of a generic body can stamp real member ids —
+    /// the same as the ahead-of-time construction pass. `None` for the
+    /// move-checker's own reconstruction (frontend-only, no identity context;
+    /// see [`FrozenIdentity`](crate::identity::FrozenIdentity)'s doc).
+    pub members: Option<Rc<MemberTable>>,
+    /// Program-wide frozen binding-span bridge (ADR-0054 / metel-core#1052),
+    /// paired with `members` — see its doc. Spans carry their filename, so one
+    /// shared, `Rc`-cloned table is safe across every module's `TypeCtx`.
+    pub binding_spans: Option<Rc<BindingSpans>>,
 }
 
 #[cfg(test)]

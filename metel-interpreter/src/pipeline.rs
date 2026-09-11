@@ -5,7 +5,7 @@ use serde::Serialize;
 use crate::coherence;
 use crate::elaborator;
 use crate::error::MetelError;
-use crate::evaluator::{self, EvaluationReport};
+use crate::evaluator::{self, EvaluationReport, RuntimeIdentity};
 use crate::identity;
 use crate::module_loader;
 use crate::move_check;
@@ -109,12 +109,17 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let elaborate_ns = elapsed_ns(started);
 
+    let runtime_identity = RuntimeIdentity {
+        members: std::rc::Rc::new(members),
+        binding_spans: std::rc::Rc::new(allocation.binding_spans),
+    };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(
         elaborated,
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
+        Some(&runtime_identity),
     )?;
     let evaluate_ns = elapsed_ns(started);
 
@@ -191,12 +196,17 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let elaborate_ns = elapsed_ns(started);
 
+    let runtime_identity = RuntimeIdentity {
+        members: std::rc::Rc::new(members),
+        binding_spans: std::rc::Rc::new(allocation.binding_spans),
+    };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(
         elaborated,
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
+        Some(&runtime_identity),
     )?;
     let evaluate_ns = elapsed_ns(started);
 
@@ -263,12 +273,17 @@ pub fn run_evaluator_fixture(
     let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
     let typecheck_ns = elapsed_ns(started);
 
+    let runtime_identity = RuntimeIdentity {
+        members: std::rc::Rc::new(members),
+        binding_spans: std::rc::Rc::new(allocation.binding_spans),
+    };
     let started = Instant::now();
     let evaluation = evaluator::evaluate_graph_with_options(
         elaborated,
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
+        Some(&runtime_identity),
     )?;
     let evaluate_ns = elapsed_ns(started);
 

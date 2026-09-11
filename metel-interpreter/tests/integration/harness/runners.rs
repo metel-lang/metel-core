@@ -161,7 +161,16 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
         }
     }
     let elaborated = elaborator::elaborate(typed.graph, &names)?;
-    evaluator::evaluate_graph(elaborated)
+    let runtime_identity = evaluator::RuntimeIdentity {
+        members: std::rc::Rc::new(members),
+        binding_spans: std::rc::Rc::new(allocation.binding_spans),
+    };
+    evaluator::evaluate_graph_with_options(
+        elaborated,
+        evaluator::EvaluationOptions::default(),
+        Some(&runtime_identity),
+    )
+    .map(|_| ())
 }
 
 fn assert_warnings(path: &Path, actual: &[String], expected: Option<&[String]>) {

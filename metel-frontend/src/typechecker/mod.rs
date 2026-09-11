@@ -1222,4 +1222,139 @@ mod tests {
         }
         assert!(native_count > 0, "core.mtl should declare native functions");
     }
+
+    /// metel-core#1052 (Option A): `construct_generic_body`'s runtime
+    /// reconstruction of a generic function body gets real `BindingId`s too,
+    /// not just the ahead-of-time construction pass — because `body` is the
+    /// exact same `ast::Block` the identity walk already processed, so its
+    /// `binding_spans` entries apply unchanged regardless of which concrete
+    /// type this particular call instantiates.
+    #[test]
+    fn construct_generic_body_stamps_a_real_local_id() {
+        use crate::identity::{self, BindingId, FrozenIdentity};
+        use crate::module_loader::{self, InMemorySourceProvider};
+        use crate::typed_ast::TypedExpr;
+        use crate::types::Type;
+        use std::rc::Rc;
+
+        let root = "generic.mtl";
+        let source = "fun pick<T>(a: T, b: T) -> T {\n\tlet r := a;\n\tr\n}\n";
+        let provider = InMemorySourceProvider::new(root, source);
+        let graph =
+            module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+        let names = crate::name_resolver::resolve(&graph).expect("resolves");
+        let members = identity::collect_members_for_graph(&graph, &names);
+        let allocation = identity::allocate_for_graph(&graph, &names);
+        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
+        crate::coherence::check(&normalized, &names).expect("coheres");
+        let typed_report = check_graph_with_report(
+            &normalized,
+            &names,
+            &CorePrelude::default(),
+            Some(FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typechecks");
+
+        // The raw (untyped) declaration — `construct_generic_body` takes the
+        // same `ast::Block` the identity walk already saw. std::core is a
+        // synthesized module ahead of the user's root, so find `pick` by name
+        // rather than assuming module order.
+        let module = normalized
+            .modules()
+            .iter()
+            .find(|m| {
+                m.program
+                    .decls
+                    .iter()
+                    .any(|d| matches!(d, Decl::Fun(f) if f.name == "pick"))
+            })
+            .expect("the module declaring `fun pick`");
+        let Decl::Fun(fun) = module
+            .program
+            .decls
+            .iter()
+            .find(|d| matches!(d, Decl::Fun(f) if f.name == "pick"))
+            .expect("`fun pick` in the raw graph")
+        else {
+            unreachable!()
+        };
+        let typed_module = typed_report
+            .graph
+            .modules
+            .iter()
+            .find(|m| m.module_path == module.module_path)
+            .expect("the matching typed module");
+        let scheme = typed_module
+            .scheme_env
+            .get("pick")
+            .expect("a scheme for `pick`")
+            .clone();
+
+        let type_ctx = crate::typeinference::TypeCtx {
+            scheme_env: typed_module.scheme_env.clone(),
+            registry: typed_report.graph.type_registry.clone(),
+            members: Some(Rc::new(members)),
+            binding_spans: Some(Rc::new(allocation.binding_spans)),
+        };
+
+        let typed_block = construct_generic_body(
+            &scheme,
+            &fun.params,
+            &[Type::I64, Type::I64],
+            &fun.body,
+            &fun.span,
+            &type_ctx,
+            None,
+        )
+        .expect("reconstructs for i64 args");
+
+        let r_id = typed_block
+            .stmts
+            .iter()
+            .find_map(|d| match d {
+                TypedDecl::Let(ld) if ld.name == "r" => ld.local_id,
+                _ => None,
+            })
+            .expect("a local in a runtime-reconstructed generic body carries a LocalId");
+        let TypedExpr::Ident(_, Some(BindingId::Local(used)), _, _) =
+            typed_block.tail.as_deref().unwrap()
+        else {
+            panic!("the tail `r` should be a resolved local reference");
+        };
+        assert_eq!(
+            *used, r_id,
+            "the reconstructed body's `r` use resolves to the same LocalId as its `let`"
+        );
+
+        // Reconstructing the same generic body for a *different* concrete
+        // instantiation yields the same `LocalId` for `r` — a binding's
+        // lexical identity does not depend on which type parameterized this
+        // particular call (relevant to go-to-definition / find-references
+        // across monomorphizations).
+        let typed_block_str = construct_generic_body(
+            &scheme,
+            &fun.params,
+            &[Type::Str, Type::Str],
+            &fun.body,
+            &fun.span,
+            &type_ctx,
+            None,
+        )
+        .expect("reconstructs for str args");
+        let r_id_str = typed_block_str
+            .stmts
+            .iter()
+            .find_map(|d| match d {
+                TypedDecl::Let(ld) if ld.name == "r" => ld.local_id,
+                _ => None,
+            })
+            .expect("`let r` carries a LocalId in the str instantiation too");
+        assert_eq!(
+            r_id, r_id_str,
+            "the same source binding keeps one LocalId across monomorphizations"
+        );
+    }
 }

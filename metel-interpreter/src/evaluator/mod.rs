@@ -170,6 +170,19 @@ pub struct EvaluationOptions {
     pub collect_profile: bool,
 }
 
+/// Program-wide frozen identity (ADR-0054 / metel-core#1052), built once by
+/// the pipeline from the same `Allocation` used for the ahead-of-time
+/// construction pass. `Rc`-shared into every module's `TypeCtx`, so
+/// `construct_generic_body`'s runtime reconstruction of a generic body — the
+/// evaluator's one identity-free construction path — gets a real `BindingId`
+/// at every binding site too, closing the last gap the dual-path evaluator
+/// (metel-core#1052b) relied on a name-keyed fallback for.
+#[derive(Debug, Clone)]
+pub struct RuntimeIdentity {
+    pub members: Rc<crate::identity::MemberTable>,
+    pub binding_spans: Rc<crate::identity::BindingSpans>,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct EvaluationReport {
     pub profile: Option<EvaluatorProfile>,
@@ -1732,7 +1745,7 @@ impl Environment {
 /// # Errors
 /// Returns an error if evaluating any module raises an unhandled runtime error.
 pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelError> {
-    evaluate_graph_with_options(elaborated, EvaluationOptions::default()).map(|_| ())
+    evaluate_graph_with_options(elaborated, EvaluationOptions::default(), None).map(|_| ())
 }
 
 /// # Errors
@@ -1740,6 +1753,7 @@ pub fn evaluate_graph(elaborated: ElaboratedModuleGraph) -> Result<(), MetelErro
 pub fn evaluate_graph_with_options(
     elaborated: ElaboratedModuleGraph,
     options: EvaluationOptions,
+    identity: Option<&RuntimeIdentity>,
 ) -> Result<EvaluationReport, MetelError> {
     let graph = elaborated.0;
     reset_runtime_state(options.collect_profile);
@@ -1778,6 +1792,8 @@ pub fn evaluate_graph_with_options(
         let type_ctx = std::rc::Rc::new(TypeCtx {
             scheme_env: module.scheme_env.clone(),
             registry: graph.type_registry.clone(),
+            members: identity.map(|i| Rc::clone(&i.members)),
+            binding_spans: identity.map(|i| Rc::clone(&i.binding_spans)),
         });
 
         // Run the standard 3-pass + alias evaluation on this module's decls.

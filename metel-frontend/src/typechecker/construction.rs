@@ -942,6 +942,22 @@ pub(super) fn construct_generic_body(
     // re-resolved here without a reference table (callee_id stamping is skipped),
     // and without pass 1's write-through analysis (empty set — same limitation).
     let resolved_facts = ResolvedInferenceFacts::empty();
+    // `body` is the exact same `ast::Block` the ahead-of-time identity walk
+    // already processed (every function body is walked regardless of whether
+    // it turns out generic), so its `binding_spans` entries for spans inside
+    // `body` already exist and apply unchanged across every monomorphizing
+    // call — a binding's `LocalId`/`FieldId` is a property of its lexical
+    // position, not of the concrete type args this call inferred
+    // (ADR-0054 / metel-core#1052). `None` only on the move-checker's own
+    // reconstruction, which built `type_ctx` without these tables.
+    let identity = type_ctx
+        .members
+        .as_deref()
+        .zip(type_ctx.binding_spans.as_deref())
+        .map(|(members, binding_spans)| FrozenIdentity {
+            members,
+            binding_spans,
+        });
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -952,10 +968,7 @@ pub(super) fn construct_generic_body(
         &[],
         None,
         &resolved_facts,
-        // Generic bodies are reconstructed at runtime with no identity context;
-        // member sites in them carry `None` until the evaluator threads a member
-        // table (#1052/#1063).
-        None,
+        identity,
     )?;
 
     // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body

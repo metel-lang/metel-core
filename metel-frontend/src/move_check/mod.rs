@@ -244,6 +244,10 @@ impl<'a> Checker<'a> {
         self.type_ctx = Some(TypeCtx {
             scheme_env: module.scheme_env.clone(),
             registry: self.registry.clone(),
+            // The move-checker reconstructs a generic body without identity
+            // context — see `TypeCtx::members`'s doc.
+            members: None,
+            binding_spans: None,
         });
         state.push_scope();
         for decl in &module.decls {
