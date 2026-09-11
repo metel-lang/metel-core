@@ -1540,7 +1540,9 @@ impl Environment {
     /// field doc.
     ///
     /// # Panics
-    /// Panics if called with no scope pushed — see [`Environment::define`].
+    /// Panics if called with no scope pushed — cannot happen through normal
+    /// use, since `Environment::new` always starts with one scope and callers
+    /// never pop past it.
     pub fn register_pending_fun(&mut self, id: LocalId, f: Rc<crate::typed_ast::TypedFunDecl>) {
         self.pending_funs.last_mut().unwrap().insert(id, f);
     }
@@ -1598,9 +1600,10 @@ impl Environment {
         cell
     }
 
-    /// Look up a binding by its structural [`LocalId`] in the id-indexed frame
-    /// (metel-core#1052b). `None` means no id-keyed slot — the caller falls
-    /// back to the name map.
+    /// Look up a binding by its structural [`LocalId`] in the id-indexed
+    /// frame (metel-core#1052b). `None` means no id-keyed slot — the binding
+    /// site had no identity to stamp (metel-core#1054 deleted the name-map
+    /// fallback that used to catch that case).
     #[must_use]
     pub fn get_local(&self, id: LocalId) -> Option<Value> {
         self.frame.get(&id).map(|cell| cell.borrow().clone())
@@ -1609,8 +1612,9 @@ impl Environment {
     /// Assign to an existing local binding's frame cell in place, by its
     /// [`LocalId`] (metel-core#1052b). Mutating the cell in place (rather than
     /// replacing the map entry) is what keeps a capture that shares this cell
-    /// seeing the write. Returns whether the id had a frame entry — `false`
-    /// means the caller falls back to the name map.
+    /// seeing the write. Returns whether the id had a frame entry — the
+    /// caller reports an error on `false` (metel-core#1054 deleted the
+    /// name-map fallback that used to catch that case).
     #[must_use]
     pub fn set_local(&self, id: LocalId, value: Value) -> bool {
         match self.frame.get(&id) {
@@ -1697,9 +1701,8 @@ impl Environment {
     /// Returns a runtime error when a capture is not available in this environment.
     ///
     /// `capture_ids` is positionally aligned with `captures`; each capture is
-    /// installed in the id-indexed frame under its enclosing [`LocalId`] as well
-    /// as by name, on one shared cell, so a closure-body reference resolves
-    /// through the frame (metel-core#1052b).
+    /// installed in the id-indexed frame under its enclosing [`LocalId`], so a
+    /// closure-body reference resolves through the frame (metel-core#1052b).
     pub fn capture_closure(
         &self,
         captures: &[CaptureSpec],
@@ -1832,11 +1835,17 @@ pub fn evaluate_graph_with_options(
     Ok(EvaluationReport { profile })
 }
 
-/// Run the standard 3-pass evaluation on `decls` into `env`.
+/// Run the standard evaluation passes on `decls` into `env`.
 ///
-/// Pass 1a: placeholder bindings so closures can capture each other's Rc.
-/// Pass 1b: replace placeholders with real closures ("ties the knot").
-/// Pass 2: evaluate top-level let/mut/stmt declarations in order.
+/// Pass 0: record top-level `let`/`mut` identities so a later `Call::
+/// callee_id` miss on one of them is recognized as "not registered yet"
+/// (ADR-0042). Pass 1b: register every module-level `fn`'s closure value by
+/// identity (`symbol_id`/`def_id`); mutual recursion needs no placeholder
+/// pass ahead of this one (metel-core#1054) -- `runtime`'s registries are
+/// shared across the whole evaluation, not per-`Environment`, so a lookup by
+/// id at *call* time always sees the final value regardless of when any
+/// closure's own environment snapshot was taken. Pass 2: evaluate top-level
+/// `let`/`mut`/stmt declarations in order.
 ///
 /// `type_ctx` must be set on `env` before calling so that generic function bodies
 /// capture it for construction-at-call-time.
@@ -2275,7 +2284,12 @@ fn build_and_set_nested_fun(
 
 /// Give every `fun` declared directly in `decls` a placeholder binding, so a
 /// forward reference resolves to *something* rather than "undefined
-/// variable" — mirroring `run_passes`'s top-level Pass 1a. Then, only when
+/// variable" -- a nested `fun`'s own forward-reference problem (a call
+/// reached before its declaration line runs, within the same activation)
+/// isn't the module-level "mutual recursion across independently-timed
+/// environment snapshots" problem `run_passes`'s Pass 1b registers by
+/// identity for (metel-core#1054); this placeholder is genuinely still
+/// needed. Then, only when
 /// it's safe to, build each one's real closure immediately, before any other
 /// statement in the block runs, so siblings get full mutual visibility
 /// regardless of textual order, including being callable from a statement
@@ -3162,8 +3176,10 @@ pub fn eval_expr(
         TypedExpr::Ident(name, binding, _, span) => {
             // Resolve by frozen identity first (metel-core#1052b): a lexical
             // local through the id-indexed frame, a global through the
-            // `SymbolId` value registry. The name map / stdlib remain the
-            // fallback for still-unmigrated sites and for a `None` binding.
+            // `SymbolId` value registry. `std_core_lookup` remains the
+            // fallback for a builtin name and for a `None` binding
+            // (metel-core#1054 deleted the name-map fallback these arms used
+            // to also try).
             match binding {
                 Some(crate::identity::BindingId::Local(id)) => {
                     if let Some(val) = env.get_local(*id) {
