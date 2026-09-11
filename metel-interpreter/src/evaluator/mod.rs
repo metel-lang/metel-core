@@ -1908,8 +1908,14 @@ pub fn evaluate_graph_with_options(
         let mut env = Environment::new();
 
         if module.module_path == root_path {
+            // metel-core#1112: `main` can also be a top-level `let`/`mut`
+            // (the R0002 "`main` is not a function" case) -- its identity
+            // lives on `def_id` the same as `Fun`'s, just via a different
+            // `TypedDecl` arm.
             main_def_id = module.decls.iter().find_map(|d| match d {
                 TypedDecl::Fun(f) if f.name == "main" => f.def_id,
+                TypedDecl::Let(l) if l.name == "main" => l.def_id,
+                TypedDecl::Mut(m) if m.name == "main" => m.def_id,
                 _ => None,
             });
         }
@@ -2285,10 +2291,15 @@ fn run_main(
         col: 0,
     };
     // `main`'s `def_id` (metel-core#1052b) resolves it the same way any other
-    // top-level call would; the name map is the fallback for the
-    // single-program path, which has no resolver and so no `SymbolId` at all.
+    // top-level call would: a top-level `let`/`var` (the R0002 "not a
+    // function" case, metel-core#1112) has its live cell in the global slot
+    // table, `fn main` a stable registered value -- same order as
+    // `TypedExpr::Ident`'s own `BindingId::Global` arm. The name map is the
+    // fallback for the single-program path, which has no resolver and so no
+    // `SymbolId` at all.
     let main_value = main_def_id
-        .and_then(|id| runtime.get_symbol_value(id).cloned())
+        .and_then(|id| runtime.global_slot(id).map(|cell| cell.borrow().clone()))
+        .or_else(|| main_def_id.and_then(|id| runtime.get_symbol_value(id).cloned()))
         .or_else(|| env.get("main"));
     let (main_body, main_params, main_type_ctx) = match main_value {
         Some(Value::Callable(RuntimeCallable::Closure(rc))) => {
