@@ -1,6 +1,5 @@
 [options]
 error = ["T0003"]
-spec = ["spec.declarations.enums.instantiation.legality-1"]
 
 [expect]
 status = "typecheck_error"

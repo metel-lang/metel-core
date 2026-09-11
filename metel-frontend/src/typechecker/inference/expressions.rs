@@ -1379,6 +1379,29 @@ pub(super) fn infer_expr(
                                 info.type_params.iter().map(|_| ctx.fresh_var()).collect();
                             return Ok(InferType::Named(type_name.clone(), type_args));
                         }
+                        // metel-core#1108: a fieldful variant has no bare-value
+                        // form -- Metel's grammar has no positional/tuple-variant
+                        // syntax, only `Variant { field: Type, ... }`, so there is
+                        // no "declared order" a constructor call could mean
+                        // without inventing that as new language semantics (a
+                        // design question of its own, not a bug fix). Point at
+                        // the two forms that do exist instead of the generic
+                        // "unresolved path".
+                        let fields = variant
+                            .fields
+                            .iter()
+                            .map(|f| format!("{} = ...", f.name))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!(
+                                "`{type_name}::{member_name}` is a fieldful variant and has no \
+                                 bare-value form -- construct it with `{type_name}::{member_name} \
+                                 {{ {fields} }}`, or destructure it in a `match`"
+                            ),
+                            span,
+                        ));
                     }
                 }
             }

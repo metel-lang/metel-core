@@ -1,0 +1,10 @@
+// A fieldful enum variant has no bare-value form -- Metel has no
+// positional/tuple-variant syntax, only `Variant { field: Type, ... }`, so
+// referencing one without braces (as a value, or as a call) is a type
+// error, not a first-class constructor reference (metel-core#1108).
+
+enum Colour {
+    Custom { r: i64, g: i64, b: i64 },
+}
+
+let f := Colour::Custom;
