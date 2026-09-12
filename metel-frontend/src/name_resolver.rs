@@ -170,21 +170,9 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
     // This ensures every declaration has a stable id even if it is never imported.
     // The intern call is idempotent, so import-site ids (assigned below) will match.
     // While interning, record each declaration's definition span (RFC-0059).
-    let mut sym = SymbolTable::new();
-    let mut definitions: HashMap<SymbolId, Span> = HashMap::new();
-    for loaded in &graph.modules {
-        for decl in &loaded.program.decls {
-            if let Some(name) = decl_any_name(decl) {
-                let id = sym.intern(&loaded.module_path, &name);
-                if let Some(span) = decl_span(decl) {
-                    definitions.entry(id).or_insert_with(|| span.clone());
-                }
-            }
-            // METEL-185 step 3a: give every impl/aspect method a stable SymbolId so
-            // later passes can dispatch method selection by id rather than by name.
-            intern_method_symbols(decl, &loaded.module_path, &mut sym, &mut definitions);
-        }
-    }
+    // See `intern_all_symbols`'s own doc for why this is a sort-then-intern pass,
+    // not a direct interning loop over `graph.modules`.
+    let (mut sym, definitions) = intern_all_symbols(graph);
 
     // Second pass: process re-exports and extend pub_surface. Keep the full bindings
     // (not just the names) — an import of a re-exported name (third pass) must reuse
@@ -322,13 +310,57 @@ fn impl_target_name(target: &TypeExpr) -> Option<&str> {
     }
 }
 
-/// Intern a `SymbolId` (and record a definition span) for every method declared in
-/// an `impl` or `aspect` declaration. No-op for other declarations. See METEL-185.
-fn intern_method_symbols(
+/// Assign `SymbolId`s to every top-level declaration and impl/aspect method
+/// across `graph`, and record each one's definition span (RFC-0059).
+///
+/// ADR-0054's structural-allocation amendment requires the *numeric*
+/// `SymbolId` to be deterministic for one resolved module graph "regardless
+/// of file iteration order" (metel-core#1048) -- `SymbolTable::intern`'s
+/// underlying counter is order-of-first-call dependent, so interning
+/// directly in `graph.modules`'s own (load-order-dependent) sequence would
+/// let two runs over the identical set of declarations hand out different
+/// ids to the same declaration. This collects every `(module path, key)`
+/// pair first, sorts canonically, and only then interns -- the resulting ids
+/// depend on the *set* of declarations, not the order this function happened
+/// to visit them in (metel-core#1129's own "verify empirically" repro:
+/// reversing `graph.modules` and re-resolving used to change `SymbolId`s; a
+/// regression test pins this).
+fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Span>) {
+    let mut pending: Vec<(Vec<String>, String, Option<Span>)> = Vec::new();
+    for loaded in &graph.modules {
+        for decl in &loaded.program.decls {
+            if let Some(name) = decl_any_name(decl) {
+                pending.push((loaded.module_path.clone(), name, decl_span(decl).cloned()));
+            }
+            // METEL-185 step 3a: give every impl/aspect method a stable SymbolId so
+            // later passes can dispatch method selection by id rather than by name.
+            collect_method_symbol_keys(decl, &loaded.module_path, &mut pending);
+        }
+    }
+    pending.sort_by(|(am, an, _), (bm, bn, _)| am.cmp(bm).then_with(|| an.cmp(bn)));
+
+    let mut sym = SymbolTable::new();
+    let mut definitions: HashMap<SymbolId, Span> = HashMap::new();
+    for (module_path, name, span) in pending {
+        let id = sym.intern(&module_path, &name);
+        if let Some(span) = span {
+            definitions.entry(id).or_insert(span);
+        }
+    }
+    (sym, definitions)
+}
+
+/// Collect the `(module path, key, span)` triples that will need a `SymbolId`
+/// for every method declared in an `impl` or `aspect` declaration. No-op for
+/// other declarations. See METEL-185.
+///
+/// Collection only -- interning happens in `intern_all_symbols`'s own
+/// canonically-sorted pass, not here, so the id a method ends up with does
+/// not depend on this declaration's position among its siblings.
+fn collect_method_symbol_keys(
     decl: &Decl,
     module_path: &[String],
-    sym: &mut SymbolTable,
-    definitions: &mut HashMap<SymbolId, Span>,
+    out: &mut Vec<(Vec<String>, String, Option<Span>)>,
 ) {
     match decl {
         Decl::Impl(ib) => {
@@ -337,15 +369,13 @@ fn intern_method_symbols(
             };
             for method in &ib.methods {
                 let key = method_symbol_name(target, ib.aspect_name.as_deref(), &method.name);
-                let id = sym.intern(module_path, &key);
-                definitions.entry(id).or_insert_with(|| method.span.clone());
+                out.push((module_path.to_vec(), key, Some(method.span.clone())));
             }
         }
         Decl::Aspect(ad) => {
             for method in &ad.methods {
                 let key = method_symbol_name(&ad.name, None, &method.name);
-                let id = sym.intern(module_path, &key);
-                definitions.entry(id).or_insert_with(|| method.span.clone());
+                out.push((module_path.to_vec(), key, Some(method.span.clone())));
             }
         }
         _ => {}
@@ -1471,6 +1501,40 @@ mod tests {
         assert_eq!(
             binding_id, table_id,
             "SymbolId in binding must match entry in names.symbols"
+        );
+    }
+
+    #[test]
+    fn symbol_id_is_independent_of_module_resolution_order() {
+        // ADR-0054's structural-allocation amendment (metel-core#1048): a
+        // SymbolId must be a function of (module path, name), never of
+        // traversal order. Resolving the identical set of modules in reverse
+        // order must hand every declaration the same id it got in forward
+        // order. Confirmed to fail before this fix: `graph.modules`'s own
+        // load-order fed `SymbolTable::intern`'s allocation counter directly,
+        // so `a::A` and `b::B` got their ids swapped when the module list was
+        // reversed.
+        let a = (
+            vec!["a".to_string()],
+            make_program_with_pubs(vec![], &["A"]),
+        );
+        let b = (
+            vec!["b".to_string()],
+            make_program_with_pubs(vec![], &["B"]),
+        );
+
+        let forward = resolve(&make_graph(vec![a.clone(), b.clone()])).unwrap();
+        let reversed = resolve(&make_graph(vec![b, a])).unwrap();
+
+        let a_key = (vec!["a".to_string()], "A".to_string());
+        let b_key = (vec!["b".to_string()], "B".to_string());
+        assert_eq!(
+            forward.symbols[&a_key], reversed.symbols[&a_key],
+            "a::A's SymbolId changed when module resolution order was reversed"
+        );
+        assert_eq!(
+            forward.symbols[&b_key], reversed.symbols[&b_key],
+            "b::B's SymbolId changed when module resolution order was reversed"
         );
     }
 }

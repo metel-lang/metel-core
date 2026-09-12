@@ -356,8 +356,13 @@ pub fn allocate_for_graph(
         .iter()
         .map(|m| (m.module_path.clone(), m.program.decls.as_slice()))
         .collect();
+    // Sorted, not `graph.modules`'s own load order -- see the matching comment
+    // in `analysis::analyze_graph` (metel-core#1048).
+    let mut sorted_modules: Vec<&crate::module_loader::LoadedModule> =
+        graph.modules.iter().collect();
+    sorted_modules.sort_by(|a, b| a.module_path.cmp(&b.module_path));
     let mut module_table = ModuleTable::new();
-    for m in &graph.modules {
+    for m in sorted_modules {
         module_table.intern(&m.module_path, None);
     }
     allocate_graph(

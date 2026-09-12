@@ -213,8 +213,17 @@ fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysi
     // (the loader keeps one `LoadedModule` per physical file); its location is
     // the module file's start, the go-to-definition target for a module-path
     // segment (metel-core#1070).
+    //
+    // Interned in canonical (sorted) module-path order, not `graph.modules`'s
+    // own load order -- `ModuleTable::intern`'s dense-index allocation is
+    // order-of-first-call dependent, so two runs over the identical module
+    // set must visit modules in the same order to hand out the same `ModuleId`
+    // (metel-core#1048's "regardless of file iteration order" requirement).
+    let mut sorted_modules: Vec<&crate::module_loader::LoadedModule> =
+        graph.modules.iter().collect();
+    sorted_modules.sort_by(|a, b| a.module_path.cmp(&b.module_path));
     let mut modules = ModuleTable::new();
-    for module in &graph.modules {
+    for module in sorted_modules {
         let file = module.file_path.to_string_lossy().into_owned();
         modules.intern(&module.module_path, Some(crate::ast::Span::new(0, 0, file)));
     }
