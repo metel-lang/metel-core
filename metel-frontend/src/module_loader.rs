@@ -65,6 +65,28 @@ pub trait SourceProvider {
     /// Returns an error if the module's source cannot be located or read
     /// (implementation-defined: e.g. a missing file or a missing embedded entry).
     fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError>;
+
+    /// Resolve a candidate module file path to its canonical, existence-confirmed
+    /// form, or `None` if this provider has no source for it (metel-core#1147).
+    ///
+    /// Import discovery tries several candidate paths per import (an item name
+    /// vs. a nested module directory, `import parser::ast::Ast` trying
+    /// `parser/ast.mtl` before `parser.mtl`) and needs to know which one is
+    /// real *before* calling [`read`](Self::read) on it -- and the winning
+    /// path's canonical form is also the stable key module-visited /
+    /// diamond-dependency tracking relies on, so this does both jobs at once
+    /// rather than needing a separate canonicalization step afterward.
+    ///
+    /// Defaults to a real filesystem canonicalization, matching every
+    /// filesystem-backed provider's actual files. A provider whose files
+    /// aren't on disk (an in-memory editor overlay) overrides this to consult
+    /// its own map instead of the filesystem, since `Path::canonicalize`
+    /// cannot see a virtual document at all -- the previous absence of this
+    /// override was exactly why `InMemorySourceProvider`/virtual-root analysis
+    /// could resolve only its own root file and no import at all.
+    fn canonicalize(&self, candidate: &Path) -> Option<PathBuf> {
+        candidate.canonicalize().ok()
+    }
 }
 
 /// The default provider: reads module source from the filesystem. Behaviour is
@@ -136,6 +158,86 @@ impl SourceProvider for InMemorySourceProvider {
             ),
             file_path,
         ))
+    }
+
+    // Only the root itself "exists" -- matches this provider's own single-file
+    // design (metel-core#1147); an import still correctly fails to resolve,
+    // rather than silently reaching the real filesystem via the default impl.
+    fn canonicalize(&self, candidate: &Path) -> Option<PathBuf> {
+        (candidate == self.root).then(|| self.root.clone())
+    }
+}
+
+/// A multi-file editor overlay, the provider [`InMemorySourceProvider`]'s own
+/// doc comment anticipates: a virtual root plus zero or more sibling in-memory
+/// files, for an editor session with more than one open/virtual document
+/// (metel-core#1046/#1147) -- an import or a module-path query needs the
+/// imported module's own source, not just the root's.
+///
+/// Sibling files are keyed exactly as the loader resolves an import's file
+/// path: the root's directory joined with the module path's own file name
+/// (e.g. `import alpha;` next to root `"editor.mtl"` looks for `"alpha.mtl"`
+/// beside it) -- the same convention [`FsSourceProvider`] uses on disk, just
+/// against this map instead of the filesystem.
+#[derive(Debug, Clone)]
+pub struct MultiFileSourceProvider {
+    root: PathBuf,
+    root_source: String,
+    files: HashMap<PathBuf, String>,
+}
+
+impl MultiFileSourceProvider {
+    #[must_use]
+    pub fn new(root: impl Into<PathBuf>, root_source: impl Into<String>) -> Self {
+        Self {
+            root: root.into(),
+            root_source: root_source.into(),
+            files: HashMap::new(),
+        }
+    }
+
+    /// Register a sibling file's source, keyed by its path relative to the
+    /// root's own directory (e.g. `"alpha.mtl"`).
+    #[must_use]
+    pub fn with_file(
+        mut self,
+        relative_path: impl Into<PathBuf>,
+        source: impl Into<String>,
+    ) -> Self {
+        let dir = self.root.parent().unwrap_or_else(|| Path::new("."));
+        self.files
+            .insert(dir.join(relative_path.into()), source.into());
+        self
+    }
+}
+
+impl SourceProvider for MultiFileSourceProvider {
+    fn read(&self, module_path: &[String], file_path: &Path) -> Result<String, MetelError> {
+        if file_path == self.root {
+            return Ok(self.root_source.clone());
+        }
+        if let Some(source) = self.files.get(file_path) {
+            return Ok(source.clone());
+        }
+        if let Some(source) = crate::stdlib::lookup(module_path) {
+            return Ok(source.to_string());
+        }
+        Err(module_error(
+            format!(
+                "in-memory source provider has no source for module '{}'",
+                file_path.display()
+            ),
+            file_path,
+        ))
+    }
+
+    fn canonicalize(&self, candidate: &Path) -> Option<PathBuf> {
+        if candidate == self.root {
+            return Some(self.root.clone());
+        }
+        self.files
+            .contains_key(candidate)
+            .then(|| candidate.to_path_buf())
     }
 }
 
@@ -339,14 +441,19 @@ impl Loader<'_> {
 
         self.stack.push(file_path.clone());
         for import in &program.imports {
-            if let Some((mod_segs, child_file)) = resolve_import_module(
+            if let Some((mod_segs, child)) = resolve_import_module(
+                self.provider,
                 &file_path,
                 &root_dir,
                 &module_path,
                 &import.path.root,
                 &import.path.tree,
             )? {
-                let child = canonicalize_existing(&child_file)?;
+                // Already canonical -- `resolve_import_module` only returns a
+                // path the provider itself confirmed and canonicalized
+                // (metel-core#1147); a second, always-real-filesystem
+                // canonicalization here would defeat that for an in-memory
+                // overlay's imports.
                 let child_path = child_module_path(&module_path, &import.path.root, &mod_segs);
                 self.load_module(child, child_path)?;
             }
@@ -360,14 +467,14 @@ impl Loader<'_> {
         // even a direct `import a::b::Name;` bypassing the re-export failed with
         // "unknown struct/enum/name", not just the re-export path itself.
         for export in &program.exports {
-            if let Some((mod_segs, child_file)) = resolve_import_module(
+            if let Some((mod_segs, child)) = resolve_import_module(
+                self.provider,
                 &file_path,
                 &root_dir,
                 &module_path,
                 &export.path.root,
                 &export.path.tree,
             )? {
-                let child = canonicalize_existing(&child_file)?;
                 let child_path = child_module_path(&module_path, &export.path.root, &mod_segs);
                 self.load_module(child, child_path)?;
             }
@@ -440,6 +547,7 @@ fn own_submodule_dir(parent_dir: &Path, current_module_path: &[String]) -> PathB
 /// `import parser::ast::Ast` tries `parser/ast.mtl` first, then `parser.mtl` —
 /// the longest matching prefix wins.
 fn resolve_import_module(
+    provider: &dyn SourceProvider,
     parent_file: &Path,
     root_dir: &Path,
     current_module_path: &[String],
@@ -458,7 +566,7 @@ fn resolve_import_module(
 
         PathRoot::Root => {
             let segs = import_tree_segments(tree);
-            resolve_in_dir(root_dir, &segs, parent_file)
+            resolve_in_dir(provider, root_dir, &segs, parent_file)
         }
 
         PathRoot::Super => {
@@ -468,7 +576,7 @@ fn resolve_import_module(
                 parent_dir.parent().unwrap_or(parent_dir).to_path_buf()
             };
             let segs = import_tree_segments(tree);
-            resolve_in_dir(&super_dir, &segs, parent_file)
+            resolve_in_dir(provider, &super_dir, &segs, parent_file)
         }
 
         // An existing, passing test
@@ -485,11 +593,11 @@ fn resolve_import_module(
             let segs = import_tree_segments(tree);
             if !current_module_path.is_empty() {
                 let self_dir = own_submodule_dir(parent_dir, current_module_path);
-                if let Some(result) = find_module_file(&self_dir, &segs) {
+                if let Some(result) = find_module_file(provider, &self_dir, &segs) {
                     return Ok(Some(result));
                 }
             }
-            resolve_in_dir(parent_dir, &segs, parent_file)
+            resolve_in_dir(provider, parent_dir, &segs, parent_file)
         }
 
         PathRoot::Name(name) => {
@@ -509,16 +617,17 @@ fn resolve_import_module(
             // of its own to prefer -- if nothing is found there.
             if !current_module_path.is_empty() {
                 let self_dir = own_submodule_dir(parent_dir, current_module_path);
-                if let Some(result) = find_module_file(&self_dir, &segs) {
+                if let Some(result) = find_module_file(provider, &self_dir, &segs) {
                     return Ok(Some(result));
                 }
             }
-            resolve_in_dir(parent_dir, &segs, parent_file)
+            resolve_in_dir(provider, parent_dir, &segs, parent_file)
         }
     }
 }
 
 fn resolve_in_dir(
+    provider: &dyn SourceProvider,
     dir: &Path,
     segs: &[String],
     source_file: &Path,
@@ -526,7 +635,7 @@ fn resolve_in_dir(
     if segs.is_empty() {
         return Ok(None);
     }
-    match find_module_file(dir, segs) {
+    match find_module_file(provider, dir, segs) {
         Some(result) => Ok(Some(result)),
         None => Err(module_error(
             format!("cannot find module file for `{}`", segs.join("::")),
@@ -550,8 +659,16 @@ fn import_tree_segments(tree: &ImportTree) -> Vec<String> {
     }
 }
 
-/// Try path prefixes from longest to shortest, returning the first `.mtl` found.
-fn find_module_file(base_dir: &Path, segs: &[String]) -> Option<(Vec<String>, PathBuf)> {
+/// Try path prefixes from longest to shortest, returning the first `.mtl`
+/// `provider` confirms exists, already in its canonical form
+/// (metel-core#1147 -- delegates to the provider rather than a hardcoded
+/// `Path::exists`/`canonicalize`, so an in-memory overlay's imports resolve
+/// too, not just the real filesystem's).
+fn find_module_file(
+    provider: &dyn SourceProvider,
+    base_dir: &Path,
+    segs: &[String],
+) -> Option<(Vec<String>, PathBuf)> {
     for len in (1..=segs.len()).rev() {
         let prefix = &segs[..len];
         let mut candidate = base_dir.to_path_buf();
@@ -559,8 +676,8 @@ fn find_module_file(base_dir: &Path, segs: &[String]) -> Option<(Vec<String>, Pa
             candidate = candidate.join(seg);
         }
         let file = candidate.with_extension("mtl");
-        if file.exists() {
-            return Some((prefix.to_vec(), file));
+        if let Some(canonical) = provider.canonicalize(&file) {
+            return Some((prefix.to_vec(), canonical));
         }
     }
     None
@@ -664,6 +781,48 @@ mod tests {
             .read(&["greeter".to_string()], Path::new("ignored.mtl"))
             .unwrap();
         assert!(src.contains("fun hi"));
+    }
+
+    #[test]
+    fn multi_file_source_provider_resolves_an_import() {
+        // metel-core#1147: the virtual-root path could previously only ever
+        // load its single root file -- any import failed, since
+        // find_module_file's Path::exists check has no way to see an
+        // in-memory sibling. Proves the fix: MultiFileSourceProvider's own
+        // canonicalize override is now actually consulted during import
+        // discovery, not bypassed by a hardcoded filesystem check.
+        let provider = MultiFileSourceProvider::new(
+            "editor.mtl",
+            "import alpha::helper;\nfun main() -> i64 { helper() }\n",
+        )
+        .with_file("alpha.mtl", "public fun helper() -> i64 { 42 }\n");
+
+        let graph = load_virtual_root_with("editor.mtl", &provider)
+            .expect("the import should resolve through the provider, not the filesystem");
+        let module_paths: Vec<&[String]> = graph
+            .modules
+            .iter()
+            .map(|m| m.module_path.as_slice())
+            .collect();
+        assert!(
+            module_paths.contains(&["alpha".to_string()].as_slice()),
+            "alpha's module should have loaded: {module_paths:?}"
+        );
+    }
+
+    #[test]
+    fn multi_file_source_provider_reports_a_missing_sibling() {
+        // The other half of the same fix: a genuinely absent sibling must
+        // still fail (not silently succeed by falling through to some
+        // stale filesystem state), with the same diagnostic shape a real
+        // missing file gets.
+        let provider = MultiFileSourceProvider::new("editor.mtl", "import alpha::helper;\n");
+        let err = load_virtual_root_with("editor.mtl", &provider)
+            .expect_err("alpha.mtl was never registered with the provider");
+        assert!(
+            err.to_string().contains("cannot find module file"),
+            "got: {err}"
+        );
     }
 
     #[test]
