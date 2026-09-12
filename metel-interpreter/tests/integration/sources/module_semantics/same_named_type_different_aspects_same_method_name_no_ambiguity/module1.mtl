@@ -1,0 +1,9 @@
+// metel-core#1136: `module1` and `module2` each declare their own unrelated
+// `Box`, each implementing a different, uniquely-named aspect with a method
+// of the same name. The elaborator's ambiguity map must not conflate them.
+aspect ShownOne { fun show(&self) -> String; }
+struct Box { value: i64 }
+extend Box: ShownOne {
+    fun show(&self) -> String { "module1-box" }
+}
+public fun make1() -> extends ShownOne { Box { value = 1 } }

@@ -101,17 +101,20 @@ fn build_aspect_id_map(
 
 // ── Dispatch map ─────────────────────────────────────────────────────────────
 
-/// Maps `(concrete_type_name, method_name)` → `SymbolId` of the aspect that owns
-/// that method for that type. Keying by receiver type avoids false matches when two
-/// unrelated aspects from different modules both declare a method with the same name.
+/// Maps `(receiver type identity, method_name)` → `SymbolId` of the aspect that owns
+/// that method for that type. The receiver identity is `Some(SymbolId)` for a genuinely
+/// resolved nominal (struct/enum) type, `None` for a primitive (`i64`, `String`,
+/// `boolean`, ...) -- primitives have no name-resolver `SymbolId` at all, but are
+/// unambiguous by bare name since they aren't user-declarable, so name keying stays
+/// correct and necessary for them (metel-core#1136).
 ///
 /// If two distinct aspects define the same method name on the same receiver type,
 /// elaboration rejects the program with T0013 rather than silently picking one.
 fn build_aspect_method_map(
     graph: &TypedModuleGraph,
     names: &ResolvedNames,
-) -> Result<HashMap<(String, String), AspectDispatchOwner>, MetelError> {
-    let mut map: HashMap<(String, String), AspectDispatchOwner> = HashMap::new();
+) -> Result<HashMap<(Option<SymbolId>, String), AspectDispatchOwner>, MetelError> {
+    let mut map: HashMap<(Option<SymbolId>, String), AspectDispatchOwner> = HashMap::new();
     let registry = &graph.type_registry;
 
     for module in &graph.modules {
@@ -123,6 +126,12 @@ fn build_aspect_method_map(
                 let Some(type_name) = type_expr_outer_name(&block.target_type) else {
                     continue;
                 };
+                // The impl block's own target type, resolved strictly from the module
+                // it's declared in (metel-core#1136) -- an impl always names a type
+                // visible in its own declaring module, the same way a written type
+                // annotation always is (#1129's reasoning). `None` for a primitive
+                // (no declaration to resolve), never a fabricated id.
+                let type_id = registry.resolve_type_id(&module.module_path, &type_name);
                 // Resolve the aspect's SymbolId via its declaring module, scoped to the
                 // module this impl block lives in so two same-named aspects from
                 // different modules don't collide (metel-core#989).
@@ -148,7 +157,7 @@ fn build_aspect_method_map(
                         .iter()
                         .any(|declared| declared.name == method.name)
                 }) {
-                    let key = (type_name.clone(), method.name.clone());
+                    let key = (type_id, method.name.clone());
                     let owner = AspectDispatchOwner {
                         aspect_id: id,
                         aspect_name: aspect_name.clone(),
@@ -251,9 +260,10 @@ struct AspectDispatchOwner {
 }
 
 struct DispatchMap<'a> {
-    /// `(concrete_type_name, method_name) → owning aspect`, for ordinary
-    /// per-concrete-type dispatch.
-    methods: HashMap<(String, String), AspectDispatchOwner>,
+    /// `(receiver type identity, method_name) → owning aspect`, for ordinary
+    /// per-concrete-type dispatch. See `build_aspect_method_map`'s doc for the
+    /// key shape (metel-core#1136).
+    methods: HashMap<(Option<SymbolId>, String), AspectDispatchOwner>,
     /// `(declaring_module, aspect_name) → SymbolId`, for `dyn Aspect` dispatch
     /// (RFC-0008 slice 2) — aspect-based by construction, so it never consults
     /// `methods`. Keyed by declaring module so same-named aspects don't collide
@@ -371,7 +381,8 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
                     Type::Dyn { aspect, .. } => resolve_dyn_dispatch(cx, aspect),
                     ty => {
                         let recv_type = receiver_type_name(ty);
-                        resolve_dispatch(recv_type.as_deref(), method, &cx.map.methods)
+                        let recv_id = receiver_type_id(ty, recv_type.as_deref(), cx);
+                        resolve_dispatch(recv_type.as_deref(), recv_id, method, &cx.map.methods)
                     }
                 };
             }
@@ -485,18 +496,40 @@ fn resolve_dyn_dispatch(cx: &ElabCtx<'_>, aspect: &str) -> MethodDispatch {
         })
 }
 
+/// The receiver's own resolved identity for `methods` map lookup (metel-core#1136).
+/// Prefers the receiver's own carried identity (metel-core#1129) over re-deriving
+/// it from the bare name; falls back to a broad, current-module-first resolve
+/// only when no identity rode along, matching the recovery-state convention
+/// `concrete_method_with_id` already uses. `None` for a non-`Named` type (a
+/// primitive, per `receiver_type_name`'s own mapping).
+fn receiver_type_id(ty: &Type, recv_type: Option<&str>, cx: &ElabCtx<'_>) -> Option<SymbolId> {
+    let Type::Named(_, _, id) = ty else {
+        return None;
+    };
+    id.get().or_else(|| {
+        recv_type.and_then(|name| {
+            cx.map
+                .registry
+                .resolve_type_id_broad(cx.current_module, name)
+        })
+    })
+}
+
 /// Resolve dispatch for a single call site.
 /// `recv_type` is `None` when the receiver has no nameable type (array, tuple, fn);
 /// those calls are always `Inherent` since aspects only apply to named types.
+/// `recv_id` is the receiver's own resolved identity when it has a nameable type --
+/// see `build_aspect_method_map`'s doc for what it means (`None` for a primitive).
 fn resolve_dispatch(
     recv_type: Option<&str>,
+    recv_id: Option<SymbolId>,
     method: &str,
-    map: &HashMap<(String, String), AspectDispatchOwner>,
+    map: &HashMap<(Option<SymbolId>, String), AspectDispatchOwner>,
 ) -> MethodDispatch {
-    let Some(type_name) = recv_type else {
+    if recv_type.is_none() {
         return MethodDispatch::Inherent;
-    };
-    match map.get(&(type_name.to_string(), method.to_string())) {
+    }
+    match map.get(&(recv_id, method.to_string())) {
         Some(owner) => MethodDispatch::Aspect {
             aspect_id: owner.aspect_id,
         },
@@ -519,15 +552,15 @@ mod tests {
         }
     }
 
+    const FOO_ID: SymbolId = SymbolId(9001);
+    const BAR_ID: SymbolId = SymbolId(9002);
+
     #[test]
     fn resolve_dispatch_aspect_returns_aspect_variant() {
         let mut map = HashMap::new();
-        map.insert(
-            ("Foo".to_string(), "to_string".to_string()),
-            display_owner(),
-        );
+        map.insert((Some(FOO_ID), "to_string".to_string()), display_owner());
         assert_eq!(
-            resolve_dispatch(Some("Foo"), "to_string", &map),
+            resolve_dispatch(Some("Foo"), Some(FOO_ID), "to_string", &map),
             MethodDispatch::Aspect {
                 aspect_id: SYM_ASPECT_DISPLAY
             }
@@ -537,26 +570,33 @@ mod tests {
     #[test]
     fn resolve_dispatch_wrong_type_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(
-            ("Foo".to_string(), "to_string".to_string()),
-            display_owner(),
-        );
+        map.insert((Some(FOO_ID), "to_string".to_string()), display_owner());
         // Same method name but different receiver type → Inherent, not an aspect call.
         assert_eq!(
-            resolve_dispatch(Some("Bar"), "to_string", &map),
+            resolve_dispatch(Some("Bar"), Some(BAR_ID), "to_string", &map),
             MethodDispatch::Inherent
+        );
+    }
+
+    /// metel-core#1136: two unrelated modules' same-named types (same bare
+    /// `"Foo"` spelling, distinct `SymbolId`s) must not collide.
+    #[test]
+    fn resolve_dispatch_same_bare_name_different_identity_returns_inherent() {
+        let mut map = HashMap::new();
+        map.insert((Some(FOO_ID), "to_string".to_string()), display_owner());
+        assert_eq!(
+            resolve_dispatch(Some("Foo"), Some(BAR_ID), "to_string", &map),
+            MethodDispatch::Inherent,
+            "a different module's same-named type must not match another's registration"
         );
     }
 
     #[test]
     fn resolve_dispatch_no_type_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(
-            ("Foo".to_string(), "to_string".to_string()),
-            display_owner(),
-        );
+        map.insert((Some(FOO_ID), "to_string".to_string()), display_owner());
         assert_eq!(
-            resolve_dispatch(None, "to_string", &map),
+            resolve_dispatch(None, None, "to_string", &map),
             MethodDispatch::Inherent
         );
     }
@@ -565,7 +605,7 @@ mod tests {
     fn resolve_dispatch_unknown_method_returns_inherent() {
         let map = HashMap::new();
         assert_eq!(
-            resolve_dispatch(Some("Foo"), "len", &map),
+            resolve_dispatch(Some("Foo"), Some(FOO_ID), "len", &map),
             MethodDispatch::Inherent
         );
     }
@@ -573,13 +613,25 @@ mod tests {
     #[test]
     fn resolve_dispatch_non_aspect_method_returns_inherent() {
         let mut map = HashMap::new();
-        map.insert(
-            ("Foo".to_string(), "to_string".to_string()),
-            display_owner(),
-        );
+        map.insert((Some(FOO_ID), "to_string".to_string()), display_owner());
         assert_eq!(
-            resolve_dispatch(Some("Foo"), "push", &map),
+            resolve_dispatch(Some("Foo"), Some(FOO_ID), "push", &map),
             MethodDispatch::Inherent
+        );
+    }
+
+    /// metel-core#1136: a primitive receiver (no `SymbolId` at all) still
+    /// dispatches correctly by bare name -- primitives aren't user-declarable,
+    /// so there's no collision risk to guard against for them.
+    #[test]
+    fn resolve_dispatch_primitive_receiver_has_no_identity() {
+        let mut map = HashMap::new();
+        map.insert((None, "to_string".to_string()), display_owner());
+        assert_eq!(
+            resolve_dispatch(Some("i64"), None, "to_string", &map),
+            MethodDispatch::Aspect {
+                aspect_id: SYM_ASPECT_DISPLAY
+            }
         );
     }
 }

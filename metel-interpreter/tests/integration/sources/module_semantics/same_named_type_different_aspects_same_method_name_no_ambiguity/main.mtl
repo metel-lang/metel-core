@@ -1,0 +1,9 @@
+import module1::make1;
+import module2::make2;
+
+fun main() {
+    let a := make1();
+    let b := make2();
+    assert(a.show() == "module1-box");
+    assert(b.show() == "module2-box");
+}
