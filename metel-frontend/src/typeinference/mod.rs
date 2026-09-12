@@ -113,8 +113,10 @@ pub enum InferType {
     Reference(Box<InferType>),
     /// A mutable pointer type.
     MutReference(Box<InferType>),
-    /// A named type (struct, enum) with type arguments.
-    Named(String, Vec<InferType>),
+    /// A named type (struct, enum) with type arguments. The third field is the
+    /// resolved declaration identity (metel-core#1129) -- see
+    /// [`crate::types::NominalId`]'s doc for why it is excluded from equality.
+    Named(String, Vec<InferType>, crate::types::NominalId),
     /// A narrowed residual of a struct's own row (RFC-0137, metel-core#857/#836) --
     /// mirrors `Type::Residual`; see that variant's doc comment for the invariants
     /// (`fields` lexicographically sorted, always a strict non-empty subset of the
@@ -227,7 +229,7 @@ impl std::fmt::Display for InferType {
             InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             InferType::Reference(t) => write!(f, "&{t}"),
             InferType::MutReference(t) => write!(f, "&var {t}"),
-            InferType::Named(name, args) => {
+            InferType::Named(name, args, ..) => {
                 write!(f, "{name}")?;
                 if !args.is_empty() {
                     write!(f, "<")?;
@@ -344,7 +346,7 @@ fn collect_free_vars_in_order(
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => collect_free_vars_in_order(t, known, local, next),
-        InferType::Named(_, args)
+        InferType::Named(_, args, ..)
         | InferType::Dyn {
             type_args: args, ..
         } => {
@@ -405,7 +407,7 @@ fn render_with_names(
         InferType::SizedArray(t, n) => format!("[{}; {n}]", render_with_names(t, known, local)),
         InferType::Reference(t) => format!("&{}", render_with_names(t, known, local)),
         InferType::MutReference(t) => format!("&var {}", render_with_names(t, known, local)),
-        InferType::Named(name, args) if !args.is_empty() => format!(
+        InferType::Named(name, args, ..) if !args.is_empty() => format!(
             "{name}<{}>",
             args.iter()
                 .map(|a| render_with_names(a, known, local))
@@ -545,9 +547,11 @@ impl Substitution {
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
             InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
             InferType::MutReference(t) => InferType::MutReference(Box::new(self.apply(t))),
-            InferType::Named(name, args) => {
-                InferType::Named(name.clone(), args.iter().map(|a| self.apply(a)).collect())
-            }
+            InferType::Named(name, args, id) => InferType::Named(
+                name.clone(),
+                args.iter().map(|a| self.apply(a)).collect(),
+                id.clone(),
+            ),
             InferType::Residual { brand, fields } => InferType::Residual {
                 brand: brand.clone(),
                 fields: fields
@@ -648,7 +652,7 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => occurs_in(var, t),
-        InferType::Named(_, args) => args.iter().any(|a| occurs_in(var, a)),
+        InferType::Named(_, args, ..) => args.iter().any(|a| occurs_in(var, a)),
         InferType::Residual { fields, .. } => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
         InferType::Dyn { type_args, .. } => type_args.iter().any(|a| occurs_in(var, a)),
     }
@@ -760,7 +764,7 @@ fn nested_fun_axes_match_at(a: &InferType, b: &InferType, fun_depth: usize) -> b
         )
         | (InferType::Reference(a), InferType::Reference(b))
         | (InferType::MutReference(a), InferType::MutReference(b)) => same(a, b),
-        (InferType::Named(an, as_), InferType::Named(bn, bs)) => {
+        (InferType::Named(an, as_, ..), InferType::Named(bn, bs, ..)) => {
             an == bn && as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| same(a, b))
         }
         (
@@ -806,7 +810,7 @@ fn contains_type_var(ty: &InferType) -> bool {
         | InferType::SizedArray(item, _)
         | InferType::Reference(item)
         | InferType::MutReference(item) => contains_type_var(item),
-        InferType::Named(_, args)
+        InferType::Named(_, args, ..)
         | InferType::Dyn {
             type_args: args, ..
         } => args.iter().any(contains_type_var),
@@ -917,7 +921,7 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             unify_seq(&mut subst, t1, t2)?;
             Ok(subst)
         }
-        (InferType::Named(n1, args1), InferType::Named(n2, args2)) => {
+        (InferType::Named(n1, args1, ..), InferType::Named(n2, args2, ..)) => {
             if n1 != n2 || args1.len() != args2.len() {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
@@ -1011,8 +1015,8 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         // brand it came from, or a wider residual of it, is a partially-moved
         // value used where more of it is required. Name that specifically rather
         // than as a bare structural mismatch.
-        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, _))
-        | (InferType::Named(nb, _), InferType::Residual { brand: rb, fields })
+        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, ..))
+        | (InferType::Named(nb, ..), InferType::Residual { brand: rb, fields })
             if rb == nb =>
         {
             let row = fields
@@ -1159,8 +1163,8 @@ fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String>
             .join(", ")
     };
     match (a, b) {
-        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, _))
-        | (InferType::Named(nb, _), InferType::Residual { brand: rb, fields })
+        (InferType::Residual { brand: rb, fields }, InferType::Named(nb, ..))
+        | (InferType::Named(nb, ..), InferType::Residual { brand: rb, fields })
             if rb == nb =>
         {
             Some(format!(
@@ -1355,11 +1359,11 @@ pub(crate) fn singleton_coerce_field_ty(
     actual: &InferType,
 ) -> Option<InferType> {
     let (name, args): (&str, Vec<InferType>) = match actual {
-        InferType::Concrete(Type::Named(n, targs)) => (
+        InferType::Concrete(Type::Named(n, targs, ..)) => (
             n.as_str(),
             targs.iter().cloned().map(InferType::Concrete).collect(),
         ),
-        InferType::Named(n, targs) => (n.as_str(), targs.clone()),
+        InferType::Named(n, targs, ..) => (n.as_str(), targs.clone()),
         _ => return None,
     };
     let enum_info = registry.enum_info_by_decl_name(name)?;
@@ -1455,7 +1459,9 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
             }
             collect_free_vars(ret, vars);
         }
-        InferType::Tuple(ts) | InferType::Named(_, ts) | InferType::Dyn { type_args: ts, .. } => {
+        InferType::Tuple(ts)
+        | InferType::Named(_, ts, ..)
+        | InferType::Dyn { type_args: ts, .. } => {
             for t in ts {
                 collect_free_vars(t, vars);
             }
@@ -2012,7 +2018,7 @@ pub(crate) enum VisibleTypeKind {
 /// becomes `InferType::Named` with embedded arguments, so that one canonical
 /// shape exists for each type regardless of which side it came from. The
 /// aspect-satisfaction query below relies on that — it matches on
-/// `InferType::Named`, and would miss a `Concrete(Type::Named(..))`.
+/// `InferType::Named`, and would miss a `Concrete(Type::Named(.., ..))`.
 #[must_use]
 pub fn type_to_infer(ty: &Type) -> InferType {
     match ty {
@@ -2035,9 +2041,11 @@ pub fn type_to_infer(ty: &Type) -> InferType {
             *use_mult,
             *call_mutation,
         ),
-        Type::Named(n, args) => {
-            InferType::Named(n.clone(), args.iter().map(type_to_infer).collect())
-        }
+        Type::Named(n, args, id) => InferType::Named(
+            n.clone(),
+            args.iter().map(type_to_infer).collect(),
+            id.clone(),
+        ),
         other => InferType::Concrete(other.clone()),
     }
 }
@@ -3140,7 +3148,7 @@ impl TypeDefinitionRegistry {
                 .get(var)
                 .is_some_and(|assumed| assumed.contains(aspect_name));
         }
-        if let InferType::Named(name, args) = ty {
+        if let InferType::Named(name, args, ..) = ty {
             if args.is_empty()
                 && self
                     .symbolic_named_aspects
@@ -3262,20 +3270,30 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
-            InferType::Named(name, inner_args) => {
+            InferType::Named(name, inner_args, id) => {
                 let name = name.as_str();
+                // metel-core#1129: prefer the type's own carried identity when
+                // one is available -- populated from a source annotation
+                // resolved in its own declaring module (`conversions.rs`), or
+                // from a runtime value's own `type_id` (`value_to_type`). That
+                // is a known-correct answer, not a guess, so it takes priority
+                // over any name-based resolution below.
+                //
                 // metel-core#1125: a generic body reconstructed at call time
                 // (`construct_generic_body`) is bound-checked against its
                 // *own* declaring module (so a literal name written in the
                 // body still resolves lexically -- metel-core#1120), but a
                 // substituted type argument can come from any calling
-                // module. Aspect impls are a global coherence fact once a
-                // concrete type's identity is known, so resolution here
-                // falls back to the bare-name index (`resolve_type_key_broad`,
-                // the same "no reliable module context" fallback
-                // `resolve_type_key_broad`'s other callers already use) when
-                // the declaring module can't name it directly.
-                if let Some(target_id) = self.resolve_type_key_broad(current_module, name) {
+                // module. When no carried identity is available, aspect
+                // impls are still a global coherence fact once *some*
+                // identity is known, so resolution falls back to the
+                // bare-name index (`resolve_type_key_broad`, the same "no
+                // reliable module context" fallback `resolve_type_key_broad`'s
+                // other callers already use) -- a guess, unlike the carried
+                // id above, and the reason metel-core#1129 exists: prefer
+                // populating the id over relying on this fallback.
+                let target_id_by_name = || self.resolve_type_key_broad(current_module, name);
+                if let Some(target_id) = id.get().or_else(target_id_by_name) {
                     if let Some(entries) = self
                         .neg_conditional_impl_bounds
                         .get(&(target_id, aspect_name.to_string()))
@@ -3295,11 +3313,12 @@ impl TypeDefinitionRegistry {
                     if self.neg_impl_overrides(target_id, aspect_name, inner_args) {
                         return false;
                     }
-                }
-                if self.impl_aspect_env_has(current_module, name, aspect_name) {
-                    return true;
-                }
-                if let Some(target_id) = self.resolve_type_key_broad(current_module, name) {
+                    if self
+                        .impl_aspect_env
+                        .contains_key(&(target_id, aspect_name.to_string()))
+                    {
+                        return true;
+                    }
                     if let Some(entries) = self
                         .conditional_impl_bounds
                         .get(&(target_id, aspect_name.to_string()))

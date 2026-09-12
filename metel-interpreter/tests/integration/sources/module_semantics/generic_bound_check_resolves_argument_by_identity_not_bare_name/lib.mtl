@@ -1,0 +1,6 @@
+public aspect Mark {
+    fun mark(self) -> i64;
+}
+public fun use_it<T: Mark>(x: T) -> i64 {
+    x.mark()
+}

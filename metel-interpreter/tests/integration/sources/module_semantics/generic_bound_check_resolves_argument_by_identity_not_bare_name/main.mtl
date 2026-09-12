@@ -1,0 +1,8 @@
+import data::make;
+import decoy::Box as DecoyBox;
+import lib::use_it;
+
+fun main() {
+    let b := make();
+    assert(use_it(b) == 1);
+}

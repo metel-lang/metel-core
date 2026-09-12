@@ -21,7 +21,9 @@ pub(super) fn infer_match(
     // `infer_pattern`'s two-segment path assertion, and a bare no-field variant
     // (`Red`) is typed as the variant rather than a spurious binding.
     let scrutinee_named_ty = match &scrutinee_ty {
-        InferType::Named(name, _) | InferType::Concrete(Type::Named(name, _)) => Some(name.clone()),
+        InferType::Named(name, ..) | InferType::Concrete(Type::Named(name, ..)) => {
+            Some(name.clone())
+        }
         _ => None,
     };
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> =
@@ -295,7 +297,7 @@ pub(super) fn pattern_span(pattern: &Pattern) -> &Span {
 
 pub(super) fn named_type_name(ty: &InferType) -> Option<String> {
     match ty {
-        InferType::Named(name, _) => Some(name.clone()),
+        InferType::Named(name, ..) => Some(name.clone()),
         InferType::Reference(inner) | InferType::MutReference(inner) => named_type_name(inner),
         InferType::Concrete(c) => primitive_type_name(c),
         _ => None,

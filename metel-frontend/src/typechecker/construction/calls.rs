@@ -866,7 +866,7 @@ pub(super) fn check_fun_call_assoc_eq(
             };
             let expected_ty = match expected_subst {
                 InferType::Concrete(t) => t,
-                InferType::Named(n, _) => Type::Named(n, vec![]),
+                InferType::Named(n, ..) => Type::Named(n, vec![], crate::types::NominalId::NONE),
                 _ => continue,
             };
             if *actual_ty != expected_ty {
@@ -926,7 +926,7 @@ pub(super) fn check_scheme_assoc_eq(
             };
             let expected_ty = match expected_subst {
                 InferType::Concrete(t) => t,
-                InferType::Named(n, _) => Type::Named(n, vec![]),
+                InferType::Named(n, ..) => Type::Named(n, vec![], crate::types::NominalId::NONE),
                 _ => continue,
             };
             if *actual_ty != expected_ty {
@@ -1000,7 +1000,7 @@ pub(super) fn check_record_kind_requirement(
     }
     match concrete {
         Type::Record(_) => Ok(()),
-        Type::Named(name, _) => {
+        Type::Named(name, ..) => {
             let message = match registry.visible_type_kind(current_module, name) {
                 Some(crate::typeinference::VisibleTypeKind::Struct) => format!(
                     "`{name}` is a struct, but a struct never satisfies a row bound; conversion to a record is not available in this release"
@@ -1164,7 +1164,7 @@ pub(super) fn check_type_satisfies_bounds(
     }
 
     let type_name = match concrete {
-        Type::Named(n, _) => n.clone(),
+        Type::Named(n, ..) => n.clone(),
         Type::Array(elem) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
@@ -1309,7 +1309,7 @@ pub(super) fn check_type_does_not_satisfy_bound(
     // aspect they do end up satisfying, without changing today's behavior for
     // either shape.
     let type_name = match concrete {
-        Type::Named(n, _) => n.clone(),
+        Type::Named(n, ..) => n.clone(),
         Type::Array(_)
         | Type::SizedArray(_, _)
         | Type::Tuple(_)
@@ -1453,7 +1453,7 @@ pub(super) fn instantiate_scheme_for_call(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base)) {
             if let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
             {
@@ -1531,7 +1531,7 @@ pub(super) fn instantiate_scheme_with_turbofish(
     // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
     for proj in scheme.assoc_projections.iter().flatten() {
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
-        if let Some(Type::Named(base_name, _)) =
+        if let Some(Type::Named(base_name, ..)) =
             var_to_concrete.get(&scheme.quantified_vars[*base_pos])
         {
             if let Some(concrete_ty) =
@@ -1594,7 +1594,7 @@ pub(super) fn instantiate_scheme_with_expected_ret(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, _) = subst.apply(&InferType::Var(fresh_base)) {
+        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base)) {
             if let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
             {

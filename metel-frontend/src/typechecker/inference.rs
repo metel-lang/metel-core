@@ -125,8 +125,8 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
                     ctx.solve_restore(checkpoint);
                 }
                 if let Ok(solved) = solved {
-                    if let InferType::Named(concrete_name, _)
-                    | InferType::Concrete(Type::Named(concrete_name, _)) =
+                    if let InferType::Named(concrete_name, ..)
+                    | InferType::Concrete(Type::Named(concrete_name, ..)) =
                         solved.apply(&InferType::Var(base_tv))
                     {
                         let assoc_ctx = AssocResolveCtx {
@@ -330,11 +330,11 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
         InferType::MutReference(item) => {
             infer_type_to_concrete_if_closed(item).map(|item| Type::MutReference(Box::new(item)))
         }
-        InferType::Named(name, args) => args
+        InferType::Named(name, args, ..) => args
             .iter()
             .map(infer_type_to_concrete_if_closed)
             .collect::<Option<Vec<_>>>()
-            .map(|args| Type::Named(name.clone(), args)),
+            .map(|args| Type::Named(name.clone(), args, crate::types::NominalId::NONE)),
         InferType::Dyn { aspect, type_args } => type_args
             .iter()
             .map(infer_type_to_concrete_if_closed)
@@ -433,9 +433,11 @@ fn substitute_impl_params(
         InferType::SizedArray(item, size) => InferType::SizedArray(Box::new(go(item)), *size),
         InferType::Reference(item) => InferType::Reference(Box::new(go(item))),
         InferType::MutReference(item) => InferType::MutReference(Box::new(go(item))),
-        InferType::Named(name, args) => {
-            InferType::Named(name.clone(), args.iter().map(go).collect())
-        }
+        InferType::Named(name, args, ..) => InferType::Named(
+            name.clone(),
+            args.iter().map(go).collect(),
+            crate::types::NominalId::NONE,
+        ),
         InferType::Fun(ps, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             ps.iter().map(go).collect(),
             Box::new(go(ret)),
@@ -470,9 +472,11 @@ fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
     }
     let go = |t: &TypeExpr| type_expr_as_infer(t, params);
     match ty {
-        TypeExpr::Named(name, args) => {
-            InferType::Named(name.clone(), args.iter().map(go).collect())
-        }
+        TypeExpr::Named(name, args) => InferType::Named(
+            name.clone(),
+            args.iter().map(go).collect(),
+            crate::types::NominalId::NONE,
+        ),
         TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => InferType::Record(
             fields
@@ -502,7 +506,7 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
             .iter()
             .find(|p| p.var == *var)
             .map_or_else(|| ty.to_string(), |p| p.name.clone()),
-        InferType::Named(name, args) if !args.is_empty() => {
+        InferType::Named(name, args, ..) if !args.is_empty() => {
             let rendered: Vec<String> = args.iter().map(|a| display_type(a, params)).collect();
             format!("{name}<{}>", rendered.join(", "))
         }
@@ -704,7 +708,11 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                                         }
                                     }
                                 }
-                                return InferType::Named(format!("{n}::{assoc_name}"), vec![]);
+                                return InferType::Named(
+                                    format!("{n}::{assoc_name}"),
+                                    vec![],
+                                    crate::types::NominalId::NONE,
+                                );
                             }
                         }
                     }
@@ -954,12 +962,14 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             } else if let Some(prim) = primitive_type_from_name(name) {
                 InferType::Concrete(prim)
             } else {
-                InferType::Named(name.clone(), vec![])
+                InferType::Named(name.clone(), vec![], crate::types::NominalId::NONE)
             }
         }
-        TypeExpr::Named(name, args) => {
-            InferType::Named(name.clone(), args.iter().map(go).collect())
-        }
+        TypeExpr::Named(name, args) => InferType::Named(
+            name.clone(),
+            args.iter().map(go).collect(),
+            crate::types::NominalId::NONE,
+        ),
         TypeExpr::Unit => InferType::unit(),
         TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => InferType::Record(
@@ -996,11 +1006,16 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
                 }
             }
             let base_ty = go(base);
-            InferType::Named(format!("{base_ty:?}::{assoc_name}"), vec![])
+            InferType::Named(
+                format!("{base_ty:?}::{assoc_name}"),
+                vec![],
+                crate::types::NominalId::NONE,
+            )
         }
         TypeExpr::RecordProjection { path, fields, .. } => InferType::Named(
             format!("{}.{{ {} }}", path.join("::"), fields.join(", ")),
             vec![],
+            crate::types::NominalId::NONE,
         ),
         TypeExpr::DynAspect { bound, .. } => {
             let TypeExpr::Named(aspect, args) = bound.as_ref() else {
@@ -1471,6 +1486,7 @@ fn infer_binop(
             Ok(InferType::Named(
                 "Range".to_string(),
                 vec![InferType::int()],
+                crate::types::NominalId::NONE,
             ))
         }
     }
@@ -1490,6 +1506,7 @@ fn infer_propagate_error(
         InferType::Named(
             "Result".to_string(),
             vec![ok_ty.clone(), source_err_ty.clone()],
+            crate::types::NominalId::NONE,
         ),
         span.clone(),
     );
@@ -1509,6 +1526,7 @@ fn infer_propagate_error(
         InferType::Named(
             "Result".to_string(),
             vec![target_ok_ty, target_err_ty.clone()],
+            crate::types::NominalId::NONE,
         ),
         span.clone(),
     );
@@ -1813,7 +1831,11 @@ fn infer_enum_variant_literal(
         .iter()
         .map(|tp| remap[tp].clone())
         .collect();
-    Ok(InferType::Named(enum_name.to_string(), type_args))
+    Ok(InferType::Named(
+        enum_name.to_string(),
+        type_args,
+        crate::types::NominalId::NONE,
+    ))
 }
 
 fn infer_struct_literal(
@@ -1907,7 +1929,11 @@ fn infer_struct_literal(
         .iter()
         .map(|tp| remap[tp].clone())
         .collect();
-    Ok(InferType::Named(struct_name, type_args))
+    Ok(InferType::Named(
+        struct_name,
+        type_args,
+        crate::types::NominalId::NONE,
+    ))
 }
 
 /// Walk an lvalue chain to the root identifier for mutability checking.
@@ -2000,9 +2026,9 @@ fn infer_field_assign_type(
         )
     })?;
     let type_args = match &obj_ty {
-        InferType::Named(_, args) => args.clone(),
+        InferType::Named(_, args, ..) => args.clone(),
         InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
-            InferType::Named(_, args) => args.clone(),
+            InferType::Named(_, args, ..) => args.clone(),
             _ => vec![],
         },
         _ => vec![],
@@ -2136,7 +2162,11 @@ fn infer_enum_variant_pattern(
         .collect();
     ctx.add_constraint(
         scrutinee_ty.clone(),
-        InferType::Named(enum_name.to_string(), type_args),
+        InferType::Named(
+            enum_name.to_string(),
+            type_args,
+            crate::types::NominalId::NONE,
+        ),
         pat_span.clone(),
     );
     for field_name in fields {
@@ -2208,7 +2238,11 @@ fn infer_struct_pattern(
     let type_args: Vec<InferType> = type_params.iter().map(|tp| remap[tp].clone()).collect();
     ctx.add_constraint(
         scrutinee_ty.clone(),
-        InferType::Named(struct_name.to_string(), type_args),
+        InferType::Named(
+            struct_name.to_string(),
+            type_args,
+            crate::types::NominalId::NONE,
+        ),
         pat_span.clone(),
     );
     for field_name in fields {
@@ -2262,7 +2296,11 @@ fn infer_struct_pattern(
 fn infer_to_type_for_from(ty: &InferType) -> Option<Type> {
     match ty {
         InferType::Concrete(t) => Some(t.clone()),
-        InferType::Named(name, _) => Some(Type::Named(name.clone(), vec![])),
+        InferType::Named(name, ..) => Some(Type::Named(
+            name.clone(),
+            vec![],
+            crate::types::NominalId::NONE,
+        )),
         _ => None,
     }
 }
@@ -2283,7 +2321,7 @@ fn infer_type_name(ty: &InferType) -> Option<&str> {
         InferType::Concrete(Type::U32) => Some("u32"),
         InferType::Concrete(Type::U64) => Some("u64"),
         InferType::Concrete(Type::F32) => Some("f32"),
-        InferType::Named(name, _) => Some(name.as_str()),
+        InferType::Named(name, ..) => Some(name.as_str()),
         _ => None,
     }
 }

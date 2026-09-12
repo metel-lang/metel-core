@@ -217,7 +217,7 @@ fn peel_reference(ty: &Type) -> &Type {
 /// (arrays, tuples, fn pointers) that don't have a named registry entry.
 fn receiver_type_name(ty: &Type) -> Option<String> {
     match ty {
-        Type::Named(name, _) => Some(name.clone()),
+        Type::Named(name, ..) => Some(name.clone()),
         Type::Boolean => Some("boolean".to_string()),
         Type::Str => Some("String".to_string()),
         Type::Char => Some("Char".to_string()),

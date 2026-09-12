@@ -385,9 +385,23 @@ impl<'a> ConstructCtx<'a> {
     /// that came from the call site instead (see `resolve_type_id_broad`'s
     /// doc).
     fn concrete_method(&self, type_name: &str, method_name: &str) -> Option<&Type> {
-        let owner = self
-            .registry
-            .resolve_type_id_broad(self.current_module, type_name)?;
+        self.concrete_method_with_id(type_name, None, method_name)
+    }
+
+    /// Like [`concrete_method`](Self::concrete_method), but takes the
+    /// receiver type's own carried identity (metel-core#1129) when the
+    /// caller has one -- e.g. from a `Type::Named`'s own third field --
+    /// instead of always re-deriving it from the bare name.
+    fn concrete_method_with_id(
+        &self,
+        type_name: &str,
+        known_id: Option<SymbolId>,
+        method_name: &str,
+    ) -> Option<&Type> {
+        let owner = known_id.or_else(|| {
+            self.registry
+                .resolve_type_id_broad(self.current_module, type_name)
+        })?;
         self.method_env.get(&owner)?.get(method_name)
     }
 
@@ -401,7 +415,7 @@ impl<'a> ConstructCtx<'a> {
     /// a fabricated id.
     fn field_id_for(&self, object_ty: &Type, field: &str) -> Option<FieldId> {
         let members = self.identity?.members;
-        let Type::Named(name, _) = peel_type_references(object_ty) else {
+        let Type::Named(name, ..) = peel_type_references(object_ty) else {
             return None;
         };
         let owner = self.registry.resolve_type_id(self.current_module, name)?;
@@ -580,7 +594,7 @@ fn resolve_expected_enum<'a>(
         )
     })?;
     match expected_ty {
-        Type::Named(enum_name, _) => {
+        Type::Named(enum_name, ..) => {
             let enum_info = ctx
                 .registry
                 .enum_info(ctx.current_module, enum_name)
@@ -735,6 +749,7 @@ pub(super) fn symbolic_aspect_method_type(
             InferType::Named(
                 format!("__metel_move_check_method_generic_{}", generic.name),
                 Vec::new(),
+                crate::types::NominalId::NONE,
             ),
         );
     }
@@ -763,7 +778,11 @@ pub(super) fn symbolic_aspect_method_scheme(
         .iter()
         .map(|param| {
             if param.receiver.is_some() || param.name == "self" {
-                Some(InferType::Named(placeholder.to_string(), Vec::new()))
+                Some(InferType::Named(
+                    placeholder.to_string(),
+                    Vec::new(),
+                    crate::types::NominalId::NONE,
+                ))
             } else {
                 param.type_ann.as_ref().map(|ann| {
                     super::conversions::type_expr_to_infer_with_assoc_ctx(
@@ -1367,7 +1386,11 @@ fn construct_binop(
             Type::Boolean
         }
         BinOp::And | BinOp::Or => Type::Boolean,
-        BinOp::Range | BinOp::RangeInclusive => Type::Named("Range".to_string(), vec![Type::I64]),
+        BinOp::Range | BinOp::RangeInclusive => Type::Named(
+            "Range".to_string(),
+            vec![Type::I64],
+            crate::types::NominalId::NONE,
+        ),
     };
     Ok(TypedExpr::BinOp(
         Box::new(lhs),
@@ -1415,7 +1438,7 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
                 call_mutation: *call_mutation,
             }
         }
-        Type::Named(name, args) => {
+        Type::Named(name, args, ..) => {
             TypeExpr::Named(name.clone(), args.iter().map(type_to_type_expr).collect())
         }
         Type::Residual { brand, fields } => TypeExpr::RecordProjection {
@@ -1468,7 +1491,7 @@ fn construct_propagate_error(
     let local_id = ctx.local_binding_at(span);
     let scrutinee = construct_expr(expr, None, ctx)?;
     let (ok_ty, source_err_ty) = match scrutinee.ty() {
-        Type::Named(name, args) if name == "Result" && args.len() == 2 => {
+        Type::Named(name, args, ..) if name == "Result" && args.len() == 2 => {
             (args[0].clone(), args[1].clone())
         }
         other => {
@@ -1488,7 +1511,7 @@ fn construct_propagate_error(
         )
     })?;
     let target_err_ty = match &return_ty {
-        Type::Named(name, args) if name == "Result" && args.len() == 2 => args[1].clone(),
+        Type::Named(name, args, ..) if name == "Result" && args.len() == 2 => args[1].clone(),
         other => {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0005,
@@ -1771,7 +1794,7 @@ fn maybe_singleton_coerce(
     if &actual_ty == expected {
         return Ok(actual);
     }
-    let Type::Named(name, type_args) = &actual_ty else {
+    let Type::Named(name, type_args, ..) = &actual_ty else {
         return Ok(actual);
     };
     let Some(enum_info) = registry.enum_info_by_decl_name(name) else {
@@ -2202,7 +2225,7 @@ fn typed_place_field_ty(
                     field_span,
                 )
             }),
-        Type::Named(struct_name, type_args) => {
+        Type::Named(struct_name, type_args, ..) => {
             let struct_id = ctx
                 .registry
                 .resolve_type_id(ctx.current_module, struct_name);

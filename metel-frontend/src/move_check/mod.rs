@@ -82,7 +82,7 @@ pub(crate) fn type_bucket(ty: &Type) -> String {
         Type::Reference(_) => "&T".to_string(),
         Type::MutReference(_) => "&var T".to_string(),
         Type::Fun(..) => "fun".to_string(),
-        Type::Named(name, _) => format!("named:{}", name.rsplit("::").next().unwrap_or(name)),
+        Type::Named(name, ..) => format!("named:{}", name.rsplit("::").next().unwrap_or(name)),
         other => format!("other:{other}"),
     }
 }
@@ -312,10 +312,11 @@ impl<'a> Checker<'a> {
                 // local, checker-only view, not a change to what the rest of the
                 // typechecker believes.
                 let self_ty = match &ib.target_type {
-                    crate::ast::TypeExpr::Named(name, _) => Some(
-                        primitive_type_from_name(name)
-                            .unwrap_or_else(|| Type::Named(name.clone(), vec![])),
-                    ),
+                    crate::ast::TypeExpr::Named(name, _) => {
+                        Some(primitive_type_from_name(name).unwrap_or_else(|| {
+                            Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
+                        }))
+                    }
                     _ => None,
                 };
                 for method in &ib.methods {
@@ -509,7 +510,11 @@ impl<'a> Checker<'a> {
         let mut named_samples = HashMap::new();
         for (index, var) in scheme.quantified_vars.iter().enumerate() {
             let placeholder = generic_placeholder_name(*var);
-            let sample = Type::Named(placeholder.clone(), Vec::new());
+            let sample = Type::Named(
+                placeholder.clone(),
+                Vec::new(),
+                crate::types::NominalId::NONE,
+            );
             if let Some(name) = scheme.param_names.get(index) {
                 named_samples.insert(name.clone(), type_to_infer(&sample));
             }
@@ -1662,7 +1667,7 @@ impl<'a> Checker<'a> {
                 .registry
                 .type_satisfies_aspect(current_module, ty, aspect_name);
         };
-        if let Type::Named(name, args) = peel_type_references(ty) {
+        if let Type::Named(name, args, ..) = peel_type_references(ty) {
             if args.is_empty()
                 && generic_env
                     .symbolic_aspects
@@ -1761,7 +1766,7 @@ impl<'a> Checker<'a> {
                     .iter()
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
-                Type::Named(name, args) => {
+                Type::Named(name, args, ..) => {
                     let (type_id, _resolved_name, fields) = self
                         .registry
                         .projection_struct_fields(current_module, name)?;
@@ -1838,7 +1843,7 @@ impl<'a> Checker<'a> {
         }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self.registry.array_method_receiver_kind(method).cloned(),
-            Type::Named(name, _) => self
+            Type::Named(name, ..) => self
                 .registry
                 .method_receiver_kind(current_module, name, method)
                 .cloned(),
@@ -1874,7 +1879,7 @@ impl<'a> Checker<'a> {
                 .registry
                 .array_method_type(method)
                 .and_then(infer_method_arg_types),
-            Type::Named(name, _) => self
+            Type::Named(name, ..) => self
                 .registry
                 .method_type(current_module, name, method)
                 .and_then(infer_method_arg_types),
@@ -1897,7 +1902,7 @@ impl<'a> Checker<'a> {
         receiver_ty: &Type,
         method: &str,
     ) -> Option<(String, crate::ast::AspectMethod, String)> {
-        let Type::Named(placeholder, args) = peel_type_references(receiver_ty) else {
+        let Type::Named(placeholder, args, ..) = peel_type_references(receiver_ty) else {
             return None;
         };
         if !args.is_empty() {
@@ -2165,15 +2170,16 @@ fn substitute_named_generics(
     named_samples: &HashMap<String, InferType>,
 ) -> InferType {
     match ty {
-        InferType::Named(name, args) if args.is_empty() => named_samples
+        InferType::Named(name, args, ..) if args.is_empty() => named_samples
             .get(name)
             .cloned()
             .unwrap_or_else(|| ty.clone()),
-        InferType::Named(name, args) => InferType::Named(
+        InferType::Named(name, args, ..) => InferType::Named(
             name.clone(),
             args.iter()
                 .map(|arg| substitute_named_generics(arg, named_samples))
                 .collect(),
+            crate::types::NominalId::NONE,
         ),
         InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
             params
@@ -2300,7 +2306,7 @@ fn type_to_infer_under_generic_env(
             *use_mult,
             *call_mutation,
         ),
-        Type::Named(name, args) => {
+        Type::Named(name, args, ..) => {
             if args.is_empty() {
                 if let Some(var) = placeholders.get(name) {
                     return InferType::Var(*var);
@@ -2311,6 +2317,7 @@ fn type_to_infer_under_generic_env(
                 args.iter()
                     .map(|arg| type_to_infer_under_generic_env(arg, placeholders))
                     .collect(),
+                crate::types::NominalId::NONE,
             )
         }
         Type::Residual { brand, fields } => InferType::Residual {
@@ -2391,9 +2398,10 @@ fn infer_to_type(ty: &crate::typeinference::InferType) -> Option<Type> {
             *use_mult,
             *call_mutation,
         )),
-        InferType::Named(name, args) => Some(Type::Named(
+        InferType::Named(name, args, ..) => Some(Type::Named(
             name.clone(),
             args.iter().map(infer_to_type).collect::<Option<Vec<_>>>()?,
+            crate::types::NominalId::NONE,
         )),
         InferType::Residual { brand, fields } => Some(Type::Residual {
             brand: brand.clone(),
@@ -2428,7 +2436,7 @@ fn peel_type_references(ty: &Type) -> &Type {
 /// reachable from this module) — a `self` receiver's target name needs the same
 /// primitive-name resolution an ordinary parameter's type annotation would get, so
 /// `extend i64 { fun ...(&self) ... }`'s `self` is correctly typed `&i64`
-/// (`Type::I64`) rather than the wrong `Type::Named("i64", [])`, which would dodge
+/// (`Type::I64`) rather than the wrong `Type::Named("i64", [], ..)`, which would dodge
 /// `is_copy`'s primitive recognition and produce a false positive.
 fn primitive_type_from_name(name: &str) -> Option<Type> {
     let ty = match name {
@@ -3718,7 +3726,11 @@ fun main() {
 
     #[test]
     fn named_with_an_unresolved_argument_converts_to_none_not_fewer_arguments() {
-        let ty = InferType::Named("Holder".to_string(), vec![var(), concrete()]);
+        let ty = InferType::Named(
+            "Holder".to_string(),
+            vec![var(), concrete()],
+            crate::types::NominalId::NONE,
+        );
         assert_eq!(infer_to_type(&ty), None);
     }
 

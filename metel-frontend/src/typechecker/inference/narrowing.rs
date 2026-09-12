@@ -41,7 +41,7 @@ impl InferContext {
         }
         match declared {
             // A branded struct value narrows to a same-brand residual (RFC-0137).
-            InferType::Named(brand, args) => {
+            InferType::Named(brand, args, ..) => {
                 let row = self.resolve_infer_struct_row(brand, args)?;
                 filter_row(brand.clone(), &row, &moved_labels, Some(row.len()))
             }
@@ -153,7 +153,7 @@ impl InferContext {
             return;
         };
         let leaf_ty = match &root_ty {
-            InferType::Named(brand, args) => {
+            InferType::Named(brand, args, ..) => {
                 let Some(l) = label.as_ref() else { return };
                 let Some(row) = self.resolve_infer_struct_row(brand, args) else {
                     return;
@@ -268,7 +268,7 @@ fn infer_type_has_var(ty: &InferType) -> bool {
         | InferType::Array(inner)
         | InferType::SizedArray(inner, _) => infer_type_has_var(inner),
         InferType::Tuple(items) => items.iter().any(infer_type_has_var),
-        InferType::Named(_, args)
+        InferType::Named(_, args, ..)
         | InferType::Dyn {
             type_args: args, ..
         } => args.iter().any(infer_type_has_var),

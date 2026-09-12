@@ -46,7 +46,7 @@ pub(super) enum ReceiverBinding {
 fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
     use crate::types::Type;
     match ty {
-        Type::Named(name, _) => Some(name.as_str()),
+        Type::Named(name, ..) => Some(name.as_str()),
         Type::Reference(inner) | Type::MutReference(inner) => receiver_type_name(inner),
         _ => None,
     }

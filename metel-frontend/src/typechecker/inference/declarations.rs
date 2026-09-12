@@ -321,7 +321,7 @@ pub(super) fn infer_decl(
                                             // check via the registry's impl_aspect_env.
                                             let concrete_name = match &concrete_infer {
                                                 InferType::Concrete(t) => Some(format!("{t}")),
-                                                InferType::Named(n, _) => Some(n.clone()),
+                                                InferType::Named(n, ..) => Some(n.clone()),
                                                 _ => None,
                                             };
                                             if let Some(name) = concrete_name {
@@ -634,7 +634,11 @@ pub(super) fn infer_fun_decl(
                         ));
                     }
                     // Fallback: named placeholder
-                    return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
+                    return Ok(InferType::Named(
+                        format!("{n}::{assoc_name}"),
+                        vec![],
+                        crate::types::NominalId::NONE,
+                    ));
                 }
             }
         }
@@ -765,7 +769,7 @@ pub(super) fn infer_fun_decl(
                 // can name the concrete type here, which is correct (the callee
                 // returns the same value the caller handed in).
             }
-            InferType::Concrete(_) | InferType::Named(_, _) => {
+            InferType::Concrete(_) | InferType::Named(..) => {
                 // Unlinked case: marker collapsed to a concrete type during the
                 // body's own solve. Convert to a `Type` for recording.
                 let Ok(concrete_ty) = infer_type_to_type(&resolved_marker, &fun.span) else {
@@ -1072,7 +1076,11 @@ pub(super) fn infer_impl_method(
     } else if let Some(prim) = primitive_type_from_name(target_name) {
         InferType::Concrete(prim)
     } else if struct_tvars_ordered.is_empty() {
-        InferType::Named(target_name.to_string(), vec![])
+        InferType::Named(
+            target_name.to_string(),
+            vec![],
+            crate::types::NominalId::NONE,
+        )
     } else {
         InferType::Named(
             target_name.to_string(),
@@ -1080,6 +1088,7 @@ pub(super) fn infer_impl_method(
                 .iter()
                 .map(|&tv| InferType::Var(tv))
                 .collect(),
+            crate::types::NominalId::NONE,
         )
     };
 
@@ -1145,7 +1154,11 @@ pub(super) fn infer_impl_method(
                             ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
                         ));
                     }
-                    return Ok(InferType::Named(format!("{n}::{assoc_name}"), vec![]));
+                    return Ok(InferType::Named(
+                        format!("{n}::{assoc_name}"),
+                        vec![],
+                        crate::types::NominalId::NONE,
+                    ));
                 }
             }
         }
@@ -1498,7 +1511,11 @@ pub(super) fn infer_default_aspect_method(
     // `Concrete(Type::I64)` (METEL-149 / METEL-181). User structs stay `Named`.
     let self_ty = match primitive_type_from_name(target_name) {
         Some(prim) => InferType::Concrete(prim),
-        None => InferType::Named(target_name.to_string(), vec![]),
+        None => InferType::Named(
+            target_name.to_string(),
+            vec![],
+            crate::types::NominalId::NONE,
+        ),
     };
     let param_types: Vec<InferType> = method
         .params

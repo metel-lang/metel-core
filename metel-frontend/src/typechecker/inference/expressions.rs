@@ -112,7 +112,8 @@ pub(super) fn infer_stmt(
                     // instantiation is known) -- reading them directly would bind
                     // elem_ty to that bogus placeholder instead of the receiver's
                     // actual instantiation.
-                    let elem_from_scheme = if let InferType::Named(name, type_args) = &resolved_iter
+                    let elem_from_scheme = if let InferType::Named(name, type_args, ..) =
+                        &resolved_iter
                     {
                         ctx.method_scheme_for(name, "next")
                             .and_then(|(scheme, struct_tvars)| {
@@ -122,7 +123,7 @@ pub(super) fn infer_stmt(
                                 }
                                 match subst.apply(&scheme.ty) {
                                     InferType::Fun(_, ret, ..) => match *ret {
-                                        InferType::Named(n, mut args)
+                                        InferType::Named(n, mut args, ..)
                                             if n == "Perhaps" && args.len() == 1 =>
                                         {
                                             Some(args.remove(0))
@@ -201,7 +202,11 @@ pub(super) fn infer_expr(
                         .into_iter()
                         .map(|_| ctx.fresh_var())
                         .collect();
-                    return Ok(InferType::Named(name.clone(), type_args));
+                    return Ok(InferType::Named(
+                        name.clone(),
+                        type_args,
+                        crate::types::NominalId::NONE,
+                    ));
                 }
             }
             if ctx.registry().has_variant_named(name) {
@@ -682,10 +687,10 @@ pub(super) fn infer_expr(
                 )
             })?;
             let type_args = match &obj_ty {
-                InferType::Named(_, args) => args.clone(),
+                InferType::Named(_, args, ..) => args.clone(),
                 InferType::Reference(inner) | InferType::MutReference(inner) => {
                     match inner.as_ref() {
-                        InferType::Named(_, args) => args.clone(),
+                        InferType::Named(_, args, ..) => args.clone(),
                         _ => vec![],
                     }
                 }
@@ -834,10 +839,10 @@ pub(super) fn infer_expr(
             // Fast path: concrete named type — look up method as usual.
             if let Some(struct_name) = named_type_name(&recv_ty) {
                 let recv_type_args = match &recv_ty {
-                    InferType::Named(_, args) => args.clone(),
+                    InferType::Named(_, args, ..) => args.clone(),
                     InferType::Reference(inner) | InferType::MutReference(inner) => {
                         match inner.as_ref() {
-                            InferType::Named(_, args) => args.clone(),
+                            InferType::Named(_, args, ..) => args.clone(),
                             _ => vec![],
                         }
                     }
@@ -1213,10 +1218,10 @@ pub(super) fn infer_expr(
                     )
                 })?;
             let type_args = match &base_ty {
-                InferType::Named(_, args) => args.clone(),
+                InferType::Named(_, args, ..) => args.clone(),
                 InferType::Reference(inner) | InferType::MutReference(inner) => {
                     match inner.as_ref() {
-                        InferType::Named(_, args) => args.clone(),
+                        InferType::Named(_, args, ..) => args.clone(),
                         _ => vec![],
                     }
                 }
@@ -1264,7 +1269,11 @@ pub(super) fn infer_expr(
             // `Self.{ fd }` and a call site producing it from `h.{ fd }` would disagree
             // over what type it actually is).
             if projected.len() == declared_fields.len() {
-                return Ok(InferType::Named(struct_name, type_args));
+                return Ok(InferType::Named(
+                    struct_name,
+                    type_args,
+                    crate::types::NominalId::NONE,
+                ));
             }
             projected.sort_by(|(a, _), (b, _)| a.cmp(b));
             Ok(InferType::Residual {
@@ -1377,7 +1386,11 @@ pub(super) fn infer_expr(
                         if variant.fields.is_empty() {
                             let type_args: Vec<InferType> =
                                 info.type_params.iter().map(|_| ctx.fresh_var()).collect();
-                            return Ok(InferType::Named(type_name.clone(), type_args));
+                            return Ok(InferType::Named(
+                                type_name.clone(),
+                                type_args,
+                                crate::types::NominalId::NONE,
+                            ));
                         }
                         // metel-core#1108: a fieldful variant has no bare-value
                         // form -- Metel's grammar has no positional/tuple-variant

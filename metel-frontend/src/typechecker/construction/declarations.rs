@@ -555,8 +555,14 @@ pub(super) fn construct_impl_method(
         ));
     }
 
-    let self_ty = super::super::inference::primitive_type_from_name(target_name)
-        .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
+    let self_ty =
+        super::super::inference::primitive_type_from_name(target_name).unwrap_or_else(|| {
+            Type::Named(
+                target_name.to_string(),
+                vec![],
+                crate::types::NominalId::NONE,
+            )
+        });
     // #774: `type_expr_to_infer_with_self` resolves `Self` but carries no
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's
@@ -647,8 +653,14 @@ pub(super) fn construct_default_aspect_method(
     target_name: &str,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedFunDecl, MetelError> {
-    let self_ty = super::super::inference::primitive_type_from_name(target_name)
-        .unwrap_or_else(|| Type::Named(target_name.to_string(), vec![]));
+    let self_ty =
+        super::super::inference::primitive_type_from_name(target_name).unwrap_or_else(|| {
+            Type::Named(
+                target_name.to_string(),
+                vec![],
+                crate::types::NominalId::NONE,
+            )
+        });
     // #774: `type_expr_to_infer_with_self` resolves `Self` but carries no
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's

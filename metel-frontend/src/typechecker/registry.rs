@@ -583,9 +583,11 @@ fn register_program_decls(
                                 current_module_path,
                             ) {
                                 InferType::Concrete(t) => Some(t),
-                                InferType::Named(n, _) => {
-                                    Some(crate::types::Type::Named(n, vec![]))
-                                }
+                                InferType::Named(n, ..) => Some(crate::types::Type::Named(
+                                    n,
+                                    vec![],
+                                    crate::types::NominalId::NONE,
+                                )),
                                 _ => None,
                             }
                         })
@@ -730,9 +732,11 @@ fn register_program_decls(
                             .iter()
                             .filter_map(|te| match type_expr_to_infer(te) {
                                 InferType::Concrete(t) => Some(t),
-                                InferType::Named(n, _) => {
-                                    Some(crate::types::Type::Named(n, vec![]))
-                                }
+                                InferType::Named(n, ..) => Some(crate::types::Type::Named(
+                                    n,
+                                    vec![],
+                                    crate::types::NominalId::NONE,
+                                )),
                                 _ => None,
                             })
                             .collect();
@@ -846,6 +850,7 @@ fn register_generic_impl_method_schemes(
     let self_ty = InferType::Named(
         target_name.to_string(),
         type_params.iter().map(|tv| InferType::Var(*tv)).collect(),
+        crate::types::NominalId::NONE,
     );
     for method in &ib.methods {
         // Only instance methods (those with a receiver) dispatch through the
@@ -1116,7 +1121,13 @@ fn register_impl_methods<'a>(
     // (e.g. Concrete(I32), not Named("i32")) so call sites unify (METEL-181).
     let self_ty = || {
         super::inference::primitive_type_from_name(target_name).map_or_else(
-            || InferType::Named(target_name.to_string(), vec![]),
+            || {
+                InferType::Named(
+                    target_name.to_string(),
+                    vec![],
+                    crate::types::NominalId::NONE,
+                )
+            },
             InferType::Concrete,
         )
     };
@@ -1217,7 +1228,13 @@ fn register_default_aspect_method(
     for p in &method.params {
         let pt = if p.name == "self" {
             super::inference::primitive_type_from_name(target_name).map_or_else(
-                || InferType::Named(target_name.to_string(), vec![]),
+                || {
+                    InferType::Named(
+                        target_name.to_string(),
+                        vec![],
+                        crate::types::NominalId::NONE,
+                    )
+                },
                 InferType::Concrete,
             )
         } else if let Some(ann) = &p.type_ann {

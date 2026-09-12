@@ -1,3 +1,54 @@
+/// A nominal type's resolved declaration identity, carried on `Type::Named`
+/// (and `InferType::Named` in `typeinference`) as metadata (metel-core#1129,
+/// groundwork for #1053).
+///
+/// **Deliberately excluded from `Type`'s equality** — its `PartialEq` impl
+/// always returns `true`, so `Type`'s `#[derive(PartialEq)]` compares `Named`
+/// variants exactly as it did before this field existed (name + args only).
+/// Two `Type::Named` values naming the same spelling must keep comparing
+/// equal even when only one of them has had its identity resolved; making
+/// resolution success/failure observable through equality would make
+/// unification and exhaustiveness checking spuriously reject programs that
+/// type-checked before this field existed. This mirrors
+/// [`crate::place::Projection::Field`]'s own `id: Option<FieldId>` (#1068):
+/// resolved identity rides as metadata, the written name stays the
+/// comparison key.
+///
+/// `None` is the explicit "not resolved (yet, or at all)" recovery state — a
+/// value reconstructed with no resolver context, a structural/builtin type
+/// with no interned declaration, or simply a call site that has not been
+/// updated to populate it yet. Never a fabricated id.
+#[derive(Debug, Clone, Default)]
+pub struct NominalId(pub Option<crate::symbols::SymbolId>);
+
+impl NominalId {
+    /// No known identity — the default, and the correct value at any call
+    /// site that cannot (yet) resolve one.
+    pub const NONE: NominalId = NominalId(None);
+
+    #[must_use]
+    pub fn some(id: crate::symbols::SymbolId) -> Self {
+        Self(Some(id))
+    }
+
+    #[must_use]
+    pub fn get(&self) -> Option<crate::symbols::SymbolId> {
+        self.0
+    }
+}
+
+impl PartialEq for NominalId {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl From<Option<crate::symbols::SymbolId>> for NominalId {
+    fn from(id: Option<crate::symbols::SymbolId>) -> Self {
+        Self(id)
+    }
+}
+
 /// Resolved types — produced by the type checker, consumed by the evaluator.
 /// No type variables exist here; generics have been monomorphised.
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +87,9 @@ pub enum Type {
         CallMutation,
     ),
     /// A named type (struct, enum) with concrete type arguments after monomorphisation.
-    Named(String, Vec<Type>),
+    /// The third field is the resolved declaration identity (metel-core#1129) —
+    /// see [`NominalId`]'s doc for why it is excluded from equality.
+    Named(String, Vec<Type>, NominalId),
     /// A narrowed residual of a struct's own row (RFC-0137, metel-core#857/#836) --
     /// `Handle.{ fd }`, produced by a struct's own field projection (`h.{ fd }`) when
     /// the projected fields are a genuine proper subset of the struct's declared row.
@@ -188,7 +241,7 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, "| -> {ret}")
             }
-            Type::Named(name, args) => {
+            Type::Named(name, args, ..) => {
                 write!(f, "{name}")?;
                 if !args.is_empty() {
                     write!(f, "<")?;

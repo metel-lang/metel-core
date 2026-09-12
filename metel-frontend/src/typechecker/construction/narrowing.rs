@@ -61,7 +61,7 @@ impl ConstructCtx<'_> {
     /// removed (RFC-0117).
     fn narrow_row(&self, declared: &Type, moved: &[Projection]) -> Option<Type> {
         match declared {
-            Type::Named(brand, args) => {
+            Type::Named(brand, args, ..) => {
                 let row = self.resolve_struct_row(brand, args)?;
                 narrow_named(brand, args, &row, moved)
             }

@@ -31,6 +31,7 @@ fn unresolved_record_projection_type(path: &[String], fields: &[String]) -> Infe
     InferType::Named(
         format!("{}.{{ {} }}", path.join("::"), fields.join(", ")),
         vec![],
+        crate::types::NominalId::NONE,
     )
 }
 
@@ -79,7 +80,11 @@ fn resolve_record_projection_type(
     // Residual (§3's own worked example: full-width projection is still just the
     // struct, not a distinct form) -- `Type::Residual`'s own invariant requires this.
     if projected.len() == raw_fields.len() {
-        return InferType::Named(struct_name.to_string(), vec![]);
+        return InferType::Named(
+            struct_name.to_string(),
+            vec![],
+            crate::types::NominalId::NONE,
+        );
     }
     // `Residual::fields` is always lexicographically sorted by label (mirrors
     // `Record`'s own invariant) so derived `PartialEq`/structural unification compare
@@ -189,7 +194,20 @@ fn type_expr_to_infer_in_context(
                         ctx.registry
                             .canonicalize_type_name(ctx.current_module, name)
                     });
-                    InferType::Named(canonical.unwrap_or_else(|| name.clone()), arg_tys)
+                    let resolved_name = canonical.unwrap_or_else(|| name.clone());
+                    // metel-core#1129: this is a type annotation written in
+                    // source, resolved from its own module's scope -- exactly
+                    // where identity resolution is reliable (unlike a value
+                    // flowing into a *different* module's bound check later).
+                    // Populating it here is what lets that later check find
+                    // the real declaration instead of guessing by name.
+                    let id = assoc_ctx
+                        .and_then(|ctx| {
+                            ctx.registry
+                                .resolve_type_id(ctx.current_module, &resolved_name)
+                        })
+                        .map_or(crate::types::NominalId::NONE, crate::types::NominalId::some);
+                    InferType::Named(resolved_name, arg_tys, id)
                 }
             }
         }
@@ -271,11 +289,17 @@ fn type_expr_to_infer_in_context(
                     TypeExpr::Named(n, _) => n.clone(),
                     _ => String::new(),
                 };
-                return InferType::Named(format!("{base_name}::{assoc_name}"), vec![]);
+                return InferType::Named(
+                    format!("{base_name}::{assoc_name}"),
+                    vec![],
+                    crate::types::NominalId::NONE,
+                );
             }
             // Extract the base type's name for registry lookup.
             let base_name = match &base_ty {
-                InferType::Named(n, _) | InferType::Concrete(Type::Named(n, _)) => Some(n.as_str()),
+                InferType::Named(n, ..) | InferType::Concrete(Type::Named(n, ..)) => {
+                    Some(n.as_str())
+                }
                 _ => None,
             };
             if let (Some(ctx), Some(bn)) = (assoc_ctx, base_name) {
@@ -302,10 +326,14 @@ fn type_expr_to_infer_in_context(
             // Fallback: return a Named placeholder (defensive — §2's completeness
             // check is the real guard).
             let base_name_str = match &base_ty {
-                InferType::Named(n, _) | InferType::Concrete(Type::Named(n, _)) => n.clone(),
+                InferType::Named(n, ..) | InferType::Concrete(Type::Named(n, ..)) => n.clone(),
                 _ => String::new(),
             };
-            InferType::Named(format!("{base_name_str}::{assoc_name}"), vec![])
+            InferType::Named(
+                format!("{base_name_str}::{assoc_name}"),
+                vec![],
+                crate::types::NominalId::NONE,
+            )
         }
         TypeExpr::RecordProjection { path, fields, .. } => {
             resolve_record_projection_type(path, fields, self_ty_name, assoc_ctx)
@@ -407,10 +435,10 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
         InferType::MutReference(t) => {
             Ok(Type::MutReference(Box::new(infer_type_to_type(t, span)?)))
         }
-        InferType::Named(name, args) => {
+        InferType::Named(name, args, id) => {
             let a: Result<Vec<_>, _> = args.iter().map(|a| infer_type_to_type(a, span)).collect();
             let args = a?;
-            Ok(Type::Named(name.clone(), args))
+            Ok(Type::Named(name.clone(), args, id.clone()))
         }
         InferType::Residual { brand, fields } => Ok(Type::Residual {
             brand: brand.clone(),

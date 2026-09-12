@@ -1,0 +1,7 @@
+import lib::Mark;
+
+public struct Box { public n: i64 }
+extend Box: Mark {
+    public fun mark(self) -> i64 { self.n }
+}
+public fun make() -> Box { Box { n = 1 } }

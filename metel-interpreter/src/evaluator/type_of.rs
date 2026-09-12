@@ -55,18 +55,26 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
             let elem_ty = borrowed.first().map_or(Type::Never, go);
             Type::Array(Box::new(elem_ty))
         }
-        Value::Struct { name, fields, .. } => {
+        Value::Struct {
+            name,
+            fields,
+            type_id,
+        } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
             let args =
                 crate::typechecker::infer_named_type_args(name, None, &field_types, registry, span);
-            Type::Named(name.clone(), args)
+            // metel-core#1129: carry the value's own resolved declaration
+            // identity, when it has one, instead of only the bare name --
+            // this is what lets a bound check on this type find the *actual*
+            // impl rather than guessing by name across the whole program.
+            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
         }
         Value::Enum {
             name,
             variant,
             fields,
-            ..
+            type_id,
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
@@ -77,7 +85,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                 registry,
                 span,
             );
-            Type::Named(name.clone(), args)
+            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
         }
         Value::Callable(callable) => match callable {
             super::RuntimeCallable::Closure(rc) => rc
@@ -96,8 +104,10 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
             let mut cur_type = go(&root_val);
             for seg in path {
                 cur_type = match (seg, cur_type) {
-                    (super::PathSegment::Field(f), Type::Named(name, _)) => {
-                        Type::Named(format!("{name}.{f}"), vec![])
+                    (super::PathSegment::Field(f), Type::Named(name, ..)) => {
+                        // A synthetic "Outer.field" phantom name, not a real
+                        // declared type -- no identity to carry.
+                        Type::Named(format!("{name}.{f}"), vec![], crate::types::NominalId::NONE)
                     }
                     (super::PathSegment::Field(f), Type::Record(fields)) => fields
                         .into_iter()
@@ -162,13 +172,20 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                 .map(|(a, b)| refine_with_static(a, b))
                 .collect(),
         ),
-        (Type::Named(rn, ra), Type::Named(sn, sa)) if rn == sn && ra.len() == sa.len() => {
+        (Type::Named(rn, ra, rid), Type::Named(sn, sa, sid))
+            if rn == sn && ra.len() == sa.len() =>
+        {
             Type::Named(
                 rn.clone(),
                 ra.iter()
                     .zip(sa.iter())
                     .map(|(a, b)| refine_with_static(a, b))
                     .collect(),
+                // The runtime type is authoritative (see this fn's own doc);
+                // its identity wins when it has one, same as everywhere else
+                // here. Only take the static side's id when the runtime type
+                // couldn't resolve one at all.
+                crate::types::NominalId(rid.get().or_else(|| sid.get())),
             )
         }
         (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mutation))

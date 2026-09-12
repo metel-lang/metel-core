@@ -140,13 +140,17 @@ mod phase_2_infer_types {
 
     #[test]
     fn test_display_named_no_args() {
-        let ty = InferType::Named("Foo".to_string(), vec![]);
+        let ty = InferType::Named("Foo".to_string(), vec![], metel::types::NominalId::NONE);
         assert_eq!(format!("{}", ty), "Foo");
     }
 
     #[test]
     fn test_display_named_with_args() {
-        let ty = InferType::Named("Map".to_string(), vec![InferType::str(), InferType::int()]);
+        let ty = InferType::Named(
+            "Map".to_string(),
+            vec![InferType::str(), InferType::int()],
+            metel::types::NominalId::NONE,
+        );
         assert_eq!(format!("{}", ty), "Map<String, i64>");
     }
 
@@ -269,10 +273,18 @@ mod phase_3_substitution {
     fn test_apply_named() {
         let mut s = Substitution::new();
         s.bind(TypeVar(0), InferType::int());
-        let ty = InferType::Named("List".to_string(), vec![InferType::var(TypeVar(0))]);
+        let ty = InferType::Named(
+            "List".to_string(),
+            vec![InferType::var(TypeVar(0))],
+            metel::types::NominalId::NONE,
+        );
         assert_eq!(
             s.apply(&ty),
-            InferType::Named("List".to_string(), vec![InferType::int()])
+            InferType::Named(
+                "List".to_string(),
+                vec![InferType::int()],
+                metel::types::NominalId::NONE
+            )
         );
     }
 
@@ -427,16 +439,32 @@ mod phase_4_unification {
     #[test]
     fn test_unify_named_types() {
         // List<?t0>  with  List<i64>  => ?t0 = i64
-        let a = InferType::Named("List".to_string(), vec![InferType::var(TypeVar(0))]);
-        let b = InferType::Named("List".to_string(), vec![InferType::int()]);
+        let a = InferType::Named(
+            "List".to_string(),
+            vec![InferType::var(TypeVar(0))],
+            metel::types::NominalId::NONE,
+        );
+        let b = InferType::Named(
+            "List".to_string(),
+            vec![InferType::int()],
+            metel::types::NominalId::NONE,
+        );
         let s = unify(&a, &b).unwrap();
         assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::int());
     }
 
     #[test]
     fn test_unify_named_type_name_mismatch() {
-        let a = InferType::Named("List".to_string(), vec![InferType::int()]);
-        let b = InferType::Named("Set".to_string(), vec![InferType::int()]);
+        let a = InferType::Named(
+            "List".to_string(),
+            vec![InferType::int()],
+            metel::types::NominalId::NONE,
+        );
+        let b = InferType::Named(
+            "Set".to_string(),
+            vec![InferType::int()],
+            metel::types::NominalId::NONE,
+        );
         assert!(unify(&a, &b).is_err());
     }
 

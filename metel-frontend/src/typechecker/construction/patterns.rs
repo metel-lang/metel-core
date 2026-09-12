@@ -96,7 +96,7 @@ pub(super) fn construct_match(
     // reference-peeled, RFC-0108) scrutinee type; `None` here means the scrutinee
     // isn't a known enum, so patterns are left exactly as written.
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = match &scrutinee_ty {
-        Type::Named(enum_name, _) => {
+        Type::Named(enum_name, ..) => {
             ctx.registry
                 .enum_info(ctx.current_module, enum_name)
                 .map(|info| {
@@ -116,7 +116,7 @@ pub(super) fn construct_match(
     // since construction re-derives everything from the AST rather than reusing
     // Pass 1's rewritten patterns.
     let scrutinee_struct_name: Option<String> = match &scrutinee_ty {
-        Type::Named(name, _)
+        Type::Named(name, ..)
             if ctx
                 .registry
                 .struct_fields(ctx.current_module, name)
@@ -425,7 +425,7 @@ pub(super) fn check_match_exhaustiveness(
         // exhaustive. This subsumes `Result<T, !>` (§4.1) as the general rule's
         // special case, rather than hardcoding `Result`/`Perhaps` separately —
         // both are ordinary entries in `enum_env` like any user enum.
-        Type::Named(name, type_args) => {
+        Type::Named(name, type_args, ..) => {
             if let Some(enum_info) = registry.enum_info(current_module, name) {
                 let remap = enum_variant_type_param_remap(enum_info, type_args);
                 enum_info.variants.iter().all(|v| {
@@ -662,7 +662,7 @@ pub(super) fn construct_pattern_bindings(
 
 pub(super) fn extract_type_args_from_type(ty: &Type) -> Vec<Type> {
     match ty {
-        Type::Named(_, args) => args.clone(),
+        Type::Named(_, args, ..) => args.clone(),
         _ => vec![],
     }
 }
@@ -743,7 +743,7 @@ pub(super) fn construct_enum_literal_ty(
     // type_to_infer normalises Perhaps/Result into Named for uniform handling.
     let hint_args: Vec<Type> = expected_ty
         .map(|ty| {
-            if let InferType::Named(n, args) = type_to_infer(ty) {
+            if let InferType::Named(n, args, ..) = type_to_infer(ty) {
                 if n == enum_name {
                     args.iter()
                         .map(|a| infer_type_to_type(a, span))
@@ -841,7 +841,14 @@ pub(super) fn construct_enum_literal_ty(
     }
 
     let infer_args: Vec<InferType> = concrete_args.iter().map(type_to_infer).collect();
-    infer_type_to_type(&InferType::Named(enum_name.to_string(), infer_args), span)
+    infer_type_to_type(
+        &InferType::Named(
+            enum_name.to_string(),
+            infer_args,
+            crate::types::NominalId::NONE,
+        ),
+        span,
+    )
 }
 
 pub(super) fn bind_enum_variant_fields(

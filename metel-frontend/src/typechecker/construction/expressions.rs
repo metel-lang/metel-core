@@ -630,8 +630,8 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
             let iterable = construct_expr(&fi.iterable, None, ctx)?;
             let elem_ty = match peel_type_references(iterable.ty()) {
                 Type::Array(elem) | Type::SizedArray(elem, _) => *elem.clone(),
-                Type::Named(name, _) if name == "Range" => Type::I64,
-                Type::Named(type_name, type_args) => {
+                Type::Named(name, ..) if name == "Range" => Type::I64,
+                Type::Named(type_name, type_args, id) => {
                     // User-defined Iterable: derive elem type from next() -> Perhaps<T>.
                     // Concrete-impl method_env first; fall back to the polymorphic
                     // method_scheme_env (mirrors the method-call construction path
@@ -639,7 +639,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     // -- e.g. `extend<T> Wrapper<T>: Iterable<T> { ... }` -- whose
                     // `next` is only registered there, not in method_env.
                     let next_ret = ctx
-                        .concrete_method(type_name.as_str(), "next")
+                        .concrete_method_with_id(type_name.as_str(), id.get(), "next")
                         .and_then(|ty| {
                             if let Type::Fun(_, ret, ..) = ty {
                                 Some(ret.as_ref().clone())
@@ -666,7 +666,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                             }
                         });
                     match next_ret {
-                        Some(Type::Named(n, mut args)) if n == "Perhaps" && args.len() == 1 => {
+                        Some(Type::Named(n, mut args, ..)) if n == "Perhaps" && args.len() == 1 => {
                             args.remove(0)
                         }
                         _ => {
@@ -724,16 +724,16 @@ pub(super) fn construct_expr(
             }
             if let Some(fields) = ctx.get_struct_fields(name) {
                 if fields.is_empty() {
-                    let ty = if let Some(Type::Named(expected_name, _)) = expected_ty {
+                    let ty = if let Some(Type::Named(expected_name, ..)) = expected_ty {
                         if expected_name == name {
-                            expected_ty
-                                .cloned()
-                                .unwrap_or_else(|| Type::Named(name.clone(), vec![]))
+                            expected_ty.cloned().unwrap_or_else(|| {
+                                Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
+                            })
                         } else {
-                            Type::Named(name.clone(), vec![])
+                            Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
                         }
                     } else {
-                        Type::Named(name.clone(), vec![])
+                        Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
                     };
                     return Ok(TypedExpr::StructLiteral {
                         path: vec![name.clone()],
@@ -1173,7 +1173,7 @@ pub(super) fn construct_expr(
                 });
             }
             let (struct_name, type_args) = match peeled {
-                Type::Named(name, args) => (name.clone(), args.clone()),
+                Type::Named(name, args, ..) => (name.clone(), args.clone()),
                 t => {
                     return Err(MetelError::internal(format!(
                         "field access on non-struct type {t}"
@@ -1439,24 +1439,27 @@ pub(super) fn construct_expr(
                 });
             }
 
-            let (struct_name, receiver_type_args) = match peel_type_references(typed_receiver.ty())
-            {
-                Type::Named(name, targs) => (name.clone(), targs.clone()),
-                t => match super::super::inference::primitive_type_name(t) {
-                    Some(name) => (name, vec![]),
-                    None => {
-                        return Err(MetelError::internal(format!(
-                            "method call on non-struct type {t}"
-                        )))
-                    }
-                },
-            };
+            let (struct_name, receiver_type_args, struct_id) =
+                match peel_type_references(typed_receiver.ty()) {
+                    Type::Named(name, targs, id) => (name.clone(), targs.clone(), id.get()),
+                    t => match super::super::inference::primitive_type_name(t) {
+                        Some(name) => (name, vec![], None),
+                        None => {
+                            return Err(MetelError::internal(format!(
+                                "method call on non-struct type {t}"
+                            )))
+                        }
+                    },
+                };
 
             // Resolve the method's function type and construct the arguments.
             // Two cases: a concrete method already in method_env (fast path), or a
             // polymorphic scheme on a generic struct/enum (slow path).
             let (method_fun_ty, typed_args, dispatch): (Type, Vec<TypedExpr>, MethodDispatch) =
-                if let Some(ty) = ctx.concrete_method(&struct_name, method.as_str()).cloned() {
+                if let Some(ty) = ctx
+                    .concrete_method_with_id(&struct_name, struct_id, method.as_str())
+                    .cloned()
+                {
                     if explicit_method_tys.is_some() {
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0004,
@@ -1663,9 +1666,9 @@ pub(super) fn construct_expr(
                             )?;
                         }
                     }
-                    Type::Named(type_name.clone(), type_args)
+                    Type::Named(type_name.clone(), type_args, crate::types::NominalId::NONE)
                 } else {
-                    Type::Named(type_name.clone(), vec![])
+                    Type::Named(type_name.clone(), vec![], crate::types::NominalId::NONE)
                 }
             };
 
@@ -1716,7 +1719,7 @@ pub(super) fn construct_expr(
             };
             let typed_base = construct_expr(&base_expr, None, ctx)?;
             let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {
-                Type::Named(name, args) => (name.clone(), args.clone()),
+                Type::Named(name, args, ..) => (name.clone(), args.clone()),
                 // RFC-0137 slice 2: re-projecting a narrowed residual, as long as
                 // every named field is still in its current row.
                 Type::Residual {
@@ -1809,7 +1812,11 @@ pub(super) fn construct_expr(
                 ));
             }
             let ty = if total_field_count == Some(record_ty.len()) {
-                Type::Named(struct_name.clone(), type_args.clone())
+                Type::Named(
+                    struct_name.clone(),
+                    type_args.clone(),
+                    crate::types::NominalId::NONE,
+                )
             } else {
                 // `Residual::fields` is always lexicographically sorted (mirrors
                 // `Record`'s own invariant), regardless of the projection's written order.
@@ -1859,7 +1866,11 @@ pub(super) fn construct_expr(
                             return Ok(TypedExpr::StructLiteral {
                                 path: segments.clone(),
                                 fields: vec![],
-                                ty: Type::Named(type_name.clone(), vec![]),
+                                ty: Type::Named(
+                                    type_name.clone(),
+                                    vec![],
+                                    crate::types::NominalId::NONE,
+                                ),
                                 type_id,
                                 variant_id: ctx.variant_id_for(type_id, member_name),
                                 span: span.clone(),
@@ -1872,7 +1883,7 @@ pub(super) fn construct_expr(
                             .collect::<Result<_, _>>()?;
                         let ty = crate::types::default_fun_type(
                             field_types,
-                            Type::Named(type_name.clone(), vec![]),
+                            Type::Named(type_name.clone(), vec![], crate::types::NominalId::NONE),
                         );
                         // metel-core#1093: a tuple-variant constructor carries
                         // both the owning enum's SymbolId and the variant's own
