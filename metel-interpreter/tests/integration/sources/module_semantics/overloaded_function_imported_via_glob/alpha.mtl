@@ -1,0 +1,2 @@
+public fun tag(x: i64) -> String { "i64" }
+public fun tag(x: String) -> String { "String" }

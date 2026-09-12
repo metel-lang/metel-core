@@ -61,16 +61,24 @@ pub fn core_native_symbol(fun: &FunDecl) -> Option<SymbolId> {
 
 /// Build the overload table for a module: the module's own overload groups,
 /// plus the `std::core` groups (so `assert(cond)` / `assert(cond, msg)` resolve
-/// everywhere) — except where the module declares its own `fun` with the same
-/// name, which shadows the `std::core` group entirely.
+/// everywhere) and any overload groups `imported` brings in from other user
+/// modules (metel-core#1143) — except where the module declares its own `fun`
+/// with the same name, which shadows either kind of imported group entirely.
 ///
 /// A module group whose signatures exactly match a `std::core` group (i.e. the
 /// `std::core` module checking its own decls) reuses the canonical core entries
 /// so the `SymbolIds` agree across the whole graph.
+///
+/// `imported` is this module's own explicit/glob overload imports, already
+/// resolved and filtered to visible names by `build_import_overloads` — its
+/// entries carry the `SymbolId`s the *declaring* module's own overload table
+/// assigned, so a call dispatched through an imported name agrees with the
+/// evaluator's registration of the source module's definitions.
 pub(super) fn build_overload_table(
     decls: &[Decl],
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
+    imported: &OverloadTable,
 ) -> Result<OverloadTable, MetelError> {
     let mut table = build_table_from_decls(decls, Some((registry, current_module)))?;
     let core = core_overload_table();
@@ -95,6 +103,11 @@ pub(super) fn build_overload_table(
         })
         .collect();
     for (name, entries) in core {
+        if !local_fun_names.contains(name.as_str()) {
+            table.entry(name.clone()).or_insert_with(|| entries.clone());
+        }
+    }
+    for (name, entries) in imported {
         if !local_fun_names.contains(name.as_str()) {
             table.entry(name.clone()).or_insert_with(|| entries.clone());
         }

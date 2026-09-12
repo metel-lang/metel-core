@@ -1,0 +1,9 @@
+// metel-core#1143: glob-import form of the same bug -- `import alpha::*;`
+// failed identically to the explicit-name form (see the sibling
+// `overloaded_function_imported_explicitly` fixture).
+import alpha::*;
+
+fun main() {
+    assert(tag(1i64) == "i64");
+    assert(tag("hello") == "String");
+}

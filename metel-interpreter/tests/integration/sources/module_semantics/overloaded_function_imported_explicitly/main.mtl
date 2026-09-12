@@ -1,0 +1,10 @@
+// metel-core#1143: an overloaded name (more than one `fun` sharing it) could
+// not be imported into another module at all -- the importer reported it as
+// simply undefined, as if the declaration didn't exist. Explicit-name form;
+// see the sibling `overloaded_function_imported_via_glob` fixture for `*`.
+import alpha::tag;
+
+fun main() {
+    assert(tag(1i64) == "i64");
+    assert(tag("hello") == "String");
+}

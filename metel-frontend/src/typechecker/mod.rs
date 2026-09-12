@@ -47,6 +47,12 @@ struct CheckImplReport {
     typed_decls: Vec<TypedDecl>,
     scheme_env: SchemeEnv,
     registry: TypeDefinitionRegistry,
+    /// This module's own overload table (its own overload groups, merged with
+    /// the `std::core` ones and any it imported), keyed the same way
+    /// `overload::build_overload_table` returns it. Exported (pub names only)
+    /// into `GlobalExports` so dependent modules can import overload groups
+    /// too, not just single-definition names (metel-core#1143).
+    overloads: crate::typeinference::OverloadTable,
     timings: TypecheckPhaseTimings,
 }
 
@@ -161,6 +167,11 @@ type ModulePath = Vec<String>;
 
 struct ModuleExports {
     pub_schemes: SchemeEnv,
+    /// This module's own overload groups whose name is public, keyed by name
+    /// (metel-core#1143). A dependent module's explicit or glob import of an
+    /// overloaded name is resolved from here, the same way `pub_schemes`
+    /// resolves a single-definition one.
+    pub_overloads: crate::typeinference::OverloadTable,
 }
 
 struct GlobalExports {
@@ -184,6 +195,29 @@ impl GlobalExports {
 
     fn all_pub_schemes(&self, module_path: &[String]) -> Option<&SchemeEnv> {
         Some(&self.modules.get(module_path)?.pub_schemes)
+    }
+
+    /// The overload candidates `module_path` exports under `name`, or `None`
+    /// if that module has no public overload group by that name (#1143).
+    fn overload_entries(
+        &self,
+        module_path: &[String],
+        name: &str,
+    ) -> Option<&[crate::typeinference::OverloadEntry]> {
+        self.modules
+            .get(module_path)?
+            .pub_overloads
+            .get(name)
+            .map(Vec::as_slice)
+    }
+
+    /// Every public overload group `module_path` exports, for glob-import
+    /// resolution (#1143).
+    fn all_pub_overloads(
+        &self,
+        module_path: &[String],
+    ) -> Option<&crate::typeinference::OverloadTable> {
+        Some(&self.modules.get(module_path)?.pub_overloads)
     }
 }
 
@@ -355,10 +389,15 @@ pub fn check_graph_with_report(
         warnings.extend(inert_public_field_warnings(loaded));
         let (imported_schemes, deferred_conflicts) =
             build_import_schemes(loaded, names, &global_exports, graph)?;
+        // An overloaded name (METEL-180) has no single scheme in `imported_schemes` —
+        // it's dispatched by SymbolId through the overload table instead, so it needs
+        // its own import path, analogous to `build_import_schemes` (metel-core#1143).
+        let imported_overloads = build_import_overloads(loaded, names, &global_exports);
         let report = check_impl_with_report(
             &loaded.program,
             &imported_schemes,
             deferred_conflicts,
+            &imported_overloads,
             &type_registry,
             std_prelude,
             &loaded.module_path,
@@ -377,7 +416,14 @@ pub fn check_graph_with_report(
             .into_iter()
             .map(|(name, scheme)| (name, refresh_scheme_for_export(&scheme, &mut export_gen)))
             .collect();
-        global_exports.insert(loaded.module_path.clone(), ModuleExports { pub_schemes });
+        let pub_overloads = filter_pub_overloads(&report.overloads, loaded, names);
+        global_exports.insert(
+            loaded.module_path.clone(),
+            ModuleExports {
+                pub_schemes,
+                pub_overloads,
+            },
+        );
 
         // Add builtin schemes so construction-at-call-time can resolve builtins
         // like `array_len` inside generic function bodies.
@@ -519,6 +565,67 @@ fn build_import_schemes(
     Ok((env, deferred_conflicts))
 }
 
+/// Build the set of imported overload groups for a module (metel-core#1143):
+/// an overloaded name (METEL-180) has no single scheme in `GlobalExports`'
+/// `pub_schemes` — it's excluded from hoisting entirely and dispatched by
+/// `SymbolId` through the overload table instead — so a plain
+/// `build_import_schemes` import of one always came back empty and the name
+/// read as simply undefined at any call site outside its declaring module.
+///
+/// Mirrors `build_import_schemes`'s glob/explicit precedence (explicit
+/// overrides glob, `Std` before `User`) but only for names that are
+/// themselves overloaded in the source module; a glob or explicit import of
+/// an ordinary single-definition name is unaffected and still flows through
+/// `build_import_schemes` as before.
+///
+/// Unlike schemes, an absent entry here is never itself an error: a name
+/// that isn't overloaded anywhere simply contributes nothing, and
+/// `build_import_schemes` (or the T0009/T0003 checks it already performs)
+/// remains the sole source of "does this name exist / is it public" errors.
+fn build_import_overloads(
+    loaded: &LoadedModule,
+    names: &ResolvedNames,
+    global_exports: &GlobalExports,
+) -> crate::typeinference::OverloadTable {
+    let mut result = crate::typeinference::OverloadTable::new();
+    let Some(scope) = names.scopes.get(&loaded.module_path) else {
+        return result;
+    };
+
+    // Globs first (lower priority) — Std before User so a `User` glob's
+    // overload group can override a same-named `Std` one, matching
+    // `build_import_schemes`. Conflicting same-tier overload groups are not
+    // detected here (a narrower gap than schemes' T0011 glob-conflict
+    // handling); out of scope for #1143, which is about imports failing
+    // outright, not about resolving which of two same-tier imports wins.
+    let ordered_globs = scope
+        .globs
+        .iter()
+        .filter(|(t, _)| *t == GlobTier::Std)
+        .chain(scope.globs.iter().filter(|(t, _)| *t == GlobTier::User));
+    for (_, glob_module) in ordered_globs {
+        let Some(entries) = global_exports.all_pub_overloads(glob_module) else {
+            continue;
+        };
+        for (name, group) in entries {
+            result.insert(name.clone(), group.clone());
+        }
+    }
+
+    // Explicit imports (higher priority — overwrite globs), keyed by local
+    // name so an aliased overloaded import (`import alpha::tag as t;`) is
+    // visible under its alias, matching `build_import_schemes`.
+    for (local_name, binding) in &scope.explicit {
+        if let Some(entries) =
+            global_exports.overload_entries(&binding.source_module, &binding.source_name)
+        {
+            result.insert(local_name.clone(), entries.to_vec());
+        }
+    }
+
+    result
+}
+
 /// Find the span of the import declaration in `loaded` that references `source_name`
 /// from `source_module`. Falls back to a file-level span if no match is found.
 fn find_import_span(
@@ -585,6 +692,34 @@ fn filter_pub_schemes(
     }
 
     result
+}
+
+/// Build the public overload export for a module: its own overload groups
+/// (METEL-180) whose name is public (metel-core#1143). `overloads` is this
+/// module's full merged table (own decls + `std::core` + whatever it itself
+/// imported), but filtering by `pub_names` naturally excludes the `std::core`
+/// and imported entries — a name merely *used* here was never added to
+/// `pub_surface`, only a name this module itself declares `pub` or
+/// re-exports was.
+///
+/// Re-exporting an overloaded name (`export other::overloaded_name;`) is not
+/// yet supported — unlike `filter_pub_schemes`, there is no re-export lookup
+/// here — the same kind of scope line `resolve`'s own re-export pass already
+/// draws for transitive re-export chains. Left for follow-up; #1143 is about
+/// a plain import failing outright, not this narrower re-export case.
+fn filter_pub_overloads(
+    overloads: &crate::typeinference::OverloadTable,
+    loaded: &LoadedModule,
+    names: &ResolvedNames,
+) -> crate::typeinference::OverloadTable {
+    let Some(pub_names) = names.pub_surface.get(&loaded.module_path) else {
+        return crate::typeinference::OverloadTable::new();
+    };
+    overloads
+        .iter()
+        .filter(|(name, _)| pub_names.contains(name.as_str()))
+        .map(|(name, entries)| (name.clone(), entries.clone()))
+        .collect()
 }
 
 /// Run the type checker over an untyped AST, producing a fully typed AST.
@@ -917,6 +1052,7 @@ fn check_impl(
         program,
         imported_schemes,
         deferred_conflicts,
+        &crate::typeinference::OverloadTable::new(),
         base_registry,
         std_prelude,
         current_module_path,
@@ -933,6 +1069,7 @@ fn check_impl_with_report(
     program: &Program,
     imported_schemes: &SchemeEnv,
     deferred_conflicts: HashMap<String, Vec<Vec<String>>>,
+    imported_overloads: &crate::typeinference::OverloadTable,
     base_registry: &TypeDefinitionRegistry,
     std_prelude: &CorePrelude,
     current_module_path: &[String],
@@ -969,8 +1106,12 @@ fn check_impl_with_report(
     // hoist function names. The overload table must be installed before hoisting
     // so hoisting can skip overloaded names (they are dispatched by SymbolId).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
-    let overloads =
-        overload::build_overload_table(&program.decls, ctx.registry(), current_module_path)?;
+    let overloads = overload::build_overload_table(
+        &program.decls,
+        ctx.registry(),
+        current_module_path,
+        imported_overloads,
+    )?;
     ctx.set_overloads(overloads.clone());
     inference::hoist_fun_decls(&program.decls, &mut ctx);
     let registry_ns = elapsed_ns(started);
@@ -1008,31 +1149,7 @@ fn check_impl_with_report(
     // Build SchemeEnv from user functions, then add all built-in schemes.
     let started = Instant::now();
     let gen = ctx.split_gen();
-    let mut scheme_env: SchemeEnv = HashMap::new();
-    for fg in fun_generalizations {
-        // fg.fun_ty is already post-inline-solve (resolved_ty from infer_fun_decl).
-        // Applying the final module-level subst would collapse generic TypeVars that
-        // happened to appear in other functions' constraints. (METEL-137)
-        let scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
-            .with_bounds(&fg.bounds)
-            .with_neg_bounds(&fg.neg_bounds)
-            .with_record_kinds(&fg.record_kinds)
-            .with_assoc_projections(&fg.assoc_projections)
-            .with_assoc_eq_constraints(&fg.assoc_eq)
-            .with_opaque_returns(&fg.opaque_returns);
-        scheme_env.insert(fg.name, scheme);
-    }
-    // Imported schemes must be visible in the construction pass so calls to imported
-    // functions can be constructed. Use or_insert so locally-defined names shadow imports.
-    // INVARIANT: imported_schemes must be seeded into BOTH InferContext (above, via
-    // bind_poly) AND scheme_env (here). Missing either breaks one of the two passes.
-    // See ADR-0022.
-    for (name, scheme) in imported_schemes {
-        scheme_env
-            .entry(name.clone())
-            .or_insert_with(|| scheme.clone());
-    }
-    registry::register_builtin_schemes(&mut scheme_env, std_prelude);
+    let scheme_env = build_module_scheme_env(fun_generalizations, imported_schemes, std_prelude);
     let scheme_env_ns = elapsed_ns(started);
 
     // Freeze decisions made by inference before construction starts. The typed-AST
@@ -1072,6 +1189,7 @@ fn check_impl_with_report(
         typed_decls,
         scheme_env: user_scheme_env,
         registry: final_registry,
+        overloads,
         timings: TypecheckPhaseTimings {
             registry_ns,
             inference_ns,
@@ -1083,6 +1201,44 @@ fn check_impl_with_report(
             constraints_processed: solve_stats.constraints_processed,
         },
     })
+}
+
+/// Build a module's `SchemeEnv` from its own generalized function types, plus
+/// its imported schemes and the built-in prelude. Split out of
+/// `check_impl_with_report` to keep that function under clippy's line-count
+/// bar (metel-core#1143 pushed it just over by threading `imported_overloads`
+/// through).
+fn build_module_scheme_env(
+    fun_generalizations: Vec<FunGeneralization>,
+    imported_schemes: &SchemeEnv,
+    std_prelude: &CorePrelude,
+) -> SchemeEnv {
+    let mut scheme_env: SchemeEnv = HashMap::new();
+    for fg in fun_generalizations {
+        // fg.fun_ty is already post-inline-solve (resolved_ty from infer_fun_decl).
+        // Applying the final module-level subst would collapse generic TypeVars that
+        // happened to appear in other functions' constraints. (METEL-137)
+        let scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
+            .with_bounds(&fg.bounds)
+            .with_neg_bounds(&fg.neg_bounds)
+            .with_record_kinds(&fg.record_kinds)
+            .with_assoc_projections(&fg.assoc_projections)
+            .with_assoc_eq_constraints(&fg.assoc_eq)
+            .with_opaque_returns(&fg.opaque_returns);
+        scheme_env.insert(fg.name, scheme);
+    }
+    // Imported schemes must be visible in the construction pass so calls to imported
+    // functions can be constructed. Use or_insert so locally-defined names shadow imports.
+    // INVARIANT: imported_schemes must be seeded into BOTH InferContext (above, via
+    // bind_poly) AND scheme_env (here). Missing either breaks one of the two passes.
+    // See ADR-0022.
+    for (name, scheme) in imported_schemes {
+        scheme_env
+            .entry(name.clone())
+            .or_insert_with(|| scheme.clone());
+    }
+    registry::register_builtin_schemes(&mut scheme_env, std_prelude);
+    scheme_env
 }
 
 fn accumulate_typecheck_timings(target: &mut TypecheckPhaseTimings, source: TypecheckPhaseTimings) {
