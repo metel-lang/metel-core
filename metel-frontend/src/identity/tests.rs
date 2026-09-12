@@ -17,7 +17,9 @@ use crate::ast::Span;
 use crate::module_loader::{LoadedModule, ModuleGraph};
 use crate::name_resolver::resolve;
 
-use super::allocate::{allocate_graph, allocate_module, GraphModuleNav, ModuleNav};
+use super::allocate::{
+    allocate_for_graph, allocate_graph, allocate_module, GraphModuleNav, ModuleNav,
+};
 use super::position::PositionHit;
 use super::{
     Allocation, BindingId, ModuleTable, NameId, NameInterner, Resolution, ResolutionMap,
@@ -167,6 +169,62 @@ fn allocation_is_order_independent_for_the_same_graph() {
     let y = Fixture::build(src);
     assert_eq!(local_ids(x.map()), local_ids(y.map()));
     assert_eq!(ref_ids(x.map()), ref_ids(y.map()));
+}
+
+/// A local's `LocalId` is (owner `BindingId`, lexical path); its owner for a
+/// top-level function's locals is `BindingId::Global(SymbolId)`. Before
+/// metel-core#1048, `SymbolId` allocation depended on the order modules were
+/// first visited, so a local's own resolved identity could silently change
+/// with unrelated module load order -- something the test above never caught,
+/// since it resolves one single-module fixture twice and so has no module
+/// order to vary at all (metel-core#1049).
+#[test]
+fn local_binding_identity_is_independent_of_module_resolution_order() {
+    fn build(order: [(&str, &str); 2]) -> Allocation {
+        let graph = ModuleGraph {
+            root: PathBuf::from("root.mtl"),
+            modules: order
+                .iter()
+                .map(|(name, src)| LoadedModule {
+                    module_path: vec![(*name).to_string()],
+                    file_path: PathBuf::from(format!("{name}.mtl")),
+                    program: crate::parser::parse(src, &format!("{name}.mtl")).expect("parses"),
+                })
+                .collect(),
+            path_aliases: HashMap::new(),
+        };
+        let names = resolve(&graph).expect("resolve");
+        allocate_for_graph(&graph, &names)
+    }
+
+    let a_src = "fun f() -> i64 { let x := 1; x }";
+    let b_src = "fun g() -> i64 { let y := 2; y }";
+
+    let forward = build([("a", a_src), ("b", b_src)]);
+    let reversed = build([("b", b_src), ("a", a_src)]);
+
+    let x_at = a_src.rfind('x').expect("x use") + 1;
+    let forward_hit = forward
+        .positions
+        .resolve("a.mtl", x_at)
+        .expect("x has a position hit in the forward build");
+    let reversed_hit = reversed
+        .positions
+        .resolve("a.mtl", x_at)
+        .expect("x has a position hit in the reversed build");
+
+    let PositionHit::Reference(forward_rid) = forward_hit else {
+        panic!("expected a Reference hit for `x`, got {forward_hit:?}");
+    };
+    let PositionHit::Reference(reversed_rid) = reversed_hit else {
+        panic!("expected a Reference hit for `x`, got {reversed_hit:?}");
+    };
+
+    assert_eq!(
+        forward.resolution.references.get(&forward_rid),
+        reversed.resolution.references.get(&reversed_rid),
+        "`x`'s resolved binding must not change when module load order is reversed"
+    );
 }
 
 // ── shadowing ───────────────────────────────────────────────────────────────
