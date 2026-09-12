@@ -468,6 +468,10 @@ fn perhaps_value(v: Option<Value>) -> Value {
                 name: "Perhaps".to_string(),
                 type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
                 variant: "Some".to_string(),
+                // Well-known builtin, not user-declarable under this fixed
+                // SymbolId, so the name-based match fallback (#1128) carries
+                // no cross-module collision risk here.
+                variant_id: None,
                 fields: f,
             }
         }
@@ -475,6 +479,7 @@ fn perhaps_value(v: Option<Value>) -> Value {
             name: "Perhaps".to_string(),
             type_id: Some(crate::symbols::SYM_TYPE_PERHAPS),
             variant: "None".to_string(),
+            variant_id: None,
             fields: std::collections::HashMap::new(),
         },
     }
@@ -615,6 +620,8 @@ fn result_value(r: Result<Value, Value>) -> Value {
         name: "Result".to_string(),
         type_id: Some(crate::symbols::SYM_TYPE_RESULT),
         variant: variant.to_string(),
+        // See `perhaps_value`'s matching comment (#1128).
+        variant_id: None,
         fields,
     }
 }

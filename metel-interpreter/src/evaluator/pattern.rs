@@ -72,36 +72,59 @@ pub(super) fn match_pattern(
             _ => false,
         },
 
-        TypedPattern::EnumVariant { path, fields, .. } => {
-            let type_name = if path.len() >= 2 {
-                path[path.len() - 2].as_str()
-            } else {
-                ""
+        TypedPattern::EnumVariant {
+            path,
+            variant_id,
+            fields,
+            ..
+        } => {
+            let Value::Enum {
+                name,
+                variant,
+                variant_id: value_variant_id,
+                fields: enum_fields,
+                ..
+            } = value
+            else {
+                return false;
             };
-            let variant_name = path.last().map_or("", String::as_str);
-            match value {
-                Value::Enum {
-                    name,
-                    variant,
-                    fields: enum_fields,
-                    ..
-                } if name == type_name && variant == variant_name => {
-                    // Runtime `Value::Enum` fields are still name-keyed; the
-                    // pattern's `FieldId`s wait on the evaluator's id-indexed
-                    // frames (#1052). The shorthand binding's `LocalId` is
-                    // carried through so the match arm can install it by id.
-                    for (field_name, _id, local) in fields {
-                        match enum_fields.get(field_name) {
-                            Some(v) => {
-                                out.push((field_name.clone(), *local, v.clone()));
-                            }
-                            None => return false,
-                        }
-                    }
-                    true
-                }
-                _ => false,
+            // Prefer identity: when both the pattern and the runtime value
+            // carry a resolved `VariantId` (ADR-0054 / #1062, metel-core#1128),
+            // compare that instead of the bare, source-spelled path segments
+            // -- two unrelated modules can each declare a same-named enum
+            // with a same-named variant, and a bare-string comparison would
+            // silently match (or fail to match) the wrong one. Name
+            // comparison stays the documented recovery path when either side
+            // has no identity context (`None`, e.g. a block-local enum, or a
+            // value built without resolver context).
+            let variant_matches =
+                if let (Some(pattern_vid), Some(value_vid)) = (variant_id, value_variant_id) {
+                    pattern_vid == value_vid
+                } else {
+                    let type_name = if path.len() >= 2 {
+                        path[path.len() - 2].as_str()
+                    } else {
+                        ""
+                    };
+                    let variant_name = path.last().map_or("", String::as_str);
+                    name == type_name && variant == variant_name
+                };
+            if !variant_matches {
+                return false;
             }
+            // Runtime `Value::Enum` fields are still name-keyed; the
+            // pattern's `FieldId`s wait on the evaluator's id-indexed
+            // frames (#1052). The shorthand binding's `LocalId` is
+            // carried through so the match arm can install it by id.
+            for (field_name, _id, local) in fields {
+                match enum_fields.get(field_name) {
+                    Some(v) => {
+                        out.push((field_name.clone(), *local, v.clone()));
+                    }
+                    None => return false,
+                }
+            }
+            true
         }
 
         // RFC-0032 §4/§5, RFC-0034 §5: a named struct pattern. `rest` (`..`) allows
@@ -201,6 +224,7 @@ pub(super) fn match_pattern(
 mod tests {
     use super::{match_pattern, LocalId, TypedPattern, Value};
     use crate::ast::Span;
+    use crate::identity::VariantId;
 
     #[test]
     fn binding_pattern_carries_its_local_id() {
@@ -238,6 +262,96 @@ mod tests {
         let ids: Vec<_> = out.iter().map(|(n, id, _)| (n.as_str(), *id)).collect();
         assert!(ids.contains(&("a", Some(LocalId(1)))));
         assert!(ids.contains(&("b", Some(LocalId(2)))));
+    }
+
+    /// Two unrelated modules can each declare an enum named `Shape` with a
+    /// variant named `Circle` (metel-core#1128). `path`/`name`/`variant` are
+    /// bare, source-spelled strings and so are identical across both; only
+    /// `variant_id` (interned per `(enum SymbolId, variant name)`) tells them
+    /// apart. A pattern resolved against one such enum must not match a
+    /// runtime value that actually belongs to the other, even though every
+    /// bare string involved lines up.
+    #[test]
+    fn enum_variant_pattern_rejects_a_same_named_variant_from_an_unrelated_enum() {
+        use std::collections::HashMap;
+        let pat = TypedPattern::EnumVariant {
+            path: vec!["Shape".to_string(), "Circle".to_string()],
+            variant_id: Some(VariantId(1)),
+            fields: vec![("radius".to_string(), None, Some(LocalId(1)))],
+            rest: false,
+            span: Span::new(0, 0, "t"),
+        };
+        let mut fields = HashMap::new();
+        fields.insert("radius".to_string(), Value::F64(2.0));
+        let value = Value::Enum {
+            name: "Shape".to_string(),
+            type_id: None,
+            variant: "Circle".to_string(),
+            variant_id: Some(VariantId(2)),
+            fields,
+        };
+        let mut out = Vec::new();
+        assert!(
+            !match_pattern(&pat, &value, &mut out),
+            "a pattern resolved to one enum's variant must not match a value \
+             belonging to an unrelated same-named enum's same-named variant"
+        );
+    }
+
+    #[test]
+    fn enum_variant_pattern_matches_the_same_resolved_identity() {
+        use std::collections::HashMap;
+        let pat = TypedPattern::EnumVariant {
+            path: vec!["Shape".to_string(), "Circle".to_string()],
+            variant_id: Some(VariantId(1)),
+            fields: vec![("radius".to_string(), None, Some(LocalId(1)))],
+            rest: false,
+            span: Span::new(0, 0, "t"),
+        };
+        let mut fields = HashMap::new();
+        fields.insert("radius".to_string(), Value::F64(2.0));
+        let value = Value::Enum {
+            name: "Shape".to_string(),
+            type_id: None,
+            variant: "Circle".to_string(),
+            variant_id: Some(VariantId(1)),
+            fields,
+        };
+        let mut out = Vec::new();
+        assert!(
+            match_pattern(&pat, &value, &mut out),
+            "the same resolved VariantId on both sides must match"
+        );
+        assert_eq!(out[0].0, "radius");
+        assert_eq!(out[0].1, Some(LocalId(1)));
+        assert!(matches!(out[0].2, Value::F64(r) if r == 2.0));
+    }
+
+    /// `variant_id: None` is the documented recovery state (no identity
+    /// context, e.g. a block-local enum) -- matching must still fall back to
+    /// the bare name comparison, exactly as before #1128.
+    #[test]
+    fn enum_variant_pattern_falls_back_to_bare_names_without_identity_context() {
+        use std::collections::HashMap;
+        let pat = TypedPattern::EnumVariant {
+            path: vec!["Shape".to_string(), "Circle".to_string()],
+            variant_id: None,
+            fields: vec![],
+            rest: false,
+            span: Span::new(0, 0, "t"),
+        };
+        let value = Value::Enum {
+            name: "Shape".to_string(),
+            type_id: None,
+            variant: "Circle".to_string(),
+            variant_id: None,
+            fields: HashMap::new(),
+        };
+        let mut out = Vec::new();
+        assert!(
+            match_pattern(&pat, &value, &mut out),
+            "without identity context on either side, matching falls back to bare names"
+        );
     }
 
     #[test]

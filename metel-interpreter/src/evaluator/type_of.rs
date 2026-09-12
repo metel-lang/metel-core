@@ -75,6 +75,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
             variant,
             fields,
             type_id,
+            variant_id: _,
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();

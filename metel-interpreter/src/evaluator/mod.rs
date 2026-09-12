@@ -46,7 +46,7 @@ pub(super) fn attach_stack(err: MetelError) -> MetelError {
 }
 use crate::ast::Block;
 use crate::elaborator::ElaboratedModuleGraph;
-use crate::identity::LocalId;
+use crate::identity::{LocalId, VariantId};
 use crate::symbols::SymbolId;
 use crate::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedProgram,
@@ -105,6 +105,15 @@ pub enum Value {
         /// Stable identity of the enum's declaration. See `Struct::type_id`.
         type_id: Option<SymbolId>,
         variant: String,
+        /// Stable identity of the selected variant declaration (`(enum
+        /// SymbolId, variant name)`, metel-core#1128), copied onto the runtime
+        /// `Value` from the constructing `TypedExpr::StructLiteral`/`Path`
+        /// node so pattern matching can dispatch by identity instead of
+        /// comparing `name`/`variant` as bare, source-spelled strings --
+        /// two unrelated modules can each declare a same-named enum with a
+        /// same-named variant. `None` for values built without resolver
+        /// context (mirrors `type_id`); match falls back to the name then.
+        variant_id: Option<VariantId>,
         fields: HashMap<String, Value>,
     },
     Callable(RuntimeCallable),
@@ -960,11 +969,13 @@ fn deep_clone_value(v: Value) -> Value {
             name,
             type_id,
             variant,
+            variant_id,
             fields,
         } => Value::Enum {
             name,
             type_id,
             variant,
+            variant_id,
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (k, deep_clone_value(v)))
@@ -2839,6 +2850,7 @@ fn eval_struct_literal_expr(
     path: &[String],
     fields: &[(String, TypedExpr)],
     type_id: Option<SymbolId>,
+    variant_id: Option<VariantId>,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -2855,6 +2867,7 @@ fn eval_struct_literal_expr(
             name: path[0].clone(),
             type_id,
             variant: path[1].clone(),
+            variant_id,
             fields: field_vals,
         }))
     } else {
@@ -3218,7 +3231,10 @@ pub fn eval_expr(
         }
 
         TypedExpr::Path {
-            segments, type_id, ..
+            segments,
+            type_id,
+            variant_id,
+            ..
         } => {
             // Unit enum variant: `Colour::Red` → Value::Enum { name: "Colour", variant: "Red", fields: {} }
             // A single-segment path is treated as an ident lookup.
@@ -3250,10 +3266,13 @@ pub fn eval_expr(
                 let variant = segments[segments.len() - 1].clone();
                 Ok(Signal::Value(Value::Enum {
                     name,
-                    // Unit enum variant resolved by surface path at runtime; no
-                    // resolver context here, so dispatch falls back to the name.
-                    type_id: None,
+                    // This path's own `type_id`/`variant_id` (already resolved
+                    // above, e.g. for a tuple-variant constructor referenced
+                    // bare) carry straight onto the value (metel-core#1128);
+                    // `None` only when no resolver context was ever available.
+                    type_id: *type_id,
                     variant,
+                    variant_id: *variant_id,
                     fields: HashMap::new(),
                 }))
             }
@@ -3761,8 +3780,9 @@ pub fn eval_expr(
             path,
             fields,
             type_id,
+            variant_id,
             ..
-        } => eval_struct_literal_expr(path, fields, *type_id, env, runtime),
+        } => eval_struct_literal_expr(path, fields, *type_id, *variant_id, env, runtime),
 
         TypedExpr::FieldAccess {
             object,
