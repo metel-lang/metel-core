@@ -1,0 +1,13 @@
+// Only `alpha::Shape` is in scope here, so the bare `Shape::Circle` pattern
+// below always resolves -- statically and by identity -- to *alpha's*
+// declaration, regardless of what concrete `T` a given call substitutes.
+import alpha::*;
+
+// Generic (construction-at-call-time): this body is type-checked fresh for
+// each call, substituting the caller's own concrete argument type for `T`.
+public fun radius<T>(v: T) -> f64 {
+    match (v) {
+        Shape::Circle { r } => r,
+        _ => 0.0 - 1.0,
+    }
+}

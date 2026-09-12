@@ -1,0 +1,4 @@
+// metel-core#1128: `alpha` and `beta` each declare their own enum named
+// `Shape` with a variant named `Circle` holding a same-named field `r`.
+// Nothing here is shared with `beta::Shape` beyond the bare spelling.
+public enum Shape { Circle { public r: f64 } }

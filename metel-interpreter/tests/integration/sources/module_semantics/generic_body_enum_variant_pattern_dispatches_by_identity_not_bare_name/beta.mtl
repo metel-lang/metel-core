@@ -1,0 +1,1 @@
+public enum Shape { Circle { public r: f64 } }

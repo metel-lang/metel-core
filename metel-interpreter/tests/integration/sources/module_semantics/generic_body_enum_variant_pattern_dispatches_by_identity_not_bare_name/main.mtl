@@ -1,0 +1,22 @@
+// metel-core#1128: the evaluator's enum-variant pattern match discarded its
+// own resolved `variant_id` and compared bare, source-spelled `name`/`variant`
+// strings instead. Two unrelated modules' same-named enum + same-named
+// variant could then silently misdispatch when a generic function body is
+// reconstructed against a runtime value from the "wrong" one.
+//
+// `dispatch::radius` only ever sees `alpha::Shape` lexically. Calling it with
+// a genuine `alpha::Shape::Circle` must match and return the real field;
+// calling it with a `beta::Shape::Circle` -- same bare enum/variant/field
+// spelling, unrelated declaration -- must fall through to the wildcard arm,
+// not silently read `beta`'s data through `alpha`'s pattern.
+import alpha::*;
+import beta::*;
+import dispatch::*;
+
+fun main() {
+    let a := alpha::Shape::Circle { r = 3.0 };
+    assert(radius(a) == 3.0);
+
+    let b := beta::Shape::Circle { r = 9.0 };
+    assert(radius(b) == 0.0 - 1.0);
+}
