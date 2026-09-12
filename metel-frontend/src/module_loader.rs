@@ -301,6 +301,109 @@ pub fn load_virtual_root_with<P: SourceProvider>(
     load_root_at(path.as_ref().to_path_buf(), provider)
 }
 
+/// The result of a diagnostics-collecting graph load (metel-core#1045):
+/// whatever loaded successfully, plus one diagnostic per file that failed to
+/// read, parse, or validate (and one per broken import/export path, and one
+/// per circular-dependency chain detected).
+///
+/// `graph.modules` is empty (never partially populated) when the graph-wide
+/// alias-expansion pass ([`crate::type_alias::expand`]) fails: unlike a
+/// single broken file, a failed whole-graph rewrite leaves every module's
+/// `TypeExpr`s in an unknown, partially-rewritten state that later passes
+/// (which assume aliases are already erased) cannot safely consume. Callers
+/// use "no root module present" (`graph.modules` has no entry with an empty
+/// `module_path`) as the single signal for "nothing usable came out of this
+/// attempt" -- the same signal covers a root file that itself failed to load.
+#[derive(Debug)]
+pub struct GraphLoadReport {
+    pub graph: ModuleGraph,
+    pub diagnostics: Vec<MetelError>,
+}
+
+/// Diagnostics-collecting twin of [`load_root_with`] for tooling consumers
+/// (metel-core#1045): a broken file anywhere in the project no longer sinks
+/// analysis of every other file. See [`GraphLoadReport`].
+#[must_use]
+pub fn load_root_collecting_diagnostics<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+) -> GraphLoadReport {
+    match canonicalize_existing(path.as_ref()) {
+        Ok(root) => load_root_at_collecting(root, provider),
+        Err(e) => GraphLoadReport {
+            graph: ModuleGraph {
+                root: path.as_ref().to_path_buf(),
+                modules: Vec::new(),
+                path_aliases: HashMap::new(),
+            },
+            diagnostics: vec![e],
+        },
+    }
+}
+
+/// Diagnostics-collecting twin of [`load_virtual_root_with`] for tooling
+/// consumers (metel-core#1045). See [`GraphLoadReport`].
+#[must_use]
+pub fn load_virtual_root_collecting_diagnostics<P: SourceProvider>(
+    path: impl AsRef<Path>,
+    provider: &P,
+) -> GraphLoadReport {
+    load_root_at_collecting(path.as_ref().to_path_buf(), provider)
+}
+
+fn load_root_at_collecting<P: SourceProvider>(root: PathBuf, provider: &P) -> GraphLoadReport {
+    let root_dir = root
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .to_path_buf();
+    let mut loader = Loader::new(root_dir, provider);
+    let mut diagnostics = Vec::new();
+
+    // The embedded stdlib is compiled in and never user-controlled; a failure
+    // here means the process itself is broken, not that the user's project
+    // has a fixable problem. Nothing downstream is meaningful without it.
+    if let Err(e) = loader.load_embedded_stdlib() {
+        diagnostics.push(e);
+        return GraphLoadReport {
+            graph: ModuleGraph {
+                root,
+                modules: Vec::new(),
+                path_aliases: HashMap::new(),
+            },
+            diagnostics,
+        };
+    }
+
+    loader.load_module_collecting(root.clone(), Vec::new(), &mut diagnostics);
+    let mut graph = ModuleGraph {
+        root,
+        modules: loader.modules,
+        path_aliases: loader.path_aliases,
+    };
+
+    // RFC-0160: erase transparent type aliases before anything downstream
+    // runs. Unlike a single file's own load failure, this pass rewrites
+    // every module's TypeExprs together; a failure partway through leaves no
+    // trustworthy partial result, so it's treated as a graph-wide invariant
+    // failure -- the same severity `name_resolver`/`path_normalizer`/
+    // `coherence` already carry for the callers of this function
+    // (metel-core#1045's own design doesn't attempt partial recovery for
+    // those either).
+    if let Err(e) = crate::type_alias::expand(&mut graph) {
+        diagnostics.push(e);
+        return GraphLoadReport {
+            graph: ModuleGraph {
+                root: graph.root,
+                modules: Vec::new(),
+                path_aliases: graph.path_aliases,
+            },
+            diagnostics,
+        };
+    }
+
+    GraphLoadReport { graph, diagnostics }
+}
+
 fn load_root_at<P: SourceProvider>(root: PathBuf, provider: &P) -> Result<ModuleGraph, MetelError> {
     let root_dir = root
         .parent()
@@ -490,6 +593,133 @@ impl Loader<'_> {
             program,
         });
         Ok(())
+    }
+
+    /// Diagnostics-collecting twin of [`load_module`](Self::load_module)
+    /// (metel-core#1045): a file that fails to read, parse, or validate
+    /// contributes one diagnostic and nothing else, but does not abort
+    /// loading its siblings -- the importer that reached it simply continues
+    /// with its *other* imports.
+    ///
+    /// A parsed file's own imports/exports that fail to *resolve* (a bad
+    /// path, an ambiguous segment) are handled the same way: one diagnostic
+    /// per broken import/export, the file itself still loads and keeps
+    /// whatever other imports did resolve.
+    ///
+    /// Deliberately mirrors `load_module`'s structure step-for-step rather
+    /// than sharing code with it: every step here differs in what it does on
+    /// failure (record-and-continue vs. propagate), so a shared body would
+    /// need the same branch-on-caller-intent complexity a `?` already avoids
+    /// on the fail-fast side. Keep the two in sync by inspection when one
+    /// changes.
+    ///
+    /// The `parser::parse(...)` call below is the seam a future
+    /// parser-recovery feature would change: today it can only return a
+    /// complete `Program` or nothing, but nothing else here assumes that --
+    /// this function already appends *whatever* diagnostics a parse attempt
+    /// produces and, independently, keeps going with a `Program` if one
+    /// resulted, so a future recovery-capable parse (partial `Program`, zero
+    /// or more diagnostics) needs no change to the surrounding control flow.
+    fn load_module_collecting(
+        &mut self,
+        file_path: PathBuf,
+        module_path: Vec<String>,
+        diagnostics: &mut Vec<MetelError>,
+    ) {
+        let root_dir = self.root_dir.clone();
+        if let Some(cycle_start) = self.stack.iter().position(|p| p == &file_path) {
+            let mut chain: Vec<String> = self.stack[cycle_start..]
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            chain.push(file_path.display().to_string());
+            diagnostics.push(module_error(
+                format!("circular module dependency: {}", chain.join(" -> ")),
+                &file_path,
+            ));
+            return;
+        }
+
+        if self.visited.contains(&file_path) {
+            if let Some(canonical) = self.file_to_path.get(&file_path) {
+                if *canonical != module_path {
+                    self.path_aliases.insert(module_path, canonical.clone());
+                }
+            }
+            return;
+        }
+
+        if let Err(e) = validate_std_namespace(&module_path, &file_path) {
+            diagnostics.push(e);
+            return;
+        }
+
+        let source = match self.provider.read(&module_path, &file_path) {
+            Ok(s) => s,
+            Err(e) => {
+                diagnostics.push(e);
+                return;
+            }
+        };
+        let filename = file_path.display().to_string();
+        let program = match parser::parse(&source, &filename) {
+            Ok(p) => p,
+            Err(e) => {
+                diagnostics.push(e);
+                return;
+            }
+        };
+
+        if let Err(e) = validate_super_root(&program, &module_path, &file_path) {
+            diagnostics.push(e);
+            return;
+        }
+
+        self.stack.push(file_path.clone());
+        for import in &program.imports {
+            match resolve_import_module(
+                self.provider,
+                &file_path,
+                &root_dir,
+                &module_path,
+                &import.path.root,
+                &import.path.tree,
+            ) {
+                Ok(Some((mod_segs, child))) => {
+                    let child_path = child_module_path(&module_path, &import.path.root, &mod_segs);
+                    self.load_module_collecting(child, child_path, diagnostics);
+                }
+                Ok(None) => {}
+                Err(e) => diagnostics.push(e),
+            }
+        }
+        for export in &program.exports {
+            match resolve_import_module(
+                self.provider,
+                &file_path,
+                &root_dir,
+                &module_path,
+                &export.path.root,
+                &export.path.tree,
+            ) {
+                Ok(Some((mod_segs, child))) => {
+                    let child_path = child_module_path(&module_path, &export.path.root, &mod_segs);
+                    self.load_module_collecting(child, child_path, diagnostics);
+                }
+                Ok(None) => {}
+                Err(e) => diagnostics.push(e),
+            }
+        }
+        self.stack.pop();
+
+        self.visited.insert(file_path.clone());
+        self.file_to_path
+            .insert(file_path.clone(), module_path.clone());
+        self.modules.push(LoadedModule {
+            module_path,
+            file_path,
+            program,
+        });
     }
 }
 

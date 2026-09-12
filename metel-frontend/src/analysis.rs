@@ -55,6 +55,16 @@ pub struct Analysis {
     pub modules: ModuleTable,
     /// Non-fatal frontend diagnostics.
     pub warnings: Vec<String>,
+    /// Module paths that were skipped rather than typechecked, because a
+    /// module they depend on independently failed (metel-core#1045). Always
+    /// empty for [`analyze_root_with`]/[`analyze_virtual_root_with`]'s
+    /// fail-fast path; only the diagnostics-collecting entry points
+    /// ([`analyze_root_with_diagnostics`]/[`analyze_virtual_root_with_diagnostics`])
+    /// can produce a non-empty list. `graph` has no `TypedModule` entry for
+    /// any of these paths, but `names`/`resolution`/`positions`/`members`/
+    /// `modules` still cover them fully -- go-to-definition and
+    /// find-references still work; only `hover_at` degrades for them.
+    pub skipped_modules: Vec<Vec<String>>,
 }
 
 impl Analysis {
@@ -98,26 +108,30 @@ impl Analysis {
 ///
 /// Tooling receives diagnostics as data rather than as a `Result` error, so it
 /// can publish them for an incomplete document without treating ordinary user
-/// mistakes as a server failure. The initial frontend remains fail-fast within
-/// a phase: the list contains the first blocking diagnostic. Parser recovery
-/// and multi-error typechecking can extend this representation without changing
-/// its callers.
+/// mistakes as a server failure. Loading and typechecking each accumulate one
+/// diagnostic per independently-failing file/module rather than stopping at
+/// the first (metel-core#1045) -- see
+/// [`module_loader::load_root_collecting_diagnostics`] and
+/// [`crate::typechecker::check_graph_collecting_diagnostics`]. Name
+/// resolution, path normalization, and coherence checking remain fail-fast,
+/// whole-graph, single-diagnostic phases: `diagnostics` holds exactly one
+/// entry (and `analysis` is `None`) when one of those fails, since none of
+/// them has a natural per-module boundary to recover at. A future parser
+/// recovery feature (more than one syntax diagnostic from a single file) is
+/// designed for but not implemented here -- see
+/// `module_loader::GraphLoadReport`'s own doc.
 #[derive(Debug)]
 pub struct AnalysisReport {
-    /// Analysis facts when every blocking frontend phase succeeded.
+    /// Analysis facts when the graph's root module loaded and every
+    /// whole-graph phase (name resolution, path normalization, coherence)
+    /// succeeded. May still be `Some` with `diagnostics` non-empty: a module
+    /// elsewhere in the project independently failed to load or typecheck.
     pub analysis: Option<Analysis>,
     /// Source or frontend diagnostics collected during the attempt.
     pub diagnostics: Vec<MetelError>,
 }
 
 impl AnalysisReport {
-    fn success(analysis: Analysis) -> Self {
-        Self {
-            analysis: Some(analysis),
-            diagnostics: Vec::new(),
-        }
-    }
-
     fn failure(diagnostic: MetelError) -> Self {
         Self {
             analysis: None,
@@ -163,50 +177,103 @@ pub fn analyze_virtual_root_with<P: SourceProvider>(
     analyze_graph(graph, options)
 }
 
-/// Analyze an on-disk root and return diagnostics as data for tooling.
+/// Analyze an on-disk root and return diagnostics as data for tooling
+/// (metel-core#1045).
 ///
 /// The command-line pipeline should continue to use [`analyze_root_with`] and
 /// its fail-fast `Result`. This API is for long-lived editor processes, where a
 /// malformed source document is expected and must not be reported as a server
-/// failure.
+/// failure. Unlike `analyze_root_with`, a broken file elsewhere in the project
+/// (one that fails to load, or one that fails to typecheck independently of
+/// the file being analyzed) does not sink analysis of everything else -- see
+/// [`module_loader::load_root_collecting_diagnostics`] and
+/// [`crate::typechecker::check_graph_collecting_diagnostics`].
 #[must_use]
 pub fn analyze_root_with_diagnostics<P: SourceProvider>(
     path: impl AsRef<Path>,
     provider: &P,
     options: AnalysisOptions,
 ) -> AnalysisReport {
-    match analyze_root_with(path, provider, options) {
-        Ok(analysis) => AnalysisReport::success(analysis),
-        Err(diagnostic) => AnalysisReport::failure(diagnostic),
-    }
+    finish_diagnostics(
+        module_loader::load_root_collecting_diagnostics(path, provider),
+        options,
+    )
 }
 
 /// Analyze a virtual root and return diagnostics as data for tooling.
 ///
-/// See [`analyze_root_with_diagnostics`] for the initial fail-fast collection
-/// boundary and its intended extension path.
+/// See [`analyze_root_with_diagnostics`] for the collecting behavior this
+/// shares.
 #[must_use]
 pub fn analyze_virtual_root_with_diagnostics<P: SourceProvider>(
     path: impl AsRef<Path>,
     provider: &P,
     options: AnalysisOptions,
 ) -> AnalysisReport {
-    match analyze_virtual_root_with(path, provider, options) {
-        Ok(analysis) => AnalysisReport::success(analysis),
-        Err(diagnostic) => AnalysisReport::failure(diagnostic),
-    }
+    finish_diagnostics(
+        module_loader::load_virtual_root_collecting_diagnostics(path, provider),
+        options,
+    )
 }
 
-/// Analyze an already-loaded module graph directly, bypassing file discovery.
-/// `pub(crate)` so cross-module test fixtures elsewhere in this crate (e.g.
-/// `query`'s own multi-module tests, metel-core#1046) can build a `ModuleGraph`
-/// by hand -- the same approach `identity`'s own cross-module fixtures use --
-/// instead of going through a `SourceProvider` and real file discovery.
-pub(crate) fn analyze_graph(
-    graph: ModuleGraph,
+/// Shared tail of both diagnostics-collecting entry points: decide whether
+/// the loaded graph has anything worth analyzing, then run the
+/// diagnostics-collecting analysis and merge in the loader's own diagnostics
+/// (metel-core#1045).
+///
+/// `analysis` is `None` iff the graph's own root module (`module_path` empty,
+/// the loader's own convention -- see `Loader::load_module`) never made it
+/// into the loaded graph, matching `analyze_*_with_diagnostics`'s existing
+/// contract for a root document that fails outright (see
+/// `virtual_analysis_reports_parse_errors_as_diagnostics` below). A root that
+/// *did* load, even with other files elsewhere broken or unloaded, still gets
+/// a full `Some(Analysis)`.
+fn finish_diagnostics(
+    load_report: module_loader::GraphLoadReport,
     options: AnalysisOptions,
-) -> Result<Analysis, MetelError> {
-    let names = name_resolver::resolve(&graph)?;
+) -> AnalysisReport {
+    let root_loaded = load_report
+        .graph
+        .modules
+        .iter()
+        .any(|m| m.module_path.is_empty());
+    if !root_loaded {
+        return AnalysisReport {
+            analysis: None,
+            diagnostics: load_report.diagnostics,
+        };
+    }
+
+    let mut report = analyze_graph_with_diagnostics(load_report.graph, options);
+    // Loader diagnostics are earlier in the pipeline than typecheck ones.
+    let mut diagnostics = load_report.diagnostics;
+    diagnostics.append(&mut report.diagnostics);
+    report.diagnostics = diagnostics;
+    report
+}
+
+/// Facts derivable from a parsed [`ModuleGraph`] before typechecking even
+/// starts: name resolution and every structural identity table. None of this
+/// depends on whether typechecking later succeeds (metel-core#1045) -- it's
+/// shared verbatim between the fail-fast [`analyze_graph`] and the
+/// diagnostics-collecting [`analyze_graph_with_diagnostics`], which differ
+/// only in what happens after this point.
+struct GraphFacts {
+    names: ResolvedNames,
+    name_interner: NameInterner,
+    modules: ModuleTable,
+    identity: identity::Allocation,
+    members: MemberTable,
+}
+
+/// # Errors
+/// Returns the first name-resolution error (an unknown import, an export
+/// conflict, …). This is the one fail-fast phase shared by both analysis
+/// paths -- see `analyze_graph_with_diagnostics`'s own doc for why it, along
+/// with path normalization and coherence checking, isn't extended to
+/// per-module accumulation the way typechecking is.
+fn resolve_graph_facts(graph: &ModuleGraph) -> Result<GraphFacts, MetelError> {
+    let names = name_resolver::resolve(graph)?;
 
     // Structural identities are derived from the parsed graph, so allocate them
     // before `path_normalizer::normalize` consumes `graph`.
@@ -247,15 +314,34 @@ pub(crate) fn analyze_graph(
     );
     let members = identity::collect_members(&identity_modules, &names, &mut name_interner);
 
-    let normalized = path_normalizer::normalize(graph, &names)?;
-    coherence::check(&normalized, &names)?;
+    Ok(GraphFacts {
+        names,
+        name_interner,
+        modules,
+        identity,
+        members,
+    })
+}
+
+/// Analyze an already-loaded module graph directly, bypassing file discovery.
+/// `pub(crate)` so cross-module test fixtures elsewhere in this crate (e.g.
+/// `query`'s own multi-module tests, metel-core#1046) can build a `ModuleGraph`
+/// by hand -- the same approach `identity`'s own cross-module fixtures use --
+/// instead of going through a `SourceProvider` and real file discovery.
+pub(crate) fn analyze_graph(
+    graph: ModuleGraph,
+    options: AnalysisOptions,
+) -> Result<Analysis, MetelError> {
+    let facts = resolve_graph_facts(&graph)?;
+    let normalized = path_normalizer::normalize(graph, &facts.names)?;
+    coherence::check(&normalized, &facts.names)?;
     let report = typechecker::check_graph_with_report(
         &normalized,
-        &names,
+        &facts.names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
-            members: &members,
-            binding_spans: &identity.binding_spans,
+            members: &facts.members,
+            binding_spans: &facts.identity.binding_spans,
         }),
     )?;
 
@@ -266,14 +352,79 @@ pub(crate) fn analyze_graph(
 
     Ok(Analysis {
         graph: report.graph,
-        names,
-        resolution: identity.resolution,
-        positions: identity.positions,
-        name_interner,
-        members,
-        modules,
+        names: facts.names,
+        resolution: facts.identity.resolution,
+        positions: facts.identity.positions,
+        name_interner: facts.name_interner,
+        members: facts.members,
+        modules: facts.modules,
         warnings,
+        skipped_modules: Vec::new(),
     })
+}
+
+/// Analyze an already-loaded module graph, collecting diagnostics as data
+/// instead of failing fast (metel-core#1045). Always produces `Some(Analysis)`
+/// once name resolution, path normalization, and coherence checking all
+/// succeed -- those three remain single-diagnostic, whole-graph passes for
+/// this MVP (matching the parser phase's own "one diagnostic, skip later
+/// phases" scope): none of them has a natural per-module boundary the way the
+/// typechecker's `GlobalExports` accumulation already does, and a partial
+/// result from any of them (a half-resolved symbol table, a half-normalized
+/// path) isn't safely consumable by anything downstream. Only typechecking
+/// gets per-module accumulation, via `check_graph_collecting_diagnostics`.
+pub(crate) fn analyze_graph_with_diagnostics(
+    graph: ModuleGraph,
+    options: AnalysisOptions,
+) -> AnalysisReport {
+    let facts = match resolve_graph_facts(&graph) {
+        Ok(facts) => facts,
+        Err(e) => return AnalysisReport::failure(e),
+    };
+    let normalized = match path_normalizer::normalize(graph, &facts.names) {
+        Ok(normalized) => normalized,
+        Err(e) => return AnalysisReport::failure(e),
+    };
+    if let Err(e) = coherence::check(&normalized, &facts.names) {
+        return AnalysisReport::failure(e);
+    }
+
+    let report = typechecker::check_graph_collecting_diagnostics(
+        &normalized,
+        &facts.names,
+        &CorePrelude::default(),
+        Some(identity::FrozenIdentity {
+            members: &facts.members,
+            binding_spans: &facts.identity.binding_spans,
+        }),
+    );
+
+    let mut warnings = report.warnings;
+    let mut diagnostics = report.diagnostics;
+    if options.move_check {
+        // Runs over whatever modules did type-check; a violation here is one
+        // more diagnostic layered on an otherwise-valid partial analysis, not
+        // a reason to discard it (unlike the three whole-graph passes above).
+        match move_check::check_graph(&report.graph) {
+            Ok(mc_warnings) => warnings.extend(mc_warnings),
+            Err(e) => diagnostics.push(e),
+        }
+    }
+
+    AnalysisReport {
+        analysis: Some(Analysis {
+            graph: report.graph,
+            names: facts.names,
+            resolution: facts.identity.resolution,
+            positions: facts.identity.positions,
+            name_interner: facts.name_interner,
+            members: facts.members,
+            modules: facts.modules,
+            warnings,
+            skipped_modules: report.skipped,
+        }),
+        diagnostics,
+    }
 }
 
 #[cfg(test)]
@@ -1025,6 +1176,156 @@ mod tests {
                 .expect("parse error should be located")
                 .filename,
             "editor.mtl"
+        );
+    }
+
+    // ── #1045: diagnostics accumulation ─────────────────────────────────────
+
+    #[test]
+    fn a_broken_sibling_file_does_not_sink_the_rest_of_the_project() {
+        // metel-core#1045: a file that fails to parse used to abort loading
+        // the entire graph -- one diagnostic and nothing else, for the whole
+        // project, even for files with no relationship to the broken one.
+        use crate::module_loader::MultiFileSourceProvider;
+
+        let provider = MultiFileSourceProvider::new(
+            "editor.mtl",
+            "import a::helper;\nimport b::broken;\nfun main() -> i64 { helper() }\n",
+        )
+        .with_file("a.mtl", "public fun helper() -> i64 { 42 }\n")
+        // Missing closing paren -- a genuine parse error, not a semantic one.
+        .with_file("b.mtl", "public fun broken( -> i64 { 1 }\n");
+
+        let report = analyze_virtual_root_with_diagnostics(
+            "editor.mtl",
+            &provider,
+            AnalysisOptions::default(),
+        );
+
+        assert_eq!(
+            report.diagnostics.len(),
+            1,
+            "exactly one diagnostic, for b.mtl: {:?}",
+            report.diagnostics
+        );
+        assert!(
+            report.diagnostics[0]
+                .primary_span()
+                .expect("parse error should be located")
+                .filename
+                .contains("b.mtl"),
+            "the diagnostic should point at the broken file: {:?}",
+            report.diagnostics[0]
+        );
+
+        let analysis = report
+            .analysis
+            .expect("the root and a.mtl should still analyze");
+        let module_paths: Vec<&[String]> = analysis
+            .graph
+            .modules
+            .iter()
+            .map(|m| m.module_path.as_slice())
+            .collect();
+        assert!(
+            module_paths.iter().any(|p| p.is_empty()),
+            "the root module should still be typed: {module_paths:?}"
+        );
+        assert!(
+            module_paths.contains(&["a".to_string()].as_slice()),
+            "a.mtl should still be typed: {module_paths:?}"
+        );
+        assert!(
+            !module_paths.contains(&["b".to_string()].as_slice()),
+            "b.mtl never parsed, so it can't be in the typed graph: {module_paths:?}"
+        );
+    }
+
+    #[test]
+    fn an_independent_type_error_does_not_sink_unrelated_modules() {
+        // metel-core#1045: module `a` has its own, self-contained type error.
+        // `b` has no relationship to `a` at all and should still fully
+        // analyze; `c` imports `a` and should be skipped (not itself given a
+        // misleading diagnostic) since its own check would be unreliable;
+        // the root imports both `b` and `c`, so it transitively depends on
+        // the failed `a` too and is skipped for the same reason `c` is.
+        use crate::module_loader::MultiFileSourceProvider;
+
+        let provider = MultiFileSourceProvider::new(
+            "editor.mtl",
+            "import b::ok_fn;\nimport c::uses_a;\nfun main() -> i64 { ok_fn() }\n",
+        )
+        .with_file("a.mtl", "public fun bad() -> i64 { \"oops\" }\n")
+        .with_file("b.mtl", "public fun ok_fn() -> i64 { 1 }\n")
+        .with_file(
+            "c.mtl",
+            "import a::bad;\npublic fun uses_a() -> i64 { bad() }\n",
+        );
+
+        let report = analyze_virtual_root_with_diagnostics(
+            "editor.mtl",
+            &provider,
+            AnalysisOptions::default(),
+        );
+
+        assert_eq!(
+            report.diagnostics.len(),
+            1,
+            "exactly one diagnostic, a's own type error: {:?}",
+            report.diagnostics
+        );
+        assert!(
+            report.diagnostics[0]
+                .primary_span()
+                .expect("type error should be located")
+                .filename
+                .contains("a.mtl"),
+            "the diagnostic should point at a.mtl: {:?}",
+            report.diagnostics[0]
+        );
+
+        let analysis = report.analysis.expect("b.mtl should still analyze");
+        let module_paths: Vec<&[String]> = analysis
+            .graph
+            .modules
+            .iter()
+            .map(|m| m.module_path.as_slice())
+            .collect();
+        assert!(
+            module_paths.contains(&["b".to_string()].as_slice()),
+            "b.mtl is independent of a and should still be typed: {module_paths:?}"
+        );
+        assert!(
+            !module_paths.contains(&["a".to_string()].as_slice()),
+            "a.mtl failed and has no typed entry: {module_paths:?}"
+        );
+        assert!(
+            !module_paths.contains(&["c".to_string()].as_slice()),
+            "c.mtl depends on the failed a.mtl and should be skipped, not typed: {module_paths:?}"
+        );
+        assert!(
+            analysis
+                .skipped_modules
+                .contains(&["c".to_string()].to_vec()),
+            "c.mtl should be recorded as skipped: {:?}",
+            analysis.skipped_modules
+        );
+        assert!(
+            analysis.skipped_modules.contains(&Vec::new()),
+            "the root transitively depends on the failed a.mtl via c and \
+             should be skipped too: {:?}",
+            analysis.skipped_modules
+        );
+
+        // b.mtl's own facts are fully queryable even though a.mtl and c.mtl
+        // are not -- hover/goto-def degrade only for the affected subgraph.
+        // The offset targets the body's `1` (a typed expression); the
+        // function name itself has no expression node to hover.
+        const B_SOURCE: &str = "public fun ok_fn() -> i64 { 1 }\n";
+        let body_offset = B_SOURCE.rfind('1').expect("b.mtl's body is `1`");
+        assert!(
+            analysis.hover_at("b.mtl", body_offset).is_some(),
+            "hover should still work inside the unaffected module"
         );
     }
 }

@@ -385,55 +385,21 @@ pub fn check_graph_with_report(
     let mut export_gen = TypeVarGenerator::with_counter(2_000_000);
 
     for loaded in graph.modules() {
-        check_pub_annotations(loaded, names)?;
-        warnings.extend(inert_public_field_warnings(loaded));
-        let (imported_schemes, deferred_conflicts) =
-            build_import_schemes(loaded, names, &global_exports, graph)?;
-        // An overloaded name (METEL-180) has no single scheme in `imported_schemes` —
-        // it's dispatched by SymbolId through the overload table instead, so it needs
-        // its own import path, analogous to `build_import_schemes` (metel-core#1143).
-        let imported_overloads = build_import_overloads(loaded, names, &global_exports);
-        let report = check_impl_with_report(
-            &loaded.program,
-            &imported_schemes,
-            deferred_conflicts,
-            &imported_overloads,
+        let checked = check_one_module(
+            loaded,
+            names,
+            graph,
+            &global_exports,
             &type_registry,
             std_prelude,
-            &loaded.module_path,
-            Some(&names.symbols),
-            Some(&names.references),
-            Some(&names.scopes),
             identity,
+            &mut export_gen,
         )?;
-        accumulate_typecheck_timings(&mut timings, report.timings);
-        type_registry = report.registry;
-
-        // Export pub names from this module's scheme_env, plus re-exported names
-        // pulled from their source modules in GlobalExports (#178).
-        let pub_schemes = filter_pub_schemes(&report.scheme_env, loaded, names, &global_exports);
-        let pub_schemes = pub_schemes
-            .into_iter()
-            .map(|(name, scheme)| (name, refresh_scheme_for_export(&scheme, &mut export_gen)))
-            .collect();
-        let pub_overloads = filter_pub_overloads(&report.overloads, loaded, names);
-        global_exports.insert(
-            loaded.module_path.clone(),
-            ModuleExports {
-                pub_schemes,
-                pub_overloads,
-            },
-        );
-
-        // Add builtin schemes so construction-at-call-time can resolve builtins
-        // like `array_len` inside generic function bodies.
-        let mut full_scheme_env = report.scheme_env;
-        registry::register_builtin_schemes(&mut full_scheme_env, std_prelude);
-        typed_modules.push(TypedModule {
-            module_path: loaded.module_path.clone(),
-            decls: report.typed_decls,
-            scheme_env: full_scheme_env,
-        });
+        accumulate_typecheck_timings(&mut timings, checked.timings);
+        type_registry = checked.registry;
+        warnings.extend(checked.warnings);
+        global_exports.insert(loaded.module_path.clone(), checked.exports);
+        typed_modules.push(checked.typed_module);
     }
 
     Ok(CheckGraphReport {
@@ -444,6 +410,207 @@ pub fn check_graph_with_report(
         timings,
         warnings,
     })
+}
+
+/// One module's outcome from [`check_one_module`]: everything the per-module
+/// loop (in either `check_graph_with_report` or
+/// [`check_graph_collecting_diagnostics`]) needs to fold into its running
+/// state.
+struct CheckedModule {
+    typed_module: TypedModule,
+    exports: ModuleExports,
+    registry: TypeDefinitionRegistry,
+    timings: TypecheckPhaseTimings,
+    warnings: Vec<String>,
+}
+
+/// Check one module against already-accumulated `global_exports` and
+/// `type_registry`. Extracted from `check_graph_with_report`'s own loop body
+/// (metel-core#1045) so [`check_graph_collecting_diagnostics`] can share the
+/// exact same per-module logic and differ only in what it does with an
+/// `Err` (propagate vs. record-and-skip) -- the two entry points can never
+/// silently drift apart on what "checking a module" means.
+// clippy-allow: one argument per already-accumulated graph-wide input, each
+// threaded through unchanged from `check_graph_with_report`'s own signature.
+#[allow(clippy::too_many_arguments)]
+fn check_one_module(
+    loaded: &LoadedModule,
+    names: &ResolvedNames,
+    graph: &NormalizedModuleGraph,
+    global_exports: &GlobalExports,
+    type_registry: &TypeDefinitionRegistry,
+    std_prelude: &CorePrelude,
+    identity: Option<FrozenIdentity<'_>>,
+    export_gen: &mut TypeVarGenerator,
+) -> Result<CheckedModule, MetelError> {
+    check_pub_annotations(loaded, names)?;
+    let warnings = inert_public_field_warnings(loaded);
+    let (imported_schemes, deferred_conflicts) =
+        build_import_schemes(loaded, names, global_exports, graph)?;
+    // An overloaded name (METEL-180) has no single scheme in `imported_schemes` —
+    // it's dispatched by SymbolId through the overload table instead, so it needs
+    // its own import path, analogous to `build_import_schemes` (metel-core#1143).
+    let imported_overloads = build_import_overloads(loaded, names, global_exports);
+    let report = check_impl_with_report(
+        &loaded.program,
+        &imported_schemes,
+        deferred_conflicts,
+        &imported_overloads,
+        type_registry,
+        std_prelude,
+        &loaded.module_path,
+        Some(&names.symbols),
+        Some(&names.references),
+        Some(&names.scopes),
+        identity,
+    )?;
+
+    // Export pub names from this module's scheme_env, plus re-exported names
+    // pulled from their source modules in GlobalExports (#178).
+    let pub_schemes = filter_pub_schemes(&report.scheme_env, loaded, names, global_exports);
+    let pub_schemes = pub_schemes
+        .into_iter()
+        .map(|(name, scheme)| (name, refresh_scheme_for_export(&scheme, export_gen)))
+        .collect();
+    let pub_overloads = filter_pub_overloads(&report.overloads, loaded, names);
+
+    // Add builtin schemes so construction-at-call-time can resolve builtins
+    // like `array_len` inside generic function bodies.
+    let mut full_scheme_env = report.scheme_env;
+    registry::register_builtin_schemes(&mut full_scheme_env, std_prelude);
+
+    Ok(CheckedModule {
+        typed_module: TypedModule {
+            module_path: loaded.module_path.clone(),
+            decls: report.typed_decls,
+            scheme_env: full_scheme_env,
+        },
+        exports: ModuleExports {
+            pub_schemes,
+            pub_overloads,
+        },
+        registry: report.registry,
+        timings: report.timings,
+        warnings,
+    })
+}
+
+/// The result of a diagnostics-collecting graph typecheck (metel-core#1045):
+/// every module that could be checked, plus one diagnostic per module that
+/// independently failed and a list of the modules skipped as a consequence
+/// (never their own diagnostic -- see [`check_graph_collecting_diagnostics`]).
+#[derive(Debug)]
+pub struct ModuleDiagnosticsReport {
+    /// Only the modules that type-checked; a module that failed, or that was
+    /// skipped because a dependency failed, has no entry here.
+    pub graph: TypedModuleGraph,
+    pub timings: TypecheckPhaseTimings,
+    pub warnings: Vec<String>,
+    /// One [`MetelError`] per module that independently failed to typecheck.
+    pub diagnostics: Vec<MetelError>,
+    /// Module paths skipped because a dependency of theirs already failed —
+    /// never carries a diagnostic of its own, since the real problem is
+    /// already reported against the failed dependency.
+    pub skipped: Vec<Vec<String>>,
+}
+
+/// Diagnostics-collecting twin of [`check_graph_with_report`] for tooling
+/// consumers (metel-core#1045): one independently-failing module no longer
+/// sinks every other module's typecheck.
+///
+/// "Independent" is drawn from `names.scopes` (the same explicit-import /
+/// glob / re-export fields `build_import_schemes` and `build_import_overloads`
+/// already read): before attempting a module, this checks whether any module
+/// it imports from is already known to have failed and, if so, skips it too
+/// (propagating transitively for free, since `graph.modules()` is already in
+/// topological order) rather than calling [`check_one_module`] on it. This
+/// is necessary here in a way it is *not* for a module that merely failed to
+/// *load* (metel-core#1045's loader-level `load_root_collecting_diagnostics`):
+/// a module that failed to typecheck still parsed fine and is genuinely
+/// visible in `names.declared_names` (name resolution ran on its real AST),
+/// so without this check a dependent's own `build_import_schemes` call would
+/// misreport a `T0009 "not public"` instead of the real problem being
+/// upstream.
+#[must_use]
+pub fn check_graph_collecting_diagnostics(
+    graph: &NormalizedModuleGraph,
+    names: &ResolvedNames,
+    std_prelude: &CorePrelude,
+    identity: Option<FrozenIdentity<'_>>,
+) -> ModuleDiagnosticsReport {
+    let mut global_exports = GlobalExports::new();
+    let mut typed_modules: Vec<TypedModule> = Vec::new();
+    let mut type_registry = TypeDefinitionRegistry::new();
+    let mut timings = TypecheckPhaseTimings::default();
+    let mut warnings = Vec::new();
+    let mut export_gen = TypeVarGenerator::with_counter(2_000_000);
+    let mut diagnostics = Vec::new();
+    let mut skipped: Vec<Vec<String>> = Vec::new();
+    let mut failed: HashSet<Vec<String>> = HashSet::new();
+
+    for loaded in graph.modules() {
+        if module_dependencies(names, &loaded.module_path)
+            .iter()
+            .any(|dep| failed.contains(dep))
+        {
+            failed.insert(loaded.module_path.clone());
+            skipped.push(loaded.module_path.clone());
+            continue;
+        }
+
+        match check_one_module(
+            loaded,
+            names,
+            graph,
+            &global_exports,
+            &type_registry,
+            std_prelude,
+            identity,
+            &mut export_gen,
+        ) {
+            Ok(checked) => {
+                accumulate_typecheck_timings(&mut timings, checked.timings);
+                type_registry = checked.registry;
+                warnings.extend(checked.warnings);
+                global_exports.insert(loaded.module_path.clone(), checked.exports);
+                typed_modules.push(checked.typed_module);
+            }
+            Err(e) => {
+                diagnostics.push(e);
+                failed.insert(loaded.module_path.clone());
+            }
+        }
+    }
+
+    ModuleDiagnosticsReport {
+        graph: TypedModuleGraph {
+            modules: typed_modules,
+            type_registry,
+        },
+        timings,
+        warnings,
+        diagnostics,
+        skipped,
+    }
+}
+
+/// A module's cross-module dependencies: every source module its explicit
+/// imports, glob imports, or re-exports name (metel-core#1045). The same
+/// fields `build_import_schemes`/`build_import_overloads` themselves read to
+/// pull in another module's checked facts, so "does this module depend on
+/// that one" and "would checking this module actually need that one's
+/// results" are the same question by construction.
+fn module_dependencies(names: &ResolvedNames, module_path: &[String]) -> HashSet<Vec<String>> {
+    let Some(scope) = names.scopes.get(module_path) else {
+        return HashSet::new();
+    };
+    scope
+        .explicit
+        .values()
+        .map(|b| b.source_module.clone())
+        .chain(scope.globs.iter().map(|(_, m)| m.clone()))
+        .chain(scope.re_exports.values().map(|b| b.source_module.clone()))
+        .collect()
 }
 
 /// Build the set of imported name→scheme bindings for a module, drawn from
