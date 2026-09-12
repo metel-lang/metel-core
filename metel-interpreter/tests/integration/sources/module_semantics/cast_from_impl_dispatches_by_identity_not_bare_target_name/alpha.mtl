@@ -1,0 +1,11 @@
+// metel-core#1145: `alpha` and `beta` each declare their own unrelated `Box`
+// and `Source`, each with its own `From<Source>` impl for `Box`. Merely
+// loading `beta` (for an unrelated import elsewhere) must not corrupt an
+// `as Box` cast that only ever named `alpha::Box`.
+public struct Box { public degrees: f64 }
+aspect From<T> { fun from(value: T) -> Self; }
+public struct Source { public degrees: f64 }
+extend Box: From<Source> {
+    fun from(value: Source) -> Box { Box { degrees = value.degrees + 1000.0 } }
+}
+public fun make_source(d: f64) -> Source { Source { degrees = d } }

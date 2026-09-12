@@ -1,0 +1,11 @@
+import alpha::Box;
+import alpha::make_source;
+// Only reason beta's module (and its own same-named Box/From impl) loads at
+// all -- this import is otherwise unrelated to the cast below.
+import beta::make_source as beta_make_source;
+
+fun main() {
+    let s := make_source(1.0);
+    let b := s as Box;
+    assert(b.degrees == 1001.0);
+}

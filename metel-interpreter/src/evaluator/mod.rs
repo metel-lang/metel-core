@@ -813,6 +813,20 @@ impl RuntimeRegistry {
     #[must_use]
     pub fn get_from_method(&self, target: &str, source: &str) -> Option<RuntimeMethod> {
         let target_id = self.type_id_for_name(target)?;
+        self.get_from_method_by_id(target_id, source)
+    }
+
+    /// Like [`get_from_method`](Self::get_from_method), but takes the target's
+    /// own already-resolved `SymbolId` directly instead of re-deriving it from
+    /// a bare name (metel-core#1054) -- two modules can each declare a
+    /// same-named type with its own `From` impl, and `type_id_for_name`'s flat,
+    /// whole-program name index has no module context to disambiguate them.
+    #[must_use]
+    pub fn get_from_method_by_id(
+        &self,
+        target_id: SymbolId,
+        source: &str,
+    ) -> Option<RuntimeMethod> {
         self.types
             .get(&target_id)?
             .aspect_impls
@@ -3512,8 +3526,8 @@ pub fn eval_expr(
         TypedExpr::Cast {
             expr: inner,
             target_type,
+            ty,
             span,
-            ..
         } => {
             let v = match eval_to_value(inner, env, runtime)? {
                 ControlFlow::Continue(value) => value,
@@ -3523,8 +3537,23 @@ pub fn eval_expr(
             // "Target::From<Source>::from", then fall back to "Target::from"
             // (used by built-in Int::from / Float::from which have no type arg).
             if let crate::ast::TypeExpr::Named(target_name, _) = target_type {
-                let from_fn = runtime_type_name(&v)
-                    .and_then(|source| runtime.get_from_method(target_name, source));
+                // Prefer the cast's own resolved target identity (metel-core#1054):
+                // two modules can each declare a same-named type with its own
+                // From impl, and target_type's bare spelling has no module
+                // context here to disambiguate them -- ty's own NominalId (set
+                // the same way any written type annotation's is, #1129)
+                // does. Falls back to the name-based lookup only when no
+                // identity rode along (e.g. a block-local type, or a value
+                // reconstructed with no resolver context).
+                let target_id = match ty {
+                    crate::types::Type::Named(_, _, id) => id.get(),
+                    _ => None,
+                };
+                let from_fn = runtime_type_name(&v).and_then(|source| {
+                    target_id
+                        .and_then(|id| runtime.get_from_method_by_id(id, source))
+                        .or_else(|| runtime.get_from_method(target_name, source))
+                });
                 if let Some(f) = from_fn {
                     return call::call_function(
                         Value::Callable(f.body),
