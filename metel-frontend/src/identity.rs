@@ -350,6 +350,10 @@ impl NameInterner {
 /// A minimal string interner: spelling → dense `u32`, with a reverse table.
 #[derive(Debug, Clone, Default)]
 struct Interner {
+    // resolution-freeze-allow: this *is* the interning mechanism -- the
+    // allocation-time step that produces an id from a spelling, not a
+    // post-freeze semantic lookup a resolved reference goes through
+    // (metel-core#1054).
     map: HashMap<String, u32>,
     rev: Vec<String>,
 }
@@ -380,6 +384,10 @@ impl Interner {
 /// `["a", "b"]` and an alias `["x", "y"] -> ["a", "b"]` land on the same id.
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTable {
+    // resolution-freeze-allow: the interning mechanism itself (canonical path
+    // -> id), not a post-freeze semantic lookup; and a canonical module path
+    // is globally unique by construction, unlike a bare type/method name
+    // (metel-core#1054).
     map: HashMap<Vec<String>, ModuleId>,
     info: Vec<ModuleInfo>,
 }

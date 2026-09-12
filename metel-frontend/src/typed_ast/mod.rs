@@ -24,16 +24,6 @@ pub enum MethodDispatch {
     Aspect { aspect_id: SymbolId },
 }
 
-/// A resolved import entry: the stable source location and symbol identity of an imported name.
-#[derive(Debug, Clone)]
-pub struct ResolvedImportRef {
-    pub source_module: Vec<String>,
-    pub canonical_name: String,
-    /// Stable cross-module identity assigned by the name resolver. `None` for
-    /// glob-resolved names that have no explicit binding (e.g. std auto-imports).
-    pub symbol_id: Option<SymbolId>,
-}
-
 // ── Program ───────────────────────────────────────────────────────────────────
 
 /// A fully typed program — list of typed declarations.
@@ -45,15 +35,13 @@ pub type TypedProgram = Vec<TypedDecl>;
 pub struct TypedModule {
     pub module_path: Vec<String>,
     pub decls: Vec<TypedDecl>,
-    /// Alias → canonical name for imports declared `import mod::name as alias`.
-    /// The evaluator registers these so that `alias` resolves to the same value as `name`.
-    pub import_aliases: HashMap<String, String>,
-    /// Every explicitly imported name: `local_name` → resolved import reference.
-    /// Used by `evaluate_graph` to seed each module's environment from its dependencies.
-    pub imported_names: HashMap<String, ResolvedImportRef>,
     /// The full type-scheme environment produced by the typechecker for this module.
     /// Used at runtime to run `construct_block` for generic function bodies
     /// (`ClosureBody::Untyped`) without a separate untyped evaluator pipeline.
+    // resolution-freeze-allow: keyed by declaration name, but scoped to one
+    // module's own declarations -- two functions in the same module can never
+    // share a name, so there is no cross-module collision for a bare name to
+    // resolve wrong (metel-core#1054).
     pub scheme_env: HashMap<String, TypeScheme>,
 }
 

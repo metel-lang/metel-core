@@ -1816,10 +1816,12 @@ pub fn evaluate_graph_with_options(
         // metel-core#1052a-9) and resolve through the shared `runtime`'s
         // `SymbolId`-keyed registries — the same ones the exporting module's
         // own Pass 1b/Pass 2 populates before this (importing) module runs.
-        // `module.imported_names` needs no cross-link into this module's own
-        // name map for that to work (metel-core#1052b-3f; verified by
-        // disabling this block and running the full fixture suite before
-        // removing it, both before and after #1052a-9).
+        // No per-module import map is needed for that to work (metel-core#1052b-3f;
+        // verified by disabling the (now-deleted) cross-link block and running
+        // the full fixture suite before removing it, both before and after
+        // #1052a-9). `TypedModule` carried a name-keyed `imported_names` /
+        // `import_aliases` pair for this purpose once; both were genuinely dead
+        // by this point and removed outright (metel-core#1054).
 
         // Build type context for construction-at-call-time of generic function bodies.
         let type_ctx = std::rc::Rc::new(TypeCtx {

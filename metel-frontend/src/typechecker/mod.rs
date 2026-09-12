@@ -11,7 +11,7 @@ use crate::module_loader::LoadedModule;
 use crate::name_resolver::{GlobTier, ResolvedNames};
 use crate::path_normalizer::NormalizedModuleGraph;
 use crate::symbols::SymbolId;
-use crate::typed_ast::{ResolvedImportRef, TypedDecl, TypedModule, TypedModuleGraph};
+use crate::typed_ast::{TypedDecl, TypedModule, TypedModuleGraph};
 use crate::typeinference::{
     generalize_with_names, unify, GenericBound, InferContext, InferType, Substitution,
     TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator,
@@ -379,73 +379,6 @@ pub fn check_graph_with_report(
             .collect();
         global_exports.insert(loaded.module_path.clone(), ModuleExports { pub_schemes });
 
-        // Populate imported_names: local_name → (source_module, canonical_name).
-        // Used by evaluate_graph to seed each module's isolated Environment. See ADR-0029.
-        let (import_aliases, imported_names) = names
-            .scopes
-            .get(&loaded.module_path)
-            .map(|scope| {
-                let aliases = scope
-                    .explicit
-                    .iter()
-                    .filter(|(local, binding)| *local != &binding.source_name)
-                    .map(|(local, binding)| (local.clone(), binding.source_name.clone()))
-                    .collect();
-
-                let mut imports: HashMap<String, ResolvedImportRef> = HashMap::new();
-
-                // Glob imports (lower priority — added first so explicit can override).
-                // Process Std then User, mirroring build_import_schemes tier ordering.
-                // std::core names are always registered via builtins, so skipping the
-                // Std glob here is safe — but we still process User globs for cross-module names.
-                let ordered_globs = scope
-                    .globs
-                    .iter()
-                    .filter(|(t, _)| *t == GlobTier::Std)
-                    .chain(scope.globs.iter().filter(|(t, _)| *t == GlobTier::User));
-                for (_, glob_module) in ordered_globs {
-                    let Some(pub_schemes) = global_exports.all_pub_schemes(glob_module) else {
-                        continue;
-                    };
-                    for name in pub_schemes.keys() {
-                        imports.insert(
-                            name.clone(),
-                            ResolvedImportRef {
-                                source_module: glob_module.clone(),
-                                canonical_name: name.clone(),
-                                // A glob-imported name is still a reference to
-                                // its declaring module's own canonical
-                                // declaration (ADR-0054 / metel-core#1052) —
-                                // look its SymbolId up the same way an
-                                // explicit import's binding already carries
-                                // one, instead of leaving it `None`.
-                                symbol_id: names
-                                    .symbols
-                                    .get(&(glob_module.clone(), name.clone()))
-                                    .copied(),
-                            },
-                        );
-                    }
-                }
-
-                // Explicit imports (higher priority — overwrite globs).
-                for (local, binding) in &scope.explicit {
-                    if binding.kind == crate::name_resolver::BindingKind::Item {
-                        imports.insert(
-                            local.clone(),
-                            ResolvedImportRef {
-                                source_module: binding.source_module.clone(),
-                                canonical_name: binding.source_name.clone(),
-                                symbol_id: Some(binding.symbol_id),
-                            },
-                        );
-                    }
-                }
-
-                (aliases, imports)
-            })
-            .unwrap_or_default();
-
         // Add builtin schemes so construction-at-call-time can resolve builtins
         // like `array_len` inside generic function bodies.
         let mut full_scheme_env = report.scheme_env;
@@ -453,8 +386,6 @@ pub fn check_graph_with_report(
         typed_modules.push(TypedModule {
             module_path: loaded.module_path.clone(),
             decls: report.typed_decls,
-            import_aliases,
-            imported_names,
             scheme_env: full_scheme_env,
         });
     }
