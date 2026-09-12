@@ -1,0 +1,11 @@
+// metel-core#1137: `module1` and `module2` each declare their own unrelated
+// `Box`, each returning it as an existential `-> extends Aspect` value. The
+// opaque-return reveal must dispatch the later method call by the revealed
+// value's own identity, not by re-deriving "Box" as a bare name and finding
+// whichever module's Box happens to be registered.
+aspect ShownOne { fun show_one(&self) -> String; }
+struct Box { value: i64 }
+extend Box: ShownOne {
+    fun show_one(&self) -> String { "module1-box" }
+}
+public fun make1() -> extends ShownOne { Box { value = 1 } }

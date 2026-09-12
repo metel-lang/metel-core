@@ -202,10 +202,17 @@ pub(super) fn infer_expr(
                         .into_iter()
                         .map(|_| ctx.fresh_var())
                         .collect();
+                    // metel-core#1137: `name` is a bare identifier written right
+                    // here in this module's own source, so it's always resolvable
+                    // from this module's own scope -- the same reasoning #1129
+                    // uses for a written type annotation.
+                    let type_id = ctx
+                        .registry()
+                        .resolve_type_id(ctx.current_module_path(), name);
                     return Ok(InferType::Named(
                         name.clone(),
                         type_args,
-                        crate::types::NominalId::NONE,
+                        crate::types::NominalId(type_id),
                     ));
                 }
             }
@@ -1227,6 +1234,20 @@ pub(super) fn infer_expr(
                 }
                 _ => vec![],
             };
+            // metel-core#1137: carry the base value's own identity through a
+            // full-width projection instead of dropping it -- the base could be
+            // of a type from any module, so this is more correct than (and must
+            // not be re-derived from) `ctx.current_module_path()`.
+            let struct_id = match &base_ty {
+                InferType::Named(_, _, id) => id.get(),
+                InferType::Reference(inner) | InferType::MutReference(inner) => {
+                    match inner.as_ref() {
+                        InferType::Named(_, _, id) => id.get(),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
             let declared_fields = ctx
                 .get_struct_fields(&struct_name)
                 .ok_or_else(|| {
@@ -1272,7 +1293,7 @@ pub(super) fn infer_expr(
                 return Ok(InferType::Named(
                     struct_name,
                     type_args,
-                    crate::types::NominalId::NONE,
+                    crate::types::NominalId(struct_id),
                 ));
             }
             projected.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -1386,10 +1407,16 @@ pub(super) fn infer_expr(
                         if variant.fields.is_empty() {
                             let type_args: Vec<InferType> =
                                 info.type_params.iter().map(|_| ctx.fresh_var()).collect();
+                            // metel-core#1137: `type_name` is written right here in
+                            // this module's own source (a 2-segment path segment),
+                            // always resolvable from this module's own scope.
+                            let type_id = ctx
+                                .registry()
+                                .resolve_type_id(ctx.current_module_path(), type_name);
                             return Ok(InferType::Named(
                                 type_name.clone(),
                                 type_args,
-                                crate::types::NominalId::NONE,
+                                crate::types::NominalId(type_id),
                             ));
                         }
                         // metel-core#1108: a fieldful variant has no bare-value

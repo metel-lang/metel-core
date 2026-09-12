@@ -57,7 +57,7 @@ fn resolve_record_projection_type(
     let Some(ctx) = assoc_ctx else {
         return unresolved_record_projection_type(path, fields);
     };
-    let Some((_, struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
+    let Some((struct_id, struct_name, raw_fields)) = ctx.registry.projection_struct_fields(
         ctx.current_module,
         lookup_name.as_deref().unwrap_or(&display_name),
     ) else {
@@ -80,10 +80,14 @@ fn resolve_record_projection_type(
     // Residual (§3's own worked example: full-width projection is still just the
     // struct, not a distinct form) -- `Type::Residual`'s own invariant requires this.
     if projected.len() == raw_fields.len() {
+        // metel-core#1137: `projection_struct_fields` already resolved this
+        // exact `SymbolId` above -- carry it through instead of discarding it,
+        // the same identity the inference-side twin of this function now also
+        // preserves (see the comment above referencing this pairing).
         return InferType::Named(
             struct_name.to_string(),
             vec![],
-            crate::types::NominalId::NONE,
+            crate::types::NominalId::some(struct_id),
         );
     }
     // `Residual::fields` is always lexicographically sorted by label (mirrors

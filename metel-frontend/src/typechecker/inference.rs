@@ -1831,10 +1831,15 @@ fn infer_enum_variant_literal(
         .iter()
         .map(|tp| remap[tp].clone())
         .collect();
+    // metel-core#1137: same reasoning as `infer_struct_literal`'s matching fix
+    // -- `enum_name` is written right here in this module's own source.
+    let type_id = ctx
+        .registry()
+        .resolve_type_id(ctx.current_module_path(), enum_name);
     Ok(InferType::Named(
         enum_name.to_string(),
         type_args,
-        crate::types::NominalId::NONE,
+        crate::types::NominalId(type_id),
     ))
 }
 
@@ -1929,10 +1934,20 @@ fn infer_struct_literal(
         .iter()
         .map(|tp| remap[tp].clone())
         .collect();
+    // metel-core#1137: `struct_name` is the literal spelling of a struct literal
+    // written right here in this module's own source, always resolvable from
+    // this module's own scope -- the same reasoning #1129 uses for a written
+    // type annotation. Carrying this through is what lets a value later
+    // constructed from this literal (including through a `-> extends Aspect`
+    // opaque-return reveal) dispatch its methods by identity instead of by a
+    // bare name that can collide across modules.
+    let type_id = ctx
+        .registry()
+        .resolve_type_id(ctx.current_module_path(), &struct_name);
     Ok(InferType::Named(
         struct_name,
         type_args,
-        crate::types::NominalId::NONE,
+        crate::types::NominalId(type_id),
     ))
 }
 
