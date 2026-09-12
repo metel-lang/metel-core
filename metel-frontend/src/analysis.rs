@@ -197,7 +197,15 @@ pub fn analyze_virtual_root_with_diagnostics<P: SourceProvider>(
     }
 }
 
-fn analyze_graph(graph: ModuleGraph, options: AnalysisOptions) -> Result<Analysis, MetelError> {
+/// Analyze an already-loaded module graph directly, bypassing file discovery.
+/// `pub(crate)` so cross-module test fixtures elsewhere in this crate (e.g.
+/// `query`'s own multi-module tests, metel-core#1046) can build a `ModuleGraph`
+/// by hand -- the same approach `identity`'s own cross-module fixtures use --
+/// instead of going through a `SourceProvider` and real file discovery.
+pub(crate) fn analyze_graph(
+    graph: ModuleGraph,
+    options: AnalysisOptions,
+) -> Result<Analysis, MetelError> {
     let names = name_resolver::resolve(&graph)?;
 
     // Structural identities are derived from the parsed graph, so allocate them

@@ -353,13 +353,39 @@ fn contains(span: &Span, filename: &str, byte_offset: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::{analyze_virtual_root_with, AnalysisOptions};
-    use crate::module_loader::InMemorySourceProvider;
+    use crate::analysis::{analyze_graph, analyze_virtual_root_with, AnalysisOptions};
+    use crate::module_loader::{InMemorySourceProvider, LoadedModule, ModuleGraph};
 
     fn analysis(source: &str) -> crate::analysis::Analysis {
         let provider = InMemorySourceProvider::new("editor.mtl", source);
         analyze_virtual_root_with("editor.mtl", &provider, AnalysisOptions::default())
             .expect("test source should analyze")
+    }
+
+    /// A multi-module analysis, built by hand -- the same approach
+    /// `identity`'s own cross-module fixtures use (metel-core#1046):
+    /// `analyze_graph` operates purely over an already-parsed `ModuleGraph`,
+    /// with no file discovery involved, so import/module-path query coverage
+    /// doesn't need a real (or virtual) filesystem at all.
+    fn multi_module_analysis(modules: &[(&str, &str)]) -> crate::analysis::Analysis {
+        let graph = ModuleGraph {
+            root: std::path::PathBuf::from(format!("{}.mtl", modules[0].0)),
+            modules: modules
+                .iter()
+                .map(|(name, src)| LoadedModule {
+                    module_path: if *name == "root" {
+                        vec![]
+                    } else {
+                        vec![(*name).to_string()]
+                    },
+                    file_path: std::path::PathBuf::from(format!("{name}.mtl")),
+                    program: crate::parser::parse(src, &format!("{name}.mtl")).expect("parses"),
+                })
+                .collect(),
+            path_aliases: std::collections::HashMap::new(),
+        };
+        analyze_graph(graph, AnalysisOptions::default())
+            .expect("multi-module source should analyze")
     }
 
     #[test]
@@ -447,5 +473,68 @@ mod tests {
 
         assert!(analysis.definition_at("editor.mtl", ws).is_none());
         assert!(analysis.references_at("editor.mtl", ws).is_empty());
+    }
+
+    // ── cross-module coverage (metel-core#1046's own "imports, module paths"
+    // acceptance-criteria bullet) ────────────────────────────────────────────
+
+    #[test]
+    fn definition_resolves_an_explicitly_imported_name_to_its_declaring_module() {
+        let alpha_src = "public fun helper() -> i64 { 42 }";
+        let root_src = "import alpha::helper;\nfun main() -> i64 { helper() }";
+        let analysis = multi_module_analysis(&[("alpha", alpha_src), ("root", root_src)]);
+
+        let decl_at = alpha_src.find("helper").expect("declaration");
+        let use_at = root_src.rfind("helper").expect("call site");
+
+        let site = analysis
+            .definition_at("root.mtl", use_at + 1)
+            .expect("an imported name's use resolves");
+        assert!(
+            matches!(site.binding(), Some(BindingId::Global(_))),
+            "an imported free function resolves to a global SymbolId"
+        );
+        assert_eq!(
+            site.span.filename, "alpha.mtl",
+            "the definition site is in the declaring module, not the importer"
+        );
+        assert!(
+            site.span.start <= decl_at && decl_at < site.span.end,
+            "the definition span covers alpha's own `fun helper` declaration"
+        );
+    }
+
+    #[test]
+    fn definition_resolves_a_module_path_segment_to_the_module_not_the_item() {
+        let alpha_src = "public fun connect() -> i64 { 1 }";
+        let root_src = "import alpha::*;\nfun main() -> i64 { alpha::connect() }";
+        let analysis = multi_module_analysis(&[("alpha", alpha_src), ("root", root_src)]);
+
+        let module_seg_at = root_src
+            .rfind("alpha")
+            .expect("module segment at the call site");
+        let item_seg_at = root_src.rfind("connect").expect("item segment");
+
+        let module_site = analysis
+            .definition_at("root.mtl", module_seg_at + 1)
+            .expect("the module segment resolves");
+        assert!(
+            matches!(module_site.target, DefinitionTarget::Module(_)),
+            "the `alpha` segment resolves to the module itself, not a value binding"
+        );
+        assert_eq!(module_site.span.filename, "alpha.mtl");
+        assert!(
+            module_site.binding().is_none(),
+            "a module target has no BindingId"
+        );
+
+        let item_site = analysis
+            .definition_at("root.mtl", item_seg_at + 1)
+            .expect("the item segment resolves (metel-core#1050)");
+        assert!(
+            matches!(item_site.binding(), Some(BindingId::Global(_))),
+            "the `connect` segment resolves to alpha::connect's own declaration, not the module"
+        );
+        assert_eq!(item_site.span.filename, "alpha.mtl");
     }
 }
