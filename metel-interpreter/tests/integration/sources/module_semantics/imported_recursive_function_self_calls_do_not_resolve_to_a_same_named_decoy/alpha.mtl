@@ -1,0 +1,7 @@
+// metel-core#1054 (ADR-0054 acceptance criteria's "recursion" coverage item):
+// a recursive function's own self-calls must resolve to itself even when an
+// unrelated, unimported sibling module declares a same-named recursive
+// function with a different base case.
+public fun count_down(n: i64) -> i64 {
+    if (n <= 0) { 0 } else { count_down(n - 1) }
+}

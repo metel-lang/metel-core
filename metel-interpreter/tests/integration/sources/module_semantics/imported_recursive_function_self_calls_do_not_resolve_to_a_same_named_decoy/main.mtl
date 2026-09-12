@@ -1,0 +1,5 @@
+import alpha::count_down;
+
+fun main() {
+    assert(count_down(5) == 0);
+}

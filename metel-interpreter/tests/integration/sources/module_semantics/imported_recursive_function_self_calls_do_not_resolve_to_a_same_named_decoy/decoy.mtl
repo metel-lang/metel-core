@@ -1,0 +1,6 @@
+// Same bare name, unrelated body with a different base case -- if
+// alpha::count_down's self-calls ever resolved to this decoy instead of
+// themselves, the result below would be 999, not 0.
+public fun count_down(n: i64) -> i64 {
+    if (n <= 0) { 999 } else { count_down(n - 1) }
+}
