@@ -47,6 +47,9 @@ pub struct ModuleNav<'a> {
     /// The importing module's own resolved scope, for a leading segment that is
     /// a local module handle (`import std::math;` → `math::sin`).
     pub scope: Option<&'a ModuleScope>,
+    /// The name resolver's canonical `(module path, name) -> SymbolId` table,
+    /// for resolving a qualified path's own item segment (metel-core#1050).
+    pub symbols: &'a HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
 }
 
 /// Graph-wide inputs for module-segment resolution, from which
@@ -94,6 +97,22 @@ impl ModuleNav<'_> {
             }
         }
         hits
+    }
+
+    /// The `SymbolId` a qualified path's own *item* segment (the last one)
+    /// names, if its prefix resolves to a known module — the click target for
+    /// value-level go-to-definition/find-references on `foo::bar`
+    /// (metel-core#1050), complementing `segment_hits`'s module-prefix hits.
+    /// `None` for a single-segment path (nothing qualified to resolve here;
+    /// `Expr::Ident` covers that) or a prefix that isn't a known module (a
+    /// type/member-position path, e.g. `Type::method` -- that identity rides
+    /// the typed IR via `type_id`/`variant_id` instead, metel-core#1093).
+    fn item_ref(&self, segments: &[String]) -> Option<(usize, crate::symbols::SymbolId)> {
+        let prefix_len = segments.len().checked_sub(1).filter(|&n| n > 0)?;
+        let module_path = self.prefix_module_path(segments, prefix_len)?;
+        let item_name = segments.last()?;
+        let sym = *self.symbols.get(&(module_path, item_name.clone()))?;
+        Some((segments.len() - 1, sym))
     }
 }
 
@@ -325,6 +344,7 @@ pub fn allocate_graph(
             table: graph_nav.table,
             aliases: graph_nav.aliases,
             scope: names.scopes.get(module_path.as_slice()),
+            symbols: &names.symbols,
         };
         let allocation = allocate_module(module_path, decls, names, interner, nav);
         resolution.extend_from(allocation.resolution);
@@ -541,6 +561,39 @@ impl Walker<'_> {
             .push((span.clone(), PositionHit::Reference(rid)));
     }
 
+    /// Record a qualified path's own item-segment reference (metel-core#1050),
+    /// already resolved to `sym` by `ModuleNav::item_ref` -- no lexical lookup
+    /// needed, unlike `record_use`. `joined_name` disambiguates this use's
+    /// `LexicalSeg::Use` key from an unrelated bare `Expr::Ident` use of the
+    /// same final-segment spelling in the same scope.
+    fn record_qualified_use(
+        &mut self,
+        joined_name: &str,
+        span: &Span,
+        sym: crate::symbols::SymbolId,
+    ) {
+        let counter_key = (self.path.0.clone(), joined_name.to_string());
+        let occ = self.use_counter.entry(counter_key).or_insert(0);
+        let occurrence = *occ;
+        *occ += 1;
+
+        let key_path = self.path.child(LexicalSeg::Use {
+            name: joined_name.to_string(),
+            occurrence,
+        });
+        let raw = structural_hash(self.owner, &key_path);
+        let rid = RefId(raw);
+        self.acc.collision.check_ref(rid, self.owner, &key_path);
+
+        self.acc
+            .out
+            .references
+            .insert(rid, Resolution::Resolved(BindingId::Global(sym)));
+        self.acc
+            .positions
+            .push((span.clone(), PositionHit::Reference(rid)));
+    }
+
     // ── AST walk ────────────────────────────────────────────────────────────
 
     fn walk_block(&mut self, block: &Block) {
@@ -684,16 +737,24 @@ impl Walker<'_> {
     fn walk_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Ident(name, span) => self.record_use(name, span),
-            // A module-qualified path: its *value* identity comes from path
-            // normalization and rides the typed IR (#1050). Its module-prefix
-            // segments, though, each get a `ModuleSegment` position hit so an
-            // editor can jump from `foo` in `foo::Bar` to module `foo`
-            // (metel-core#1070).
+            // A module-qualified path: its module-prefix segments each get a
+            // `ModuleSegment` position hit so an editor can jump from `foo` in
+            // `foo::Bar` to module `foo` (metel-core#1070). Its own item
+            // segment (the last one) additionally gets a `Reference` hit when
+            // the prefix resolves to a known module and the name resolver
+            // already has a `SymbolId` for it (metel-core#1050) -- a
+            // type/member-position path (`Type::method`, no known-module
+            // prefix) carries that identity on the typed IR instead
+            // (`type_id`/`variant_id`, metel-core#1093), so `item_ref` simply
+            // finds nothing there and this is a no-op.
             Expr::Path(segments, seg_spans, _) if seg_spans.len() == segments.len() => {
                 for (idx, id) in self.nav.segment_hits(segments) {
                     self.acc
                         .positions
                         .push((seg_spans[idx].clone(), PositionHit::ModuleSegment(id)));
+                }
+                if let Some((idx, sym)) = self.nav.item_ref(segments) {
+                    self.record_qualified_use(&segments.join("::"), &seg_spans[idx], sym);
                 }
             }
             // No value references to record:

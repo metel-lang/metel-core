@@ -55,6 +55,7 @@ impl Fixture {
             table: &modules,
             aliases: &graph.path_aliases,
             scope: names.scopes.get(&Vec::new()),
+            symbols: &names.symbols,
         };
         let alloc = allocate_module(&[], decls, &names, &mut interner, nav);
         Self {
@@ -602,11 +603,30 @@ fn module_qualified_path_segment_resolves_to_its_module() {
         Some(PositionHit::ModuleSegment(net_id)),
         "the `net` segment jumps to module `net`",
     );
-    // The item segment is not a module target.
+    // The item segment is not a module target...
     assert!(!matches!(
         alloc.positions.resolve("app.mtl", connect_at),
         Some(PositionHit::ModuleSegment(_))
     ));
+    // ...it is a value reference to `net::connect` itself (metel-core#1050):
+    // qualified-path go-to-definition needs this hit, not just the prefix's.
+    let connect_sym = names.symbols[&(vec!["net".to_string()], "connect".to_string())];
+    let PositionHit::Reference(rid) = alloc
+        .positions
+        .resolve("app.mtl", connect_at)
+        .expect("connect has a position hit")
+    else {
+        panic!("expected a Reference hit for the `connect` item segment");
+    };
+    assert_eq!(
+        alloc
+            .resolution
+            .references
+            .get(&rid)
+            .and_then(Resolution::binding),
+        Some(BindingId::Global(connect_sym)),
+        "the `connect` segment resolves to net::connect's own SymbolId"
+    );
 }
 
 #[test]
