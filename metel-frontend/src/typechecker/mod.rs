@@ -1509,7 +1509,7 @@ mod tests {
     /// exact same `ast::Block` the identity walk already processed, so its
     /// `binding_spans` entries apply unchanged regardless of which concrete
     /// type this particular call instantiates.
-// arch-verifies: ["arch.type-construction.requirement-2"]
+    // arch-verifies: ["arch.type-construction.requirement-2"]
     #[test]
     fn construct_generic_body_stamps_a_real_local_id() {
         use crate::identity::{self, BindingId, FrozenIdentity};

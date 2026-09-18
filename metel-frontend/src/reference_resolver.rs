@@ -470,7 +470,7 @@ mod tests {
         }
     }
 
-// arch-verifies: ["arch.name-resolution.requirement-3"]
+    // arch-verifies: ["arch.name-resolution.requirement-3"]
     #[test]
     fn resolves_top_level_call_to_its_symbol_id() {
         let graph = single_module_graph(

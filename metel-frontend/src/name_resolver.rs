@@ -813,7 +813,7 @@ mod tests {
         }
     }
 
-// arch-verifies: ["arch.name-resolution.requirement-2"]
+    // arch-verifies: ["arch.name-resolution.requirement-2"]
     #[test]
     fn resolves_explicit_item_import() {
         // import parser::Token;
@@ -1293,7 +1293,7 @@ mod tests {
 
     // ── SymbolId consistency ──────────────────────────────────────────────────
 
-// arch-verifies: ["arch.name-resolution.requirement-1"]
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn same_declaration_gets_same_symbol_id_regardless_of_importer() {
         // root and other both import parser::Token (via absolute root:: path).

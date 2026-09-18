@@ -3506,7 +3506,7 @@ mod path_segment_span_tests {
         main.body.tail.as_deref().expect("tail expr").clone()
     }
 
-// arch-verifies: ["arch.parsing.requirement-3"]
+    // arch-verifies: ["arch.parsing.requirement-3"]
     #[test]
     fn multi_segment_path_carries_one_span_per_segment() {
         // `mod::inner::Thing` — three segments, each span slicing its own name.

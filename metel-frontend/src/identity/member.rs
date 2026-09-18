@@ -56,7 +56,7 @@ pub struct MemberTable {
 impl MemberTable {
     /// A fresh, empty table.
     #[must_use]
-// arch-implements: ["arch.resolution.requirement-3"]
+    // arch-implements: ["arch.resolution.requirement-3"]
     pub fn new() -> Self {
         Self::default()
     }
@@ -258,7 +258,7 @@ mod tests {
             .unwrap_or_else(|| panic!("`{name}` interned"))
     }
 
-// arch-verifies: ["arch.resolution.requirement-3"]
+    // arch-verifies: ["arch.resolution.requirement-3"]
     #[test]
     fn struct_fields_get_distinct_ids_owned_by_the_struct() {
         let (t, names) = members("struct Point { x: i64, y: i64 }");

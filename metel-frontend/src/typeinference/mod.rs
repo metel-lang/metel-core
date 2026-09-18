@@ -3146,7 +3146,7 @@ impl TypeDefinitionRegistry {
     /// direction — it rejects rather than accepts.
     #[must_use]
     #[allow(clippy::too_many_lines)]
-// arch-implements: ["arch.type-construction.requirement-4"]
+    // arch-implements: ["arch.type-construction.requirement-4"]
     pub fn infer_type_satisfies_aspect(
         &self,
         current_module: &[String],
@@ -5453,7 +5453,7 @@ mod registry_identity_tests {
         }
     }
 
-// arch-verifies: ["arch.type-inference.requirement-2"]
+    // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn same_named_structs_in_two_modules_keep_distinct_field_sets() {
         let alpha = SymbolId(1000);

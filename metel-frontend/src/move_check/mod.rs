@@ -3080,7 +3080,7 @@ fun main() { }
         );
     }
 
-// arch-verifies: ["arch.move-check.requirement-1"]
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn assignment_move_then_use_is_reported() {
         assert_has_violation(

@@ -70,7 +70,7 @@ pub struct SymbolTable {
 }
 
 impl Default for SymbolTable {
-// arch-implements: ["arch.name-resolution.requirement-1"]
+    // arch-implements: ["arch.name-resolution.requirement-1"]
     fn default() -> Self {
         Self::new()
     }

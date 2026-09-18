@@ -503,7 +503,7 @@ impl Loader<'_> {
         }
         Ok(())
     }
-// arch-implements: ["arch.parsing.requirement-1"]
+    // arch-implements: ["arch.parsing.requirement-1"]
 
     fn load_module(
         &mut self,
@@ -997,7 +997,7 @@ mod tests {
         assert!(validate_std_namespace(&["standard".to_string()], path).is_ok());
     }
 
-// arch-verifies: ["arch.parsing.requirement-2"]
+    // arch-verifies: ["arch.parsing.requirement-2"]
     #[test]
     fn source_provider_overlay_supplies_in_memory_source() {
         // Proves the SourceProvider abstraction supports an in-memory overlay

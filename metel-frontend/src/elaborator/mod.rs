@@ -555,7 +555,7 @@ mod tests {
     const FOO_ID: SymbolId = SymbolId(9001);
     const BAR_ID: SymbolId = SymbolId(9002);
 
-// arch-verifies: ["arch.elaboration.requirement-1"]
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_aspect_returns_aspect_variant() {
         let mut map = HashMap::new();

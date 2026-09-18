@@ -3987,7 +3987,7 @@ mod frame_tests {
         }
     }
 
-// arch-verifies: ["arch.evaluation.requirement-1"]
+    // arch-verifies: ["arch.evaluation.requirement-1"]
     #[test]
     fn define_binding_is_readable_by_local_id() {
         let mut env = Environment::new();
