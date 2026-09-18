@@ -553,10 +553,10 @@ impl Cx<'_> {
             None,
             local_types,
         )?;
-        if let Some(aspect) = &ib.aspect_name {
-            if !self.registry.is_visible_aspect(self.current_module, aspect) {
-                return Err(Self::unknown_aspect(aspect, &ib.span));
-            }
+        if let Some(aspect) = &ib.aspect_name
+            && !self.registry.is_visible_aspect(self.current_module, aspect)
+        {
+            return Err(Self::unknown_aspect(aspect, &ib.span));
         }
         // #774: the concrete name `Self` resolves to inside this block, threaded through
         // so a `Self.{ field }` record projection (not just bare `Self`) can resolve it
@@ -1042,16 +1042,16 @@ impl Cx<'_> {
         // lookups below would succeed, but the field's stored type was converted before
         // the target existed and is already a stand-in. Report it now rather than let it
         // reappear as an opaque `cannot unify … with B.{ x }` at the first use.
-        if let (Some(site), Some(&target_at)) = (field_of, self.struct_order.get(target)) {
-            if target_at > site {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    format!(
-                        "invalid record projection `{spelling}`: `{target}` is declared later in this module; a struct field cannot project a struct that is not yet declared — move `{target}` above it"
-                    ),
-                    span,
-                ));
-            }
+        if let (Some(site), Some(&target_at)) = (field_of, self.struct_order.get(target))
+            && target_at > site
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "invalid record projection `{spelling}`: `{target}` is declared later in this module; a struct field cannot project a struct that is not yet declared — move `{target}` above it"
+                ),
+                span,
+            ));
         }
 
         let Some((_, struct_name, raw_fields)) = self

@@ -116,53 +116,46 @@ fn type_expr_to_infer_in_context(
             // `Item` alone resolves as `Self::Item` when the aspect declares
             // an associated type named `Item`.
             if args.is_empty() {
-                if let Some(ctx) = assoc_ctx {
-                    if let Some(aspect) = ctx.current_aspect {
-                        if let Some(decls) = ctx.registry.aspect_assoc_type_decls(aspect) {
-                            if decls.iter().any(|d| d.name == *name) {
-                                // Treat as Projection { base: Self, assoc_name: name }
-                                let base = TypeExpr::Named("Self".to_string(), vec![]);
-                                let proj = TypeExpr::Projection {
-                                    base: Box::new(base),
-                                    assoc_name: name.clone(),
-                                    span: Span::new(0, 0, ""),
-                                };
-                                return type_expr_to_infer_in_context(
-                                    &proj,
-                                    generics,
-                                    self_ty_name,
-                                    assoc_ctx,
-                                );
-                            }
-                        }
-                    }
+                if let Some(ctx) = assoc_ctx
+                    && let Some(aspect) = ctx.current_aspect
+                    && let Some(decls) = ctx.registry.aspect_assoc_type_decls(aspect)
+                    && decls.iter().any(|d| d.name == *name)
+                {
+                    // Treat as Projection { base: Self, assoc_name: name }
+                    let base = TypeExpr::Named("Self".to_string(), vec![]);
+                    let proj = TypeExpr::Projection {
+                        base: Box::new(base),
+                        assoc_name: name.clone(),
+                        span: Span::new(0, 0, ""),
+                    };
+                    return type_expr_to_infer_in_context(&proj, generics, self_ty_name, assoc_ctx);
                 }
-                if let Some(generics) = generics {
-                    if let Some(&tv) = generics.get(name.as_str()) {
-                        return InferType::Var(tv);
-                    }
+                if let Some(generics) = generics
+                    && let Some(&tv) = generics.get(name.as_str())
+                {
+                    return InferType::Var(tv);
                 }
-                if name == "Self" {
-                    if let Some(target) = self_ty_name {
-                        // #650: recurse as if the source had spelled the resolved
-                        // target name directly, so a primitive target (`i64`,
-                        // `String`, ...) falls through this same function's own
-                        // dispatch table below into its real `InferType::Concrete`
-                        // representation, instead of being wrapped in `Named(..)`
-                        // here -- which the unifier has no bridge for (see
-                        // `primitive_type_from_name`'s doc comment in
-                        // `inference.rs`) and produced a confusing "cannot unify
-                        // i64 with i64" the moment a primitive `extend` target's
-                        // method returned `Self`. Safe from infinite recursion:
-                        // `self_ty_name` is always the real target name, never the
-                        // literal string "Self".
-                        return type_expr_to_infer_in_context(
-                            &TypeExpr::Named(target.to_string(), vec![]),
-                            generics,
-                            self_ty_name,
-                            assoc_ctx,
-                        );
-                    }
+                if name == "Self"
+                    && let Some(target) = self_ty_name
+                {
+                    // #650: recurse as if the source had spelled the resolved
+                    // target name directly, so a primitive target (`i64`,
+                    // `String`, ...) falls through this same function's own
+                    // dispatch table below into its real `InferType::Concrete`
+                    // representation, instead of being wrapped in `Named(..)`
+                    // here -- which the unifier has no bridge for (see
+                    // `primitive_type_from_name`'s doc comment in
+                    // `inference.rs`) and produced a confusing "cannot unify
+                    // i64 with i64" the moment a primitive `extend` target's
+                    // method returned `Self`. Safe from infinite recursion:
+                    // `self_ty_name` is always the real target name, never the
+                    // literal string "Self".
+                    return type_expr_to_infer_in_context(
+                        &TypeExpr::Named(target.to_string(), vec![]),
+                        generics,
+                        self_ty_name,
+                        assoc_ctx,
+                    );
                 }
             }
             let arg_tys: Vec<_> = args
@@ -309,13 +302,12 @@ fn type_expr_to_infer_in_context(
             if let (Some(ctx), Some(bn)) = (assoc_ctx, base_name) {
                 // If current_aspect is known (we're inside an aspect method or an
                 // impl block's own conversion), resolve directly against it.
-                if let Some(aspect) = ctx.current_aspect {
-                    if let Some(ty) =
+                if let Some(aspect) = ctx.current_aspect
+                    && let Some(ty) =
                         ctx.registry
                             .impl_assoc_type(ctx.current_module, bn, aspect, assoc_name)
-                    {
-                        return type_to_infer(ty);
-                    }
+                {
+                    return type_to_infer(ty);
                 }
                 // No known aspect and a concrete (non-generic, non-Self) base: a
                 // projection like `SomeConcreteType::AssocName` used outside any

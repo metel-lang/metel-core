@@ -328,7 +328,7 @@ mod phase_3_substitution {
 
 #[cfg(test)]
 mod phase_4_unification {
-    use metel::typeinference::{unify, InferType, TypeVar};
+    use metel::typeinference::{InferType, TypeVar, unify};
 
     #[test]
     fn test_unify_identical_concrete() {
@@ -515,7 +515,7 @@ mod phase_4_unification {
 #[cfg(test)]
 mod phase_5_constraints {
     use metel::ast::Span;
-    use metel::typeinference::{solve_constraints, Constraint, InferType, TypeVar};
+    use metel::typeinference::{Constraint, InferType, TypeVar, solve_constraints};
     use std::collections::HashSet;
 
     fn span() -> Span {
@@ -637,7 +637,7 @@ mod phase_5_constraints {
 #[cfg(test)]
 mod phase_6_type_schemes {
     use metel::typeinference::{
-        free_vars, generalize, instantiate, InferType, TypeScheme, TypeVar, TypeVarGenerator,
+        InferType, TypeScheme, TypeVar, TypeVarGenerator, free_vars, generalize, instantiate,
     };
     use std::collections::HashSet;
 
@@ -822,7 +822,7 @@ mod phase_6_type_schemes {
 #[cfg(test)]
 mod phase_7_infer_context {
     use metel::ast::Span;
-    use metel::typeinference::{generalize, InferContext, InferType, TypeScheme, TypeVar};
+    use metel::typeinference::{InferContext, InferType, TypeScheme, TypeVar, generalize};
     use std::collections::HashSet;
 
     fn span() -> Span {
@@ -1088,8 +1088,8 @@ mod phase_7_infer_context {
 mod phase_8_known_limitations {
     use metel::ast::Span;
     use metel::typeinference::{
-        instantiate, solve_constraints, Constraint, InferType, TypeScheme, TypeVar,
-        TypeVarGenerator,
+        Constraint, InferType, TypeScheme, TypeVar, TypeVarGenerator, instantiate,
+        solve_constraints,
     };
     use std::collections::HashSet;
 

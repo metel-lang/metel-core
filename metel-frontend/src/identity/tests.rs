@@ -18,7 +18,7 @@ use crate::module_loader::{LoadedModule, ModuleGraph};
 use crate::name_resolver::resolve;
 
 use super::allocate::{
-    allocate_for_graph, allocate_graph, allocate_module, GraphModuleNav, ModuleNav,
+    GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph, allocate_module,
 };
 use super::position::PositionHit;
 use super::{
@@ -476,8 +476,7 @@ fn nested_closure_capture_uses_resolve_to_the_enclosing_binding() {
 
 #[test]
 fn impl_method_params_and_locals_are_allocated_under_method_symbols() {
-    let tight =
-        "struct Point { value: i64 } extend Point { fun bump(self, amount) { let total := amount; self; total; } }";
+    let tight = "struct Point { value: i64 } extend Point { fun bump(self, amount) { let total := amount; self; total; } }";
     let loose = "struct Point { value: i64 }\n\nextend Point {\n fun bump( self, amount ) {\n  let total := amount;\n  self;\n  total;\n }\n}";
     let a = Fixture::build(tight);
     let b = Fixture::build(loose);

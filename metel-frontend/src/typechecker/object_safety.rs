@@ -73,13 +73,13 @@ pub(super) fn check_object_safe(
         // return type for `Self` in non-receiver position, or a reference to one
         // of the aspect's own associated types.
         for param in method.params.iter().skip(1) {
-            if let Some(ty) = &param.type_ann {
-                if let Some(reason) = type_expr_violation(ty, assoc_type_names) {
-                    return Err(ObjectSafetyViolation {
-                        method_name: method.name.clone(),
-                        reason: format!("parameter `{}` {reason}", param.name),
-                    });
-                }
+            if let Some(ty) = &param.type_ann
+                && let Some(reason) = type_expr_violation(ty, assoc_type_names)
+            {
+                return Err(ObjectSafetyViolation {
+                    method_name: method.name.clone(),
+                    reason: format!("parameter `{}` {reason}", param.name),
+                });
             }
         }
         if let Some(ret) = &method.return_type {
@@ -116,10 +116,11 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
             }
             // Unlowered `Self::AssocName` (a single dotted `type_path`, not yet
             // split by `lower_projections_in_type` -- see module doc comment).
-            if let Some((base, assoc)) = name.split_once("::") {
-                if base == "Self" && assoc_type_names.contains(assoc) {
-                    return Some(format!("references Self::{assoc}"));
-                }
+            if let Some((base, assoc)) = name.split_once("::")
+                && base == "Self"
+                && assoc_type_names.contains(assoc)
+            {
+                return Some(format!("references Self::{assoc}"));
             }
             // RFC-0082 §1.2 bare-name sugar for one of this aspect's own
             // associated types.

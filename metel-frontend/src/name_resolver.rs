@@ -548,17 +548,17 @@ fn process_export_tree(
                 );
             } else {
                 // Item re-export: verify it's public in the source module.
-                if let Some(surface) = pub_surface.get(base) {
-                    if !surface.contains(name.as_str()) {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0009,
-                            format!(
-                                "visibility error: cannot re-export `{name}` — it is not public in module `{}`",
-                                base.join("::")
-                            ),
-                            export_span,
-                        ));
-                    }
+                if let Some(surface) = pub_surface.get(base)
+                    && !surface.contains(name.as_str())
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0009,
+                        format!(
+                            "visibility error: cannot re-export `{name}` — it is not public in module `{}`",
+                            base.join("::")
+                        ),
+                        export_span,
+                    ));
                 }
                 let symbol_id = sym.intern(base, name);
                 re_exports.insert(

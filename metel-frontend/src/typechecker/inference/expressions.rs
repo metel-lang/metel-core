@@ -1,13 +1,13 @@
 use super::{
-    ann_to_infer, builtin_pattern_method_type, chain_provides_mut_access, check_field_visibility,
-    constrain_with_read_copy, infer_binop, infer_block, infer_enum_variant_literal,
-    infer_field_assign_type, infer_literal, infer_match, infer_propagate_error,
-    infer_struct_literal, infer_to_type_for_from, infer_tuple_assign_type, infer_type_name,
-    infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
+    AssignOp, AssignTarget, Expr, ForInit, FunGeneralization, GenericBound, HashMap, InferContext,
+    InferType, MetelError, Param, SignatureEnv, Stmt, Substitution, Type, TypeErrorCode, TypeExpr,
+    TypeVar, ann_to_infer, builtin_pattern_method_type, chain_provides_mut_access,
+    check_field_visibility, constrain_with_read_copy, infer_binop, infer_block,
+    infer_enum_variant_literal, infer_field_assign_type, infer_literal, infer_match,
+    infer_propagate_error, infer_struct_literal, infer_to_type_for_from, infer_tuple_assign_type,
+    infer_type_name, infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
-    signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer, AssignOp,
-    AssignTarget, Expr, ForInit, FunGeneralization, GenericBound, HashMap, InferContext, InferType,
-    MetelError, Param, SignatureEnv, Stmt, Substitution, Type, TypeErrorCode, TypeExpr, TypeVar,
+    signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer,
 };
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
@@ -193,28 +193,28 @@ pub(super) fn infer_expr(
             if let Some(ty) = ctx.lookup(name) {
                 return Ok(ty);
             }
-            if let Some(fields) = ctx.get_struct_fields(name) {
-                if fields.is_empty() {
-                    let type_args: Vec<InferType> = ctx
-                        .get_struct_type_params(name)
-                        .cloned()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(|_| ctx.fresh_var())
-                        .collect();
-                    // metel-core#1137: `name` is a bare identifier written right
-                    // here in this module's own source, so it's always resolvable
-                    // from this module's own scope -- the same reasoning #1129
-                    // uses for a written type annotation.
-                    let type_id = ctx
-                        .registry()
-                        .resolve_type_id(ctx.current_module_path(), name);
-                    return Ok(InferType::Named(
-                        name.clone(),
-                        type_args,
-                        crate::types::NominalId(type_id),
-                    ));
-                }
+            if let Some(fields) = ctx.get_struct_fields(name)
+                && fields.is_empty()
+            {
+                let type_args: Vec<InferType> = ctx
+                    .get_struct_type_params(name)
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|_| ctx.fresh_var())
+                    .collect();
+                // metel-core#1137: `name` is a bare identifier written right
+                // here in this module's own source, so it's always resolvable
+                // from this module's own scope -- the same reasoning #1129
+                // uses for a written type annotation.
+                let type_id = ctx
+                    .registry()
+                    .resolve_type_id(ctx.current_module_path(), name);
+                return Ok(InferType::Named(
+                    name.clone(),
+                    type_args,
+                    crate::types::NominalId(type_id),
+                ));
             }
             if ctx.registry().has_variant_named(name) {
                 // RFC-0111 §3.1: defer to pass 2, which resolves against the expected
@@ -290,130 +290,128 @@ pub(super) fn infer_expr(
             // Overloaded free-function call (METEL-180): infer argument types,
             // select the exact-match candidate, and yield its return type. The
             // selected definition's SymbolId is stamped in the construction pass.
-            if let Some(name) = super::super::overload::callee_name(callee) {
-                if ctx.is_overloaded(name) {
-                    let arg_infer: Vec<InferType> = args
-                        .iter()
-                        .map(|a| infer_expr(a, ctx, fun_generalizations))
-                        .collect::<Result<_, _>>()?;
-                    // Default unresolved literal vars (a bare `42` is i64, a bare
-                    // float literal is f64) so literals participate in selection
-                    // the same way they type everywhere else.
-                    let solved = ctx.solve()?;
-                    let solved = ctx.default_literal_vars(&solved);
-                    // When no candidate matches (or args can't resolve), a call
-                    // can fall back to a non-overload binding of the same name
-                    // from an outer source (the prelude / imports — e.g. the
-                    // generic std::core `print` when a module overloads `print`
-                    // for specific types). Local overload sets EXTEND such a
-                    // binding rather than replace it.
-                    let fallback = |ctx: &mut InferContext,
-                                    arg_infer: &[InferType]|
-                     -> Result<InferType, MetelError> {
-                        let callee_ty = ctx
-                            .lookup(name)
-                            .expect("has_binding checked before fallback");
-                        let ret_var = ctx.fresh_var();
-                        ctx.add_constraint(
-                            callee_ty,
-                            InferType::fun(arg_infer.to_vec(), ret_var.clone()),
-                            span.clone(),
-                        );
-                        Ok(ret_var)
-                    };
-                    let arg_types: Result<Vec<Type>, ()> = arg_infer
-                        .iter()
-                        .map(|t| infer_type_to_type(&solved.apply(t), span).map_err(|_| ()))
-                        .collect();
-                    let arg_types = match arg_types {
-                        Ok(tys) => tys,
-                        Err(()) if ctx.has_binding(name) => {
-                            return fallback(ctx, &arg_infer);
-                        }
-                        Err(()) => {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0002,
-                                format!(
+            if let Some(name) = super::super::overload::callee_name(callee)
+                && ctx.is_overloaded(name)
+            {
+                let arg_infer: Vec<InferType> = args
+                    .iter()
+                    .map(|a| infer_expr(a, ctx, fun_generalizations))
+                    .collect::<Result<_, _>>()?;
+                // Default unresolved literal vars (a bare `42` is i64, a bare
+                // float literal is f64) so literals participate in selection
+                // the same way they type everywhere else.
+                let solved = ctx.solve()?;
+                let solved = ctx.default_literal_vars(&solved);
+                // When no candidate matches (or args can't resolve), a call
+                // can fall back to a non-overload binding of the same name
+                // from an outer source (the prelude / imports — e.g. the
+                // generic std::core `print` when a module overloads `print`
+                // for specific types). Local overload sets EXTEND such a
+                // binding rather than replace it.
+                let fallback = |ctx: &mut InferContext,
+                                arg_infer: &[InferType]|
+                 -> Result<InferType, MetelError> {
+                    let callee_ty = ctx
+                        .lookup(name)
+                        .expect("has_binding checked before fallback");
+                    let ret_var = ctx.fresh_var();
+                    ctx.add_constraint(
+                        callee_ty,
+                        InferType::fun(arg_infer.to_vec(), ret_var.clone()),
+                        span.clone(),
+                    );
+                    Ok(ret_var)
+                };
+                let arg_types: Result<Vec<Type>, ()> = arg_infer
+                    .iter()
+                    .map(|t| infer_type_to_type(&solved.apply(t), span).map_err(|_| ()))
+                    .collect();
+                let arg_types = match arg_types {
+                    Ok(tys) => tys,
+                    Err(()) if ctx.has_binding(name) => {
+                        return fallback(ctx, &arg_infer);
+                    }
+                    Err(()) => {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0002,
+                            format!(
                                 "cannot resolve argument types for overloaded call to `{name}`; \
                                      add type annotations"
                             ),
-                                span,
-                            ))
-                        }
-                    };
-                    let entries = ctx.overload_candidates(name).unwrap();
-                    let entry =
-                        if let Some(entry) = super::super::overload::select(entries, &arg_types) {
-                            entry.clone()
-                        } else {
-                            if ctx.has_binding(name) {
-                                return fallback(ctx, &arg_infer);
-                            }
-                            let entries = ctx.overload_candidates(name).unwrap();
-                            return Err(super::super::overload::no_match_error(
-                                name, &arg_types, entries, span,
-                            ));
-                        };
-                    // Commit the selection: constrain each argument to the chosen
-                    // candidate's parameter type so defaulted literal vars resolve
-                    // to what selection assumed.
-                    for (arg_ty, param) in arg_infer.iter().zip(&entry.params) {
-                        ctx.add_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
+                            span,
+                        ));
                     }
-                    let ret_var = ctx.fresh_var();
-                    ctx.add_constraint(ret_var.clone(), type_to_infer(&entry.ret), span.clone());
-                    return Ok(ret_var);
+                };
+                let entries = ctx.overload_candidates(name).unwrap();
+                let entry = if let Some(entry) = super::super::overload::select(entries, &arg_types)
+                {
+                    entry.clone()
+                } else {
+                    if ctx.has_binding(name) {
+                        return fallback(ctx, &arg_infer);
+                    }
+                    let entries = ctx.overload_candidates(name).unwrap();
+                    return Err(super::super::overload::no_match_error(
+                        name, &arg_types, entries, span,
+                    ));
+                };
+                // Commit the selection: constrain each argument to the chosen
+                // candidate's parameter type so defaulted literal vars resolve
+                // to what selection assumed.
+                for (arg_ty, param) in arg_infer.iter().zip(&entry.params) {
+                    ctx.add_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
                 }
+                let ret_var = ctx.fresh_var();
+                ctx.add_constraint(ret_var.clone(), type_to_infer(&entry.ret), span.clone());
+                return Ok(ret_var);
             }
 
             // Check for opaque-returning function and do dedicated instantiation
-            if let Some(callee_name) = super::super::overload::callee_name(callee) {
-                if let Some(scheme) = ctx.poly_scheme(callee_name) {
-                    if !scheme.opaque_returns.is_empty() {
-                        // This function has opaque returns - do dedicated instantiation
-                        let arg_infer: Vec<InferType> = args
-                            .iter()
-                            .map(|a| infer_expr(a, ctx, fun_generalizations))
-                            .collect::<Result<_, _>>()?;
+            if let Some(callee_name) = super::super::overload::callee_name(callee)
+                && let Some(scheme) = ctx.poly_scheme(callee_name)
+                && !scheme.opaque_returns.is_empty()
+            {
+                // This function has opaque returns - do dedicated instantiation
+                let arg_infer: Vec<InferType> = args
+                    .iter()
+                    .map(|a| infer_expr(a, ctx, fun_generalizations))
+                    .collect::<Result<_, _>>()?;
 
-                        // Solve constraints to get a complete substitution
-                        let solved = ctx.solve()?;
-                        let _solved = ctx.default_literal_vars(&solved);
+                // Solve constraints to get a complete substitution
+                let solved = ctx.solve()?;
+                let _solved = ctx.default_literal_vars(&solved);
 
-                        // Instantiate the scheme with renaming to get fresh vars.
-                        // Must mint from ctx's own live TypeVar generator (not a
-                        // disposable one forked via fresh_var_generator, which
-                        // snapshots the counter without ever advancing it) --
-                        // otherwise every subsequent ordinary ctx.fresh_var() call
-                        // in the rest of this function body reissues the exact
-                        // same ids just handed out here, aliasing this call's
-                        // opaque marker with unrelated later TypeVars. Confirmed
-                        // by reproduction: three or more opaque-returning calls in
-                        // one block, with .display() called on at least two of
-                        // them before a third, corrupted the third's inferred type.
-                        let (instantiated_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                // Instantiate the scheme with renaming to get fresh vars.
+                // Must mint from ctx's own live TypeVar generator (not a
+                // disposable one forked via fresh_var_generator, which
+                // snapshots the counter without ever advancing it) --
+                // otherwise every subsequent ordinary ctx.fresh_var() call
+                // in the rest of this function body reissues the exact
+                // same ids just handed out here, aliasing this call's
+                // opaque marker with unrelated later TypeVars. Confirmed
+                // by reproduction: three or more opaque-returning calls in
+                // one block, with .display() called on at least two of
+                // them before a third, corrupted the third's inferred type.
+                let (instantiated_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
 
-                        if let InferType::Fun(params, ret, ..) = instantiated_ty {
-                            // Constrain arguments to match the instantiated function type
-                            for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
-                                ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
-                            }
+                if let InferType::Fun(params, ret, ..) = instantiated_ty {
+                    // Constrain arguments to match the instantiated function type
+                    for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
+                        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                    }
 
-                            // Register aspect bounds and mark opacity guards for each opaque return
-                            for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
-                                if let Some((aspect, _)) = opaque {
-                                    if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
-                                        if let Some(&fresh_tv) = renaming.get(&orig_tv) {
-                                            ctx.register_type_var_bound(fresh_tv, aspect.clone());
-                                            ctx.mark_opaque_return_var(fresh_tv);
-                                        }
-                                    }
-                                }
-                            }
-
-                            return Ok(*ret);
+                    // Register aspect bounds and mark opacity guards for each opaque return
+                    for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
+                        if let Some((aspect, _)) = opaque
+                            && let Some(&orig_tv) = scheme.quantified_vars.get(i)
+                            && let Some(&fresh_tv) = renaming.get(&orig_tv)
+                        {
+                            ctx.register_type_var_bound(fresh_tv, aspect.clone());
+                            ctx.mark_opaque_return_var(fresh_tv);
                         }
                     }
+
+                    return Ok(*ret);
                 }
             }
 
@@ -681,10 +679,10 @@ pub(super) fn infer_expr(
             // through to the nominal-struct path, which can't name a struct for a bare
             // TypeVar and would otherwise mislead with "add a type annotation" — no
             // annotation fixes a missing row-bound field.
-            if let InferType::Var(tv) = &peeled {
-                if let Some(result) = resolve_row_bound_field(ctx, *tv, field, span) {
-                    return result;
-                }
+            if let InferType::Var(tv) = &peeled
+                && let Some(result) = resolve_row_bound_field(ctx, *tv, field, span)
+            {
+                return result;
             }
             let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
                 MetelError::type_error(
@@ -1028,125 +1026,121 @@ pub(super) fn infer_expr(
             // aspect method on its own parameter, which is the shape every
             // read-only generic wants once move checking pushes it to borrow.
             let peeled_recv_for_bounds = peel_all_references(&recv_ty);
-            if let InferType::Var(tv) = &peeled_recv_for_bounds {
-                if let Some(aspect_names) = ctx.bounds_for_type_var(*tv) {
-                    let self_generic_map: HashMap<String, TypeVar> =
-                        std::iter::once(("Self".to_string(), *tv)).collect();
-                    for aspect_name in aspect_names.iter().filter_map(GenericBound::aspect_name) {
-                        if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned() {
-                            if let Some(method_def) = methods.iter().find(|m| m.name == *method) {
-                                // Resolve return type: Self → the TypeVar itself. A bare
-                                // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
-                                // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
-                                // whole return type) means `Self::Item` -- mint the same
-                                // projection placeholder as an explicit `T::Item` would.
-                                let ret_ty = method_def.return_type.as_ref().map_or(
-                                    InferType::unit(),
-                                    |rt| match rt {
-                                        TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
-                                        TypeExpr::Named(n, args)
-                                            if args.is_empty()
-                                                && ctx
-                                                    .aspect_assoc_type_decls(aspect_name)
-                                                    .is_some_and(|decls| {
-                                                        decls.iter().any(|d| d.name == *n)
-                                                    }) =>
-                                        {
-                                            InferType::Var(ctx.fresh_assoc_projection_var(
-                                                *tv,
-                                                aspect_name,
-                                                n,
-                                            ))
-                                        }
-                                        other => type_expr_to_infer_with_generics(
-                                            other,
-                                            &self_generic_map,
-                                        ),
-                                    },
-                                );
-
-                                // Collect declared non-self params for arity + type checking.
-                                let declared_params: Vec<&Param> = method_def
-                                    .params
-                                    .iter()
-                                    .filter(|p| p.name != "self")
-                                    .collect();
-
-                                // Arity check.
-                                if args.len() != declared_params.len() {
-                                    return Err(MetelError::type_error(
-                                        TypeErrorCode::T0004,
-                                        format!(
-                                            "`{aspect_name}::{method}` expects {} argument(s), got {}",
-                                            declared_params.len(), args.len()
-                                        ),
-                                        span,
-                                    ));
-                                }
-
-                                // Infer arg types and constrain each against the declared param type.
-                                let arg_tys: Vec<InferType> = args
-                                    .iter()
-                                    .map(|a| infer_expr(a, ctx, fun_generalizations))
-                                    .collect::<Result<_, _>>()?;
-
-                                for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
-                                    if let Some(ann) = &param.type_ann {
-                                        let param_ty = type_expr_to_infer_with_generics(
-                                            ann,
-                                            &self_generic_map,
-                                        );
-                                        ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
-                                    }
-                                }
-
-                                // Mutable-access guard, mirroring the concrete-receiver
-                                // path above. Peeling the receiver (#334) is what makes
-                                // this reachable at all: without it a `&var self` method
-                                // on a bounded `T` was rejected for the wrong reason —
-                                // "cannot infer receiver type" — and peeling alone would
-                                // have made `x.bump()` legal through a shared `&T`.
-                                let receiver_kind = method_def
-                                    .params
-                                    .iter()
-                                    .find(|p| p.name == "self")
-                                    .and_then(|p| p.receiver.clone());
-                                if matches!(receiver_kind, Some(crate::ast::ReceiverKind::RefMut))
-                                    && !chain_provides_mut_access(&recv_ty)
+            if let InferType::Var(tv) = &peeled_recv_for_bounds
+                && let Some(aspect_names) = ctx.bounds_for_type_var(*tv)
+            {
+                let self_generic_map: HashMap<String, TypeVar> =
+                    std::iter::once(("Self".to_string(), *tv)).collect();
+                for aspect_name in aspect_names.iter().filter_map(GenericBound::aspect_name) {
+                    if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned()
+                        && let Some(method_def) = methods.iter().find(|m| m.name == *method)
+                    {
+                        // Resolve return type: Self → the TypeVar itself. A bare
+                        // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
+                        // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
+                        // whole return type) means `Self::Item` -- mint the same
+                        // projection placeholder as an explicit `T::Item` would.
+                        let ret_ty = method_def.return_type.as_ref().map_or(
+                            InferType::unit(),
+                            |rt| match rt {
+                                TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
+                                TypeExpr::Named(n, args)
+                                    if args.is_empty()
+                                        && ctx
+                                            .aspect_assoc_type_decls(aspect_name)
+                                            .is_some_and(|decls| {
+                                                decls.iter().any(|d| d.name == *n)
+                                            }) =>
                                 {
-                                    if is_shared_reference_chain(&recv_ty) {
-                                        return Err(MetelError::type_error(
-                                            TypeErrorCode::T0006,
-                                            format!(
-                                                "cannot call `&var self` method `{method}` through a shared reference"
-                                            ),
-                                            span,
-                                        ));
-                                    }
-                                    if let Expr::Ident(name, recv_span) = receiver.as_ref() {
-                                        let _ = ctx.lookup_for_write(name, recv_span)?;
-                                    }
+                                    InferType::Var(ctx.fresh_assoc_projection_var(
+                                        *tv,
+                                        aspect_name,
+                                        n,
+                                    ))
                                 }
+                                other => type_expr_to_infer_with_generics(other, &self_generic_map),
+                            },
+                        );
 
-                                let ret_var = ctx.fresh_var();
-                                ctx.add_constraint(ret_var.clone(), ret_ty, span.clone());
-                                return Ok(ret_var);
+                        // Collect declared non-self params for arity + type checking.
+                        let declared_params: Vec<&Param> = method_def
+                            .params
+                            .iter()
+                            .filter(|p| p.name != "self")
+                            .collect();
+
+                        // Arity check.
+                        if args.len() != declared_params.len() {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0004,
+                                format!(
+                                    "`{aspect_name}::{method}` expects {} argument(s), got {}",
+                                    declared_params.len(),
+                                    args.len()
+                                ),
+                                span,
+                            ));
+                        }
+
+                        // Infer arg types and constrain each against the declared param type.
+                        let arg_tys: Vec<InferType> = args
+                            .iter()
+                            .map(|a| infer_expr(a, ctx, fun_generalizations))
+                            .collect::<Result<_, _>>()?;
+
+                        for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
+                            if let Some(ann) = &param.type_ann {
+                                let param_ty =
+                                    type_expr_to_infer_with_generics(ann, &self_generic_map);
+                                ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
                             }
                         }
+
+                        // Mutable-access guard, mirroring the concrete-receiver
+                        // path above. Peeling the receiver (#334) is what makes
+                        // this reachable at all: without it a `&var self` method
+                        // on a bounded `T` was rejected for the wrong reason —
+                        // "cannot infer receiver type" — and peeling alone would
+                        // have made `x.bump()` legal through a shared `&T`.
+                        let receiver_kind = method_def
+                            .params
+                            .iter()
+                            .find(|p| p.name == "self")
+                            .and_then(|p| p.receiver.clone());
+                        if matches!(receiver_kind, Some(crate::ast::ReceiverKind::RefMut))
+                            && !chain_provides_mut_access(&recv_ty)
+                        {
+                            if is_shared_reference_chain(&recv_ty) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0006,
+                                    format!(
+                                        "cannot call `&var self` method `{method}` through a shared reference"
+                                    ),
+                                    span,
+                                ));
+                            }
+                            if let Expr::Ident(name, recv_span) = receiver.as_ref() {
+                                let _ = ctx.lookup_for_write(name, recv_span)?;
+                            }
+                        }
+
+                        let ret_var = ctx.fresh_var();
+                        ctx.add_constraint(ret_var.clone(), ret_ty, span.clone());
+                        return Ok(ret_var);
                     }
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "no method `{method}` on type parameter (bounds: {})",
-                            aspect_names
-                                .iter()
-                                .map(ToString::to_string)
-                                .collect::<Vec<_>>()
-                                .join(" + ")
-                        ),
-                        span,
-                    ));
                 }
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!(
+                        "no method `{method}` on type parameter (bounds: {})",
+                        aspect_names
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(" + ")
+                    ),
+                    span,
+                ));
             }
 
             Err(MetelError::type_error(
@@ -1338,7 +1332,9 @@ pub(super) fn infer_expr(
             if !valid {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0007,
-                    format!("cannot cast `{source_resolved}` to `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"),
+                    format!(
+                        "cannot cast `{source_resolved}` to `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"
+                    ),
                     span,
                 ));
             }
@@ -1402,47 +1398,47 @@ pub(super) fn infer_expr(
                 {
                     return Ok(ctx.instantiate(&scheme));
                 }
-                if let Some(info) = ctx.get_enum(type_name).cloned() {
-                    if let Some(variant) = info.variants.iter().find(|v| v.name == *member_name) {
-                        if variant.fields.is_empty() {
-                            let type_args: Vec<InferType> =
-                                info.type_params.iter().map(|_| ctx.fresh_var()).collect();
-                            // metel-core#1137: `type_name` is written right here in
-                            // this module's own source (a 2-segment path segment),
-                            // always resolvable from this module's own scope.
-                            let type_id = ctx
-                                .registry()
-                                .resolve_type_id(ctx.current_module_path(), type_name);
-                            return Ok(InferType::Named(
-                                type_name.clone(),
-                                type_args,
-                                crate::types::NominalId(type_id),
-                            ));
-                        }
-                        // metel-core#1108: a fieldful variant has no bare-value
-                        // form -- Metel's grammar has no positional/tuple-variant
-                        // syntax, only `Variant { field: Type, ... }`, so there is
-                        // no "declared order" a constructor call could mean
-                        // without inventing that as new language semantics (a
-                        // design question of its own, not a bug fix). Point at
-                        // the two forms that do exist instead of the generic
-                        // "unresolved path".
-                        let fields = variant
-                            .fields
-                            .iter()
-                            .map(|f| format!("{} = ...", f.name))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!(
-                                "`{type_name}::{member_name}` is a fieldful variant and has no \
-                                 bare-value form -- construct it with `{type_name}::{member_name} \
-                                 {{ {fields} }}`, or destructure it in a `match`"
-                            ),
-                            span,
+                if let Some(info) = ctx.get_enum(type_name).cloned()
+                    && let Some(variant) = info.variants.iter().find(|v| v.name == *member_name)
+                {
+                    if variant.fields.is_empty() {
+                        let type_args: Vec<InferType> =
+                            info.type_params.iter().map(|_| ctx.fresh_var()).collect();
+                        // metel-core#1137: `type_name` is written right here in
+                        // this module's own source (a 2-segment path segment),
+                        // always resolvable from this module's own scope.
+                        let type_id = ctx
+                            .registry()
+                            .resolve_type_id(ctx.current_module_path(), type_name);
+                        return Ok(InferType::Named(
+                            type_name.clone(),
+                            type_args,
+                            crate::types::NominalId(type_id),
                         ));
                     }
+                    // metel-core#1108: a fieldful variant has no bare-value
+                    // form -- Metel's grammar has no positional/tuple-variant
+                    // syntax, only `Variant { field: Type, ... }`, so there is
+                    // no "declared order" a constructor call could mean
+                    // without inventing that as new language semantics (a
+                    // design question of its own, not a bug fix). Point at
+                    // the two forms that do exist instead of the generic
+                    // "unresolved path".
+                    let fields = variant
+                        .fields
+                        .iter()
+                        .map(|f| format!("{} = ...", f.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "`{type_name}::{member_name}` is a fieldful variant and has no \
+                                 bare-value form -- construct it with `{type_name}::{member_name} \
+                                 {{ {fields} }}`, or destructure it in a `match`"
+                        ),
+                        span,
+                    ));
                 }
             }
             let path_str = segments.join("::");

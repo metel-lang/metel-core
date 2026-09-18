@@ -7,17 +7,17 @@ use crate::ast::{
 };
 use crate::error::{MetelError, TypeErrorCode};
 use crate::typeinference::{
-    free_vars, generalize, AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext,
-    InferType, Substitution, TypeScheme, TypeVar, VariantInfo,
+    AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext, InferType, Substitution,
+    TypeScheme, TypeVar, VariantInfo, free_vars, generalize,
 };
 use crate::types::Type;
 
-use super::conversions::{
-    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
-    type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
-    type_expr_to_infer_with_self, type_to_infer, AssocResolveCtx,
-};
 use super::FunGeneralization;
+use super::conversions::{
+    AssocResolveCtx, infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
+    type_expr_to_infer_with_self, type_to_infer,
+};
 
 fn type_expr_to_infer_with_ctx(
     te: &TypeExpr,
@@ -79,30 +79,24 @@ fn build_assoc_projection_map(
 fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     // Check for abstract-case projection first.
     if let TypeExpr::Projection {
-        base,
-        ref assoc_name,
-        ..
+        base, assoc_name, ..
     } = te
+        && let TypeExpr::Named(ref n, _) = **base
+        && let Some(base_tv) = ctx.type_params().get(n.as_str()).copied()
     {
-        if let TypeExpr::Named(ref n, _) = **base {
-            if let Some(base_tv) = ctx.type_params().get(n.as_str()).copied() {
-                let mut matching_aspect = None;
-                if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
-                    for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                        if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
-                            if decls.iter().any(|d| d.name == *assoc_name) {
-                                matching_aspect = Some(aspect.to_string());
-                                break;
-                            }
-                        }
-                    }
-                }
-                if let Some(aspect) = matching_aspect {
-                    return InferType::Var(
-                        ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
-                    );
+        let mut matching_aspect = None;
+        if let Some(bounds) = ctx.bounds_for_type_var(base_tv) {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                if let Some(decls) = ctx.aspect_assoc_type_decls(aspect)
+                    && decls.iter().any(|d| d.name == *assoc_name)
+                {
+                    matching_aspect = Some(aspect.to_string());
+                    break;
                 }
             }
+        }
+        if let Some(aspect) = matching_aspect {
+            return InferType::Var(ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name));
         }
     }
     // #774 (revised): a record projection whose one-segment path names a type param
@@ -114,35 +108,33 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     // `AssocResolveCtx` always carries `self_ty_name: None`, which is right for a
     // context with no enclosing `Self` at all -- this only fires when there
     // demonstrably is one.
-    if let TypeExpr::RecordProjection { path, .. } = te {
-        if let [name] = path.as_slice() {
-            if let Some(base_tv) = ctx.type_params().get(name.as_str()).copied() {
-                // Speculative: `solve()` now mutates `cached_subst` in place, so
-                // checkpoint and roll back if this probe fails to solve.
-                let checkpoint = ctx.solve_checkpoint();
-                let solved = ctx.solve();
-                if solved.is_err() {
-                    ctx.solve_restore(checkpoint);
-                }
-                if let Ok(solved) = solved {
-                    if let InferType::Named(concrete_name, ..)
-                    | InferType::Concrete(Type::Named(concrete_name, ..)) =
-                        solved.apply(&InferType::Var(base_tv))
-                    {
-                        let assoc_ctx = AssocResolveCtx {
-                            registry: ctx.registry(),
-                            current_module: ctx.current_module_path(),
-                            current_aspect: None,
-                        };
-                        return type_expr_to_infer_with_assoc_ctx(
-                            te,
-                            &HashMap::new(),
-                            Some(&concrete_name),
-                            &assoc_ctx,
-                        );
-                    }
-                }
-            }
+    if let TypeExpr::RecordProjection { path, .. } = te
+        && let [name] = path.as_slice()
+        && let Some(base_tv) = ctx.type_params().get(name.as_str()).copied()
+    {
+        // Speculative: `solve()` now mutates `cached_subst` in place, so
+        // checkpoint and roll back if this probe fails to solve.
+        let checkpoint = ctx.solve_checkpoint();
+        let solved = ctx.solve();
+        if solved.is_err() {
+            ctx.solve_restore(checkpoint);
+        }
+        if let Ok(solved) = solved
+            && let InferType::Named(concrete_name, ..)
+            | InferType::Concrete(Type::Named(concrete_name, ..)) =
+                solved.apply(&InferType::Var(base_tv))
+        {
+            let assoc_ctx = AssocResolveCtx {
+                registry: ctx.registry(),
+                current_module: ctx.current_module_path(),
+                current_aspect: None,
+            };
+            return type_expr_to_infer_with_assoc_ctx(
+                te,
+                &HashMap::new(),
+                Some(&concrete_name),
+                &assoc_ctx,
+            );
         }
     }
     let params = ctx.type_params().clone();
@@ -283,10 +275,10 @@ fn impl_params(ib: &ImplBlock, ctx: &mut InferContext) -> (Vec<ImplParam>, Aspec
         });
         let entry = assumptions.entry(var).or_default();
         for bound in &param.bounds {
-            if bound.polarity == Polarity::Positive {
-                if let Some(aspect) = bound.aspect_name() {
-                    entry.insert(aspect.to_string());
-                }
+            if bound.polarity == Polarity::Positive
+                && let Some(aspect) = bound.aspect_name()
+            {
+                entry.insert(aspect.to_string());
             }
         }
     }
@@ -300,10 +292,10 @@ fn impl_params(ib: &ImplBlock, ctx: &mut InferContext) -> (Vec<ImplParam>, Aspec
             };
             let entry = assumptions.entry(param.var).or_default();
             for bound in &constraint.bounds {
-                if bound.polarity == Polarity::Positive {
-                    if let Some(aspect) = bound.aspect_name() {
-                        entry.insert(aspect.to_string());
-                    }
+                if bound.polarity == Polarity::Positive
+                    && let Some(aspect) = bound.aspect_name()
+                {
+                    entry.insert(aspect.to_string());
                 }
             }
         }
@@ -463,12 +455,11 @@ fn substitute_impl_params(
 /// An impl target argument as an `InferType`, with any mention of the impl's
 /// own generic parameters resolved to their type variables.
 fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
-    if let TypeExpr::Named(name, args) = ty {
-        if args.is_empty() {
-            if let Some(param) = params.iter().find(|p| &p.name == name) {
-                return InferType::Var(param.var);
-            }
-        }
+    if let TypeExpr::Named(name, args) = ty
+        && args.is_empty()
+        && let Some(param) = params.iter().find(|p| &p.name == name)
+    {
+        return InferType::Var(param.var);
     }
     let go = |t: &TypeExpr| type_expr_as_infer(t, params);
     match ty {
@@ -613,17 +604,16 @@ fn check_copy_impl_eligibility(
         }
     }
 
-    if let Some(concrete_target) = closed_nominal_target(ib, target_name) {
-        if ctx
+    if let Some(concrete_target) = closed_nominal_target(ib, target_name)
+        && ctx
             .registry()
             .type_satisfies_aspect(ctx.current_module_path(), &concrete_target, "Drop")
-        {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0001,
-                format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
-                &ib.span,
-            ));
-        }
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
+            &ib.span,
+        ));
     }
 
     Ok(())
@@ -679,42 +669,34 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
 
                 let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
                     if let TypeExpr::Projection {
-                        base,
-                        ref assoc_name,
-                        ..
+                        base, assoc_name, ..
                     } = te
+                        && let TypeExpr::Named(ref n, _) = **base
+                        && let Some(&base_tv) = generic_map.get(n.as_str())
                     {
-                        if let TypeExpr::Named(ref n, _) = **base {
-                            if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                                // NOTE: use the locally-computed `type_var_bounds` map, not
-                                // `ctx.bounds_for_type_var` -- that reads `current_type_param_bounds`,
-                                // which is only populated by `swap_type_param_bounds` during body
-                                // inference (`infer_fun_decl`), which hasn't run yet at hoist time.
-                                // Using it here always finds no bounds and silently produces a
-                                // stale, unresolved `Named("T::Item", [])` that then fails to unify
-                                // with the correctly-resolved type computed later.
-                                if let Some(bounds) = type_var_bounds.get(&base_tv) {
-                                    for aspect in
-                                        bounds.iter().filter_map(GenericBound::aspect_name)
-                                    {
-                                        if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
-                                            if decls.iter().any(|d| d.name == *assoc_name) {
-                                                return InferType::Var(
-                                                    ctx.fresh_assoc_projection_var(
-                                                        base_tv, aspect, assoc_name,
-                                                    ),
-                                                );
-                                            }
-                                        }
-                                    }
+                        // NOTE: use the locally-computed `type_var_bounds` map, not
+                        // `ctx.bounds_for_type_var` -- that reads `current_type_param_bounds`,
+                        // which is only populated by `swap_type_param_bounds` during body
+                        // inference (`infer_fun_decl`), which hasn't run yet at hoist time.
+                        // Using it here always finds no bounds and silently produces a
+                        // stale, unresolved `Named("T::Item", [])` that then fails to unify
+                        // with the correctly-resolved type computed later.
+                        if let Some(bounds) = type_var_bounds.get(&base_tv) {
+                            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                                if let Some(decls) = ctx.aspect_assoc_type_decls(aspect)
+                                    && decls.iter().any(|d| d.name == *assoc_name)
+                                {
+                                    return InferType::Var(
+                                        ctx.fresh_assoc_projection_var(base_tv, aspect, assoc_name),
+                                    );
                                 }
-                                return InferType::Named(
-                                    format!("{n}::{assoc_name}"),
-                                    vec![],
-                                    crate::types::NominalId::NONE,
-                                );
                             }
                         }
+                        return InferType::Named(
+                            format!("{n}::{assoc_name}"),
+                            vec![],
+                            crate::types::NominalId::NONE,
+                        );
                     }
                     type_expr_to_infer_with_generics(te, &generic_map)
                 };
@@ -869,18 +851,18 @@ pub(super) fn collect_fun_type_var_record_kinds(
 ) -> HashMap<TypeVar, bool> {
     let mut map: HashMap<TypeVar, bool> = HashMap::new();
     for gp in &fun.generics {
-        if gp.is_record {
-            if let Some(&tv) = generic_map.get(&gp.name) {
-                map.insert(tv, true);
-            }
+        if gp.is_record
+            && let Some(&tv) = generic_map.get(&gp.name)
+        {
+            map.insert(tv, true);
         }
     }
     if let Some(wc) = &fun.where_clause {
         for constraint in &wc.constraints {
-            if constraint.is_record {
-                if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
-                    map.insert(tv, true);
-                }
+            if constraint.is_record
+                && let Some(&tv) = generic_map.get(constraint.name.as_str())
+            {
+                map.insert(tv, true);
             }
         }
     }
@@ -998,12 +980,12 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         TypeExpr::Projection {
             base, assoc_name, ..
         } => {
-            if let TypeExpr::Named(base_name, args) = base.as_ref() {
-                if base_name == "Self" && args.is_empty() {
-                    if let Some(ty) = env.alias_types.get(assoc_name) {
-                        return ty.clone();
-                    }
-                }
+            if let TypeExpr::Named(base_name, args) = base.as_ref()
+                && base_name == "Self"
+                && args.is_empty()
+                && let Some(ty) = env.alias_types.get(assoc_name)
+            {
+                return ty.clone();
             }
             let base_ty = go(base);
             InferType::Named(
@@ -1042,10 +1024,9 @@ fn signature_param_type(param: &Param, env: &SignatureEnv) -> InferType {
 
 fn impl_signature_self_type(ib: &ImplBlock, params: &[ImplParam], target_name: &str) -> InferType {
     if matches!(&ib.target_type, TypeExpr::Named(name, args) if args.is_empty() && name == target_name)
+        && let Some(prim) = primitive_type_from_name(target_name)
     {
-        if let Some(prim) = primitive_type_from_name(target_name) {
-            return InferType::Concrete(prim);
-        }
+        return InferType::Concrete(prim);
     }
     type_expr_as_infer(&ib.target_type, params)
 }
@@ -1438,7 +1419,9 @@ fn infer_binop(
                             };
                             return Err(MetelError::type_error(
                                 TypeErrorCode::T0005,
-                                format!("`+` requires i64, f64, or String operands, got `{lhs_display}` and `{rhs_display}`"),
+                                format!(
+                                    "`+` requires i64, f64, or String operands, got `{lhs_display}` and `{rhs_display}`"
+                                ),
                                 span,
                             ));
                         }
@@ -1537,16 +1520,16 @@ fn infer_propagate_error(
     if source_resolved != target_resolved {
         let source_concrete = infer_to_type_for_from(&source_resolved);
         let target_name = infer_type_name(&target_resolved);
-        if let (Some(src_t), Some(tgt)) = (source_concrete.as_ref(), target_name) {
-            if !ctx.has_from_impl(tgt, src_t) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0007,
-                    format!(
-                        "cannot propagate `{source_resolved}` as `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"
-                    ),
-                    span,
-                ));
-            }
+        if let (Some(src_t), Some(tgt)) = (source_concrete.as_ref(), target_name)
+            && !ctx.has_from_impl(tgt, src_t)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0007,
+                format!(
+                    "cannot propagate `{source_resolved}` as `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"
+                ),
+                span,
+            ));
         }
     }
 
@@ -1740,7 +1723,10 @@ fn check_field_visibility(
     }
     Err(MetelError::type_error(
         TypeErrorCode::T0009,
-        format!("visibility error: cannot {action} private field `{}` of `{type_name}` from outside its declaring module", field.name),
+        format!(
+            "visibility error: cannot {action} private field `{}` of `{type_name}` from outside its declaring module",
+            field.name
+        ),
         span,
     ))
 }
@@ -1791,10 +1777,10 @@ fn infer_enum_variant_literal(
         .unwrap_or_default();
     for (i, &tp) in enum_info.type_params.iter().enumerate() {
         let fresh = ctx.fresh_var();
-        if let InferType::Var(fresh_tv) = fresh {
-            if let Some(name) = declared_names.get(i) {
-                ctx.tag_declared_var_name(fresh_tv, name.clone());
-            }
+        if let InferType::Var(fresh_tv) = fresh
+            && let Some(name) = declared_names.get(i)
+        {
+            ctx.tag_declared_var_name(fresh_tv, name.clone());
         }
         remap.insert(tp, fresh);
     }
@@ -1877,10 +1863,10 @@ fn infer_struct_literal(
             .unwrap_or_default();
         for (i, &tp) in params.iter().enumerate() {
             let fresh = ctx.fresh_var();
-            if let InferType::Var(fresh_tv) = fresh {
-                if let Some(name) = declared_names.get(i) {
-                    ctx.tag_declared_var_name(fresh_tv, name.clone());
-                }
+            if let InferType::Var(fresh_tv) = fresh
+                && let Some(name) = declared_names.get(i)
+            {
+                ctx.tag_declared_var_name(fresh_tv, name.clone());
             }
             remap.insert(tp, fresh);
         }
@@ -1988,10 +1974,8 @@ fn infer_field_assign_type(
             root_binding_for_write(object).and_then(|(name, _)| ctx.lookup_mono_raw(name)),
             Some(InferType::MutReference(_))
         );
-    if !is_through_mut_ptr {
-        if let Some((name, span)) = root_binding_for_write(object) {
-            let _ = ctx.lookup_for_write(name, span)?;
-        }
+    if !is_through_mut_ptr && let Some((name, span)) = root_binding_for_write(object) {
+        let _ = ctx.lookup_for_write(name, span)?;
     }
     let peeled = peel_all_references(&obj_ty);
     if let InferType::Record(fields) = &peeled {
@@ -2010,10 +1994,10 @@ fn infer_field_assign_type(
     // Mirror of Expr::FieldAccess's row-bound branch above, so `p.x = value` works
     // symmetrically wherever `p.x` does. `fresh_row_field_var` is memoized by
     // (tv, field), so an untyped field's read and write sides agree on a type.
-    if let InferType::Var(tv) = &peeled {
-        if let Some(result) = resolve_row_bound_field(ctx, *tv, field, target_span) {
-            return result;
-        }
+    if let InferType::Var(tv) = &peeled
+        && let Some(result) = resolve_row_bound_field(ctx, *tv, field, target_span)
+    {
+        return result;
     }
     // RFC-0137 slice 2 (metel-core#858): assigning a field to a narrowed residual
     // is a *widening* write — the field may be one currently absent from the
@@ -2105,10 +2089,8 @@ fn infer_tuple_assign_type(
             root_binding_for_write(object).and_then(|(name, _)| ctx.lookup_mono_raw(name)),
             Some(InferType::MutReference(_))
         );
-    if !is_through_mut_ptr {
-        if let Some((name, span)) = root_binding_for_write(object) {
-            let _ = ctx.lookup_for_write(name, span)?;
-        }
+    if !is_through_mut_ptr && let Some((name, span)) = root_binding_for_write(object) {
+        let _ = ctx.lookup_for_write(name, span)?;
     }
     // Reach through a reference at the root, the way field- and index-path assignment
     // already do (`s.x = v` and `xs[0] = v` both work for a `&var` receiver). Peeled

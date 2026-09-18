@@ -222,7 +222,7 @@ pub(super) fn match_pattern(
 
 #[cfg(test)]
 mod tests {
-    use super::{match_pattern, LocalId, TypedPattern, Value};
+    use super::{LocalId, TypedPattern, Value, match_pattern};
     use crate::ast::Span;
     use crate::identity::VariantId;
 

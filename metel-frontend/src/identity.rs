@@ -37,8 +37,8 @@
 //! incremental-compilation decision; structural allocation is the part that is
 //! cheap now and expensive to retrofit, so it is settled here.
 
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::ast::Span;
@@ -50,15 +50,15 @@ pub use lexical_path::{LexicalPath, LexicalSeg};
 
 mod allocate;
 pub use allocate::{
-    allocate_for_graph, allocate_graph, allocate_module, Allocation, BindingSpans, GraphModuleNav,
-    ModuleNav,
+    Allocation, BindingSpans, GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph,
+    allocate_module,
 };
 
 mod position;
 pub use position::{PositionHit, PositionIndex};
 
 mod member;
-pub use member::{collect_members, collect_members_for_graph, MemberInfo, MemberTable};
+pub use member::{MemberInfo, MemberTable, collect_members, collect_members_for_graph};
 
 /// The frozen-identity context the typed-AST construction pass consumes
 /// (ADR-0054). Bundled so the `check_graph` → `construct_program` signature

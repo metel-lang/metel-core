@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::conversions::{
-    type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_self, AssocResolveCtx,
+    AssocResolveCtx, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 use crate::ast::{
     AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, TypeExpr, WhereClause,
@@ -43,11 +43,10 @@ pub(super) fn collect_type_param_bounds(
                         .iter()
                         .filter(|b| b.polarity == Polarity::Positive)
                     {
-                        if let Some(n) = GenericBound::from_ast(b) {
-                            if !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
+                        if let Some(n) = GenericBound::from_ast(b)
+                            && !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
                                 names.push(n);
                             }
-                        }
                     }
                 }
             }
@@ -81,11 +80,10 @@ pub(super) fn collect_negative_type_param_bounds(
                         .iter()
                         .filter(|b| b.polarity == Polarity::Negative)
                     {
-                        if let Some(n) = GenericBound::from_ast(b) {
-                            if !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
+                        if let Some(n) = GenericBound::from_ast(b)
+                            && !names.iter().any(|existing| matches!((existing, &n), (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)) {
                                 names.push(n);
                             }
-                        }
                     }
                 }
             }
@@ -172,7 +170,7 @@ pub(super) fn array_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&s
 /// performs no module loading) sees the same surface as the module graph path.
 fn populate_schemes_from_embedded_core(
     map: &mut HashMap<String, TypeScheme>,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
 ) {
     let program = crate::stdlib::core_program();
     for decl in &program.decls {
@@ -189,7 +187,7 @@ fn populate_schemes_from_embedded_core(
                 let generic_map: HashMap<String, TypeVar> = fun
                     .generics
                     .iter()
-                    .map(|g| (g.name.clone(), gen.fresh()))
+                    .map(|g| (g.name.clone(), type_var_gen.fresh()))
                     .collect();
                 let te = |t: &TypeExpr| -> InferType {
                     if generic_map.is_empty() {
@@ -227,7 +225,7 @@ fn populate_schemes_from_embedded_core(
                     .iter()
                     .filter_map(|te| match te {
                         TypeExpr::Named(n, args) if args.is_empty() => {
-                            Some((n.clone(), gen.fresh()))
+                            Some((n.clone(), type_var_gen.fresh()))
                         }
                         _ => None,
                     })
@@ -302,7 +300,7 @@ fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
 /// `InferContext::new` so that all `TypeVar` IDs are globally unique.
 pub(super) fn build_registry(
     program: &Program,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     scopes: Option<&HashMap<Vec<String>, ModuleScope>>,
@@ -327,12 +325,17 @@ pub(super) fn build_registry(
         register_program_decls(
             &crate::stdlib::core_program().decls,
             &std_core_path,
-            gen,
+            type_var_gen,
             &mut registry,
         );
     }
 
-    register_program_decls(&program.decls, current_module_path, gen, &mut registry);
+    register_program_decls(
+        &program.decls,
+        current_module_path,
+        type_var_gen,
+        &mut registry,
+    );
 
     registry
 }
@@ -347,7 +350,7 @@ pub(super) fn build_registry(
 fn register_program_decls(
     decls: &[Decl],
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     // Pass 1: register structs, enums, and aspects.
@@ -391,7 +394,7 @@ fn register_program_decls(
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &sd.generics {
-                    let tv = gen.fresh();
+                    let tv = type_var_gen.fresh();
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
@@ -443,7 +446,7 @@ fn register_program_decls(
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &ed.generics {
-                    let tv = gen.fresh();
+                    let tv = type_var_gen.fresh();
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
@@ -540,14 +543,14 @@ fn register_program_decls(
                 });
 
             if is_array_generic_target {
-                register_array_impl_method_schemes(ib, gen, registry);
+                register_array_impl_method_schemes(ib, type_var_gen, registry);
             } else if let Some(target_name) = nominal_target_name.as_ref() {
                 if is_generic_target {
                     register_generic_impl_method_schemes(
                         ib,
                         target_name,
                         current_module_path,
-                        gen,
+                        type_var_gen,
                         registry,
                     );
                 } else {
@@ -555,14 +558,14 @@ fn register_program_decls(
                         ib.methods.iter(),
                         target_name,
                         current_module_path,
-                        gen,
+                        type_var_gen,
                         registry,
                     );
                     if ib.polarity == Polarity::Positive {
                         register_default_aspect_methods(
                             ib,
                             target_name,
-                            gen,
+                            type_var_gen,
                             registry,
                             current_module_path,
                         );
@@ -652,101 +655,96 @@ fn register_program_decls(
                             type_args,
                         );
                     }
-                    if let Some(target_name) = nominal_target_name.as_ref() {
-                        if !is_generic_target && !ib.assoc_type_defs.is_empty() {
-                            let mut bindings = HashMap::new();
-                            for def in &ib.assoc_type_defs {
-                                let infer_ty = super::conversions::type_expr_to_infer_with_self(
-                                    &def.ty,
-                                    target_name,
-                                );
-                                let dummy = Span::new(0, 0, "");
-                                if let Ok(concrete_ty) =
-                                    super::conversions::infer_type_to_type(&infer_ty, &dummy)
-                                {
-                                    bindings.insert(def.name.clone(), concrete_ty);
-                                }
-                            }
-                            if !bindings.is_empty() {
-                                registry.register_impl_assoc_types(
-                                    current_module_path,
-                                    target_name,
-                                    aspect_name,
-                                    bindings,
-                                );
+                    if let Some(target_name) = nominal_target_name.as_ref()
+                        && !is_generic_target
+                        && !ib.assoc_type_defs.is_empty()
+                    {
+                        let mut bindings = HashMap::new();
+                        for def in &ib.assoc_type_defs {
+                            let infer_ty = super::conversions::type_expr_to_infer_with_self(
+                                &def.ty,
+                                target_name,
+                            );
+                            let dummy = Span::new(0, 0, "");
+                            if let Ok(concrete_ty) =
+                                super::conversions::infer_type_to_type(&infer_ty, &dummy)
+                            {
+                                bindings.insert(def.name.clone(), concrete_ty);
                             }
                         }
-                    }
-                }
-            } else if ib.polarity == Polarity::Negative {
-                if let Some(aspect_name) = &ib.aspect_name {
-                    if !ib.generics.is_empty() {
-                        if bare_target_generic_name(ib).is_some() {
-                            let pos_bounds =
-                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
-                            let neg_bounds = collect_negative_type_param_bounds(
-                                &ib.generics,
-                                ib.where_clause.as_ref(),
-                            );
-                            registry.register_neg_bare_impl_bounds(
-                                aspect_name,
-                                pos_bounds,
-                                neg_bounds,
-                            );
-                        } else if is_array_generic_target {
-                            let pos_bounds =
-                                collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
-                            let neg_bounds = collect_negative_type_param_bounds(
-                                &ib.generics,
-                                ib.where_clause.as_ref(),
-                            );
-                            registry.register_neg_array_impl_bounds(
-                                aspect_name,
-                                pos_bounds,
-                                neg_bounds,
-                            );
-                        } else if let Some(target_name) = nominal_target_name.as_ref() {
-                            let generic_names = registry
-                                .struct_generic_names_for(current_module_path, target_name.as_str())
-                                .cloned()
-                                .unwrap_or_default();
-                            let synth = synth_generics_for_impl(&generic_names, &ib.generics);
-                            let pos_bounds =
-                                collect_type_param_bounds(&synth, ib.where_clause.as_ref());
-                            let neg_bounds = collect_negative_type_param_bounds(
-                                &synth,
-                                ib.where_clause.as_ref(),
-                            );
-                            registry.register_neg_conditional_impl_bounds(
+                        if !bindings.is_empty() {
+                            registry.register_impl_assoc_types(
                                 current_module_path,
                                 target_name,
                                 aspect_name,
-                                pos_bounds,
-                                neg_bounds,
+                                bindings,
                             );
                         }
-                    } else if let (Some(target_name), TypeExpr::Named(_, target_type_args)) =
-                        (nominal_target_name.as_ref(), &ib.target_type)
-                    {
-                        let concrete_target_args: Vec<crate::types::Type> = target_type_args
-                            .iter()
-                            .filter_map(|te| match type_expr_to_infer(te) {
-                                InferType::Concrete(t) => Some(t),
-                                InferType::Named(n, ..) => Some(crate::types::Type::Named(
-                                    n,
-                                    vec![],
-                                    crate::types::NominalId::NONE,
-                                )),
-                                _ => None,
-                            })
-                            .collect();
-                        registry.register_neg_impl(
+                    }
+                }
+            } else if ib.polarity == Polarity::Negative
+                && let Some(aspect_name) = &ib.aspect_name
+            {
+                if !ib.generics.is_empty() {
+                    if bare_target_generic_name(ib).is_some() {
+                        let pos_bounds =
+                            collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                        let neg_bounds = collect_negative_type_param_bounds(
+                            &ib.generics,
+                            ib.where_clause.as_ref(),
+                        );
+                        registry.register_neg_bare_impl_bounds(aspect_name, pos_bounds, neg_bounds);
+                    } else if is_array_generic_target {
+                        let pos_bounds =
+                            collect_type_param_bounds(&ib.generics, ib.where_clause.as_ref());
+                        let neg_bounds = collect_negative_type_param_bounds(
+                            &ib.generics,
+                            ib.where_clause.as_ref(),
+                        );
+                        registry.register_neg_array_impl_bounds(
+                            aspect_name,
+                            pos_bounds,
+                            neg_bounds,
+                        );
+                    } else if let Some(target_name) = nominal_target_name.as_ref() {
+                        let generic_names = registry
+                            .struct_generic_names_for(current_module_path, target_name.as_str())
+                            .cloned()
+                            .unwrap_or_default();
+                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                        let pos_bounds =
+                            collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        let neg_bounds =
+                            collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+                        registry.register_neg_conditional_impl_bounds(
                             current_module_path,
                             target_name,
                             aspect_name,
-                            concrete_target_args,
+                            pos_bounds,
+                            neg_bounds,
                         );
                     }
+                } else if let (Some(target_name), TypeExpr::Named(_, target_type_args)) =
+                    (nominal_target_name.as_ref(), &ib.target_type)
+                {
+                    let concrete_target_args: Vec<crate::types::Type> = target_type_args
+                        .iter()
+                        .filter_map(|te| match type_expr_to_infer(te) {
+                            InferType::Concrete(t) => Some(t),
+                            InferType::Named(n, ..) => Some(crate::types::Type::Named(
+                                n,
+                                vec![],
+                                crate::types::NominalId::NONE,
+                            )),
+                            _ => None,
+                        })
+                        .collect();
+                    registry.register_neg_impl(
+                        current_module_path,
+                        target_name,
+                        aspect_name,
+                        concrete_target_args,
+                    );
                 }
             }
         }
@@ -790,7 +788,7 @@ fn register_generic_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     let target_id = registry.resolve_type_id(current_module_path, target_name);
@@ -872,7 +870,7 @@ fn register_generic_impl_method_schemes(
         let mut quantified = type_params.clone();
         let mut param_names = generic_names.clone();
         for g in &method.generics {
-            let tv = gen.fresh();
+            let tv = type_var_gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
             param_names.push(g.name.clone());
@@ -943,13 +941,13 @@ fn register_generic_impl_method_schemes(
 
 fn register_array_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     let Some(element_name) = array_target_generic_name(ib) else {
         return;
     };
-    let element_tv = gen.fresh();
+    let element_tv = type_var_gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
     let structural_self_type_expr =
@@ -977,7 +975,7 @@ fn register_array_impl_method_schemes(
         let mut quantified = vec![element_tv];
         let mut param_names = vec![element_name.to_string()];
         for g in &method.generics {
-            let tv = gen.fresh();
+            let tv = type_var_gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
             param_names.push(g.name.clone());
@@ -1114,7 +1112,7 @@ fn register_impl_methods<'a>(
     methods: impl Iterator<Item = &'a crate::ast::FunDecl>,
     target_name: &str,
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     // `self` on a primitive target must be the concrete primitive type
@@ -1147,7 +1145,7 @@ fn register_impl_methods<'a>(
             } else if let Some(ann) = &p.type_ann {
                 type_expr_to_infer_with_self(ann, target_name)
             } else {
-                InferType::Var(gen.fresh())
+                InferType::Var(type_var_gen.fresh())
             };
             param_types.push(pt);
         }
@@ -1171,7 +1169,7 @@ fn register_impl_methods<'a>(
 fn register_default_aspect_methods(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
     current_module_path: &[String],
 ) {
@@ -1195,7 +1193,7 @@ fn register_default_aspect_methods(
             &method,
             target_name,
             aspect_name,
-            gen,
+            type_var_gen,
             registry,
             current_module_path,
         );
@@ -1206,7 +1204,7 @@ fn register_default_aspect_method(
     method: &AspectMethod,
     target_name: &str,
     aspect_name: &str,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
     current_module_path: &[String],
 ) {
@@ -1240,7 +1238,7 @@ fn register_default_aspect_method(
         } else if let Some(ann) = &p.type_ann {
             type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         } else {
-            InferType::Var(gen.fresh())
+            InferType::Var(type_var_gen.fresh())
         };
         param_types.push(pt);
     }
@@ -1299,10 +1297,10 @@ pub(super) fn register_builtin_schemes(
 /// Called by `CorePrelude::default()` — this is the single canonical list.
 pub(super) fn populate_std_schemes(
     map: &mut HashMap<String, TypeScheme>,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
 ) {
     // All schemes — free functions and the List<T> static constructors — are
     // derived from the embedded std::core source (single source of truth,
     // METEL-181).
-    populate_schemes_from_embedded_core(map, gen);
+    populate_schemes_from_embedded_core(map, type_var_gen);
 }

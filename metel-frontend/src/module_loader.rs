@@ -524,10 +524,10 @@ impl Loader<'_> {
         if self.visited.contains(&file_path) {
             // Same physical file reachable via a different logical path (diamond dependency).
             // Record the alias so the name resolver can dereference it. See ADR-0031.
-            if let Some(canonical) = self.file_to_path.get(&file_path) {
-                if *canonical != module_path {
-                    self.path_aliases.insert(module_path, canonical.clone());
-                }
+            if let Some(canonical) = self.file_to_path.get(&file_path)
+                && *canonical != module_path
+            {
+                self.path_aliases.insert(module_path, canonical.clone());
             }
             return Ok(());
         }
@@ -641,10 +641,10 @@ impl Loader<'_> {
         }
 
         if self.visited.contains(&file_path) {
-            if let Some(canonical) = self.file_to_path.get(&file_path) {
-                if *canonical != module_path {
-                    self.path_aliases.insert(module_path, canonical.clone());
-                }
+            if let Some(canonical) = self.file_to_path.get(&file_path)
+                && *canonical != module_path
+            {
+                self.path_aliases.insert(module_path, canonical.clone());
             }
             return;
         }
@@ -1062,9 +1062,11 @@ mod tests {
             .expect("an in-memory root should load without filesystem access");
 
         assert!(graph.root.ends_with("playground.mtl"));
-        assert!(graph
-            .modules
-            .iter()
-            .any(|module| module.module_path.is_empty()));
+        assert!(
+            graph
+                .modules
+                .iter()
+                .any(|module| module.module_path.is_empty())
+        );
     }
 }

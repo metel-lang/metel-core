@@ -1,10 +1,9 @@
 use super::{
-    construct_expr, infer_type_to_type, maybe_dyn_coerce,
-    reject_dynamic_array_where_sized_expected, type_expr_to_infer_with_assoc_ctx, type_to_infer,
-    typeinference, unify, AssocResolveCtx, ConstructCtx, Expr, GenericBound, HashMap, InferType,
-    MetelError, MethodDispatch, RowConstraint, Span, Substitution, SymbolId, Type,
-    TypeDefinitionRegistry, TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypeVarGenerator,
-    TypedExpr,
+    AssocResolveCtx, ConstructCtx, Expr, GenericBound, HashMap, InferType, MetelError,
+    MethodDispatch, RowConstraint, Span, Substitution, SymbolId, Type, TypeDefinitionRegistry,
+    TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypeVarGenerator, TypedExpr, construct_expr,
+    infer_type_to_type, maybe_dyn_coerce, reject_dynamic_array_where_sized_expected,
+    type_expr_to_infer_with_assoc_ctx, type_to_infer, typeinference, unify,
 };
 
 fn is_through_shared_reference(expr: &TypedExpr) -> bool {
@@ -40,41 +39,41 @@ pub(super) fn construct_call(
     // parameter types exactly match the argument types and stamp its SymbolId
     // into the call; the evaluator dispatches through its symbol registry.
     // No implicit coercion participates in selection.
-    if let Some(name) = super::super::overload::callee_name(callee) {
-        if ctx.overloads.contains_key(name) {
-            let typed_args: Vec<TypedExpr> = args
-                .iter()
-                .map(|a| construct_expr(a, None, ctx))
-                .collect::<Result<_, _>>()?;
-            let arg_types: Vec<Type> = typed_args.iter().map(|a| a.ty().clone()).collect();
-            let entries = &ctx.overloads[name];
-            match super::super::overload::select(entries, &arg_types) {
-                Some(entry) => {
-                    let fun_ty =
-                        crate::types::default_fun_type(entry.params.clone(), entry.ret.clone());
-                    let typed_callee = TypedExpr::Ident(
-                        name.to_string(),
-                        ctx.binding_id_at(callee.span()),
-                        fun_ty,
-                        callee.span().clone(),
-                    );
-                    return Ok(TypedExpr::Call {
-                        callee: Box::new(typed_callee),
-                        args: typed_args,
-                        ty: entry.ret.clone(),
-                        callee_id: Some(entry.symbol_id),
-                        span: span.clone(),
-                    });
-                }
-                // No exact match: fall back to a non-overload binding of the
-                // same name (prelude/imports), mirroring the inference pass.
-                // The normal path below re-constructs the arguments.
-                None if ctx.lookup(name).is_some() || ctx.scheme_env.contains_key(name) => {}
-                None => {
-                    return Err(super::super::overload::no_match_error(
-                        name, &arg_types, entries, span,
-                    ))
-                }
+    if let Some(name) = super::super::overload::callee_name(callee)
+        && ctx.overloads.contains_key(name)
+    {
+        let typed_args: Vec<TypedExpr> = args
+            .iter()
+            .map(|a| construct_expr(a, None, ctx))
+            .collect::<Result<_, _>>()?;
+        let arg_types: Vec<Type> = typed_args.iter().map(|a| a.ty().clone()).collect();
+        let entries = &ctx.overloads[name];
+        match super::super::overload::select(entries, &arg_types) {
+            Some(entry) => {
+                let fun_ty =
+                    crate::types::default_fun_type(entry.params.clone(), entry.ret.clone());
+                let typed_callee = TypedExpr::Ident(
+                    name.to_string(),
+                    ctx.binding_id_at(callee.span()),
+                    fun_ty,
+                    callee.span().clone(),
+                );
+                return Ok(TypedExpr::Call {
+                    callee: Box::new(typed_callee),
+                    args: typed_args,
+                    ty: entry.ret.clone(),
+                    callee_id: Some(entry.symbol_id),
+                    span: span.clone(),
+                });
+            }
+            // No exact match: fall back to a non-overload binding of the
+            // same name (prelude/imports), mirroring the inference pass.
+            // The normal path below re-constructs the arguments.
+            None if ctx.lookup(name).is_some() || ctx.scheme_env.contains_key(name) => {}
+            None => {
+                return Err(super::super::overload::no_match_error(
+                    name, &arg_types, entries, span,
+                ));
             }
         }
     }
@@ -154,7 +153,7 @@ pub(super) fn construct_call(
                         scheme,
                         &arg_types,
                         span,
-                        &mut ctx.gen,
+                        &mut ctx.type_var_gen,
                         ctx.registry,
                         ctx.current_module,
                     ) {
@@ -170,7 +169,7 @@ pub(super) fn construct_call(
                                     &arg_types,
                                     expected,
                                     span,
-                                    &mut ctx.gen,
+                                    &mut ctx.type_var_gen,
                                     ctx.registry,
                                     ctx.current_module,
                                 )
@@ -238,7 +237,7 @@ pub(super) fn construct_call(
                         scheme,
                         &arg_types,
                         span,
-                        &mut ctx.gen,
+                        &mut ctx.type_var_gen,
                         ctx.registry,
                         ctx.current_module,
                     ) {
@@ -252,7 +251,7 @@ pub(super) fn construct_call(
                                     &arg_types,
                                     expected,
                                     span,
-                                    &mut ctx.gen,
+                                    &mut ctx.type_var_gen,
                                     ctx.registry,
                                     ctx.current_module,
                                 )
@@ -332,7 +331,7 @@ pub(super) fn construct_call(
                     scheme,
                     &arg_types,
                     span,
-                    &mut ctx.gen,
+                    &mut ctx.type_var_gen,
                     ctx.registry,
                     ctx.current_module,
                 )?,
@@ -397,7 +396,7 @@ pub(super) fn construct_call(
                     scheme,
                     &arg_types,
                     span,
-                    &mut ctx.gen,
+                    &mut ctx.type_var_gen,
                     ctx.registry,
                     ctx.current_module,
                 )?,
@@ -505,20 +504,19 @@ pub(super) fn construct_call(
     // it runs, not before: `construct_expr` doesn't coerce a value to a hint
     // it structurally can't satisfy, so anything still disagreeing here is
     // genuine, not a literal that just needed the hint.
-    if explicit_tys.is_some() {
-        if let Type::Fun(params, ..) = fun_ty_for_hints {
-            if params.len() == typed_args.len()
-                && typed_args.iter().zip(params.iter()).any(|(arg, param)| {
-                    unify(&type_to_infer(arg.ty()), &type_to_infer(param)).is_err()
-                })
-            {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    "argument type mismatch",
-                    span,
-                ));
-            }
-        }
+    if explicit_tys.is_some()
+        && let Type::Fun(params, ..) = fun_ty_for_hints
+        && params.len() == typed_args.len()
+        && typed_args
+            .iter()
+            .zip(params.iter())
+            .any(|(arg, param)| unify(&type_to_infer(arg.ty()), &type_to_infer(param)).is_err())
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            "argument type mismatch",
+            span,
+        ));
     }
 
     // Auto-deref: calling through a &Fun or &mut Fun is allowed.
@@ -1005,7 +1003,9 @@ pub(super) fn check_record_kind_requirement(
                 Some(crate::typeinference::VisibleTypeKind::Struct) => format!(
                     "`{name}` is a struct, but a struct never satisfies a row bound; conversion to a record is not available in this release"
                 ),
-                _ => format!("`{name}` is not a record, and only records satisfy a `record` type parameter"),
+                _ => format!(
+                    "`{name}` is not a record, and only records satisfy a `record` type parameter"
+                ),
             };
             Err(MetelError::type_error(TypeErrorCode::T0012, message, span))
         }
@@ -1421,11 +1421,11 @@ pub(super) fn instantiate_scheme_for_call(
     scheme: &TypeScheme,
     arg_types: &[&Type],
     span: &Span,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
+    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, type_var_gen);
 
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
@@ -1453,14 +1453,12 @@ pub(super) fn instantiate_scheme_for_call(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base)) {
-            if let Some(concrete_ty) =
+        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base))
+            && let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
-            {
-                if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
-                    subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
-                }
-            }
+            && let Some(fresh_placeholder) = renaming.get(placeholder_tv)
+        {
+            subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
         }
     }
 
@@ -1469,12 +1467,11 @@ pub(super) fn instantiate_scheme_for_call(
     // `infer_type_to_type` calls below succeed using the known concrete type
     // rather than requiring ordinary substitution to have resolved it.
     for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
-        if let Some((_aspect, concrete_ty)) = opaque {
-            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
-                if let Some(&fresh_tv) = renaming.get(&orig_tv) {
-                    subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
-                }
-            }
+        if let Some((_aspect, concrete_ty)) = opaque
+            && let Some(&orig_tv) = scheme.quantified_vars.get(i)
+            && let Some(&fresh_tv) = renaming.get(&orig_tv)
+        {
+            subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
         }
     }
 
@@ -1533,20 +1530,18 @@ pub(super) fn instantiate_scheme_with_turbofish(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         if let Some(Type::Named(base_name, ..)) =
             var_to_concrete.get(&scheme.quantified_vars[*base_pos])
-        {
-            if let Some(concrete_ty) =
+            && let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, base_name, aspect, assoc)
-            {
-                subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
-            }
+        {
+            subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
         }
     }
     // RFC-0037 backfill: bind opaque-return vars to their concrete types.
     for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
-        if let Some((_aspect, concrete_ty)) = opaque {
-            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
-                subst.bind(orig_tv, InferType::Concrete(concrete_ty.clone()));
-            }
+        if let Some((_aspect, concrete_ty)) = opaque
+            && let Some(&orig_tv) = scheme.quantified_vars.get(i)
+        {
+            subst.bind(orig_tv, InferType::Concrete(concrete_ty.clone()));
         }
     }
     let instantiated = subst.apply(&scheme.ty);
@@ -1562,11 +1557,11 @@ pub(super) fn instantiate_scheme_with_expected_ret(
     arg_types: &[&Type],
     expected_ret: &Type,
     span: &Span,
-    gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
+    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, type_var_gen);
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
@@ -1594,24 +1589,21 @@ pub(super) fn instantiate_scheme_with_expected_ret(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base)) {
-            if let Some(concrete_ty) =
+        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base))
+            && let Some(concrete_ty) =
                 registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
-            {
-                if let Some(fresh_placeholder) = renaming.get(placeholder_tv) {
-                    subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
-                }
-            }
+            && let Some(fresh_placeholder) = renaming.get(placeholder_tv)
+        {
+            subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
         }
     }
     // RFC-0037 backfill: bind opaque-return vars to their concrete types.
     for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
-        if let Some((_aspect, concrete_ty)) = opaque {
-            if let Some(&orig_tv) = scheme.quantified_vars.get(i) {
-                if let Some(&fresh_tv) = renaming.get(&orig_tv) {
-                    subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
-                }
-            }
+        if let Some((_aspect, concrete_ty)) = opaque
+            && let Some(&orig_tv) = scheme.quantified_vars.get(i)
+            && let Some(&fresh_tv) = renaming.get(&orig_tv)
+        {
+            subst.bind(fresh_tv, InferType::Concrete(concrete_ty.clone()));
         }
     }
     let concrete_params: Vec<Type> = params

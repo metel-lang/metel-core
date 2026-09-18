@@ -25,14 +25,14 @@ use crate::ast::{
     TypeExpr,
 };
 use crate::name_resolver::{
-    canonical_path, method_symbol_name, BindingKind, ModuleScope, ResolvedNames,
+    BindingKind, ModuleScope, ResolvedNames, canonical_path, method_symbol_name,
 };
 
 use super::lexical_path::{LexicalPath, LexicalSeg};
 use super::position::{PositionHit, PositionIndex};
 use super::{
-    structural_hash, BindingId, DefinitionInfo, DefinitionKind, LocalId, ModuleId, ModuleTable,
-    NameInterner, RefId, Resolution, ResolutionMap, UnresolvedCause, UnresolvedRef,
+    BindingId, DefinitionInfo, DefinitionKind, LocalId, ModuleId, ModuleTable, NameInterner, RefId,
+    Resolution, ResolutionMap, UnresolvedCause, UnresolvedRef, structural_hash,
 };
 
 /// Read-only context for turning a module-qualified path's prefix segments into
@@ -73,12 +73,12 @@ impl ModuleNav<'_> {
             return None;
         }
         // A leading segment bound as a whole-module handle in this scope.
-        if let Some(binding) = self.scope.and_then(|s| s.explicit.get(first)) {
-            if binding.kind == BindingKind::Module {
-                let mut path = binding.source_module.clone();
-                path.extend_from_slice(&rest[..len.saturating_sub(1)]);
-                return Some(canonical_path(&path, self.aliases));
-            }
+        if let Some(binding) = self.scope.and_then(|s| s.explicit.get(first))
+            && binding.kind == BindingKind::Module
+        {
+            let mut path = binding.source_module.clone();
+            path.extend_from_slice(&rest[..len.saturating_sub(1)]);
+            return Some(canonical_path(&path, self.aliases));
         }
         Some(canonical_path(&segments[..len], self.aliases))
     }
@@ -90,10 +90,10 @@ impl ModuleNav<'_> {
         // A path's last segment is the item, never a module target; only
         // proper prefixes can denote a namespace.
         for len in 1..segments.len() {
-            if let Some(path) = self.prefix_module_path(segments, len) {
-                if let Some(id) = self.table.lookup(&path) {
-                    hits.push((len - 1, id));
-                }
+            if let Some(path) = self.prefix_module_path(segments, len)
+                && let Some(id) = self.table.lookup(&path)
+            {
+                hits.push((len - 1, id));
             }
         }
         hits

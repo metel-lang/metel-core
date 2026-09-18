@@ -1,11 +1,10 @@
 use super::{
-    construct_block, construct_expr, construct_stmt, fun_body_diverges, infer_type_to_type,
-    maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy, maybe_singleton_coerce,
-    resolved_to_type, type_expr_to_infer_with_assoc_ctx, AspectMethod, AssocResolveCtx,
-    ConstructCtx, Decl, Expr, FunBody, FunDecl, HashMap, ImplBlock, InferType, MetelError,
-    Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypedAspectDecl, TypedDecl,
-    TypedEnumDecl, TypedExpr, TypedFunDecl, TypedImplBlock, TypedLetDecl, TypedMutDecl,
-    TypedStructDecl,
+    AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr, FunBody, FunDecl, HashMap, ImplBlock,
+    InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar,
+    TypedAspectDecl, TypedDecl, TypedEnumDecl, TypedExpr, TypedFunDecl, TypedImplBlock,
+    TypedLetDecl, TypedMutDecl, TypedStructDecl, construct_block, construct_expr, construct_stmt,
+    fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
+    maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
 };
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
@@ -45,31 +44,29 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 body,
                 span: cls_span,
             } = &ld.value
+                && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
+                && !scheme.quantified_vars.is_empty()
             {
-                if let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()) {
-                    if !scheme.quantified_vars.is_empty() {
-                        return Ok(TypedDecl::Let(TypedLetDecl {
-                            name: ld.name.clone(),
-                            type_ann: ld.type_ann.clone(),
-                            value: TypedExpr::GenericClosure {
-                                name: Some(ld.name.clone()),
-                                captures: captures.clone(),
-                                capture_ids: ctx.capture_local_ids(captures),
-                                call_multiplicity: *call_multiplicity,
-                                call_mutation: *call_mutation,
-                                params: params.clone(),
-                                param_ids: ctx.param_local_ids(params),
-                                return_type: return_type.clone(),
-                                body: body.clone(),
-                                ty: Type::Unit,
-                                span: cls_span.clone(),
-                            },
-                            def_id: None,
-                            local_id: ctx.local_binding_at(&ld.span),
-                            span: ld.span.clone(),
-                        }));
-                    }
-                }
+                return Ok(TypedDecl::Let(TypedLetDecl {
+                    name: ld.name.clone(),
+                    type_ann: ld.type_ann.clone(),
+                    value: TypedExpr::GenericClosure {
+                        name: Some(ld.name.clone()),
+                        captures: captures.clone(),
+                        capture_ids: ctx.capture_local_ids(captures),
+                        call_multiplicity: *call_multiplicity,
+                        call_mutation: *call_mutation,
+                        params: params.clone(),
+                        param_ids: ctx.param_local_ids(params),
+                        return_type: return_type.clone(),
+                        body: body.clone(),
+                        ty: Type::Unit,
+                        span: cls_span.clone(),
+                    },
+                    def_id: None,
+                    local_id: ctx.local_binding_at(&ld.span),
+                    span: ld.span.clone(),
+                }));
             }
             // metel-core#736 / RFC-0138: a bare reference to an already-declared
             // generic function (`let alias = identity;`) needs the same treatment
@@ -80,35 +77,33 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             // `params`/`return_type`/`body` from the referenced function's own
             // declaration (via `ctx.fn_table`, hoisted in `construct_program`/
             // `construct_block`) instead of an inline literal.
-            if let Expr::Ident(name, ident_span) = &ld.value {
-                if let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()) {
-                    if !scheme.quantified_vars.is_empty() {
-                        if let Some((params, return_type, body)) = ctx.lookup_fn_decl(name) {
-                            let (params, return_type, body) =
-                                (params.clone(), return_type.clone(), body.clone());
-                            return Ok(TypedDecl::Let(TypedLetDecl {
-                                name: ld.name.clone(),
-                                type_ann: ld.type_ann.clone(),
-                                value: TypedExpr::GenericClosure {
-                                    name: Some(ld.name.clone()),
-                                    captures: vec![],
-                                    capture_ids: vec![],
-                                    call_multiplicity: crate::types::CallMultiplicity::Many,
-                                    call_mutation: crate::types::CallMutation::Reading,
-                                    param_ids: ctx.param_local_ids(&params),
-                                    params,
-                                    return_type,
-                                    body,
-                                    ty: Type::Unit,
-                                    span: ident_span.clone(),
-                                },
-                                def_id: None,
-                                local_id: ctx.local_binding_at(&ld.span),
-                                span: ld.span.clone(),
-                            }));
-                        }
-                    }
-                }
+            if let Expr::Ident(name, ident_span) = &ld.value
+                && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
+                && !scheme.quantified_vars.is_empty()
+                && let Some((params, return_type, body)) = ctx.lookup_fn_decl(name)
+            {
+                let (params, return_type, body) =
+                    (params.clone(), return_type.clone(), body.clone());
+                return Ok(TypedDecl::Let(TypedLetDecl {
+                    name: ld.name.clone(),
+                    type_ann: ld.type_ann.clone(),
+                    value: TypedExpr::GenericClosure {
+                        name: Some(ld.name.clone()),
+                        captures: vec![],
+                        capture_ids: vec![],
+                        call_multiplicity: crate::types::CallMultiplicity::Many,
+                        call_mutation: crate::types::CallMutation::Reading,
+                        param_ids: ctx.param_local_ids(&params),
+                        params,
+                        return_type,
+                        body,
+                        ty: Type::Unit,
+                        span: ident_span.clone(),
+                    },
+                    def_id: None,
+                    local_id: ctx.local_binding_at(&ld.span),
+                    span: ld.span.clone(),
+                }));
             }
             let expected_ty = ld
                 .type_ann
@@ -274,7 +269,7 @@ pub(super) fn construct_fun_decl(
                 return Err(MetelError::internal(format!(
                     "expected Fun type for `{}`",
                     fun.name
-                )))
+                )));
             }
         };
         ctx.push_scope();
@@ -335,7 +330,7 @@ pub(super) fn construct_fun_decl(
                 return Err(MetelError::internal(format!(
                     "expected Fun type for `{}`",
                     fun.name
-                )))
+                )));
             }
         };
         ctx.push_scope();

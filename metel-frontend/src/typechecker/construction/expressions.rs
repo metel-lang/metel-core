@@ -1,7 +1,10 @@
 use super::{
-    assign_target_to_typed_place, block_result_type, builtin_pattern_method_expr,
-    check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
-    check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
+    AssignTarget, ConstructCtx, Expr, ForInit, HashMap, InferType, Literal, MetelError,
+    MethodDispatch, Param, Span, Stmt, Substitution, Type, TypeErrorCode, TypeVar, TypedBreakExpr,
+    TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl, TypedMutDecl,
+    TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp, assign_target_to_typed_place,
+    block_result_type, builtin_pattern_method_expr, check_fun_call_assoc_eq, check_fun_call_bounds,
+    check_fun_call_neg_bounds, check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_binop,
     construct_block, construct_call, construct_enum_literal_ty, construct_literal_type,
     construct_match, construct_method_args, construct_propagate_error, construct_unaryop,
@@ -10,11 +13,7 @@ use super::{
     maybe_singleton_coerce, merge_branch_types, peel_type_references, resolve_expected_enum,
     resolve_generic_method_call, resolve_unqualified_variant_expr, resolved_to_type,
     type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
-    typed_place_ty, unqualified_variant_needs_annotation_error, AssignTarget, ConstructCtx, Expr,
-    ForInit, HashMap, InferType, Literal, MetelError, MethodDispatch, Param, Span, Stmt,
-    Substitution, Type, TypeErrorCode, TypeVar, TypedBreakExpr, TypedExpr, TypedForInStmt,
-    TypedForInit, TypedForStmt, TypedLetDecl, TypedMutDecl, TypedReturnExpr, TypedStmt,
-    TypedWhileStmt, UnaryOp,
+    typed_place_ty, unqualified_variant_needs_annotation_error,
 };
 
 fn capture_name(capture: &crate::ast::CaptureSpec) -> &str {
@@ -128,25 +127,25 @@ fn collect_assign_target_uses(
         | crate::ast::AssignTarget::TupleAccess { object, .. }
         | crate::ast::AssignTarget::Deref { object, .. } => {
             collect_closure_expr_uses(object, &mut bound.clone(), reads, writes, spans);
-            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref() {
-                if !bound.contains(name) {
-                    writes.insert(name.clone());
-                    spans
-                        .entry(name.clone())
-                        .or_insert_with(|| ident_span.clone());
-                }
+            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref()
+                && !bound.contains(name)
+            {
+                writes.insert(name.clone());
+                spans
+                    .entry(name.clone())
+                    .or_insert_with(|| ident_span.clone());
             }
         }
         crate::ast::AssignTarget::Index { object, index, .. } => {
             collect_closure_expr_uses(object, &mut bound.clone(), reads, writes, spans);
             collect_closure_expr_uses(index, &mut bound.clone(), reads, writes, spans);
-            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref() {
-                if !bound.contains(name) {
-                    writes.insert(name.clone());
-                    spans
-                        .entry(name.clone())
-                        .or_insert_with(|| ident_span.clone());
-                }
+            if let crate::ast::Expr::Ident(name, ident_span) = object.as_ref()
+                && !bound.contains(name)
+            {
+                writes.insert(name.clone());
+                spans
+                    .entry(name.clone())
+                    .or_insert_with(|| ident_span.clone());
             }
         }
     }
@@ -379,23 +378,23 @@ fn verify_closure_capture_list(
     }
 
     for capture in capture_specs {
-        if let crate::ast::CaptureSpec::SharedRef { name, span } = capture {
-            if writes.contains(name) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0028,
-                    format!("`{name}` is captured by shared reference; use `&var {name}`"),
-                    span,
-                ));
-            }
+        if let crate::ast::CaptureSpec::SharedRef { name, span } = capture
+            && writes.contains(name)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0028,
+                format!("`{name}` is captured by shared reference; use `&var {name}`"),
+                span,
+            ));
         }
     }
 
     // A tail read of an owned non-Copy capture is returned by value, so it
     // consumes the environment field. RFC-0134 requires that capability to be
     // written as `once`; ordinary reads in non-consuming positions stay many.
-    if call_multiplicity != crate::types::CallMultiplicity::Once {
-        if let Some(crate::ast::Expr::Ident(name, _)) = body.tail.as_deref() {
-            if capture_specs.iter().any(|capture| {
+    if call_multiplicity != crate::types::CallMultiplicity::Once
+        && let Some(crate::ast::Expr::Ident(name, _)) = body.tail.as_deref()
+            && capture_specs.iter().any(|capture| {
                 matches!(capture, crate::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
             }) && ctx.lookup(name).is_some_and(|ty| {
                 !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
@@ -406,8 +405,6 @@ fn verify_closure_capture_list(
                     span,
                 ));
             }
-        }
-    }
 
     if call_mutation != crate::types::CallMutation::Mutating {
         for name in &writes {
@@ -672,7 +669,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                         _ => {
                             return Err(MetelError::internal(format!(
                                 "for-in: `{type_name}` has no `next() -> Perhaps<T>` method"
-                            )))
+                            )));
                         }
                     }
                 }
@@ -722,29 +719,29 @@ pub(super) fn construct_expr(
                     span.clone(),
                 ));
             }
-            if let Some(fields) = ctx.get_struct_fields(name) {
-                if fields.is_empty() {
-                    let ty = if let Some(Type::Named(expected_name, ..)) = expected_ty {
-                        if expected_name == name {
-                            expected_ty.cloned().unwrap_or_else(|| {
-                                Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
-                            })
-                        } else {
+            if let Some(fields) = ctx.get_struct_fields(name)
+                && fields.is_empty()
+            {
+                let ty = if let Some(Type::Named(expected_name, ..)) = expected_ty {
+                    if expected_name == name {
+                        expected_ty.cloned().unwrap_or_else(|| {
                             Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
-                        }
+                        })
                     } else {
                         Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
-                    };
-                    return Ok(TypedExpr::StructLiteral {
-                        path: vec![name.clone()],
-                        fields: vec![],
-                        ty,
-                        type_id: ctx.type_symbol_id(name),
-                        // A field-less *struct*, not an enum variant.
-                        variant_id: None,
-                        span: span.clone(),
-                    });
-                }
+                    }
+                } else {
+                    Type::Named(name.clone(), vec![], crate::types::NominalId::NONE)
+                };
+                return Ok(TypedExpr::StructLiteral {
+                    path: vec![name.clone()],
+                    fields: vec![],
+                    ty,
+                    type_id: ctx.type_symbol_id(name),
+                    // A field-less *struct*, not an enum variant.
+                    variant_id: None,
+                    span: span.clone(),
+                });
             }
             if ctx.can_be_unqualified_variant(name) {
                 return resolve_unqualified_variant_expr(name, expected_ty, span, ctx);
@@ -757,96 +754,96 @@ pub(super) fn construct_expr(
             // `undefined name` would be a lie. Generic functions are
             // call-only today (`functions.md`'s first-class-functions
             // carve-out; RFC-0138 proposes lifting this) -- say so instead.
-            if let Some(scheme) = ctx.scheme_env.get(name.as_str()) {
-                if !scheme.quantified_vars.is_empty() {
-                    // metel-core#736 / RFC-0138 §4: a concrete expected type here
-                    // (a higher-order call argument whose own parameter position is
-                    // monomorphic, or an explicitly-annotated `let`) instantiates
-                    // this one reference once, at this one use site -- rank-1, not
-                    // let-polymorphism, so no `GenericClosure`/`fn_table` lookup is
-                    // needed: `instantiate_scheme_for_call` (the same helper a
-                    // direct call already uses) unifies `expected_ty`'s own param
-                    // types against the scheme exactly as if they were argument
-                    // types.
-                    if let Some(Type::Fun(expected_params, ..)) = expected_ty {
-                        let arity_matches = matches!(
-                            &scheme.ty,
-                            InferType::Fun(p, ..) if p.len() == expected_params.len()
-                        );
-                        if arity_matches {
-                            let arg_types: Vec<&Type> = expected_params.iter().collect();
-                            if let Ok((concrete, var_map)) = instantiate_scheme_for_call(
-                                scheme,
-                                &arg_types,
+            if let Some(scheme) = ctx.scheme_env.get(name.as_str())
+                && !scheme.quantified_vars.is_empty()
+            {
+                // metel-core#736 / RFC-0138 §4: a concrete expected type here
+                // (a higher-order call argument whose own parameter position is
+                // monomorphic, or an explicitly-annotated `let`) instantiates
+                // this one reference once, at this one use site -- rank-1, not
+                // let-polymorphism, so no `GenericClosure`/`fn_table` lookup is
+                // needed: `instantiate_scheme_for_call` (the same helper a
+                // direct call already uses) unifies `expected_ty`'s own param
+                // types against the scheme exactly as if they were argument
+                // types.
+                if let Some(Type::Fun(expected_params, ..)) = expected_ty {
+                    let arity_matches = matches!(
+                        &scheme.ty,
+                        InferType::Fun(p, ..) if p.len() == expected_params.len()
+                    );
+                    if arity_matches {
+                        let arg_types: Vec<&Type> = expected_params.iter().collect();
+                        if let Ok((concrete, var_map)) = instantiate_scheme_for_call(
+                            scheme,
+                            &arg_types,
+                            span,
+                            &mut ctx.type_var_gen,
+                            ctx.registry,
+                            ctx.current_module,
+                        ) {
+                            check_fun_call_bounds(
+                                name,
+                                &var_map,
                                 span,
-                                &mut ctx.gen,
                                 ctx.registry,
                                 ctx.current_module,
-                            ) {
-                                check_fun_call_bounds(
-                                    name,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                check_scheme_bounds(
-                                    name,
-                                    scheme,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                check_fun_call_assoc_eq(
-                                    name,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                check_scheme_assoc_eq(
-                                    name,
-                                    scheme,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                check_fun_call_neg_bounds(
-                                    name,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                check_scheme_neg_bounds(
-                                    name,
-                                    scheme,
-                                    &var_map,
-                                    span,
-                                    ctx.registry,
-                                    ctx.current_module,
-                                )?;
-                                return Ok(TypedExpr::Ident(
-                                    name.clone(),
-                                    ctx.binding_id_at(span),
-                                    concrete,
-                                    span.clone(),
-                                ));
-                            }
+                            )?;
+                            check_scheme_bounds(
+                                name,
+                                scheme,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_fun_call_assoc_eq(
+                                name,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_scheme_assoc_eq(
+                                name,
+                                scheme,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_fun_call_neg_bounds(
+                                name,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_scheme_neg_bounds(
+                                name,
+                                scheme,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            return Ok(TypedExpr::Ident(
+                                name.clone(),
+                                ctx.binding_id_at(span),
+                                concrete,
+                                span.clone(),
+                            ));
                         }
                     }
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "generic function `{name}` cannot be referenced except by \
+                }
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!(
+                        "generic function `{name}` cannot be referenced except by \
                              direct call; a generic function is not yet a first-class \
                              value (RFC-0138)"
-                        ),
-                        span,
-                    ));
-                }
+                    ),
+                    span,
+                ));
             }
             Err(MetelError::type_error(
                 TypeErrorCode::T0003,
@@ -1052,7 +1049,7 @@ pub(super) fn construct_expr(
                         TypeErrorCode::T0001,
                         "indexed value is not an array",
                         span,
-                    ))
+                    ));
                 }
             };
             Ok(TypedExpr::Index {
@@ -1177,7 +1174,7 @@ pub(super) fn construct_expr(
                 t => {
                     return Err(MetelError::internal(format!(
                         "field access on non-struct type {t}"
-                    )))
+                    )));
                 }
             };
             let struct_id = ctx
@@ -1379,7 +1376,7 @@ pub(super) fn construct_expr(
                 let mut local_subst = Substitution::new();
                 let mut generics_map: HashMap<String, TypeVar> = HashMap::new();
                 for (name, arg_ty) in aspect_generics.iter().zip(type_args.iter()) {
-                    let tv = ctx.gen.fresh();
+                    let tv = ctx.type_var_gen.fresh();
                     generics_map.insert(name.clone(), tv);
                     local_subst.bind(tv, type_to_infer(arg_ty));
                 }
@@ -1447,7 +1444,7 @@ pub(super) fn construct_expr(
                         None => {
                             return Err(MetelError::internal(format!(
                                 "method call on non-struct type {t}"
-                            )))
+                            )));
                         }
                     },
                 };
@@ -1588,12 +1585,11 @@ pub(super) fn construct_expr(
                     }
                     // Match each field value type to its raw InferType param; resolve via subst.
                     for (fname, fexpr) in &typed_fields {
-                        if let Some(field) = raw_fields.iter().find(|entry| entry.name == *fname) {
-                            if let InferType::Var(v) = &field.ty {
-                                if type_params.contains(v) {
-                                    remap.insert(*v, type_to_infer(fexpr.ty()));
-                                }
-                            }
+                        if let Some(field) = raw_fields.iter().find(|entry| entry.name == *fname)
+                            && let InferType::Var(v) = &field.ty
+                            && type_params.contains(v)
+                        {
+                            remap.insert(*v, type_to_infer(fexpr.ty()));
                         }
                     }
                     let type_args: Vec<Type> = type_params
@@ -1744,7 +1740,7 @@ pub(super) fn construct_expr(
                         TypeErrorCode::T0002,
                         format!("record projection requires a nominal struct value, got {other}"),
                         span,
-                    ))
+                    ));
                 }
             };
             let mut projected_fields = Vec::with_capacity(fields.len());
@@ -1854,50 +1850,49 @@ pub(super) fn construct_expr(
                 if let Some(info) = ctx
                     .registry
                     .enum_info(ctx.current_module, type_name.as_str())
+                    && let Some(variant) = info.variants.iter().find(|v| &v.name == member_name)
                 {
-                    if let Some(variant) = info.variants.iter().find(|v| &v.name == member_name) {
-                        if variant.fields.is_empty() {
-                            // A unit enum variant is a value, not a constructor: emit it as
-                            // a (field-less) struct literal so it carries the enum's type
-                            // SymbolId onto the runtime value, like any other constructor
-                            // (METEL-185). The evaluator builds `Value::Enum` from a
-                            // 2-segment struct-literal path.
-                            let type_id = ctx.type_symbol_id(type_name);
-                            return Ok(TypedExpr::StructLiteral {
-                                path: segments.clone(),
-                                fields: vec![],
-                                ty: Type::Named(
-                                    type_name.clone(),
-                                    vec![],
-                                    crate::types::NominalId::NONE,
-                                ),
-                                type_id,
-                                variant_id: ctx.variant_id_for(type_id, member_name),
-                                span: span.clone(),
-                            });
-                        }
-                        let field_types: Vec<Type> = variant
-                            .fields
-                            .iter()
-                            .map(|field| infer_type_to_type(&field.ty, span))
-                            .collect::<Result<_, _>>()?;
-                        let ty = crate::types::default_fun_type(
-                            field_types,
-                            Type::Named(type_name.clone(), vec![], crate::types::NominalId::NONE),
-                        );
-                        // metel-core#1093: a tuple-variant constructor carries
-                        // both the owning enum's SymbolId and the variant's own
-                        // VariantId, same helpers as the unit-variant literal
-                        // above.
+                    if variant.fields.is_empty() {
+                        // A unit enum variant is a value, not a constructor: emit it as
+                        // a (field-less) struct literal so it carries the enum's type
+                        // SymbolId onto the runtime value, like any other constructor
+                        // (METEL-185). The evaluator builds `Value::Enum` from a
+                        // 2-segment struct-literal path.
                         let type_id = ctx.type_symbol_id(type_name);
-                        return Ok(TypedExpr::Path {
-                            segments: segments.clone(),
+                        return Ok(TypedExpr::StructLiteral {
+                            path: segments.clone(),
+                            fields: vec![],
+                            ty: Type::Named(
+                                type_name.clone(),
+                                vec![],
+                                crate::types::NominalId::NONE,
+                            ),
                             type_id,
                             variant_id: ctx.variant_id_for(type_id, member_name),
-                            ty,
                             span: span.clone(),
                         });
                     }
+                    let field_types: Vec<Type> = variant
+                        .fields
+                        .iter()
+                        .map(|field| infer_type_to_type(&field.ty, span))
+                        .collect::<Result<_, _>>()?;
+                    let ty = crate::types::default_fun_type(
+                        field_types,
+                        Type::Named(type_name.clone(), vec![], crate::types::NominalId::NONE),
+                    );
+                    // metel-core#1093: a tuple-variant constructor carries
+                    // both the owning enum's SymbolId and the variant's own
+                    // VariantId, same helpers as the unit-variant literal
+                    // above.
+                    let type_id = ctx.type_symbol_id(type_name);
+                    return Ok(TypedExpr::Path {
+                        segments: segments.clone(),
+                        type_id,
+                        variant_id: ctx.variant_id_for(type_id, member_name),
+                        ty,
+                        span: span.clone(),
+                    });
                 }
             }
             Err(MetelError::internal(format!(
@@ -2076,7 +2071,7 @@ pub(super) fn construct_expr(
                         TypeErrorCode::T0002,
                         "cannot infer tuple type for index access; add a type annotation",
                         span,
-                    ))
+                    ));
                 }
             };
             Ok(TypedExpr::TupleAccess {

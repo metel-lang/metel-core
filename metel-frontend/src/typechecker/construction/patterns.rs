@@ -1,9 +1,9 @@
 use super::{
+    ConstructCtx, EnumInfo, HashMap, InferType, Literal, MatchExpr, MetelError, Pattern, Span,
+    Substitution, Type, TypeDefinitionRegistry, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr,
+    TypedMatchArm, TypedMatchExpr, TypedPattern, TypedStmt, VariantInfo,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_block,
-    construct_expr, infer_type_to_type, peel_type_references, type_to_infer, unify, ConstructCtx,
-    EnumInfo, HashMap, InferType, Literal, MatchExpr, MetelError, Pattern, Span, Substitution,
-    Type, TypeDefinitionRegistry, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr, TypedMatchArm,
-    TypedMatchExpr, TypedPattern, TypedStmt, VariantInfo,
+    construct_expr, infer_type_to_type, peel_type_references, type_to_infer, unify,
 };
 
 pub(super) fn builtin_pattern_method_expr(
@@ -35,10 +35,10 @@ pub(super) fn builtin_pattern_method_expr(
 /// `loop { if (c) { break 5 } }`, no longer requiring `break 5;` as a
 /// statement), so the tail must be checked too, not just `block.stmts`.
 pub(super) fn find_loop_break_type(block: &TypedBlock) -> Option<Type> {
-    if let Some(tail) = &block.tail {
-        if let Some(ty) = find_break_in_expr(tail) {
-            return Some(ty);
-        }
+    if let Some(tail) = &block.tail
+        && let Some(ty) = find_break_in_expr(tail)
+    {
+        return Some(ty);
     }
     block.stmts.iter().find_map(find_break_in_decl)
 }
@@ -711,7 +711,7 @@ pub(super) fn construct_enum_literal_ty(
         .type_params
         .iter()
         .map(|&tp| {
-            let fresh = InferType::Var(ctx.gen.fresh());
+            let fresh = InferType::Var(ctx.type_var_gen.fresh());
             init_subst.bind(tp, fresh.clone());
             fresh
         })

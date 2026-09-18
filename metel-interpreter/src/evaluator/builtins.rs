@@ -318,7 +318,7 @@ fn native_string_join(args: &[Value], _span: &crate::ast::Span) -> Result<Value,
         _ => {
             return Err(MetelError::internal(
                 "String::join: expected (String[], String)",
-            ))
+            ));
         }
     };
     let sep = str_at(args, 1, "String::join")?;
@@ -756,7 +756,7 @@ fn native_process_run(args: &[Value], _span: &crate::ast::Span) -> Result<Value,
         _ => {
             return Err(MetelError::internal(
                 "std::process::run: expected (String, String[])",
-            ))
+            ));
         }
     };
     let output = std::process::Command::new(&command)
@@ -873,10 +873,10 @@ pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::symbols::Sym
 /// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
 pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::symbols::SymbolId> {
     use crate::symbols::{
-        SYM_TYPE_BOOLEAN, SYM_TYPE_CHAR, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_I16, SYM_TYPE_I32,
-        SYM_TYPE_I64, SYM_TYPE_I8, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RANGE,
-        SYM_TYPE_RANGE_INCLUSIVE, SYM_TYPE_RESULT, SYM_TYPE_STRING, SYM_TYPE_U16, SYM_TYPE_U32,
-        SYM_TYPE_U64, SYM_TYPE_U8,
+        SYM_TYPE_BOOLEAN, SYM_TYPE_CHAR, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_I8, SYM_TYPE_I16,
+        SYM_TYPE_I32, SYM_TYPE_I64, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RANGE,
+        SYM_TYPE_RANGE_INCLUSIVE, SYM_TYPE_RESULT, SYM_TYPE_STRING, SYM_TYPE_U8, SYM_TYPE_U16,
+        SYM_TYPE_U32, SYM_TYPE_U64,
     };
     Some(match type_name {
         "boolean" => SYM_TYPE_BOOLEAN,

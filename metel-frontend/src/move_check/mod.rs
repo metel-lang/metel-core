@@ -7,12 +7,12 @@ use crate::typed_ast::{
     TypedModuleGraph, TypedPattern, TypedPlace, TypedStmt,
 };
 use crate::typeinference::{
-    type_to_infer, AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx,
-    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator,
+    AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx, TypeDefinitionRegistry,
+    TypeScheme, TypeVar, TypeVarGenerator, type_to_infer,
 };
 use crate::types::Type;
 
-use crate::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
+use crate::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
 
 #[derive(Debug, Clone)]
 pub struct MoveViolation {
@@ -1199,10 +1199,10 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        if let Some(place) = from_typed_place(typed_place) {
-            if self.record_descendant_use_if_moved(&place, typed_place_span(typed_place), state) {
-                return;
-            }
+        if let Some(place) = from_typed_place(typed_place)
+            && self.record_descendant_use_if_moved(&place, typed_place_span(typed_place), state)
+        {
+            return;
         }
         match typed_place {
             TypedPlace::Ident(_, _, _) => {}
@@ -1611,10 +1611,10 @@ impl<'a> Checker<'a> {
         // narrowing removed exactly the moved fields, so no still-live use
         // touches a moved one. Construction stamps that narrowed type on the use
         // expression; trust it when every field it still names is un-moved.
-        if let Some(ty) = narrowed_whole_ty {
-            if whole_use_of_narrowed_value_is_intact(state, place.root(), ty) {
-                return;
-            }
+        if let Some(ty) = narrowed_whole_ty
+            && whole_use_of_narrowed_value_is_intact(state, place.root(), ty)
+        {
+            return;
         }
         if let Some(record) = state.moved_record_for_whole_use(place) {
             self.report.violations.push(MoveViolation {
@@ -1667,15 +1667,14 @@ impl<'a> Checker<'a> {
                 .registry
                 .type_satisfies_aspect(current_module, ty, aspect_name);
         };
-        if let Type::Named(name, args, ..) = peel_type_references(ty) {
-            if args.is_empty()
-                && generic_env
-                    .symbolic_aspects
-                    .get(name)
-                    .is_some_and(|aspects| aspects.contains(aspect_name))
-            {
-                return true;
-            }
+        if let Type::Named(name, args, ..) = peel_type_references(ty)
+            && args.is_empty()
+            && generic_env
+                .symbolic_aspects
+                .get(name)
+                .is_some_and(|aspects| aspects.contains(aspect_name))
+        {
+            return true;
         }
         let infer_ty = type_to_infer_under_generic_env(ty, &generic_env.placeholders);
         self.registry.infer_type_satisfies_aspect(
@@ -1953,12 +1952,12 @@ fn scheme_with_source_generics(scheme: &TypeScheme, generics: &[GenericParam]) -
         .resize_with(existing, Vec::new);
     repaired.opaque_returns.resize(existing, None);
     let mut replacements = HashMap::new();
-    let mut gen = TypeVarGenerator::with_counter(4_000_000);
+    let mut type_var_gen = TypeVarGenerator::with_counter(4_000_000);
     for generic in generics {
         if repaired.param_names.contains(&generic.name) {
             continue;
         }
-        let var = gen.fresh();
+        let var = type_var_gen.fresh();
         replacements.insert(generic.name.clone(), InferType::Var(var));
         repaired.quantified_vars.push(var);
         repaired.param_names.push(generic.name.clone());
@@ -2307,10 +2306,10 @@ fn type_to_infer_under_generic_env(
             *call_mutation,
         ),
         Type::Named(name, args, ..) => {
-            if args.is_empty() {
-                if let Some(var) = placeholders.get(name) {
-                    return InferType::Var(*var);
-                }
+            if args.is_empty()
+                && let Some(var) = placeholders.get(name)
+            {
+                return InferType::Var(*var);
             }
             InferType::Named(
                 name.clone(),

@@ -1,5 +1,5 @@
-use pest::iterators::Pairs;
 use pest::Parser;
+use pest::iterators::Pairs;
 use pest_derive::Parser;
 
 use crate::ast::{
@@ -357,7 +357,7 @@ fn parse_fun_decl(
                 ParseErrorCode::P0001,
                 "a `native` function must not have a body block",
                 &span,
-            ))
+            ));
         }
         (true, None) => empty_block(&span),
         (false, Some(b)) => b,
@@ -366,7 +366,7 @@ fn parse_fun_decl(
                 ParseErrorCode::P0001,
                 "function requires a body block",
                 &span,
-            ))
+            ));
         }
     };
 
@@ -590,14 +590,14 @@ fn parse_extend_impl_block(
         ));
     }
 
-    if let Some((polarity, _, _)) = aspects.first() {
-        if *polarity == Polarity::Negative {
-            return Err(MetelError::parse(
-                ParseErrorCode::P0001,
-                "a negative `extend` must use the bodyless `;` form",
-                &span,
-            ));
-        }
+    if let Some((polarity, _, _)) = aspects.first()
+        && *polarity == Polarity::Negative
+    {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "a negative `extend` must use the bodyless `;` form",
+            &span,
+        ));
     }
 
     let (aspect_name, aspect_type_args) = match aspects.into_iter().next() {
@@ -1068,7 +1068,7 @@ fn parse_literal_expr(
                 _ => {
                     return Err(MetelError::internal(format!(
                         "unknown int suffix '{suffix}'"
-                    )))
+                    )));
                 }
             };
             let value: i128 = digits.parse().map_err(|_| MetelError::ParseError {
@@ -1123,7 +1123,7 @@ fn parse_literal_expr(
                 _ => {
                     return Err(MetelError::internal(format!(
                         "unknown float suffix '{suffix}'"
-                    )))
+                    )));
                 }
             };
             let value: f64 = digits.parse().map_err(|_| MetelError::ParseError {
@@ -1158,7 +1158,7 @@ fn parse_literal_expr(
         r => {
             return Err(MetelError::internal(format!(
                 "parse_literal_expr: unexpected rule {r:?}"
-            )))
+            )));
         }
     };
     Ok(Expr::Literal(lit, span))
@@ -3078,7 +3078,7 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
                             r => {
                                 return Err(MetelError::internal(format!(
                                     "block_expr_stmt: unexpected rule {r:?}"
-                                )))
+                                )));
                             }
                         };
                         stmts.push(Decl::Stmt(Box::new(Stmt::Expr(expr))));
@@ -3087,7 +3087,7 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
                     r => {
                         return Err(MetelError::internal(format!(
                             "block_item: unexpected rule {r:?}"
-                        )))
+                        )));
                     }
                 }
             }
@@ -3155,7 +3155,7 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                                 r => {
                                     return Err(MetelError::internal(format!(
                                         "bound_arg: unexpected rule {r:?}"
-                                    )))
+                                    )));
                                 }
                             }
                         }
@@ -3164,7 +3164,7 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                     r => {
                         return Err(MetelError::internal(format!(
                             "bound_head: unexpected rule {r:?}"
-                        )))
+                        )));
                     }
                 }
             }
@@ -3177,16 +3177,15 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
     // over. The grammar cannot express that (polarity and the row are separate pairs), and
     // the checker ignores `open` on the negative path, so without this the `..` would be
     // silently accepted as a no-op.
-    if polarity == Polarity::Negative {
-        if let BoundHead::Row(row) = &head {
-            if row.open {
-                return Err(MetelError::parse(
+    if polarity == Polarity::Negative
+        && let BoundHead::Row(row) = &head
+        && row.open
+    {
+        return Err(MetelError::parse(
                     ParseErrorCode::P0001,
                     "a negative row bound takes no `..`: it names labels that must be absent, and absence has no rest to quantify over".to_string(),
                     &span,
                 ));
-            }
-        }
     }
 
     Ok(Bound {

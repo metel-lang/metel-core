@@ -1,7 +1,7 @@
 use super::{
-    infer_block, infer_enum_variant_pattern, infer_expr, infer_literal, infer_struct_pattern,
-    type_expr_to_infer_with_generics, Expr, FunGeneralization, GenericBound, InferContext,
-    InferType, MatchExpr, MetelError, Pattern, Span, Type, TypeErrorCode, TypeVar,
+    Expr, FunGeneralization, GenericBound, InferContext, InferType, MatchExpr, MetelError, Pattern,
+    Span, Type, TypeErrorCode, TypeVar, infer_block, infer_enum_variant_pattern, infer_expr,
+    infer_literal, infer_struct_pattern, type_expr_to_infer_with_generics,
 };
 
 pub(super) fn infer_match(
@@ -343,15 +343,13 @@ pub(super) fn resolve_row_bound_field(
 ) -> Option<Result<InferType, MetelError>> {
     let bounds = ctx.bounds_for_type_var(tv)?;
     for bound in &bounds {
-        if let GenericBound::Row(row) = bound {
-            if let Some(row_field) = row.fields.iter().find(|f| f.label == *field) {
-                return Some(Ok(match &row_field.ty {
-                    Some(type_expr) => {
-                        type_expr_to_infer_with_generics(type_expr, ctx.type_params())
-                    }
-                    None => InferType::Var(ctx.fresh_row_field_var(tv, field)),
-                }));
-            }
+        if let GenericBound::Row(row) = bound
+            && let Some(row_field) = row.fields.iter().find(|f| f.label == *field)
+        {
+            return Some(Ok(match &row_field.ty {
+                Some(type_expr) => type_expr_to_infer_with_generics(type_expr, ctx.type_params()),
+                None => InferType::Var(ctx.fresh_row_field_var(tv, field)),
+            }));
         }
     }
     if bounds.iter().any(|b| matches!(b, GenericBound::Row(_))) {

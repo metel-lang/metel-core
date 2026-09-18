@@ -335,10 +335,10 @@ fn resolve_alias_name(
         return Some((home.clone(), name.to_string()));
     }
     let scope = import_scopes.get(home)?;
-    if let Some((src_mod, src_name)) = scope.items.get(name) {
-        if let Some(key) = resolve_in_module(src_mod, src_name, raw, import_scopes) {
-            return Some(key);
-        }
+    if let Some((src_mod, src_name)) = scope.items.get(name)
+        && let Some(key) = resolve_in_module(src_mod, src_name, raw, import_scopes)
+    {
+        return Some(key);
     }
     for g in &scope.globs {
         // A glob only brings in the target module's *public* names.
@@ -348,10 +348,10 @@ fn resolve_alias_name(
         {
             return Some((g.clone(), name.to_string()));
         }
-        if let Some(real) = import_scopes.get(g).and_then(|s| s.re_exports.get(name)) {
-            if pub_alias(raw, real) {
-                return Some(real.clone());
-            }
+        if let Some(real) = import_scopes.get(g).and_then(|s| s.re_exports.get(name))
+            && pub_alias(raw, real)
+        {
+            return Some(real.clone());
         }
     }
     None
@@ -724,16 +724,16 @@ impl Expander<'_> {
     fn collect_local_frame(&self, block: &Block) -> Result<HashMap<String, Alias>, MetelError> {
         let mut siblings: HashMap<String, &TypeAliasDecl> = HashMap::new();
         for decl in &block.stmts {
-            if let Decl::TypeAlias(ta) = decl {
-                if siblings.insert(ta.name.clone(), ta).is_some() {
-                    return Err(err_t0003(
-                        format!(
-                            "type alias `{}` is declared more than once in this block",
-                            ta.name
-                        ),
-                        &ta.span,
-                    ));
-                }
+            if let Decl::TypeAlias(ta) = decl
+                && siblings.insert(ta.name.clone(), ta).is_some()
+            {
+                return Err(err_t0003(
+                    format!(
+                        "type alias `{}` is declared more than once in this block",
+                        ta.name
+                    ),
+                    &ta.span,
+                ));
             }
         }
         if siblings.is_empty() {
@@ -1012,13 +1012,12 @@ fn subst_params(body: &TypeExpr, subst: &HashMap<&str, &TypeExpr>) -> TypeExpr {
 }
 
 fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
-    if let TypeExpr::Named(name, args) = te {
-        if args.is_empty() {
-            if let Some(replacement) = subst.get(name.as_str()) {
-                *te = (*replacement).clone();
-                return;
-            }
-        }
+    if let TypeExpr::Named(name, args) = te
+        && args.is_empty()
+        && let Some(replacement) = subst.get(name.as_str())
+    {
+        *te = (*replacement).clone();
+        return;
     }
     for child in children_mut(te) {
         subst_params_in_place(child, subst);

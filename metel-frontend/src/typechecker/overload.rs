@@ -25,7 +25,7 @@ use crate::typeinference::{OverloadEntry, OverloadTable, TypeDefinitionRegistry,
 use crate::types::Type;
 
 use super::conversions::{
-    infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx, AssocResolveCtx,
+    AssocResolveCtx, infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
 };
 
 /// Process-global allocator for overload-definition `SymbolIds`. Overload tables
