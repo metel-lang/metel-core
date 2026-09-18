@@ -34,6 +34,7 @@ impl NormalizedModuleGraph {
     }
 }
 
+// arch-implements: ["arch.path-normalization.requirement-1"]
 /// Run the path normalization pass on `graph`, rewriting qualified `Expr::Path`
 /// nodes to `Expr::ResolvedPath` using the scope information in `names`.
 ///
@@ -612,6 +613,7 @@ mod tests {
         })
     }
 
+    // arch-verifies: ["arch.path-normalization.requirement-1"]
     #[test]
     fn glob_imported_qualified_call_carries_a_symbol_id() {
         let id = resolved_path_symbol_id(
@@ -631,6 +633,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.path-normalization.requirement-1"]
     #[test]
     fn explicitly_imported_qualified_call_carries_the_same_symbol_id() {
         // Regression guard: the explicit-import branch already worked before
@@ -664,6 +667,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.path-normalization.requirement-1"]
     #[test]
     fn self_qualified_call_carries_a_symbol_id() {
         // metel-core#1054: `self::name` (no explicit alias to read a SymbolId
