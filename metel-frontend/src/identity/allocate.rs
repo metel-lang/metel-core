@@ -67,6 +67,7 @@ impl ModuleNav<'_> {
     /// module namespace, if any — dereferencing a leading local module handle
     /// and diamond-dependency aliases. Keyword roots (`root` / `self` / `super`)
     /// are not resolved here.
+// arch-implements: ["arch.resolution.requirement-2"]
     fn prefix_module_path(&self, segments: &[String], len: usize) -> Option<Vec<String>> {
         let (first, rest) = segments.split_first()?;
         if matches!(first.as_str(), "root" | "self" | "super") {

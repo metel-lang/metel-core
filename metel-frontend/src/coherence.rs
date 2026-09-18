@@ -28,6 +28,8 @@ use crate::typeinference::GenericBound;
 /// declaration -> explicit import -> glob, user tier before std) — duplicated
 /// here in miniature because coherence runs before `TypeDefinitionRegistry`
 /// exists.
+// arch-implements: ["arch.coherence.requirement-1"]
+// arch-implements: ["arch.coherence.requirement-2"]
 fn resolve_id(names: &ResolvedNames, current_module: &[String], name: &str) -> Option<SymbolId> {
     if let Some(id) = names
         .symbols

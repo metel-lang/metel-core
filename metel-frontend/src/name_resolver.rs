@@ -97,6 +97,8 @@ use crate::symbols::SymbolTable;
 /// Resolve a module path to its canonical form by dereferencing any alias. See ADR-0031.
 /// Handles prefix aliases: if `["a", "b"]` → `["x", "y"]`, then
 /// `["a", "b", "c"]` → `["x", "y", "c"]`.
+// arch-implements: ["arch.name-resolution.requirement-2"]
+// arch-implements: ["arch.type-construction.requirement-8"]
 pub(crate) fn canonical_path(
     path: &[String],
     aliases: &HashMap<Vec<String>, Vec<String>>,
@@ -811,6 +813,7 @@ mod tests {
         }
     }
 
+// arch-verifies: ["arch.name-resolution.requirement-2"]
     #[test]
     fn resolves_explicit_item_import() {
         // import parser::Token;
@@ -1290,6 +1293,7 @@ mod tests {
 
     // ── SymbolId consistency ──────────────────────────────────────────────────
 
+// arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn same_declaration_gets_same_symbol_id_regardless_of_importer() {
         // root and other both import parser::Token (via absolute root:: path).

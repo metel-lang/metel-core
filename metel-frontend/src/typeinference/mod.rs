@@ -22,6 +22,9 @@ use std::time::Instant;
 pub struct TypeVar(pub u32);
 
 impl std::fmt::Display for TypeVar {
+// arch-implements: ["arch.type-construction.requirement-3"]
+// arch-implements: ["arch.type-inference.requirement-1"]
+// arch-implements: ["arch.type-inference.requirement-2"]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "?t{}", self.0)
     }
@@ -3142,6 +3145,7 @@ impl TypeDefinitionRegistry {
     /// direction — it rejects rather than accepts.
     #[must_use]
     #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.type-construction.requirement-4"]
     pub fn infer_type_satisfies_aspect(
         &self,
         current_module: &[String],
@@ -5447,6 +5451,7 @@ mod registry_identity_tests {
         }
     }
 
+// arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn same_named_structs_in_two_modules_keep_distinct_field_sets() {
         let alpha = SymbolId(1000);

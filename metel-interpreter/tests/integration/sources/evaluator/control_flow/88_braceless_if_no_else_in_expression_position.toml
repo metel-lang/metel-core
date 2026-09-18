@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.parsing.requirement-4"]
 spec = ["spec.expressions.control-flow.if-else.legality-2"]
 
 [expect]

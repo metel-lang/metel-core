@@ -9,6 +9,7 @@ use super::{
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
 /// straight off the source `FunDecl` (methods carry no top-level identity).
+// arch-implements: ["arch.type-construction.requirement-5"]
 fn method_fun_decl(
     method: &FunDecl,
     param_ids: Vec<Option<crate::identity::LocalId>>,

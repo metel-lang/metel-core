@@ -19,6 +19,7 @@ use crate::parser;
 /// clone per load is equivalent to a fresh parse and cannot leak between runs.
 type StdlibParseCache = Mutex<HashMap<(Vec<String>, u64), Program>>;
 static STDLIB_PARSE_CACHE: OnceLock<StdlibParseCache> = OnceLock::new();
+// arch-implements: ["arch.parsing.requirement-2"]
 
 fn hash_source(source: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -502,6 +503,7 @@ impl Loader<'_> {
         }
         Ok(())
     }
+// arch-implements: ["arch.parsing.requirement-1"]
 
     fn load_module(
         &mut self,
@@ -995,6 +997,7 @@ mod tests {
         assert!(validate_std_namespace(&["standard".to_string()], path).is_ok());
     }
 
+// arch-verifies: ["arch.parsing.requirement-2"]
     #[test]
     fn source_provider_overlay_supplies_in_memory_source() {
         // Proves the SourceProvider abstraction supports an in-memory overlay

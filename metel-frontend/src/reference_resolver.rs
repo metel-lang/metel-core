@@ -67,6 +67,7 @@ pub(crate) struct ResolveInputs<'a> {
 }
 
 /// Walk every module's declarations and collect the `Def` reference table.
+// arch-implements: ["arch.name-resolution.requirement-3"]
 pub(crate) fn collect_references(
     modules: &[(Vec<String>, &[Decl])],
     inputs: &ResolveInputs,
@@ -469,6 +470,7 @@ mod tests {
         }
     }
 
+// arch-verifies: ["arch.name-resolution.requirement-3"]
     #[test]
     fn resolves_top_level_call_to_its_symbol_id() {
         let graph = single_module_graph(

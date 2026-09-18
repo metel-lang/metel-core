@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.move-check.requirement-3"]
 error = ["T0019"]
 move_check = true
 spec = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]

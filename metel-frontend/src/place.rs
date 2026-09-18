@@ -46,6 +46,7 @@ pub enum Projection {
 impl Projection {
     /// A field step from a bare name, with no resolved identity yet.
     #[must_use]
+// arch-implements: ["arch.move-check.requirement-2"]
     pub fn field(name: impl Into<String>) -> Self {
         Self::Field {
             name: name.into(),

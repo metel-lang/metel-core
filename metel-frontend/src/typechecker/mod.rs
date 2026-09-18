@@ -131,6 +131,10 @@ impl CorePrelude {
     /// No standard library names pre-loaded. Use in tests that do not need std.
     #[allow(dead_code)] // public API used by module-loading test harness
     #[must_use]
+// arch-implements: ["arch.type-construction.requirement-1"]
+// arch-implements: ["arch.type-construction.requirement-2"]
+// arch-implements: ["arch.type-construction.requirement-12"]
+// arch-implements: ["arch.type-inference.requirement-4"]
     pub fn empty() -> Self {
         Self {
             schemes: HashMap::new(),
@@ -1506,6 +1510,7 @@ mod tests {
     /// exact same `ast::Block` the identity walk already processed, so its
     /// `binding_spans` entries apply unchanged regardless of which concrete
     /// type this particular call instantiates.
+// arch-verifies: ["arch.type-construction.requirement-2"]
     #[test]
     fn construct_generic_body_stamps_a_real_local_id() {
         use crate::identity::{self, BindingId, FrozenIdentity};
