@@ -131,10 +131,6 @@ impl CorePrelude {
     /// No standard library names pre-loaded. Use in tests that do not need std.
     #[allow(dead_code)] // public API used by module-loading test harness
     #[must_use]
-// arch-implements: ["arch.type-construction.requirement-1"]
-// arch-implements: ["arch.type-construction.requirement-2"]
-// arch-implements: ["arch.type-construction.requirement-12"]
-// arch-implements: ["arch.type-inference.requirement-4"]
     pub fn empty() -> Self {
         Self {
             schemes: HashMap::new(),
@@ -349,6 +345,7 @@ fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
 ///
 /// # Errors
 /// Returns an error if any module fails to typecheck.
+// arch-implements: ["arch.type-construction.requirement-1"]
 pub fn check_graph(
     graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
@@ -365,6 +362,7 @@ pub fn check_graph(
 /// their `FieldId` / `VariantId` (#1062), and the span → `BindingId` bridge
 /// (#1052), so `TypedExpr::Ident` carries its resolved binding. `None` — the
 /// move-check and diagnostic-tool entry points — leaves every id `None`.
+// arch-implements: ["arch.type-construction.requirement-2"]
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
@@ -1147,6 +1145,7 @@ pub(crate) fn symbolic_impl_method_scheme(
 /// unresolved, defaulted to `Unit` exactly as before this fix for that case.
 #[must_use]
 #[allow(clippy::implicit_hasher)]
+// arch-implements: ["arch.type-construction.requirement-12"]
 pub fn infer_named_type_args(
     name: &str,
     variant: Option<&str>,

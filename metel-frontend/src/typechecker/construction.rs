@@ -1059,6 +1059,7 @@ pub(super) fn construct_generic_body(
 }
 
 #[allow(clippy::too_many_arguments)]
+// arch-implements: ["arch.type-inference.requirement-4"]
 pub(super) fn construct_program(
     program: &Program,
     subst: &Substitution,

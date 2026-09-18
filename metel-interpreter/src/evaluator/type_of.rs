@@ -19,6 +19,7 @@ use crate::types::Type;
 /// argument info (`Wrapper { value: 5 }`'s only intrinsic type tag is bare
 /// `Named("Wrapper", [])`), so `registry` and `span` are used to recover them —
 /// see `typechecker::infer_named_type_args`'s own doc comment for the mechanism.
+// arch-implements: ["arch.evaluation.requirement-8"]
 pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, span: &Span) -> Type {
     let go = |v: &Value| value_to_type(v, registry, span);
     match value {

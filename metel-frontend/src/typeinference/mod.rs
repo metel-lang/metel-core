@@ -22,9 +22,6 @@ use std::time::Instant;
 pub struct TypeVar(pub u32);
 
 impl std::fmt::Display for TypeVar {
-// arch-implements: ["arch.type-construction.requirement-3"]
-// arch-implements: ["arch.type-inference.requirement-1"]
-// arch-implements: ["arch.type-inference.requirement-2"]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "?t{}", self.0)
     }
@@ -831,6 +828,7 @@ fn contains_type_var(ty: &InferType) -> bool {
 // one coherent dispatch table across many small functions with no real gain in
 // clarity (same rationale as `type_expr_to_infer_in_context`, `infer_fun_decl`).
 #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.type-inference.requirement-1"]
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
     match (a, b) {
         // Never is the bottom type — it coerces to any type.
@@ -1255,6 +1253,7 @@ fn apply_constraint(
 /// unresolved type variable at the point its enclosing `let`/`return`/etc. records
 /// its own constraint — only by the time `solve` substitutes and unifies is it
 /// actually known to be a concrete, possibly singleton-coercible, enum type.
+// arch-implements: ["arch.type-construction.requirement-3"]
 fn apply_constraint_with_coercion(
     subst: &mut Substitution,
     constraint: &Constraint,
@@ -1691,6 +1690,7 @@ impl std::fmt::Display for TypeScheme {
 #[must_use]
 // See `solve_constraints` above for why hasher-generalization isn't worthwhile here.
 #[allow(clippy::implicit_hasher)]
+// arch-implements: ["arch.type-inference.requirement-1"]
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
     let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
@@ -1727,6 +1727,7 @@ pub fn generalize_with_names(
 
 /// Instantiate a type scheme by replacing each quantified variable with a
 /// fresh type variable from `gen`. Called once per use site.
+// arch-implements: ["arch.type-inference.requirement-1"]
 pub fn instantiate(scheme: &TypeScheme, type_var_gen: &mut TypeVarGenerator) -> InferType {
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
@@ -3973,6 +3974,7 @@ impl TypeDefinitionRegistry {
     // would scatter one coherent operation across many small functions with no
     // real gain in clarity.
     #[allow(clippy::too_many_lines)]
+    // arch-implements: ["arch.type-inference.requirement-2"]
     pub fn merge_from(&mut self, other: &TypeDefinitionRegistry) {
         for (k, v) in &other.struct_env {
             self.struct_env.entry(*k).or_insert_with(|| v.clone());

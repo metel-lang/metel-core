@@ -13,6 +13,7 @@ use super::{
 /// Bind a method call's receiver and positional arguments into `call_env`,
 /// keyed additionally by each parameter's [`LocalId`] in the id-indexed frame
 /// when identity allocation stamped one (metel-core#1052b).
+// arch-implements: ["arch.evaluation.requirement-4"]
 fn bind_method_params(
     call_env: &mut Environment,
     closure: &ClosureValue,
@@ -52,6 +53,7 @@ fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
     }
 }
 
+// arch-implements: ["arch.evaluation.requirement-7"]
 fn call_runtime_callable(
     callable: RuntimeCallable,
     args: &[Value],
