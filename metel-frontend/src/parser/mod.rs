@@ -25,9 +25,6 @@ pub struct MetelParser;
 /// # Errors
 /// Returns an error if `source` does not conform to the Metel grammar.
 // arch-implements: ["arch.parsing.requirement-3"]
-// arch-implements: ["arch.parsing.requirement-4"]
-// arch-implements: ["arch.parsing.requirement-6"]
-// arch-implements: ["arch.parsing.requirement-5"]
 pub fn parse(source: &str, filename: &str) -> Result<Program, MetelError> {
     let mut pairs = MetelParser::parse(Rule::program, source).map_err(|e| {
         let (start, end) = match e.location {
@@ -1171,6 +1168,7 @@ fn parse_literal_expr(
 // Interpolated strings are lowered to plain string-concatenation here in the parser.
 // No `Expr::Interpolation` AST node is emitted; downstream passes see only `BinOp(Plus, …)`
 // and `.to_string()` calls. See ADR-0033.
+// arch-implements: ["arch.parsing.requirement-6"]
 fn parse_string_literal_expr(text: &str, span: Span, filename: &str) -> Result<Expr, MetelError> {
     let raw = &text[1..text.len() - 1];
     if !raw.contains("${") && !raw.contains("\\$") {
@@ -1822,6 +1820,7 @@ fn wrap_expr_as_block(expr: Expr) -> Block {
     }
 }
 
+// arch-implements: ["arch.parsing.requirement-4"]
 fn parse_if_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
