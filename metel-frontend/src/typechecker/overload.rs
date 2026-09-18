@@ -32,6 +32,7 @@ use super::conversions::{
 /// are built per module; the global counter keeps ids unique across the whole
 /// graph so the evaluator's symbol registry never collides.
 static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(crate::symbols::OVERLOAD_SYM_START);
+// arch-implements: ["arch.type-construction.requirement-10"]
 
 fn next_overload_symbol() -> SymbolId {
     SymbolId(NEXT_OVERLOAD_SYM.fetch_add(1, Ordering::Relaxed))

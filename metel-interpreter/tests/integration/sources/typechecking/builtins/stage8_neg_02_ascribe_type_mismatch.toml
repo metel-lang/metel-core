@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-6"]
 error = ["T0001"]
 spec = ["spec.types.type-ascription.legality-2"]
 

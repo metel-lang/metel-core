@@ -361,6 +361,7 @@ fn merge_where_clause_bounds(
 /// in the other's negative bound set at the same position. This is §3.1's
 /// disjointness criterion: `impl<T: Copy> ...` and `impl<T: !Copy> ...` have
 /// `Copy` in pos[0] of the first and `Copy` in neg[0] of the second.
+// arch-implements: ["arch.coherence.requirement-2"]
 fn provably_disjoint(
     (a_pos, a_neg): &(Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>),
     (b_pos, b_neg): &(Vec<Vec<GenericBound>>, Vec<Vec<GenericBound>>),
@@ -656,6 +657,7 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
 /// Returns an error if any `impl` violates the orphan rule (T0014) or overlaps
 /// with another `impl` of the same aspect/type instantiation (T0015).
 #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.coherence.requirement-1"]
 pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(), MetelError> {
     let declaring = declaring_modules(names);
 

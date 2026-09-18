@@ -36,6 +36,8 @@ type FnDeclShape = (Vec<Param>, Option<TypeExpr>, Block);
 
 /// Build the concrete (fully-resolved `Type`) struct field map from inference results.
 /// Generic structs are excluded — they are resolved per-use-site during construction.
+// arch-implements: ["arch.type-construction.requirement-7"]
+// arch-implements: ["arch.type-construction.requirement-11"]
 pub(super) fn build_concrete_struct_env(
     registry: &TypeDefinitionRegistry,
     subst: &Substitution,
@@ -1057,6 +1059,7 @@ pub(super) fn construct_generic_body(
 }
 
 #[allow(clippy::too_many_arguments)]
+// arch-implements: ["arch.type-inference.requirement-4"]
 pub(super) fn construct_program(
     program: &Program,
     subst: &Substitution,

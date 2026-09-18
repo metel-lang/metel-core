@@ -24,7 +24,7 @@ thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
     static PROFILER: RefCell<Option<ProfilerState>> = const { RefCell::new(None) };
 }
-
+// arch-implements: ["arch.evaluation.requirement-6"]
 pub(super) fn push_frame(fn_name: String, call_site: Span) {
     profiler_enter(&fn_name);
     CALL_STACK.with(|s| s.borrow_mut().push(FrameInfo { fn_name, call_site }));
@@ -721,6 +721,7 @@ impl RuntimeRegistry {
     /// type entry — methods carry no top-level identity of their own (same as
     /// #1101's array-impl methods).
     #[must_use]
+    // arch-implements: ["arch.evaluation.requirement-2"]
     pub fn get_type_value_by_id(&self, type_id: SymbolId, name: &str) -> Option<Value> {
         let type_entry = self.types.get(&type_id)?;
         type_entry
@@ -1596,6 +1597,7 @@ impl Environment {
     /// deleted `scopes` name map used to (#1054's disable-scopes diagnostic
     /// found no currently-reachable binding site without an id). Arrays are
     /// deep-cloned so each binding has an independent copy.
+    // arch-implements: ["arch.evaluation.requirement-5"]
     pub fn define_binding(&mut self, id: Option<LocalId>, value: Value) {
         if let Some(id) = id {
             self.frame
@@ -1636,6 +1638,7 @@ impl Environment {
     /// site had no identity to stamp (metel-core#1054 deleted the name-map
     /// fallback that used to catch that case).
     #[must_use]
+    // arch-implements: ["arch.evaluation.requirement-1"]
     pub fn get_local(&self, id: LocalId) -> Option<Value> {
         self.frame.get(&id).map(|cell| cell.borrow().clone())
     }
@@ -3984,6 +3987,7 @@ mod frame_tests {
         }
     }
 
+    // arch-verifies: ["arch.evaluation.requirement-1"]
     #[test]
     fn define_binding_is_readable_by_local_id() {
         let mut env = Environment::new();

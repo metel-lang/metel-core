@@ -21,6 +21,7 @@ pub(super) type PatternBinding = (String, Option<LocalId>, Value);
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.evaluation.requirement-3"]
 pub(super) fn match_pattern(
     pattern: &TypedPattern,
     value: &Value,

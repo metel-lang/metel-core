@@ -116,6 +116,7 @@ fn ref_ids(map: &ResolutionMap) -> Vec<u64> {
 
 // ── structural stability ────────────────────────────────────────────────────
 
+// arch-verifies: ["arch.resolution.requirement-2"]
 #[test]
 fn blank_lines_and_reformatting_change_no_identity() {
     let tight = "fun main() { let x := 1; let y := x; y; }";
@@ -295,6 +296,7 @@ fn shadowing_at_each_nested_binding_level_resolves_to_the_innermost_binding() {
 
 // ── totality + unresolved causes ────────────────────────────────────────────
 
+// arch-verifies: ["arch.resolution.requirement-1"]
 #[test]
 fn reference_table_is_total_and_unknown_names_are_explicit() {
     let a = Fixture::build("fun main() { nonesuch; }");

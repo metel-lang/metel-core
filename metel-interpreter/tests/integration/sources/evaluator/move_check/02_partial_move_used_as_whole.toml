@@ -2,6 +2,7 @@
 # `Pair.{ right }`, so `take(pair)` — which wants the whole `Pair` — is a plain
 # type error at inference time, no longer only a `--move-check` finding.
 [options]
+arch_verifies = ["arch.move-check.requirement-2"]
 error = ["T0001"]
 move_check = true
 spec = ["spec.ownership.partial-moves.legality-1", "spec.ownership.narrowing.legality-4"]
