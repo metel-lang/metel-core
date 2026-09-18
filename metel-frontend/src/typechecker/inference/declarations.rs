@@ -600,7 +600,7 @@ pub(super) fn infer_fun_decl(
         // RFC-0082 §2 abstract-case: T::AssocType where T is a generic param.
         if let TypeExpr::Projection {
             base,
-            ref assoc_name,
+            assoc_name,
             span: proj_span,
             ..
         } = te
@@ -1122,7 +1122,7 @@ pub(super) fn infer_impl_method(
         // included, now that it's bound into `generic_map` above like any other.
         if let TypeExpr::Projection {
             base,
-            ref assoc_name,
+            assoc_name,
             span: proj_span,
             ..
         } = te

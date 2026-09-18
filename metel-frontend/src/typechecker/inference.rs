@@ -80,7 +80,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     // Check for abstract-case projection first.
     if let TypeExpr::Projection {
         base,
-        ref assoc_name,
+        assoc_name,
         ..
     } = te
     {
@@ -680,7 +680,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 let te_to_infer = |te: &TypeExpr, ctx: &mut InferContext| -> InferType {
                     if let TypeExpr::Projection {
                         base,
-                        ref assoc_name,
+                        assoc_name,
                         ..
                     } = te
                     {

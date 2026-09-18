@@ -1953,12 +1953,12 @@ fn scheme_with_source_generics(scheme: &TypeScheme, generics: &[GenericParam]) -
         .resize_with(existing, Vec::new);
     repaired.opaque_returns.resize(existing, None);
     let mut replacements = HashMap::new();
-    let mut gen = TypeVarGenerator::with_counter(4_000_000);
+    let mut r#gen = TypeVarGenerator::with_counter(4_000_000);
     for generic in generics {
         if repaired.param_names.contains(&generic.name) {
             continue;
         }
-        let var = gen.fresh();
+        let var = r#gen.fresh();
         replacements.insert(generic.name.clone(), InferType::Var(var));
         repaired.quantified_vars.push(var);
         repaired.param_names.push(generic.name.clone());

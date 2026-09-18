@@ -1718,10 +1718,10 @@ pub fn generalize_with_names(
 
 /// Instantiate a type scheme by replacing each quantified variable with a
 /// fresh type variable from `gen`. Called once per use site.
-pub fn instantiate(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> InferType {
+pub fn instantiate(scheme: &TypeScheme, r#gen: &mut TypeVarGenerator) -> InferType {
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
-        subst.bind(var, InferType::Var(gen.fresh()));
+        subst.bind(var, InferType::Var(r#gen.fresh()));
     }
     subst.apply(&scheme.ty)
 }
@@ -1730,12 +1730,12 @@ pub fn instantiate(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> InferType
 /// `TypeVar` to the fresh `TypeVar` it was replaced with.
 pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
 ) -> (InferType, HashMap<TypeVar, TypeVar>) {
     let mut renaming = HashMap::with_capacity(scheme.quantified_vars.len());
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
-        let fresh = gen.fresh();
+        let fresh = r#gen.fresh();
         subst.bind(var, InferType::Var(fresh));
         renaming.insert(var, fresh);
     }
@@ -4339,12 +4339,12 @@ impl InferContext {
     #[must_use]
     pub fn new(
         registry: TypeDefinitionRegistry,
-        gen: TypeVarGenerator,
+        r#gen: TypeVarGenerator,
         imported_schemes: &HashMap<String, TypeScheme>,
         current_module_path: Vec<String>,
     ) -> Self {
         let mut ctx = Self {
-            var_gen: gen,
+            var_gen: r#gen,
             mono_env: vec![HashMap::new()], // root scope pre-pushed
             poly_env: vec![HashMap::new()], // root scope pre-pushed
             constraints: Vec::new(),

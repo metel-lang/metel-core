@@ -111,7 +111,7 @@ struct ConstructCtx<'a> {
     /// spelling via [`concrete_method`](Self::concrete_method)).
     method_env: HashMap<SymbolId, HashMap<String, Type>>,
     /// Shared generator continued from Pass 1; keeps `TypeVar` identities globally unique.
-    gen: TypeVarGenerator,
+    r#gen: TypeVarGenerator,
     /// Return type of the innermost enclosing function (None = unit / unknown).
     current_return_ty: Option<Type>,
     /// Break value type of the innermost enclosing `loop` (None = no loop or bare break).
@@ -177,7 +177,7 @@ impl<'a> ConstructCtx<'a> {
         subst: &'a Substitution,
         scheme_env: &'a SchemeEnv,
         registry: &'a TypeDefinitionRegistry,
-        gen: TypeVarGenerator,
+        r#gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
         overloads: &'a crate::typeinference::OverloadTable,
         current_module: &'a [String],
@@ -195,7 +195,7 @@ impl<'a> ConstructCtx<'a> {
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             registry,
             method_env,
-            gen,
+            r#gen,
             current_return_ty: None,
             current_break_ty: None,
             loop_depth: 0,
@@ -740,8 +740,8 @@ pub(super) fn symbolic_aspect_method_type(
     method: &crate::ast::AspectMethod,
     placeholder: &str,
 ) -> Option<InferType> {
-    let mut gen = TypeVarGenerator::with_counter(3_000_000);
-    let scheme = symbolic_aspect_method_scheme(registry, aspect, method, placeholder, &mut gen)?;
+    let mut r#gen = TypeVarGenerator::with_counter(3_000_000);
+    let scheme = symbolic_aspect_method_scheme(registry, aspect, method, placeholder, &mut r#gen)?;
     let mut subst = Substitution::new();
     for (var, generic) in scheme.quantified_vars.iter().zip(&method.generics) {
         subst.bind(
@@ -761,7 +761,7 @@ pub(super) fn symbolic_aspect_method_scheme(
     aspect: &str,
     method: &crate::ast::AspectMethod,
     placeholder: &str,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
 ) -> Option<TypeScheme> {
     let assoc_ctx = super::conversions::AssocResolveCtx {
         registry,
@@ -771,7 +771,7 @@ pub(super) fn symbolic_aspect_method_scheme(
     let generic_map: HashMap<String, TypeVar> = method
         .generics
         .iter()
-        .map(|generic| (generic.name.clone(), gen.fresh()))
+        .map(|generic| (generic.name.clone(), r#gen.fresh()))
         .collect();
     let params = method
         .params
@@ -837,7 +837,7 @@ pub(super) fn symbolic_impl_method_scheme(
     params: &[crate::ast::Param],
     return_type: Option<&TypeExpr>,
 ) -> Option<TypeScheme> {
-    let mut gen = TypeVarGenerator::with_counter(5_000_000);
+    let mut r#gen = TypeVarGenerator::with_counter(5_000_000);
     let generics: Vec<_> = impl_generics
         .iter()
         .chain(method_generics)
@@ -845,7 +845,7 @@ pub(super) fn symbolic_impl_method_scheme(
         .collect();
     let generic_map: HashMap<String, TypeVar> = generics
         .iter()
-        .map(|generic| (generic.name.clone(), gen.fresh()))
+        .map(|generic| (generic.name.clone(), r#gen.fresh()))
         .collect();
     let assoc_ctx = super::conversions::AssocResolveCtx {
         registry,
@@ -918,9 +918,9 @@ pub(super) fn construct_generic_body(
     // Use a high starting counter to avoid collisions with registry TypeVars (allocated
     // starting from 0 during build_registry). The substitution built here would otherwise
     // incorrectly resolve registry TypeVars when ConstructCtx::new applies it.
-    let mut gen = TypeVarGenerator::with_counter(1_000_000);
+    let mut r#gen = TypeVarGenerator::with_counter(1_000_000);
 
-    let (instance, renaming) = instantiate_with_renaming(scheme, &mut gen);
+    let (instance, renaming) = instantiate_with_renaming(scheme, &mut r#gen);
     let InferType::Fun(param_infertypes, ret_infertype, ..) = instance else {
         return Err(crate::error::MetelError::internal(
             "construct_generic_body: scheme is not a function type",
@@ -1011,7 +1011,7 @@ pub(super) fn construct_generic_body(
         &subst,
         &type_ctx.scheme_env,
         &type_ctx.registry,
-        gen,
+        r#gen,
         // metel-core#1125: pass the frozen generic's own `symbols`/
         // `current_module` through so a static-method/constructor `Path`
         // inside the reconstructed body resolves its owning type by
@@ -1062,7 +1062,7 @@ pub(super) fn construct_program(
     subst: &Substitution,
     scheme_env: &SchemeEnv,
     registry: &TypeDefinitionRegistry,
-    gen: TypeVarGenerator,
+    r#gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     overloads: &crate::typeinference::OverloadTable,
     current_module: &[String],
@@ -1074,7 +1074,7 @@ pub(super) fn construct_program(
         subst,
         scheme_env,
         registry,
-        gen,
+        r#gen,
         symbols,
         overloads,
         current_module,

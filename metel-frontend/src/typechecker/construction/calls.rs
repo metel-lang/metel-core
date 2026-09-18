@@ -154,7 +154,7 @@ pub(super) fn construct_call(
                         scheme,
                         &arg_types,
                         span,
-                        &mut ctx.gen,
+                        &mut ctx.r#gen,
                         ctx.registry,
                         ctx.current_module,
                     ) {
@@ -170,7 +170,7 @@ pub(super) fn construct_call(
                                     &arg_types,
                                     expected,
                                     span,
-                                    &mut ctx.gen,
+                                    &mut ctx.r#gen,
                                     ctx.registry,
                                     ctx.current_module,
                                 )
@@ -238,7 +238,7 @@ pub(super) fn construct_call(
                         scheme,
                         &arg_types,
                         span,
-                        &mut ctx.gen,
+                        &mut ctx.r#gen,
                         ctx.registry,
                         ctx.current_module,
                     ) {
@@ -252,7 +252,7 @@ pub(super) fn construct_call(
                                     &arg_types,
                                     expected,
                                     span,
-                                    &mut ctx.gen,
+                                    &mut ctx.r#gen,
                                     ctx.registry,
                                     ctx.current_module,
                                 )
@@ -332,7 +332,7 @@ pub(super) fn construct_call(
                     scheme,
                     &arg_types,
                     span,
-                    &mut ctx.gen,
+                    &mut ctx.r#gen,
                     ctx.registry,
                     ctx.current_module,
                 )?,
@@ -397,7 +397,7 @@ pub(super) fn construct_call(
                     scheme,
                     &arg_types,
                     span,
-                    &mut ctx.gen,
+                    &mut ctx.r#gen,
                     ctx.registry,
                     ctx.current_module,
                 )?,
@@ -1421,11 +1421,11 @@ pub(super) fn instantiate_scheme_for_call(
     scheme: &TypeScheme,
     arg_types: &[&Type],
     span: &Span,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
+    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, r#gen);
 
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
@@ -1562,11 +1562,11 @@ pub(super) fn instantiate_scheme_with_expected_ret(
     arg_types: &[&Type],
     expected_ret: &Type,
     span: &Span,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, gen);
+    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, r#gen);
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };

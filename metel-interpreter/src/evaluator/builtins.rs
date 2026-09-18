@@ -378,7 +378,7 @@ fn native_to_string(args: &[Value], span: &crate::ast::Span) -> Result<Value, Me
 // targets truncate through i128, float targets convert through f64 — the same
 // semantics as the per-pair builtins these replace.
 macro_rules! native_int_from {
-    ($fn_name:ident, $label:literal, $out:expr) => {
+    ($fn_name:ident, $label:literal, $out:expr_2021) => {
         fn $fn_name(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
             match args.first().and_then(numeric_as_i128) {
                 Some(n) => Ok($out(n)),
@@ -391,7 +391,7 @@ macro_rules! native_int_from {
     };
 }
 macro_rules! native_float_from {
-    ($fn_name:ident, $label:literal, $out:expr) => {
+    ($fn_name:ident, $label:literal, $out:expr_2021) => {
         fn $fn_name(args: &[Value], _span: &crate::ast::Span) -> Result<Value, MetelError> {
             match args.first().and_then(numeric_as_f64_val) {
                 Some(f) => Ok($out(f)),
@@ -1038,7 +1038,7 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
     }
 
     macro_rules! register_pattern {
-        ($pattern:expr, $method_name:expr, $value:expr) => {
+        ($pattern:expr_2021, $method_name:expr_2021, $value:expr_2021) => {
             runtime.register_pattern_method($pattern, $method_name, $value);
         };
     }

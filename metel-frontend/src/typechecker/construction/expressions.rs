@@ -779,7 +779,7 @@ pub(super) fn construct_expr(
                                 scheme,
                                 &arg_types,
                                 span,
-                                &mut ctx.gen,
+                                &mut ctx.r#gen,
                                 ctx.registry,
                                 ctx.current_module,
                             ) {
@@ -1379,7 +1379,7 @@ pub(super) fn construct_expr(
                 let mut local_subst = Substitution::new();
                 let mut generics_map: HashMap<String, TypeVar> = HashMap::new();
                 for (name, arg_ty) in aspect_generics.iter().zip(type_args.iter()) {
-                    let tv = ctx.gen.fresh();
+                    let tv = ctx.r#gen.fresh();
                     generics_map.insert(name.clone(), tv);
                     local_subst.bind(tv, type_to_infer(arg_ty));
                 }

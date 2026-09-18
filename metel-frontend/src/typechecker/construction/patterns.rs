@@ -711,7 +711,7 @@ pub(super) fn construct_enum_literal_ty(
         .type_params
         .iter()
         .map(|&tp| {
-            let fresh = InferType::Var(ctx.gen.fresh());
+            let fresh = InferType::Var(ctx.r#gen.fresh());
             init_subst.bind(tp, fresh.clone());
             fresh
         })

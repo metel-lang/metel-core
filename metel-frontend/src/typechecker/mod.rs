@@ -155,8 +155,8 @@ impl Default for CorePrelude {
     /// at 0 and typically allocates fewer than 100 vars). See ADR-0027.
     fn default() -> Self {
         let mut schemes = HashMap::new();
-        let mut gen = TypeVarGenerator::with_counter(10000);
-        registry::populate_std_schemes(&mut schemes, &mut gen);
+        let mut r#gen = TypeVarGenerator::with_counter(10000);
+        registry::populate_std_schemes(&mut schemes, &mut r#gen);
         Self { schemes }
     }
 }
@@ -225,11 +225,11 @@ impl GlobalExports {
 /// into the dedicated export `TypeVar` range. Sound for the closed schemes that
 /// cross module boundaries (T0010 guarantees pub functions are fully annotated;
 /// native signatures are annotation-derived). See `export_gen` in `check_graph`.
-fn refresh_scheme_for_export(scheme: &TypeScheme, gen: &mut TypeVarGenerator) -> TypeScheme {
+fn refresh_scheme_for_export(scheme: &TypeScheme, r#gen: &mut TypeVarGenerator) -> TypeScheme {
     if scheme.quantified_vars.is_empty() {
         return scheme.clone();
     }
-    let (ty, renaming) = crate::typeinference::instantiate_with_renaming(scheme, gen);
+    let (ty, renaming) = crate::typeinference::instantiate_with_renaming(scheme, r#gen);
     let quantified_vars = scheme.quantified_vars.iter().map(|v| renaming[v]).collect();
     TypeScheme {
         quantified_vars,
@@ -1092,9 +1092,9 @@ pub(crate) fn symbolic_aspect_method_scheme(
     aspect: &str,
     method: &crate::ast::AspectMethod,
     placeholder: &str,
-    gen: &mut crate::typeinference::TypeVarGenerator,
+    r#gen: &mut crate::typeinference::TypeVarGenerator,
 ) -> Option<crate::typeinference::TypeScheme> {
-    construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, gen)
+    construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, r#gen)
 }
 
 pub(crate) fn symbolic_impl_method_scheme(
@@ -1256,8 +1256,8 @@ fn check_impl_with_report(
     let program = &program;
 
     let started = Instant::now();
-    let mut gen = TypeVarGenerator::new();
-    let mut reg = registry::build_registry(program, &mut gen, current_module_path, symbols, scopes);
+    let mut r#gen = TypeVarGenerator::new();
+    let mut reg = registry::build_registry(program, &mut r#gen, current_module_path, symbols, scopes);
     // Merge dependency type definitions so cross-module struct/enum refs resolve.
     reg.merge_from(base_registry);
     // Stamp entries with their interned identity (#1068); no-op without context.
@@ -1266,7 +1266,7 @@ fn check_impl_with_report(
     // the conversion path is infallible and can only leave a stand-in behind, so precise
     // "unknown type / not a struct / no such field" reporting has to happen here.
     projections::check(program, &reg, current_module_path)?;
-    let mut ctx = InferContext::new(reg, gen, imported_schemes, current_module_path.to_vec());
+    let mut ctx = InferContext::new(reg, r#gen, imported_schemes, current_module_path.to_vec());
     ctx.seed_glob_conflicts(deferred_conflicts);
 
     // Pre-pass: register built-in value bindings, build the overload table, and
@@ -1315,7 +1315,7 @@ fn check_impl_with_report(
 
     // Build SchemeEnv from user functions, then add all built-in schemes.
     let started = Instant::now();
-    let gen = ctx.split_gen();
+    let r#gen = ctx.split_gen();
     let scheme_env = build_module_scheme_env(fun_generalizations, imported_schemes, std_prelude);
     let scheme_env_ns = elapsed_ns(started);
 
@@ -1331,7 +1331,7 @@ fn check_impl_with_report(
         &subst,
         &scheme_env,
         ctx.registry(),
-        gen,
+        r#gen,
         symbols,
         &overloads,
         current_module_path,

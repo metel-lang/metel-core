@@ -172,7 +172,7 @@ pub(super) fn array_target_generic_name(ib: &crate::ast::ImplBlock) -> Option<&s
 /// performs no module loading) sees the same surface as the module graph path.
 fn populate_schemes_from_embedded_core(
     map: &mut HashMap<String, TypeScheme>,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
 ) {
     let program = crate::stdlib::core_program();
     for decl in &program.decls {
@@ -189,7 +189,7 @@ fn populate_schemes_from_embedded_core(
                 let generic_map: HashMap<String, TypeVar> = fun
                     .generics
                     .iter()
-                    .map(|g| (g.name.clone(), gen.fresh()))
+                    .map(|g| (g.name.clone(), r#gen.fresh()))
                     .collect();
                 let te = |t: &TypeExpr| -> InferType {
                     if generic_map.is_empty() {
@@ -227,7 +227,7 @@ fn populate_schemes_from_embedded_core(
                     .iter()
                     .filter_map(|te| match te {
                         TypeExpr::Named(n, args) if args.is_empty() => {
-                            Some((n.clone(), gen.fresh()))
+                            Some((n.clone(), r#gen.fresh()))
                         }
                         _ => None,
                     })
@@ -302,7 +302,7 @@ fn register_builtin_aspect_impls(registry: &mut TypeDefinitionRegistry) {
 /// `InferContext::new` so that all `TypeVar` IDs are globally unique.
 pub(super) fn build_registry(
     program: &Program,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     current_module_path: &[String],
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     scopes: Option<&HashMap<Vec<String>, ModuleScope>>,
@@ -327,12 +327,12 @@ pub(super) fn build_registry(
         register_program_decls(
             &crate::stdlib::core_program().decls,
             &std_core_path,
-            gen,
+            r#gen,
             &mut registry,
         );
     }
 
-    register_program_decls(&program.decls, current_module_path, gen, &mut registry);
+    register_program_decls(&program.decls, current_module_path, r#gen, &mut registry);
 
     registry
 }
@@ -347,7 +347,7 @@ pub(super) fn build_registry(
 fn register_program_decls(
     decls: &[Decl],
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     // Pass 1: register structs, enums, and aspects.
@@ -391,7 +391,7 @@ fn register_program_decls(
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &sd.generics {
-                    let tv = gen.fresh();
+                    let tv = r#gen.fresh();
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
@@ -443,7 +443,7 @@ fn register_program_decls(
                 let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
                 let mut type_params = vec![];
                 for gp in &ed.generics {
-                    let tv = gen.fresh();
+                    let tv = r#gen.fresh();
                     gen_map.insert(gp.name.clone(), tv);
                     type_params.push(tv);
                 }
@@ -540,14 +540,14 @@ fn register_program_decls(
                 });
 
             if is_array_generic_target {
-                register_array_impl_method_schemes(ib, gen, registry);
+                register_array_impl_method_schemes(ib, r#gen, registry);
             } else if let Some(target_name) = nominal_target_name.as_ref() {
                 if is_generic_target {
                     register_generic_impl_method_schemes(
                         ib,
                         target_name,
                         current_module_path,
-                        gen,
+                        r#gen,
                         registry,
                     );
                 } else {
@@ -555,14 +555,14 @@ fn register_program_decls(
                         ib.methods.iter(),
                         target_name,
                         current_module_path,
-                        gen,
+                        r#gen,
                         registry,
                     );
                     if ib.polarity == Polarity::Positive {
                         register_default_aspect_methods(
                             ib,
                             target_name,
-                            gen,
+                            r#gen,
                             registry,
                             current_module_path,
                         );
@@ -790,7 +790,7 @@ fn register_generic_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     let target_id = registry.resolve_type_id(current_module_path, target_name);
@@ -872,7 +872,7 @@ fn register_generic_impl_method_schemes(
         let mut quantified = type_params.clone();
         let mut param_names = generic_names.clone();
         for g in &method.generics {
-            let tv = gen.fresh();
+            let tv = r#gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
             param_names.push(g.name.clone());
@@ -943,13 +943,13 @@ fn register_generic_impl_method_schemes(
 
 fn register_array_impl_method_schemes(
     ib: &crate::ast::ImplBlock,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     let Some(element_name) = array_target_generic_name(ib) else {
         return;
     };
-    let element_tv = gen.fresh();
+    let element_tv = r#gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
     let structural_self_type_expr =
@@ -977,7 +977,7 @@ fn register_array_impl_method_schemes(
         let mut quantified = vec![element_tv];
         let mut param_names = vec![element_name.to_string()];
         for g in &method.generics {
-            let tv = gen.fresh();
+            let tv = r#gen.fresh();
             gen_map.insert(g.name.clone(), tv);
             quantified.push(tv);
             param_names.push(g.name.clone());
@@ -1114,7 +1114,7 @@ fn register_impl_methods<'a>(
     methods: impl Iterator<Item = &'a crate::ast::FunDecl>,
     target_name: &str,
     current_module_path: &[String],
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
 ) {
     // `self` on a primitive target must be the concrete primitive type
@@ -1147,7 +1147,7 @@ fn register_impl_methods<'a>(
             } else if let Some(ann) = &p.type_ann {
                 type_expr_to_infer_with_self(ann, target_name)
             } else {
-                InferType::Var(gen.fresh())
+                InferType::Var(r#gen.fresh())
             };
             param_types.push(pt);
         }
@@ -1171,7 +1171,7 @@ fn register_impl_methods<'a>(
 fn register_default_aspect_methods(
     ib: &crate::ast::ImplBlock,
     target_name: &str,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
     current_module_path: &[String],
 ) {
@@ -1195,7 +1195,7 @@ fn register_default_aspect_methods(
             &method,
             target_name,
             aspect_name,
-            gen,
+            r#gen,
             registry,
             current_module_path,
         );
@@ -1206,7 +1206,7 @@ fn register_default_aspect_method(
     method: &AspectMethod,
     target_name: &str,
     aspect_name: &str,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
     registry: &mut TypeDefinitionRegistry,
     current_module_path: &[String],
 ) {
@@ -1240,7 +1240,7 @@ fn register_default_aspect_method(
         } else if let Some(ann) = &p.type_ann {
             type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         } else {
-            InferType::Var(gen.fresh())
+            InferType::Var(r#gen.fresh())
         };
         param_types.push(pt);
     }
@@ -1299,10 +1299,10 @@ pub(super) fn register_builtin_schemes(
 /// Called by `CorePrelude::default()` — this is the single canonical list.
 pub(super) fn populate_std_schemes(
     map: &mut HashMap<String, TypeScheme>,
-    gen: &mut TypeVarGenerator,
+    r#gen: &mut TypeVarGenerator,
 ) {
     // All schemes — free functions and the List<T> static constructors — are
     // derived from the embedded std::core source (single source of truth,
     // METEL-181).
-    populate_schemes_from_embedded_core(map, gen);
+    populate_schemes_from_embedded_core(map, r#gen);
 }
