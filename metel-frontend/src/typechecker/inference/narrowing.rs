@@ -12,7 +12,7 @@
 //! point across loop back edges by the driver in `expressions.rs`.
 
 use crate::flow_state::MoveCause;
-use crate::place::{from_expr as place_from_expr, Place, Projection};
+use crate::place::{Place, Projection, from_expr as place_from_expr};
 use crate::typed_ast::TypedExpr;
 use crate::typeinference::{AspectAssumptions, InferContext, InferType};
 

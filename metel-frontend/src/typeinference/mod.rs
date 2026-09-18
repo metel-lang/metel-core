@@ -6,7 +6,7 @@
 use crate::ast::{AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility};
 use crate::error::MetelError;
 use crate::identity::{BindingSpans, FieldId, MemberTable, VariantId};
-use crate::name_resolver::{resolve_name_provided_by_module, GlobTier, ModuleScope};
+use crate::name_resolver::{GlobTier, ModuleScope, resolve_name_provided_by_module};
 use crate::symbols::SymbolId;
 use crate::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
 use std::collections::{HashMap, HashSet};
@@ -660,10 +660,10 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
 
 /// Bind `var` to `ty`, failing if the occurs check would create an infinite type.
 fn bind_var(var: TypeVar, ty: &InferType) -> Result<Substitution, MetelError> {
-    if let InferType::Var(v) = ty {
-        if *v == var {
-            return Ok(Substitution::new());
-        }
+    if let InferType::Var(v) = ty
+        && *v == var
+    {
+        return Ok(Substitution::new());
     }
     if occurs_in(var, ty) {
         return Err(MetelError::internal(format!(
@@ -1173,8 +1173,14 @@ fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String>
             ))
         }
         (
-            InferType::Residual { brand: b1, fields: f1 },
-            InferType::Residual { brand: b2, fields: f2 },
+            InferType::Residual {
+                brand: b1,
+                fields: f1,
+            },
+            InferType::Residual {
+                brand: b2,
+                fields: f2,
+            },
         ) if b1 == b2 && f1.len() != f2.len() => Some(format!(
             "a partially-moved `{b1}` here has row `{{ {} }}` but `{{ {} }}` is required",
             row(f1),
@@ -1421,7 +1427,7 @@ fn validate_literal_bindings(
                     &other,
                     span,
                     known_names,
-                ))
+                ));
             }
         }
     }
@@ -1437,7 +1443,7 @@ fn validate_literal_bindings(
                     &other,
                     span,
                     known_names,
-                ))
+                ));
             }
         }
     }
@@ -1718,10 +1724,10 @@ pub fn generalize_with_names(
 
 /// Instantiate a type scheme by replacing each quantified variable with a
 /// fresh type variable from `gen`. Called once per use site.
-pub fn instantiate(scheme: &TypeScheme, r#gen: &mut TypeVarGenerator) -> InferType {
+pub fn instantiate(scheme: &TypeScheme, type_var_gen: &mut TypeVarGenerator) -> InferType {
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
-        subst.bind(var, InferType::Var(r#gen.fresh()));
+        subst.bind(var, InferType::Var(type_var_gen.fresh()));
     }
     subst.apply(&scheme.ty)
 }
@@ -1730,12 +1736,12 @@ pub fn instantiate(scheme: &TypeScheme, r#gen: &mut TypeVarGenerator) -> InferTy
 /// `TypeVar` to the fresh `TypeVar` it was replaced with.
 pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
-    r#gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
 ) -> (InferType, HashMap<TypeVar, TypeVar>) {
     let mut renaming = HashMap::with_capacity(scheme.quantified_vars.len());
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
-        let fresh = r#gen.fresh();
+        let fresh = type_var_gen.fresh();
         subst.bind(var, InferType::Var(fresh));
         renaming.insert(var, fresh);
     }
@@ -3148,15 +3154,14 @@ impl TypeDefinitionRegistry {
                 .get(var)
                 .is_some_and(|assumed| assumed.contains(aspect_name));
         }
-        if let InferType::Named(name, args, ..) = ty {
-            if args.is_empty()
-                && self
-                    .symbolic_named_aspects
-                    .get(name)
-                    .is_some_and(|aspects| aspects.contains(aspect_name))
-            {
-                return true;
-            }
+        if let InferType::Named(name, args, ..) = ty
+            && args.is_empty()
+            && self
+                .symbolic_named_aspects
+                .get(name)
+                .is_some_and(|aspects| aspects.contains(aspect_name))
+        {
+            return true;
         }
         if let Some(entries) = self.bare_neg_impl_bounds.get(aspect_name) {
             for (pos_bounds, neg_bounds) in entries {
@@ -4339,12 +4344,12 @@ impl InferContext {
     #[must_use]
     pub fn new(
         registry: TypeDefinitionRegistry,
-        r#gen: TypeVarGenerator,
+        type_var_gen: TypeVarGenerator,
         imported_schemes: &HashMap<String, TypeScheme>,
         current_module_path: Vec<String>,
     ) -> Self {
         let mut ctx = Self {
-            var_gen: r#gen,
+            var_gen: type_var_gen,
             mono_env: vec![HashMap::new()], // root scope pre-pushed
             poly_env: vec![HashMap::new()], // root scope pre-pushed
             constraints: Vec::new(),
@@ -4588,15 +4593,15 @@ impl InferContext {
             .get(&tv)
             .cloned()
             .unwrap_or_default();
-        if resolved != tv {
-            if let Some(bounds) = self.current_type_param_bounds.get(&resolved) {
-                for bound in bounds {
-                    if !merged.iter().any(|existing| match (existing, bound) {
-                        (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,
-                        _ => false,
-                    }) {
-                        merged.push(bound.clone());
-                    }
+        if resolved != tv
+            && let Some(bounds) = self.current_type_param_bounds.get(&resolved)
+        {
+            for bound in bounds {
+                if !merged.iter().any(|existing| match (existing, bound) {
+                    (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,
+                    _ => false,
+                }) {
+                    merged.push(bound.clone());
                 }
             }
         }
@@ -4992,10 +4997,10 @@ impl InferContext {
     ) -> (InferType, HashMap<TypeVar, TypeVar>) {
         let (instance, renaming) = instantiate_with_renaming(scheme, &mut self.var_gen);
         for (&original, name) in scheme.quantified_vars.iter().zip(&scheme.param_names) {
-            if !name.is_empty() {
-                if let Some(&fresh) = renaming.get(&original) {
-                    self.tag_declared_var_name(fresh, name.clone());
-                }
+            if !name.is_empty()
+                && let Some(&fresh) = renaming.get(&original)
+            {
+                self.tag_declared_var_name(fresh, name.clone());
             }
         }
         (instance, renaming)

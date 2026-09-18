@@ -1038,7 +1038,7 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
             _ => {
                 return Err(MetelError::internal(
                     "fat pointer path: segment type mismatch",
-                ))
+                ));
             }
         };
     }
@@ -1062,7 +1062,7 @@ fn write_path(
                 RuntimeErrorCode::R0003,
                 "cannot write through a shared reference",
                 span,
-            ))
+            ));
         }
         Value::MutReference(rc) => {
             let mut referent = rc.borrow_mut();
@@ -1453,7 +1453,7 @@ fn build_mut_path(
                         RuntimeErrorCode::R0004,
                         "&var: array index must be a non-negative integer",
                         span,
-                    ))
+                    ));
                 }
             };
             path.push(PathSegment::ArrayIndex(i));
@@ -2214,21 +2214,21 @@ fn run_main(
                 RuntimeErrorCode::R0002,
                 "main() is generic — not supported",
                 &dummy,
-            ))
+            ));
         }
         Some(_) => {
             return Err(MetelError::panic(
                 RuntimeErrorCode::R0002,
                 "`main` is not a function",
                 &dummy,
-            ))
+            ));
         }
         None => {
             return Err(MetelError::panic(
                 RuntimeErrorCode::R0001,
                 "no main() function defined",
                 &dummy,
-            ))
+            ));
         }
     };
     profiler_enter("main");
@@ -2289,7 +2289,7 @@ fn build_and_set_nested_fun(
         FunBody::Native(_) => {
             return Err(MetelError::internal(
                 "native function in nested declaration position",
-            ))
+            ));
         }
     };
     let captured = env.clone();
@@ -2479,9 +2479,11 @@ pub fn eval_stmt(
                 match eval_expr(&w.condition, env, runtime)? {
                     Signal::Value(Value::Boolean(false)) => break,
                     Signal::Value(Value::Boolean(true)) => {}
-                    Signal::Value(_) => return Err(MetelError::internal(
-                        "while: expected boolean condition (typechecker should have caught this)",
-                    )),
+                    Signal::Value(_) => {
+                        return Err(MetelError::internal(
+                            "while: expected boolean condition (typechecker should have caught this)",
+                        ));
+                    }
                     other => return Ok(other), // propagate Return from condition
                 }
                 match eval_block(&w.body, env, runtime)? {
@@ -2523,12 +2525,14 @@ pub fn eval_stmt(
                 if let Some(cond) = &f.condition {
                     match eval_expr(cond, env, runtime)? {
                         Signal::Value(Value::Boolean(false)) => {
-                            break Ok(Signal::Value(Value::Unit))
+                            break Ok(Signal::Value(Value::Unit));
                         }
                         Signal::Value(Value::Boolean(true)) => {}
-                        Signal::Value(_) => break Err(MetelError::internal(
-                            "for: expected boolean condition (typechecker should have caught this)",
-                        )),
+                        Signal::Value(_) => {
+                            break Err(MetelError::internal(
+                                "for: expected boolean condition (typechecker should have caught this)",
+                            ));
+                        }
                         other => break Ok(other),
                     }
                 }
@@ -2599,7 +2603,7 @@ fn eval_for_in(
                 RuntimeErrorCode::R0011,
                 "for-in: expected Array, Range, or Iterable value",
                 span,
-            ))
+            ));
         }
     };
     let next_fn = runtime
@@ -2642,7 +2646,7 @@ fn eval_for_in(
             _ => {
                 return Err(MetelError::internal(
                     "Iterable::next: expected Perhaps value",
-                ))
+                ));
             }
         };
         match maybe_item {
@@ -2785,7 +2789,7 @@ fn eval_assign_expr(
                         RuntimeErrorCode::R0003,
                         "assign: dereference target is not a pointer",
                         tspan,
-                    ))
+                    ));
                 }
             }
             Ok(Signal::Value(Value::Unit))
@@ -2810,7 +2814,7 @@ fn eval_assign_expr(
                 _ => {
                     return Err(MetelError::internal(
                         "index: expected u64 index (typechecker should have caught this)",
-                    ))
+                    ));
                 }
             };
             match arr_val {
@@ -3408,10 +3412,10 @@ pub fn eval_expr(
                 // RFC-0110 §6: `&*p` is a *reborrow* — it must share the referent's
                 // storage, not snapshot it into a fresh cell the way an lvalue *path*
                 // does. Handled before the general path arm below for that reason.
-                UnaryOp::Ref
-                    if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
-                {
-                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
+                UnaryOp::Ref if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) => {
+                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else {
+                        unreachable!()
+                    };
                     let inner = match eval_to_value(inner, env, runtime)? {
                         ControlFlow::Continue(value) => value,
                         ControlFlow::Break(signal) => return Ok(signal),
@@ -3429,13 +3433,15 @@ pub fn eval_expr(
                         | Value::MutFieldReference { root, path } => {
                             Ok(Signal::Value(Value::FieldReference { root, path }))
                         }
-                        other => Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(other))))),
+                        other => Ok(Signal::Value(Value::Reference(Rc::new(RefCell::new(
+                            other,
+                        ))))),
                     };
                 }
-                UnaryOp::RefMut
-                    if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) =>
-                {
-                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else { unreachable!() };
+                UnaryOp::RefMut if matches!(&**operand, TypedExpr::UnaryOp(UnaryOp::Deref, ..)) => {
+                    let TypedExpr::UnaryOp(_, inner, _, _) = &**operand else {
+                        unreachable!()
+                    };
                     let inner = match eval_to_value(inner, env, runtime)? {
                         ControlFlow::Continue(value) => value,
                         ControlFlow::Break(signal) => return Ok(signal),
@@ -3452,36 +3458,68 @@ pub fn eval_expr(
                         )),
                     };
                 }
-                UnaryOp::Ref => return match &**operand {
-                    TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
-                        .map(|rc| Signal::Value(Value::Reference(rc)))
-                        .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
-                    other if is_lvalue_path_typed(other) => {
-                        let (root_name, root_binding, path) = match build_mut_path(other, env, runtime, span)? {
-                            ControlFlow::Continue(path) => path,
-                            ControlFlow::Break(signal) => return Ok(signal),
-                        };
-                        let root = ident_rc(root_binding, env, runtime).ok_or_else(|| MetelError::panic(
-                            RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
-                        Ok(Signal::Value(Value::FieldReference { root, path }))
-                    }
-                    _ => Err(MetelError::internal("address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)")),
-                },
-                UnaryOp::RefMut => return match &**operand {
-                    TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
-                        .map(|rc| Signal::Value(Value::MutReference(rc)))
-                        .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0003, format!("undefined variable `{name}`"), span)),
-                    other if is_lvalue_path_typed(other) => {
-                        let (root_name, root_binding, path) = match build_mut_path(other, env, runtime, span)? {
-                            ControlFlow::Continue(path) => path,
-                            ControlFlow::Break(signal) => return Ok(signal),
-                        };
-                        let root = ident_rc(root_binding, env, runtime).ok_or_else(|| MetelError::panic(
-                            RuntimeErrorCode::R0003, format!("undefined variable `{root_name}`"), span))?;
-                        Ok(Signal::Value(Value::MutFieldReference { root, path }))
-                    }
-                    _ => Err(MetelError::internal("mutable address-of requires an addressable lvalue")),
-                },
+                UnaryOp::Ref => {
+                    return match &**operand {
+                        TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
+                            .map(|rc| Signal::Value(Value::Reference(rc)))
+                            .ok_or_else(|| {
+                                MetelError::panic(
+                                    RuntimeErrorCode::R0003,
+                                    format!("undefined variable `{name}`"),
+                                    span,
+                                )
+                            }),
+                        other if is_lvalue_path_typed(other) => {
+                            let (root_name, root_binding, path) =
+                                match build_mut_path(other, env, runtime, span)? {
+                                    ControlFlow::Continue(path) => path,
+                                    ControlFlow::Break(signal) => return Ok(signal),
+                                };
+                            let root = ident_rc(root_binding, env, runtime).ok_or_else(|| {
+                                MetelError::panic(
+                                    RuntimeErrorCode::R0003,
+                                    format!("undefined variable `{root_name}`"),
+                                    span,
+                                )
+                            })?;
+                            Ok(Signal::Value(Value::FieldReference { root, path }))
+                        }
+                        _ => Err(MetelError::internal(
+                            "address-of requires an addressable lvalue (identifier, field access, tuple access, or array index)",
+                        )),
+                    };
+                }
+                UnaryOp::RefMut => {
+                    return match &**operand {
+                        TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
+                            .map(|rc| Signal::Value(Value::MutReference(rc)))
+                            .ok_or_else(|| {
+                                MetelError::panic(
+                                    RuntimeErrorCode::R0003,
+                                    format!("undefined variable `{name}`"),
+                                    span,
+                                )
+                            }),
+                        other if is_lvalue_path_typed(other) => {
+                            let (root_name, root_binding, path) =
+                                match build_mut_path(other, env, runtime, span)? {
+                                    ControlFlow::Continue(path) => path,
+                                    ControlFlow::Break(signal) => return Ok(signal),
+                                };
+                            let root = ident_rc(root_binding, env, runtime).ok_or_else(|| {
+                                MetelError::panic(
+                                    RuntimeErrorCode::R0003,
+                                    format!("undefined variable `{root_name}`"),
+                                    span,
+                                )
+                            })?;
+                            Ok(Signal::Value(Value::MutFieldReference { root, path }))
+                        }
+                        _ => Err(MetelError::internal(
+                            "mutable address-of requires an addressable lvalue",
+                        )),
+                    };
+                }
                 _ => {}
             }
             let v = match eval_to_value(operand, env, runtime)? {
@@ -3506,17 +3544,17 @@ pub fn eval_expr(
                 (UnaryOp::Neg, _) => {
                     return Err(MetelError::internal(
                         "unary `-`: expected numeric type (typechecker should have caught this)",
-                    ))
+                    ));
                 }
                 (UnaryOp::Not, _) => {
                     return Err(MetelError::internal(
                         "unary `!`: expected boolean (typechecker should have caught this)",
-                    ))
+                    ));
                 }
                 (UnaryOp::Deref, _) => {
                     return Err(MetelError::internal(
                         "unary `*`: expected pointer (typechecker should have caught this)",
-                    ))
+                    ));
                 }
                 _ => unreachable!("Ref/RefMut handled above"),
             };
@@ -3625,7 +3663,7 @@ pub fn eval_expr(
                 _ => {
                     return Err(MetelError::internal(
                         "index: expected u64 index (typechecker should have caught this)",
-                    ))
+                    ));
                 }
             };
             match arr {
@@ -3706,9 +3744,11 @@ pub fn eval_expr(
                     match guard_val {
                         Value::Boolean(true) => {}
                         Value::Boolean(false) => continue,
-                        _ => return Err(MetelError::internal(
-                            "match guard: expected boolean (typechecker should have caught this)",
-                        )),
+                        _ => {
+                            return Err(MetelError::internal(
+                                "match guard: expected boolean (typechecker should have caught this)",
+                            ));
+                        }
                     }
                 }
                 // Execute the arm body in a scope with pattern bindings.
@@ -4053,7 +4093,7 @@ mod frame_tests {
         // `&x` / `&var x` resolves the frame cell for a local binding by its
         // LocalId. No name-map fallback remains (metel-core#1054): a `None`
         // binding, or an id with no frame entry, resolves to `None`.
-        use super::{ident_rc, RuntimeRegistry};
+        use super::{RuntimeRegistry, ident_rc};
         use crate::identity::BindingId;
 
         let mut env = Environment::new();
@@ -4076,7 +4116,7 @@ mod frame_tests {
         // confirm the receiver still resolves, and that the returned cell is
         // the *same* cell the frame holds (aliased, so a write through it is
         // observed by later reads), not a disconnected clone.
-        use super::{lvalue_field_cell, RuntimeRegistry};
+        use super::{RuntimeRegistry, lvalue_field_cell};
         use crate::ast::Span;
         use crate::identity::BindingId;
         use crate::typed_ast::TypedExpr;

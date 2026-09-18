@@ -8,7 +8,7 @@ use metel::{
 };
 
 use super::fixture::{
-    main_source_path, CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks,
+    CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, main_source_path,
 };
 
 pub fn run_fixture(path: &Path, config: &FixtureConfig) {

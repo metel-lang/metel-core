@@ -86,13 +86,12 @@ fn build_aspect_id_map(
     let mut map = HashMap::new();
     for module in &graph.modules {
         for decl in &module.decls {
-            if let TypedDecl::Aspect(a) = decl {
-                if let Some(&id) = names
+            if let TypedDecl::Aspect(a) = decl
+                && let Some(&id) = names
                     .symbols
                     .get(&(module.module_path.clone(), a.name.clone()))
-                {
-                    map.insert((module.module_path.clone(), a.name.clone()), id);
-                }
+            {
+                map.insert((module.module_path.clone(), a.name.clone()), id);
             }
         }
     }

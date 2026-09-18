@@ -1,15 +1,15 @@
 use super::{
-    ann_to_infer, aspect_impl_method_signature_matches, build_assoc_projection_map,
-    check_copy_impl_eligibility, closed_nominal_target, collect_fun_assoc_eq_constraints,
-    collect_fun_type_var_bounds, collect_fun_type_var_record_kinds,
-    collect_negative_fun_type_var_bounds, constrain_with_read_copy, dyn_array_elem_ann, free_vars,
-    fun_generic_map, generalize, infer_block, infer_dyn_array_literal, infer_expr, infer_stmt,
-    infer_type_to_type, native_fun_ty, primitive_type_from_name, type_expr_to_infer_with_assoc_ctx,
-    type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
     AspectMethod, AssocResolveCtx, Decl, Expr, FunDecl, FunGeneralization, GenericBound, HashMap,
     InferContext, InferType, MetelError, NativeFunTyResult, Polarity, Substitution, Type,
-    TypeErrorCode, TypeExpr, TypeVar,
+    TypeErrorCode, TypeExpr, TypeVar, ann_to_infer, aspect_impl_method_signature_matches,
+    build_assoc_projection_map, check_copy_impl_eligibility, closed_nominal_target,
+    collect_fun_assoc_eq_constraints, collect_fun_type_var_bounds,
+    collect_fun_type_var_record_kinds, collect_negative_fun_type_var_bounds,
+    constrain_with_read_copy, dyn_array_elem_ann, free_vars, fun_generic_map, generalize,
+    infer_block, infer_dyn_array_literal, infer_expr, infer_stmt, infer_type_to_type,
+    native_fun_ty, primitive_type_from_name, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
+    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
 
 // scatter one coherent dispatch table across many small functions with no
@@ -54,17 +54,16 @@ pub(super) fn infer_decl(
                 // separately, and only a non-literal RHS (a plain identifier
                 // already carrying a genuine `Array` type) is what this needs
                 // to catch.
-                if !matches!(&ld.value, Expr::Array(_, _)) {
-                    if let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
-                    {
-                        return Err(MetelError::type_error(
-                            crate::error::TypeErrorCode::T0001,
-                            format!(
-                                "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
-                            ),
-                            &ld.span,
-                        ));
-                    }
+                if !matches!(&ld.value, Expr::Array(_, _))
+                    && let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
+                {
+                    return Err(MetelError::type_error(
+                        crate::error::TypeErrorCode::T0001,
+                        format!(
+                            "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
+                        ),
+                        &ld.span,
+                    ));
                 }
                 constrain_with_read_copy(ctx, val_ty.clone(), declared, ld.span.clone())
             } else {
@@ -124,17 +123,16 @@ pub(super) fn infer_decl(
                 let declared = ann_to_infer(ann, ctx);
                 // RFC-0053 §4 (metel-core#757): see the matching check in
                 // `Decl::Let` above for the full rationale.
-                if !matches!(&md.value, Expr::Array(_, _)) {
-                    if let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
-                    {
-                        return Err(MetelError::type_error(
-                            crate::error::TypeErrorCode::T0001,
-                            format!(
-                                "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
-                            ),
-                            &md.span,
-                        ));
-                    }
+                if !matches!(&md.value, Expr::Array(_, _))
+                    && let (InferType::Array(_), InferType::SizedArray(_, n)) = (&val_ty, &declared)
+                {
+                    return Err(MetelError::type_error(
+                        crate::error::TypeErrorCode::T0001,
+                        format!(
+                            "expected a fixed-size array of {n} element(s), got a dynamically-sized array"
+                        ),
+                        &md.span,
+                    ));
                 }
                 constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
             } else {
@@ -193,27 +191,24 @@ pub(super) fn infer_decl(
             let target_name = crate::typechecker::impl_target_head(&ib.target_type)
                 .map(|name| name.rsplit("::").next().unwrap_or(name).to_string())
                 .unwrap_or_default();
-            if ib.polarity == Polarity::Positive {
-                if let Some(aspect_name) = &ib.aspect_name {
-                    if aspect_name == "Copy" {
-                        check_copy_impl_eligibility(ib, &target_name, ctx)?;
-                    } else if aspect_name == "Drop" {
-                        if let Some(concrete_target) = closed_nominal_target(ib, &target_name) {
-                            if ctx.registry().type_satisfies_aspect(
-                                ctx.current_module_path(),
-                                &concrete_target,
-                                "Copy",
-                            ) {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0001,
-                                    format!(
-                                        "`{target_name}` cannot implement both `Copy` and `Drop`"
-                                    ),
-                                    &ib.span,
-                                ));
-                            }
-                        }
-                    }
+            if ib.polarity == Polarity::Positive
+                && let Some(aspect_name) = &ib.aspect_name
+            {
+                if aspect_name == "Copy" {
+                    check_copy_impl_eligibility(ib, &target_name, ctx)?;
+                } else if aspect_name == "Drop"
+                    && let Some(concrete_target) = closed_nominal_target(ib, &target_name)
+                    && ctx.registry().type_satisfies_aspect(
+                        ctx.current_module_path(),
+                        &concrete_target,
+                        "Copy",
+                    )
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
+                        &ib.span,
+                    ));
                 }
             }
             let mut inherited_defaults = vec![];
@@ -223,169 +218,165 @@ pub(super) fn infer_decl(
             // default bodies. The parser already enforces `ib.methods.is_empty()`
             // for a negative impl; without this guard that empty method list would
             // otherwise look exactly like every required method being missing.
-            if ib.polarity == Polarity::Positive {
-                if let Some(aspect_name) = &ib.aspect_name {
-                    if let Some(methods) = ctx.aspect_method_defs(aspect_name).cloned() {
-                        let provided: std::collections::HashSet<&str> =
-                            ib.methods.iter().map(|m| m.name.as_str()).collect();
-                        let declared: std::collections::HashSet<&str> =
-                            methods.iter().map(|m| m.name.as_str()).collect();
-                        let provided_assoc: std::collections::HashSet<&str> =
-                            ib.assoc_type_defs.iter().map(|d| d.name.as_str()).collect();
-                        let missing_assoc_type = ctx
-                            .registry()
-                            .aspect_assoc_type_decls(aspect_name)
-                            .is_some_and(|decls| {
-                                decls
-                                    .iter()
-                                    .any(|decl| !provided_assoc.contains(decl.name.as_str()))
-                            });
-                        for method in &ib.methods {
-                            let declared_method = methods
+            if ib.polarity == Polarity::Positive
+                && let Some(aspect_name) = &ib.aspect_name
+            {
+                if let Some(methods) = ctx.aspect_method_defs(aspect_name).cloned() {
+                    let provided: std::collections::HashSet<&str> =
+                        ib.methods.iter().map(|m| m.name.as_str()).collect();
+                    let declared: std::collections::HashSet<&str> =
+                        methods.iter().map(|m| m.name.as_str()).collect();
+                    let provided_assoc: std::collections::HashSet<&str> =
+                        ib.assoc_type_defs.iter().map(|d| d.name.as_str()).collect();
+                    let missing_assoc_type = ctx
+                        .registry()
+                        .aspect_assoc_type_decls(aspect_name)
+                        .is_some_and(|decls| {
+                            decls
                                 .iter()
-                                .find(|declared_method| declared_method.name == method.name);
-                            if !declared.contains(method.name.as_str()) {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0001,
-                                    format!(
-                                        "`{}::{}` is not declared by aspect `{}`; put it in an inherent `extend {}` block instead",
-                                        target_name, method.name, aspect_name, target_name
-                                    ),
-                                    &method.span,
-                                ));
-                            }
-                            if !missing_assoc_type
-                                && !declared_method.is_some_and(|declared_method| {
-                                    aspect_impl_method_signature_matches(
-                                        method,
-                                        declared_method,
-                                        ib,
-                                        aspect_name,
-                                        &target_name,
-                                        ctx,
-                                    )
-                                })
-                            {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0012,
-                                    format!(
-                                        "`{}::{}` does not match the signature declared by aspect `{}`",
-                                        target_name, method.name, aspect_name
-                                    ),
-                                    &method.span,
-                                ));
-                            }
+                                .any(|decl| !provided_assoc.contains(decl.name.as_str()))
+                        });
+                    for method in &ib.methods {
+                        let declared_method = methods
+                            .iter()
+                            .find(|declared_method| declared_method.name == method.name);
+                        if !declared.contains(method.name.as_str()) {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0001,
+                                format!(
+                                    "`{}::{}` is not declared by aspect `{}`; put it in an inherent `extend {}` block instead",
+                                    target_name, method.name, aspect_name, target_name
+                                ),
+                                &method.span,
+                            ));
                         }
-                        for method in methods {
-                            if provided.contains(method.name.as_str()) {
-                                continue;
-                            }
-                            if method.default_body.is_none() {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0012,
-                                    format!(
-                                        "`{}` does not implement `{}::{}` required by aspect `{}`",
-                                        target_name, target_name, method.name, aspect_name
-                                    ),
-                                    &ib.span,
-                                ));
-                            }
-                            inherited_defaults.push(method);
+                        if !missing_assoc_type
+                            && !declared_method.is_some_and(|declared_method| {
+                                aspect_impl_method_signature_matches(
+                                    method,
+                                    declared_method,
+                                    ib,
+                                    aspect_name,
+                                    &target_name,
+                                    ctx,
+                                )
+                            })
+                        {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                format!(
+                                    "`{}::{}` does not match the signature declared by aspect `{}`",
+                                    target_name, method.name, aspect_name
+                                ),
+                                &method.span,
+                            ));
                         }
                     }
-                    // RFC-0082 §2: check that the impl defines all associated types
-                    // declared by the aspect. §1.1: if the declaration has a bound,
-                    // the concrete binding must satisfy it.
-                    // TODO(#241): generic impls are skipped above; assoc-type
-                    // completeness for blanket impls is #241's job.
-                    if let Some(assoc_decls) = ctx.aspect_assoc_type_decls(aspect_name).cloned() {
-                        let provided_assoc: std::collections::HashMap<&str, &TypeExpr> = ib
-                            .assoc_type_defs
-                            .iter()
-                            .map(|d| (d.name.as_str(), &d.ty))
-                            .collect();
-                        for decl in &assoc_decls {
-                            if let Some(concrete_ty_expr) = provided_assoc.get(decl.name.as_str()) {
-                                // §1.1: if the declaration has a bound, check the
-                                // concrete binding satisfies it.
-                                for bound in &decl.bounds {
-                                    if let Some(bound_aspect) = bound.aspect_name() {
-                                        if bound.polarity == Polarity::Positive {
-                                            let concrete_infer = type_expr_to_infer_with_self(
-                                                concrete_ty_expr,
-                                                &target_name,
-                                            );
-                                            // Check that the concrete type satisfies the
-                                            // bound aspect. For concrete target types the
-                                            // concrete binding is also concrete, so we can
-                                            // check via the registry's impl_aspect_env.
-                                            let concrete_name = match &concrete_infer {
-                                                InferType::Concrete(t) => Some(format!("{t}")),
-                                                InferType::Named(n, ..) => Some(n.clone()),
-                                                _ => None,
-                                            };
-                                            if let Some(name) = concrete_name {
-                                                // Check if this name matches one of the impl's own generic parameters
-                                                if let Some(gp) =
-                                                    ib.generics.iter().find(|p| p.name == name)
-                                                {
-                                                    // This is the impl's own generic parameter - check its declared bounds
-                                                    let param_bounds = gp
-                                                        .bounds
-                                                        .iter()
-                                                        .filter(|b| {
-                                                            b.polarity == Polarity::Positive
-                                                        })
-                                                        .filter_map(|b| {
-                                                            b.aspect_name().map(ToOwned::to_owned)
-                                                        })
-                                                        .collect::<Vec<_>>();
+                    for method in methods {
+                        if provided.contains(method.name.as_str()) {
+                            continue;
+                        }
+                        if method.default_body.is_none() {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                format!(
+                                    "`{}` does not implement `{}::{}` required by aspect `{}`",
+                                    target_name, target_name, method.name, aspect_name
+                                ),
+                                &ib.span,
+                            ));
+                        }
+                        inherited_defaults.push(method);
+                    }
+                }
+                // RFC-0082 §2: check that the impl defines all associated types
+                // declared by the aspect. §1.1: if the declaration has a bound,
+                // the concrete binding must satisfy it.
+                // TODO(#241): generic impls are skipped above; assoc-type
+                // completeness for blanket impls is #241's job.
+                if let Some(assoc_decls) = ctx.aspect_assoc_type_decls(aspect_name).cloned() {
+                    let provided_assoc: std::collections::HashMap<&str, &TypeExpr> = ib
+                        .assoc_type_defs
+                        .iter()
+                        .map(|d| (d.name.as_str(), &d.ty))
+                        .collect();
+                    for decl in &assoc_decls {
+                        if let Some(concrete_ty_expr) = provided_assoc.get(decl.name.as_str()) {
+                            // §1.1: if the declaration has a bound, check the
+                            // concrete binding satisfies it.
+                            for bound in &decl.bounds {
+                                if let Some(bound_aspect) = bound.aspect_name()
+                                    && bound.polarity == Polarity::Positive
+                                {
+                                    let concrete_infer = type_expr_to_infer_with_self(
+                                        concrete_ty_expr,
+                                        &target_name,
+                                    );
+                                    // Check that the concrete type satisfies the
+                                    // bound aspect. For concrete target types the
+                                    // concrete binding is also concrete, so we can
+                                    // check via the registry's impl_aspect_env.
+                                    let concrete_name = match &concrete_infer {
+                                        InferType::Concrete(t) => Some(format!("{t}")),
+                                        InferType::Named(n, ..) => Some(n.clone()),
+                                        _ => None,
+                                    };
+                                    if let Some(name) = concrete_name {
+                                        // Check if this name matches one of the impl's own generic parameters
+                                        if let Some(gp) =
+                                            ib.generics.iter().find(|p| p.name == name)
+                                        {
+                                            // This is the impl's own generic parameter - check its declared bounds
+                                            let param_bounds = gp
+                                                .bounds
+                                                .iter()
+                                                .filter(|b| b.polarity == Polarity::Positive)
+                                                .filter_map(|b| {
+                                                    b.aspect_name().map(ToOwned::to_owned)
+                                                })
+                                                .collect::<Vec<_>>();
 
-                                                    if param_bounds
-                                                        .contains(&bound_aspect.to_string())
-                                                    {
-                                                        // The bound is satisfied by the impl's own parameter bounds
-                                                        continue;
-                                                    }
-                                                    return Err(MetelError::type_error(
-                                                        TypeErrorCode::T0012,
-                                                        format!(
-                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
-                                                            decl.name, bound_aspect, name
-                                                        ),
-                                                        &ib.span,
-                                                    ));
-                                                }
-                                                // Original behavior for concrete types
-                                                if !ctx.registry().impl_aspect_env_has(
-                                                    ctx.current_module_path(),
-                                                    &name,
-                                                    bound_aspect,
-                                                ) {
-                                                    return Err(MetelError::type_error(
-                                                        TypeErrorCode::T0012,
-                                                        format!(
-                                                            "associated type `{}` bound `{}` is not satisfied by `{}`",
-                                                            decl.name, bound_aspect, name
-                                                        ),
-                                                        &ib.span,
-                                                    ));
-                                                }
+                                            if param_bounds.contains(&bound_aspect.to_string()) {
+                                                // The bound is satisfied by the impl's own parameter bounds
+                                                continue;
                                             }
+                                            return Err(MetelError::type_error(
+                                                TypeErrorCode::T0012,
+                                                format!(
+                                                    "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                    decl.name, bound_aspect, name
+                                                ),
+                                                &ib.span,
+                                            ));
+                                        }
+                                        // Original behavior for concrete types
+                                        if !ctx.registry().impl_aspect_env_has(
+                                            ctx.current_module_path(),
+                                            &name,
+                                            bound_aspect,
+                                        ) {
+                                            return Err(MetelError::type_error(
+                                                TypeErrorCode::T0012,
+                                                format!(
+                                                    "associated type `{}` bound `{}` is not satisfied by `{}`",
+                                                    decl.name, bound_aspect, name
+                                                ),
+                                                &ib.span,
+                                            ));
                                         }
                                     }
                                 }
-                            } else {
-                                // Missing associated type definition → T0017.
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0017,
-                                    format!(
-                                        "`{}` does not define associated type `{}` required by aspect `{}`",
-                                        target_name, decl.name, aspect_name
-                                    ),
-                                    &ib.span,
-                                ));
                             }
+                        } else {
+                            // Missing associated type definition → T0017.
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0017,
+                                format!(
+                                    "`{}` does not define associated type `{}` required by aspect `{}`",
+                                    target_name, decl.name, aspect_name
+                                ),
+                                &ib.span,
+                            ));
                         }
                     }
                 }
@@ -604,43 +595,41 @@ pub(super) fn infer_fun_decl(
             span: proj_span,
             ..
         } = te
+            && let TypeExpr::Named(ref n, _) = **base
+            && let Some(&base_tv) = generic_map.get(n.as_str())
         {
-            if let TypeExpr::Named(ref n, _) = **base {
-                if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                    // Find the aspect(s) that declare this assoc type.
-                    let mut matching_aspects: Vec<String> = Vec::new();
-                    if let Some(bounds) = type_var_bounds.get(&base_tv) {
-                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                            if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
-                                if decls.iter().any(|d| d.name == *assoc_name) {
-                                    matching_aspects.push(aspect.to_string());
-                                }
-                            }
-                        }
+            // Find the aspect(s) that declare this assoc type.
+            let mut matching_aspects: Vec<String> = Vec::new();
+            if let Some(bounds) = type_var_bounds.get(&base_tv) {
+                for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                    if let Some(decls) = ctx.aspect_assoc_type_decls(aspect)
+                        && decls.iter().any(|d| d.name == *assoc_name)
+                    {
+                        matching_aspects.push(aspect.to_string());
                     }
-                    if matching_aspects.len() > 1 {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0013,
-                            format!(
-                                "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
-                                matching_aspects.join(", ")
-                            ),
-                            proj_span,
-                        ));
-                    }
-                    if let Some(aspect) = matching_aspects.into_iter().next() {
-                        return Ok(InferType::Var(
-                            ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
-                        ));
-                    }
-                    // Fallback: named placeholder
-                    return Ok(InferType::Named(
-                        format!("{n}::{assoc_name}"),
-                        vec![],
-                        crate::types::NominalId::NONE,
-                    ));
                 }
             }
+            if matching_aspects.len() > 1 {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0013,
+                    format!(
+                        "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
+                        matching_aspects.join(", ")
+                    ),
+                    proj_span,
+                ));
+            }
+            if let Some(aspect) = matching_aspects.into_iter().next() {
+                return Ok(InferType::Var(
+                    ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
+                ));
+            }
+            // Fallback: named placeholder
+            return Ok(InferType::Named(
+                format!("{n}::{assoc_name}"),
+                vec![],
+                crate::types::NominalId::NONE,
+            ));
         }
         Ok(type_expr_to_infer_with_ctx(te, &generic_map, ctx))
     };
@@ -733,10 +722,8 @@ pub(super) fn infer_fun_decl(
     // table, keyed by SymbolId) and never enters the name-keyed scheme env.
     let is_overloaded = ctx.is_overloaded(&fun.name);
 
-    if !is_overloaded {
-        if let Some(pre_reg) = ctx.lookup(&fun.name) {
-            ctx.add_constraint(pre_reg, fun_ty.clone(), fun.span.clone());
-        }
+    if !is_overloaded && let Some(pre_reg) = ctx.lookup(&fun.name) {
+        ctx.add_constraint(pre_reg, fun_ty.clone(), fun.span.clone());
     }
 
     // Inline solve-and-generalize: future call sites look up this function via the
@@ -998,21 +985,20 @@ pub(super) fn infer_impl_method(
                 let tv = ctx.fresh_type_var_raw();
                 generic_map.insert(name.clone(), tv);
                 struct_tvars_ordered.push(tv);
-                if let Some(ref bp) = bounds_by_pos {
-                    if let Some(b) = bp.get(i) {
-                        if !b.is_empty() {
-                            struct_bounds.insert(tv, b.clone());
-                        }
-                    }
+                if let Some(ref bp) = bounds_by_pos
+                    && let Some(b) = bp.get(i)
+                    && !b.is_empty()
+                {
+                    struct_bounds.insert(tv, b.clone());
                 }
             }
         }
-    } else if let Some(name) = array_target_generic_name {
-        if !generic_map.contains_key(name) {
-            let tv = ctx.fresh_type_var_raw();
-            generic_map.insert(name.to_string(), tv);
-            struct_tvars_ordered.push(tv);
-        }
+    } else if let Some(name) = array_target_generic_name
+        && !generic_map.contains_key(name)
+    {
+        let tv = ctx.fresh_type_var_raw();
+        generic_map.insert(name.to_string(), tv);
+        struct_tvars_ordered.push(tv);
     }
 
     // RFC-0036 §2.2: compute impl-level bounds (from the impl block's own
@@ -1042,13 +1028,13 @@ pub(super) fn infer_impl_method(
     // Merge impl-level bounds into struct_bounds (union: keep any existing
     // struct-level bounds and add the impl's).
     for (i, tv) in struct_tvars_ordered.iter().enumerate() {
-        if let Some(ib_bounds) = impl_bounds.get(i) {
-            if !ib_bounds.is_empty() {
-                struct_bounds
-                    .entry(*tv)
-                    .or_default()
-                    .extend(ib_bounds.iter().cloned());
-            }
+        if let Some(ib_bounds) = impl_bounds.get(i)
+            && !ib_bounds.is_empty()
+        {
+            struct_bounds
+                .entry(*tv)
+                .or_default()
+                .extend(ib_bounds.iter().cloned());
         }
     }
 
@@ -1126,41 +1112,39 @@ pub(super) fn infer_impl_method(
             span: proj_span,
             ..
         } = te
+            && let TypeExpr::Named(ref n, _) = **base
+            && let Some(&base_tv) = generic_map.get(n.as_str())
         {
-            if let TypeExpr::Named(ref n, _) = **base {
-                if let Some(&base_tv) = generic_map.get(n.as_str()) {
-                    let mut matching_aspects: Vec<String> = Vec::new();
-                    if let Some(bounds) = struct_bounds.get(&base_tv) {
-                        for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                            if let Some(decls) = ctx.aspect_assoc_type_decls(aspect) {
-                                if decls.iter().any(|d| d.name == *assoc_name) {
-                                    matching_aspects.push(aspect.to_string());
-                                }
-                            }
-                        }
+            let mut matching_aspects: Vec<String> = Vec::new();
+            if let Some(bounds) = struct_bounds.get(&base_tv) {
+                for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                    if let Some(decls) = ctx.aspect_assoc_type_decls(aspect)
+                        && decls.iter().any(|d| d.name == *assoc_name)
+                    {
+                        matching_aspects.push(aspect.to_string());
                     }
-                    if matching_aspects.len() > 1 {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0013,
-                            format!(
-                                "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
-                                matching_aspects.join(", ")
-                            ),
-                            proj_span,
-                        ));
-                    }
-                    if let Some(aspect) = matching_aspects.into_iter().next() {
-                        return Ok(InferType::Var(
-                            ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
-                        ));
-                    }
-                    return Ok(InferType::Named(
-                        format!("{n}::{assoc_name}"),
-                        vec![],
-                        crate::types::NominalId::NONE,
-                    ));
                 }
             }
+            if matching_aspects.len() > 1 {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0013,
+                    format!(
+                        "ambiguous associated type `{assoc_name}`: multiple aspects declare it: {}",
+                        matching_aspects.join(", ")
+                    ),
+                    proj_span,
+                ));
+            }
+            if let Some(aspect) = matching_aspects.into_iter().next() {
+                return Ok(InferType::Var(
+                    ctx.fresh_assoc_projection_var(base_tv, &aspect, assoc_name),
+                ));
+            }
+            return Ok(InferType::Named(
+                format!("{n}::{assoc_name}"),
+                vec![],
+                crate::types::NominalId::NONE,
+            ));
         }
         Ok(if let Some(self_replacement) = &structural_self_type_expr {
             let lowered = substitute_structural_self(te, self_replacement);
@@ -1482,22 +1466,20 @@ pub(super) fn infer_default_aspect_method(
     // does for the pre-registered signature -- this is the SEPARATE conversion that
     // actually type-checks the default body itself against its declared return type.
     let te_to_infer = |te: &TypeExpr, ctx: &InferContext| -> InferType {
-        if let TypeExpr::Named(n, args) = te {
-            if args.is_empty()
-                && ctx
-                    .registry()
-                    .aspect_assoc_type_decls(aspect_name)
-                    .is_some_and(|decls| decls.iter().any(|d| d.name == *n))
-            {
-                if let Some(concrete) = ctx.registry().impl_assoc_type(
-                    ctx.current_module_path(),
-                    target_name,
-                    aspect_name,
-                    n,
-                ) {
-                    return type_to_infer(concrete);
-                }
-            }
+        if let TypeExpr::Named(n, args) = te
+            && args.is_empty()
+            && ctx
+                .registry()
+                .aspect_assoc_type_decls(aspect_name)
+                .is_some_and(|decls| decls.iter().any(|d| d.name == *n))
+            && let Some(concrete) = ctx.registry().impl_assoc_type(
+                ctx.current_module_path(),
+                target_name,
+                aspect_name,
+                n,
+            )
+        {
+            return type_to_infer(concrete);
         }
         if generic_map.is_empty() {
             type_expr_to_infer_with_self(te, target_name)

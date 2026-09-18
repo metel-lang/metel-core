@@ -5,9 +5,9 @@ use crate::ast::Span;
 use crate::error::{MetelError, RuntimeErrorCode};
 
 use super::{
+    ClosureBody, ClosureValue, Environment, RuntimeCallable, RuntimeRegistry, Signal, Value,
     attach_stack, eval_block, pop_frame, profiler_enter, profiler_exit, push_frame, read_path,
-    type_of, ClosureBody, ClosureValue, Environment, RuntimeCallable, RuntimeRegistry, Signal,
-    Value,
+    type_of,
 };
 
 /// Bind a method call's receiver and positional arguments into `call_env`,
@@ -120,14 +120,22 @@ fn call_runtime_callable(
                                 })
                                 .collect();
                             let tb = crate::typechecker::construct_generic_body(
-                                scheme, &closure.params, &arg_types, b, span, type_ctx, expected_ret
+                                scheme,
+                                &closure.params,
+                                &arg_types,
+                                b,
+                                span,
+                                type_ctx,
+                                expected_ret,
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(attach_stack(MetelError::panic(
                             crate::error::RuntimeErrorCode::R0002,
-                            format!("generic closure `{}` has no type context — construction-at-call-time unavailable",
-                                closure.name.as_deref().unwrap_or("<anonymous>")),
+                            format!(
+                                "generic closure `{}` has no type context — construction-at-call-time unavailable",
+                                closure.name.as_deref().unwrap_or("<anonymous>")
+                            ),
                             span,
                         ))),
                     }
@@ -280,14 +288,22 @@ pub(super) fn call_method_function(
                                 }
                             }));
                             let tb = crate::typechecker::construct_generic_body(
-                                scheme, &closure.params, &arg_types, b, span, type_ctx, expected_ret
+                                scheme,
+                                &closure.params,
+                                &arg_types,
+                                b,
+                                span,
+                                type_ctx,
+                                expected_ret,
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(attach_stack(MetelError::panic(
                             crate::error::RuntimeErrorCode::R0002,
-                            format!("generic method `{}` has no type context — construction-at-call-time unavailable",
-                                closure.name.as_deref().unwrap_or("<anonymous>")),
+                            format!(
+                                "generic method `{}` has no type context — construction-at-call-time unavailable",
+                                closure.name.as_deref().unwrap_or("<anonymous>")
+                            ),
                             span,
                         ))),
                     }

@@ -4,7 +4,7 @@ use crate::ast::{BinOp, Span};
 use crate::error::{MetelError, RuntimeErrorCode};
 use crate::typed_ast::TypedPlace;
 
-use super::{eval_expr, Environment, PathSegment, RuntimeRegistry, Signal, Value};
+use super::{Environment, PathSegment, RuntimeRegistry, Signal, Value, eval_expr};
 
 /// Resolve the root `Rc<RefCell<Value>>` for a projected assign target and collect
 /// the full `PathSegment` sequence to navigate within it.
@@ -205,7 +205,7 @@ pub(super) fn eval_typed_place_value(
                 _ => {
                     return Err(MetelError::internal(
                         "index: expected u64 index (typechecker should have caught this)",
-                    ))
+                    ));
                 }
             };
             match arr {
@@ -259,130 +259,291 @@ pub(super) fn eval_binop(
 ) -> Result<Signal, MetelError> {
     let result = match (op, lv, rv) {
         // ── Int (i64) arithmetic — overflow panics ─────────────────────────────
-        (BinOp::Add, Value::I64(a), Value::I64(b)) =>
-            Value::I64(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span))?),
-        (BinOp::Sub, Value::I64(a), Value::I64(b)) =>
-            Value::I64(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span))?),
-        (BinOp::Mul, Value::I64(a), Value::I64(b)) =>
-            Value::I64(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span))?),
+        (BinOp::Add, Value::I64(a), Value::I64(b)) => {
+            Value::I64(a.checked_add(b).ok_or_else(|| {
+                MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span)
+            })?)
+        }
+        (BinOp::Sub, Value::I64(a), Value::I64(b)) => {
+            Value::I64(a.checked_sub(b).ok_or_else(|| {
+                MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span)
+            })?)
+        }
+        (BinOp::Mul, Value::I64(a), Value::I64(b)) => {
+            Value::I64(a.checked_mul(b).ok_or_else(|| {
+                MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span)
+            })?)
+        }
         (BinOp::Div, Value::I64(a), Value::I64(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
-            Value::I64(a.checked_div(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span))?)
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
+            Value::I64(a.checked_div(b).ok_or_else(|| {
+                MetelError::panic(RuntimeErrorCode::R0007, "integer overflow", span)
+            })?)
         }
         (BinOp::Rem, Value::I64(a), Value::I64(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::I64(a % b)
         }
 
         // ── i8 arithmetic ──────────────────────────────────────────────────────
-        (BinOp::Add, Value::I8(a), Value::I8(b)) =>
-            Value::I8(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?),
-        (BinOp::Sub, Value::I8(a), Value::I8(b)) =>
-            Value::I8(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?),
-        (BinOp::Mul, Value::I8(a), Value::I8(b)) =>
-            Value::I8(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?),
+        (BinOp::Add, Value::I8(a), Value::I8(b)) => Value::I8(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::I8(a), Value::I8(b)) => Value::I8(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?,
+        ),
+        (BinOp::Mul, Value::I8(a), Value::I8(b)) => Value::I8(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?,
+        ),
         (BinOp::Div, Value::I8(a), Value::I8(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
-            Value::I8(a.checked_div(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span))?)
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
+            Value::I8(
+                a.checked_div(b).ok_or_else(|| {
+                    MetelError::panic(RuntimeErrorCode::R0007, "i8 overflow", span)
+                })?,
+            )
         }
         (BinOp::Rem, Value::I8(a), Value::I8(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::I8(a % b)
         }
 
         // ── i16 arithmetic ─────────────────────────────────────────────────────
-        (BinOp::Add, Value::I16(a), Value::I16(b)) =>
-            Value::I16(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?),
-        (BinOp::Sub, Value::I16(a), Value::I16(b)) =>
-            Value::I16(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?),
-        (BinOp::Mul, Value::I16(a), Value::I16(b)) =>
-            Value::I16(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?),
+        (BinOp::Add, Value::I16(a), Value::I16(b)) => Value::I16(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::I16(a), Value::I16(b)) => Value::I16(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?,
+        ),
+        (BinOp::Mul, Value::I16(a), Value::I16(b)) => Value::I16(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?,
+        ),
         (BinOp::Div, Value::I16(a), Value::I16(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
-            Value::I16(a.checked_div(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span))?)
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
+            Value::I16(
+                a.checked_div(b).ok_or_else(|| {
+                    MetelError::panic(RuntimeErrorCode::R0007, "i16 overflow", span)
+                })?,
+            )
         }
         (BinOp::Rem, Value::I16(a), Value::I16(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::I16(a % b)
         }
 
         // ── i32 arithmetic ─────────────────────────────────────────────────────
-        (BinOp::Add, Value::I32(a), Value::I32(b)) =>
-            Value::I32(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?),
-        (BinOp::Sub, Value::I32(a), Value::I32(b)) =>
-            Value::I32(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?),
-        (BinOp::Mul, Value::I32(a), Value::I32(b)) =>
-            Value::I32(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?),
+        (BinOp::Add, Value::I32(a), Value::I32(b)) => Value::I32(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::I32(a), Value::I32(b)) => Value::I32(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?,
+        ),
+        (BinOp::Mul, Value::I32(a), Value::I32(b)) => Value::I32(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?,
+        ),
         (BinOp::Div, Value::I32(a), Value::I32(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
-            Value::I32(a.checked_div(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span))?)
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
+            Value::I32(
+                a.checked_div(b).ok_or_else(|| {
+                    MetelError::panic(RuntimeErrorCode::R0007, "i32 overflow", span)
+                })?,
+            )
         }
         (BinOp::Rem, Value::I32(a), Value::I32(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::I32(a % b)
         }
 
         // ── u8 arithmetic ──────────────────────────────────────────────────────
-        (BinOp::Add, Value::U8(a), Value::U8(b)) =>
-            Value::U8(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 overflow", span))?),
-        (BinOp::Sub, Value::U8(a), Value::U8(b)) =>
-            Value::U8(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 underflow", span))?),
-        (BinOp::Mul, Value::U8(a), Value::U8(b)) =>
-            Value::U8(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 overflow", span))?),
+        (BinOp::Add, Value::U8(a), Value::U8(b)) => Value::U8(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::U8(a), Value::U8(b)) => Value::U8(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 underflow", span))?,
+        ),
+        (BinOp::Mul, Value::U8(a), Value::U8(b)) => Value::U8(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u8 overflow", span))?,
+        ),
         (BinOp::Div, Value::U8(a), Value::U8(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
             Value::U8(a / b)
         }
         (BinOp::Rem, Value::U8(a), Value::U8(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::U8(a % b)
         }
 
         // ── u16 arithmetic ─────────────────────────────────────────────────────
-        (BinOp::Add, Value::U16(a), Value::U16(b)) =>
-            Value::U16(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 overflow", span))?),
-        (BinOp::Sub, Value::U16(a), Value::U16(b)) =>
-            Value::U16(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 underflow", span))?),
-        (BinOp::Mul, Value::U16(a), Value::U16(b)) =>
-            Value::U16(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 overflow", span))?),
+        (BinOp::Add, Value::U16(a), Value::U16(b)) => Value::U16(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::U16(a), Value::U16(b)) => Value::U16(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 underflow", span))?,
+        ),
+        (BinOp::Mul, Value::U16(a), Value::U16(b)) => Value::U16(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u16 overflow", span))?,
+        ),
         (BinOp::Div, Value::U16(a), Value::U16(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
             Value::U16(a / b)
         }
         (BinOp::Rem, Value::U16(a), Value::U16(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::U16(a % b)
         }
 
         // ── u32 arithmetic ─────────────────────────────────────────────────────
-        (BinOp::Add, Value::U32(a), Value::U32(b)) =>
-            Value::U32(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 overflow", span))?),
-        (BinOp::Sub, Value::U32(a), Value::U32(b)) =>
-            Value::U32(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 underflow", span))?),
-        (BinOp::Mul, Value::U32(a), Value::U32(b)) =>
-            Value::U32(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 overflow", span))?),
+        (BinOp::Add, Value::U32(a), Value::U32(b)) => Value::U32(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::U32(a), Value::U32(b)) => Value::U32(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 underflow", span))?,
+        ),
+        (BinOp::Mul, Value::U32(a), Value::U32(b)) => Value::U32(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u32 overflow", span))?,
+        ),
         (BinOp::Div, Value::U32(a), Value::U32(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
             Value::U32(a / b)
         }
         (BinOp::Rem, Value::U32(a), Value::U32(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::U32(a % b)
         }
 
         // ── u64 arithmetic ─────────────────────────────────────────────────────
-        (BinOp::Add, Value::U64(a), Value::U64(b)) =>
-            Value::U64(a.checked_add(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 overflow", span))?),
-        (BinOp::Sub, Value::U64(a), Value::U64(b)) =>
-            Value::U64(a.checked_sub(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 underflow", span))?),
-        (BinOp::Mul, Value::U64(a), Value::U64(b)) =>
-            Value::U64(a.checked_mul(b).ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 overflow", span))?),
+        (BinOp::Add, Value::U64(a), Value::U64(b)) => Value::U64(
+            a.checked_add(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 overflow", span))?,
+        ),
+        (BinOp::Sub, Value::U64(a), Value::U64(b)) => Value::U64(
+            a.checked_sub(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 underflow", span))?,
+        ),
+        (BinOp::Mul, Value::U64(a), Value::U64(b)) => Value::U64(
+            a.checked_mul(b)
+                .ok_or_else(|| MetelError::panic(RuntimeErrorCode::R0007, "u64 overflow", span))?,
+        ),
         (BinOp::Div, Value::U64(a), Value::U64(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "division by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "division by zero",
+                    span,
+                ));
+            }
             Value::U64(a / b)
         }
         (BinOp::Rem, Value::U64(a), Value::U64(b)) => {
-            if b == 0 { return Err(MetelError::panic(RuntimeErrorCode::R0007, "remainder by zero", span)); }
+            if b == 0 {
+                return Err(MetelError::panic(
+                    RuntimeErrorCode::R0007,
+                    "remainder by zero",
+                    span,
+                ));
+            }
             Value::U64(a % b)
         }
 
@@ -405,73 +566,73 @@ pub(super) fn eval_binop(
         // ── Integer comparisons ────────────────────────────────────────────────
         (BinOp::Eq, Value::I64(a), Value::I64(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::I64(a), Value::I64(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::I64(a), Value::I64(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::I64(a), Value::I64(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::I64(a), Value::I64(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::I64(a), Value::I64(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::I64(a), Value::I64(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::I64(a), Value::I64(b)) => Value::Boolean(a >= b),
 
-        (BinOp::Eq, Value::I8(a),  Value::I8(b))  => Value::Boolean(a == b),
-        (BinOp::Ne, Value::I8(a),  Value::I8(b))  => Value::Boolean(a != b),
-        (BinOp::Lt, Value::I8(a),  Value::I8(b))  => Value::Boolean(a <  b),
-        (BinOp::Le, Value::I8(a),  Value::I8(b))  => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::I8(a),  Value::I8(b))  => Value::Boolean(a >  b),
-        (BinOp::Ge, Value::I8(a),  Value::I8(b))  => Value::Boolean(a >= b),
+        (BinOp::Eq, Value::I8(a), Value::I8(b)) => Value::Boolean(a == b),
+        (BinOp::Ne, Value::I8(a), Value::I8(b)) => Value::Boolean(a != b),
+        (BinOp::Lt, Value::I8(a), Value::I8(b)) => Value::Boolean(a < b),
+        (BinOp::Le, Value::I8(a), Value::I8(b)) => Value::Boolean(a <= b),
+        (BinOp::Gt, Value::I8(a), Value::I8(b)) => Value::Boolean(a > b),
+        (BinOp::Ge, Value::I8(a), Value::I8(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::I16(a), Value::I16(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::I16(a), Value::I16(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::I16(a), Value::I16(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::I16(a), Value::I16(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::I16(a), Value::I16(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::I16(a), Value::I16(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::I16(a), Value::I16(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::I16(a), Value::I16(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::I32(a), Value::I32(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::I32(a), Value::I32(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::I32(a), Value::I32(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::I32(a), Value::I32(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::I32(a), Value::I32(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::I32(a), Value::I32(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::I32(a), Value::I32(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::I32(a), Value::I32(b)) => Value::Boolean(a >= b),
 
-        (BinOp::Eq, Value::U8(a),  Value::U8(b))  => Value::Boolean(a == b),
-        (BinOp::Ne, Value::U8(a),  Value::U8(b))  => Value::Boolean(a != b),
-        (BinOp::Lt, Value::U8(a),  Value::U8(b))  => Value::Boolean(a <  b),
-        (BinOp::Le, Value::U8(a),  Value::U8(b))  => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::U8(a),  Value::U8(b))  => Value::Boolean(a >  b),
-        (BinOp::Ge, Value::U8(a),  Value::U8(b))  => Value::Boolean(a >= b),
+        (BinOp::Eq, Value::U8(a), Value::U8(b)) => Value::Boolean(a == b),
+        (BinOp::Ne, Value::U8(a), Value::U8(b)) => Value::Boolean(a != b),
+        (BinOp::Lt, Value::U8(a), Value::U8(b)) => Value::Boolean(a < b),
+        (BinOp::Le, Value::U8(a), Value::U8(b)) => Value::Boolean(a <= b),
+        (BinOp::Gt, Value::U8(a), Value::U8(b)) => Value::Boolean(a > b),
+        (BinOp::Ge, Value::U8(a), Value::U8(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::U16(a), Value::U16(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::U16(a), Value::U16(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::U16(a), Value::U16(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::U16(a), Value::U16(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::U16(a), Value::U16(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::U16(a), Value::U16(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::U16(a), Value::U16(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::U16(a), Value::U16(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::U32(a), Value::U32(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::U32(a), Value::U32(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::U32(a), Value::U32(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::U32(a), Value::U32(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::U32(a), Value::U32(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::U32(a), Value::U32(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::U32(a), Value::U32(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::U32(a), Value::U32(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::U64(a), Value::U64(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::U64(a), Value::U64(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::U64(a), Value::U64(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::U64(a), Value::U64(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::U64(a), Value::U64(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::U64(a), Value::U64(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::U64(a), Value::U64(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::U64(a), Value::U64(b)) => Value::Boolean(a >= b),
 
         // ── Float comparisons ──────────────────────────────────────────────────
         (BinOp::Eq, Value::F64(a), Value::F64(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::F64(a), Value::F64(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::F64(a), Value::F64(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::F64(a), Value::F64(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::F64(a), Value::F64(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::F64(a), Value::F64(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::F64(a), Value::F64(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::F64(a), Value::F64(b)) => Value::Boolean(a >= b),
 
         (BinOp::Eq, Value::F32(a), Value::F32(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::F32(a), Value::F32(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::F32(a), Value::F32(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::F32(a), Value::F32(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::F32(a), Value::F32(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::F32(a), Value::F32(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::F32(a), Value::F32(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::F32(a), Value::F32(b)) => Value::Boolean(a >= b),
 
         // boolean equality
@@ -485,9 +646,9 @@ pub(super) fn eval_binop(
         // Char equality and ordering (Unicode scalar order)
         (BinOp::Eq, Value::Char(a), Value::Char(b)) => Value::Boolean(a == b),
         (BinOp::Ne, Value::Char(a), Value::Char(b)) => Value::Boolean(a != b),
-        (BinOp::Lt, Value::Char(a), Value::Char(b)) => Value::Boolean(a <  b),
+        (BinOp::Lt, Value::Char(a), Value::Char(b)) => Value::Boolean(a < b),
         (BinOp::Le, Value::Char(a), Value::Char(b)) => Value::Boolean(a <= b),
-        (BinOp::Gt, Value::Char(a), Value::Char(b)) => Value::Boolean(a >  b),
+        (BinOp::Gt, Value::Char(a), Value::Char(b)) => Value::Boolean(a > b),
         (BinOp::Ge, Value::Char(a), Value::Char(b)) => Value::Boolean(a >= b),
 
         // Range — produce a Struct value understood by for-in (issue #55)
@@ -497,7 +658,7 @@ pub(super) fn eval_binop(
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));
-                m.insert("end".to_string(),   Value::I64(b));
+                m.insert("end".to_string(), Value::I64(b));
                 m
             },
         },
@@ -507,14 +668,16 @@ pub(super) fn eval_binop(
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));
-                m.insert("end".to_string(),   Value::I64(b));
+                m.insert("end".to_string(), Value::I64(b));
                 m
             },
         },
 
-        (_, lv, rv) => return Err(MetelError::internal(
-            format!("binop: unsupported operand types ({lv:?}, {rv:?}) (typechecker should have caught this)"),
-        )),
+        (_, lv, rv) => {
+            return Err(MetelError::internal(format!(
+                "binop: unsupported operand types ({lv:?}, {rv:?}) (typechecker should have caught this)"
+            )));
+        }
     };
     Ok(Signal::Value(result))
 }

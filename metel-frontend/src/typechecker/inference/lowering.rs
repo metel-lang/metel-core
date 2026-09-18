@@ -566,14 +566,14 @@ fn lower_projections_in_type(
     let go = |t: &TypeExpr| lower_projections_in_type(t, generics, fallback_span);
     match te {
         TypeExpr::Named(name, args) if args.is_empty() => {
-            if let Some((base, assoc)) = name.split_once("::") {
-                if generics.contains(base) {
-                    return TypeExpr::Projection {
-                        base: Box::new(TypeExpr::Named(base.to_string(), vec![])),
-                        assoc_name: assoc.to_string(),
-                        span: fallback_span.clone(),
-                    };
-                }
+            if let Some((base, assoc)) = name.split_once("::")
+                && generics.contains(base)
+            {
+                return TypeExpr::Projection {
+                    base: Box::new(TypeExpr::Named(base.to_string(), vec![])),
+                    assoc_name: assoc.to_string(),
+                    span: fallback_span.clone(),
+                };
             }
             te.clone()
         }

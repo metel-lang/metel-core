@@ -346,11 +346,11 @@ fn normalize_expr(
                 // apply -- a `Module` binding here would mean `path` should have had
                 // a second segment (`handle::Type`), a different, already-handled
                 // shape.
-                if let Some(binding) = scope.and_then(|s| s.explicit.get(only.as_str())) {
-                    if binding.kind == crate::name_resolver::BindingKind::Item {
-                        *only = binding.source_name.clone();
-                        *symbol_id = Some(binding.symbol_id);
-                    }
+                if let Some(binding) = scope.and_then(|s| s.explicit.get(only.as_str()))
+                    && binding.kind == crate::name_resolver::BindingKind::Item
+                {
+                    *only = binding.source_name.clone();
+                    *symbol_id = Some(binding.symbol_id);
                 }
             }
             for (_, v) in fields {
@@ -426,14 +426,13 @@ fn try_resolve_path(
     // Keywords: root/self/super — the declared name is the last segment
     if first == "root" || first == "self" || first == "super" {
         // Check the scope for an alias, otherwise use the declared name
-        if let Some(s) = scope {
-            if let Some((local, binding)) = s
+        if let Some(s) = scope
+            && let Some((local, binding)) = s
                 .explicit
                 .iter()
                 .find(|(_, b)| &b.source_name == declared_name)
-            {
-                return Some((local.clone(), Some(binding.symbol_id)));
-            }
+        {
+            return Some((local.clone(), Some(binding.symbol_id)));
         }
         // `self::name` with no explicit alias refers to this same module's own
         // declaration — look its `SymbolId` up directly rather than leaving it

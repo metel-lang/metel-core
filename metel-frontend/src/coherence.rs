@@ -160,10 +160,11 @@ fn canonicalize_impl_target(
         ib.generics.iter().map(|g| g.name.as_str()).collect();
 
     let map_arg = |i: usize, arg: &TypeExpr| -> CanonicalType {
-        if let TypeExpr::Named(n, inner_args) = arg {
-            if inner_args.is_empty() && impl_param_names.contains(n.as_str()) {
-                return CanonicalType::TypeParam(i);
-            }
+        if let TypeExpr::Named(n, inner_args) = arg
+            && inner_args.is_empty()
+            && impl_param_names.contains(n.as_str())
+        {
+            return CanonicalType::TypeParam(i);
         }
         canonicalize(names, current_module, arg)
     };
@@ -225,10 +226,10 @@ fn name_at<'a>(
     arg: &'a TypeExpr,
     impl_param_names: &std::collections::HashSet<&str>,
 ) -> Option<&'a str> {
-    if let TypeExpr::Named(n, _) = arg {
-        if impl_param_names.contains(n.as_str()) {
-            return Some(n.as_str());
-        }
+    if let TypeExpr::Named(n, _) = arg
+        && impl_param_names.contains(n.as_str())
+    {
+        return Some(n.as_str());
     }
     None
 }
@@ -797,10 +798,7 @@ pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(),
                     TypeErrorCode::T0015,
                     format!(
                         "conflicting implementation: `{}` is already implemented for this type at {}:{}:{}",
-                        a.aspect_name,
-                        a.span.filename,
-                        a.span.line,
-                        a.span.col
+                        a.aspect_name, a.span.filename, a.span.line, a.span.col
                     ),
                     b.span,
                 ));

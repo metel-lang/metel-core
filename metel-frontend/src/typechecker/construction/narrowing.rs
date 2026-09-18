@@ -18,7 +18,7 @@
 //! AST; only the residual *type* is unavailable at those sites.
 
 use crate::flow_state::{FlowState, MoveCause};
-use crate::place::{from_expr as place_from_expr, from_typed_place, Place, Projection};
+use crate::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
 use crate::typed_ast::{TypedExpr, TypedPlace};
 use crate::types::Type;
 
@@ -245,10 +245,10 @@ fn narrow_residual(
         return None;
     }
     remaining.sort_by(|(a, _), (b, _)| a.cmp(b));
-    if let Some(full) = full_row {
-        if remaining.len() == full.len() {
-            return None;
-        }
+    if let Some(full) = full_row
+        && remaining.len() == full.len()
+    {
+        return None;
     }
     Some(Type::Residual {
         brand: brand.to_string(),

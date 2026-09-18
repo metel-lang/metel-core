@@ -100,7 +100,9 @@ fn discover_all() -> Vec<DiscoveredFixture> {
 /// trailing newline. `build.rs` parses this; the currency test compares it.
 #[must_use]
 pub fn manifest_text() -> String {
-    let mut s = String::from("# @generated — run `UPDATE_FIXTURES=1 cargo test -p metel --test integration fixtures_manifest_is_current`\n");
+    let mut s = String::from(
+        "# @generated — run `UPDATE_FIXTURES=1 cargo test -p metel --test integration fixtures_manifest_is_current`\n",
+    );
     for f in discover_all() {
         s.push_str(f.suite);
         s.push('\t');

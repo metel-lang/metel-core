@@ -16,17 +16,17 @@ use crate::typed_ast::{
     TypedProgram, TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::typeinference::{
-    self, unify, EnumInfo, GenericBound, InferType, RowConstraint, Substitution,
-    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
+    self, EnumInfo, GenericBound, InferType, RowConstraint, Substitution, TypeDefinitionRegistry,
+    TypeScheme, TypeVar, TypeVarGenerator, VariantInfo, unify,
 };
 use crate::types::Type;
 
+use super::SchemeEnv;
 use super::conversions::{
-    infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
-    type_expr_to_infer_with_generics, type_to_infer, AssocResolveCtx,
+    AssocResolveCtx, infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
+    type_expr_to_infer_with_generics, type_to_infer,
 };
 use super::handoff::ResolvedInferenceFacts;
-use super::SchemeEnv;
 
 type ConcreteFields = Vec<(String, Type, Span)>;
 type ConcreteStructEnv = HashMap<String, ConcreteFields>;
@@ -111,7 +111,7 @@ struct ConstructCtx<'a> {
     /// spelling via [`concrete_method`](Self::concrete_method)).
     method_env: HashMap<SymbolId, HashMap<String, Type>>,
     /// Shared generator continued from Pass 1; keeps `TypeVar` identities globally unique.
-    r#gen: TypeVarGenerator,
+    type_var_gen: TypeVarGenerator,
     /// Return type of the innermost enclosing function (None = unit / unknown).
     current_return_ty: Option<Type>,
     /// Break value type of the innermost enclosing `loop` (None = no loop or bare break).
@@ -177,7 +177,7 @@ impl<'a> ConstructCtx<'a> {
         subst: &'a Substitution,
         scheme_env: &'a SchemeEnv,
         registry: &'a TypeDefinitionRegistry,
-        r#gen: TypeVarGenerator,
+        type_var_gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
         overloads: &'a crate::typeinference::OverloadTable,
         current_module: &'a [String],
@@ -195,7 +195,7 @@ impl<'a> ConstructCtx<'a> {
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             registry,
             method_env,
-            r#gen,
+            type_var_gen,
             current_return_ty: None,
             current_break_ty: None,
             loop_depth: 0,
@@ -740,8 +740,9 @@ pub(super) fn symbolic_aspect_method_type(
     method: &crate::ast::AspectMethod,
     placeholder: &str,
 ) -> Option<InferType> {
-    let mut r#gen = TypeVarGenerator::with_counter(3_000_000);
-    let scheme = symbolic_aspect_method_scheme(registry, aspect, method, placeholder, &mut r#gen)?;
+    let mut type_var_gen = TypeVarGenerator::with_counter(3_000_000);
+    let scheme =
+        symbolic_aspect_method_scheme(registry, aspect, method, placeholder, &mut type_var_gen)?;
     let mut subst = Substitution::new();
     for (var, generic) in scheme.quantified_vars.iter().zip(&method.generics) {
         subst.bind(
@@ -761,7 +762,7 @@ pub(super) fn symbolic_aspect_method_scheme(
     aspect: &str,
     method: &crate::ast::AspectMethod,
     placeholder: &str,
-    r#gen: &mut TypeVarGenerator,
+    type_var_gen: &mut TypeVarGenerator,
 ) -> Option<TypeScheme> {
     let assoc_ctx = super::conversions::AssocResolveCtx {
         registry,
@@ -771,7 +772,7 @@ pub(super) fn symbolic_aspect_method_scheme(
     let generic_map: HashMap<String, TypeVar> = method
         .generics
         .iter()
-        .map(|generic| (generic.name.clone(), r#gen.fresh()))
+        .map(|generic| (generic.name.clone(), type_var_gen.fresh()))
         .collect();
     let params = method
         .params
@@ -837,7 +838,7 @@ pub(super) fn symbolic_impl_method_scheme(
     params: &[crate::ast::Param],
     return_type: Option<&TypeExpr>,
 ) -> Option<TypeScheme> {
-    let mut r#gen = TypeVarGenerator::with_counter(5_000_000);
+    let mut type_var_gen = TypeVarGenerator::with_counter(5_000_000);
     let generics: Vec<_> = impl_generics
         .iter()
         .chain(method_generics)
@@ -845,7 +846,7 @@ pub(super) fn symbolic_impl_method_scheme(
         .collect();
     let generic_map: HashMap<String, TypeVar> = generics
         .iter()
-        .map(|generic| (generic.name.clone(), r#gen.fresh()))
+        .map(|generic| (generic.name.clone(), type_var_gen.fresh()))
         .collect();
     let assoc_ctx = super::conversions::AssocResolveCtx {
         registry,
@@ -913,14 +914,14 @@ pub(super) fn construct_generic_body(
     expected_ret: Option<&crate::types::Type>,
 ) -> Result<crate::typed_ast::TypedBlock, crate::error::MetelError> {
     use super::conversions::{infer_type_to_type, type_to_infer};
-    use crate::typeinference::{instantiate_with_renaming, TypeVarGenerator};
+    use crate::typeinference::{TypeVarGenerator, instantiate_with_renaming};
 
     // Use a high starting counter to avoid collisions with registry TypeVars (allocated
     // starting from 0 during build_registry). The substitution built here would otherwise
     // incorrectly resolve registry TypeVars when ConstructCtx::new applies it.
-    let mut r#gen = TypeVarGenerator::with_counter(1_000_000);
+    let mut type_var_gen = TypeVarGenerator::with_counter(1_000_000);
 
-    let (instance, renaming) = instantiate_with_renaming(scheme, &mut r#gen);
+    let (instance, renaming) = instantiate_with_renaming(scheme, &mut type_var_gen);
     let InferType::Fun(param_infertypes, ret_infertype, ..) = instance else {
         return Err(crate::error::MetelError::internal(
             "construct_generic_body: scheme is not a function type",
@@ -949,11 +950,10 @@ pub(super) fn construct_generic_body(
     // construction, which arg_types alone can never carry for a no-argument call).
     // Unification failures here are skipped for the same "good enough substitution"
     // reason as the argument loop above.
-    if let Some(expected) = expected_ret {
-        if let Ok(s) = typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
-        {
-            subst = subst.compose(&s);
-        }
+    if let Some(expected) = expected_ret
+        && let Ok(s) = typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
+    {
+        subst = subst.compose(&s);
     }
 
     // Fill any still-unresolved type vars with Never (not Unit) so
@@ -1011,7 +1011,7 @@ pub(super) fn construct_generic_body(
         &subst,
         &type_ctx.scheme_env,
         &type_ctx.registry,
-        r#gen,
+        type_var_gen,
         // metel-core#1125: pass the frozen generic's own `symbols`/
         // `current_module` through so a static-method/constructor `Path`
         // inside the reconstructed body resolves its owning type by
@@ -1062,7 +1062,7 @@ pub(super) fn construct_program(
     subst: &Substitution,
     scheme_env: &SchemeEnv,
     registry: &TypeDefinitionRegistry,
-    r#gen: TypeVarGenerator,
+    type_var_gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     overloads: &crate::typeinference::OverloadTable,
     current_module: &[String],
@@ -1074,7 +1074,7 @@ pub(super) fn construct_program(
         subst,
         scheme_env,
         registry,
-        r#gen,
+        type_var_gen,
         symbols,
         overloads,
         current_module,
@@ -1105,31 +1105,30 @@ pub(super) fn construct_program(
         // evaluator can register and dispatch it by `SymbolId` (METEL-187). Only
         // genuine top-level declarations are post-processed here; methods and
         // nested/local functions keep `def_id: None`.
-        if let TypedDecl::Fun(f) = &mut typed {
-            if f.symbol_id.is_none() {
-                if let Some(syms) = symbols {
-                    f.def_id = syms
-                        .get(&(current_module.to_vec(), f.name.clone()))
-                        .copied();
-                }
-            }
+        if let TypedDecl::Fun(f) = &mut typed
+            && f.symbol_id.is_none()
+            && let Some(syms) = symbols
+        {
+            f.def_id = syms
+                .get(&(current_module.to_vec(), f.name.clone()))
+                .copied();
         }
         // Same identity assignment for top-level `let`/`mut` (ADR-0042): only
         // module-level bindings reach this loop, so this never touches a block-local
         // or `for`-init binding (those keep `def_id: None` from construction).
-        if let TypedDecl::Let(ld) = &mut typed {
-            if let Some(syms) = symbols {
-                ld.def_id = syms
-                    .get(&(current_module.to_vec(), ld.name.clone()))
-                    .copied();
-            }
+        if let TypedDecl::Let(ld) = &mut typed
+            && let Some(syms) = symbols
+        {
+            ld.def_id = syms
+                .get(&(current_module.to_vec(), ld.name.clone()))
+                .copied();
         }
-        if let TypedDecl::Mut(md) = &mut typed {
-            if let Some(syms) = symbols {
-                md.def_id = syms
-                    .get(&(current_module.to_vec(), md.name.clone()))
-                    .copied();
-            }
+        if let TypedDecl::Mut(md) = &mut typed
+            && let Some(syms) = symbols
+        {
+            md.def_id = syms
+                .get(&(current_module.to_vec(), md.name.clone()))
+                .copied();
         }
         out.push(typed);
     }
@@ -1249,29 +1248,29 @@ fn construct_literal_type(
 ) -> Result<Type, MetelError> {
     use crate::ast::{FloatKind, IntKind};
     match lit {
-        Literal::Int(n) => {
-            match expected_ty {
-                Some(Type::I8) => Ok(Type::I8),
-                Some(Type::I16) => Ok(Type::I16),
-                Some(Type::I32) => Ok(Type::I32),
-                Some(Type::U8) => Ok(Type::U8),
-                Some(Type::U16) => Ok(Type::U16),
-                Some(Type::U32) => Ok(Type::U32),
-                Some(Type::U64) => {
-                    if *n < 0 {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0005,
-                            format!("integer literal `{n}` is negative and cannot be used as a u64 index"),
-                            span,
-                        ));
-                    }
-                    Ok(Type::U64)
+        Literal::Int(n) => match expected_ty {
+            Some(Type::I8) => Ok(Type::I8),
+            Some(Type::I16) => Ok(Type::I16),
+            Some(Type::I32) => Ok(Type::I32),
+            Some(Type::U8) => Ok(Type::U8),
+            Some(Type::U16) => Ok(Type::U16),
+            Some(Type::U32) => Ok(Type::U32),
+            Some(Type::U64) => {
+                if *n < 0 {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0005,
+                        format!(
+                            "integer literal `{n}` is negative and cannot be used as a u64 index"
+                        ),
+                        span,
+                    ));
                 }
-                Some(Type::F32) => Ok(Type::F32),
-                Some(Type::F64) => Ok(Type::F64),
-                _ => Ok(Type::I64),
+                Ok(Type::U64)
             }
-        }
+            Some(Type::F32) => Ok(Type::F32),
+            Some(Type::F64) => Ok(Type::F64),
+            _ => Ok(Type::I64),
+        },
         Literal::Float(_) => match expected_ty {
             Some(Type::F32) => Ok(Type::F32),
             _ => Ok(Type::F64),
@@ -1865,23 +1864,22 @@ fn maybe_dyn_coerce(
         Type::Reference(exp_inner) | Type::MutReference(exp_inner),
         Type::Reference(act_inner) | Type::MutReference(act_inner),
     ) = (expected, actual.ty())
+        && let Type::Dyn { aspect, .. } = exp_inner.as_ref()
     {
-        if let Type::Dyn { aspect, .. } = exp_inner.as_ref() {
-            if !matches!(act_inner.as_ref(), Type::Dyn { .. })
-                && !ctx
-                    .registry
-                    .type_satisfies_aspect(ctx.current_module, act_inner, aspect)
-            {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0012,
-                    format!(
-                        "`{act_inner}` does not implement `{aspect}` (required to coerce to `&dyn {aspect}`)"
-                    ),
-                    span,
-                ));
-            }
-            return Ok(actual);
+        if !matches!(act_inner.as_ref(), Type::Dyn { .. })
+            && !ctx
+                .registry
+                .type_satisfies_aspect(ctx.current_module, act_inner, aspect)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{act_inner}` does not implement `{aspect}` (required to coerce to `&dyn {aspect}`)"
+                ),
+                span,
+            ));
         }
+        return Ok(actual);
     }
     let Type::Dyn { aspect, .. } = expected else {
         return Ok(actual);

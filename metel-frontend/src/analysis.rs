@@ -439,11 +439,13 @@ mod tests {
             analyze_virtual_root_with("editor.mtl", &provider, AnalysisOptions::default())
                 .expect("an in-memory program should be analyzable");
 
-        assert!(analysis
-            .graph
-            .modules
-            .iter()
-            .any(|module| module.module_path.is_empty()));
+        assert!(
+            analysis
+                .graph
+                .modules
+                .iter()
+                .any(|module| module.module_path.is_empty())
+        );
         assert!(analysis.warnings.is_empty());
     }
 

@@ -353,7 +353,7 @@ fn contains(span: &Span, filename: &str, byte_offset: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::{analyze_graph, analyze_virtual_root_with, AnalysisOptions};
+    use crate::analysis::{AnalysisOptions, analyze_graph, analyze_virtual_root_with};
     use crate::module_loader::{InMemorySourceProvider, LoadedModule, ModuleGraph};
 
     fn analysis(source: &str) -> crate::analysis::Analysis {
