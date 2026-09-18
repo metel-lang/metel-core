@@ -24,6 +24,14 @@ thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
     static PROFILER: RefCell<Option<ProfilerState>> = const { RefCell::new(None) };
 }
+// arch-implements: ["arch.evaluation.requirement-1"]
+// arch-implements: ["arch.evaluation.requirement-3"]
+// arch-implements: ["arch.evaluation.requirement-4"]
+// arch-implements: ["arch.evaluation.requirement-5"]
+// arch-implements: ["arch.evaluation.requirement-6"]
+// arch-implements: ["arch.evaluation.requirement-7"]
+// arch-implements: ["arch.evaluation.requirement-8"]
+// arch-implements: ["arch.evaluation.requirement-2"]
 
 pub(super) fn push_frame(fn_name: String, call_site: Span) {
     profiler_enter(&fn_name);
@@ -3984,6 +3992,7 @@ mod frame_tests {
         }
     }
 
+// arch-verifies: ["arch.evaluation.requirement-1"]
     #[test]
     fn define_binding_is_readable_by_local_id() {
         let mut env = Environment::new();
