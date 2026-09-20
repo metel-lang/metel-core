@@ -1,5 +1,4 @@
 [options]
-arch_verifies = ["arch.parsing.requirement-6"]
 spec = ["spec.lexical.literals.dynamics-2"]
 
 [expect]
