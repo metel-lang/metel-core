@@ -15,7 +15,6 @@ use super::{
     type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
     typed_place_ty, unqualified_variant_needs_annotation_error,
 };
-// arch-implements: ["arch.move-check.requirement-3"]
 
 fn capture_name(capture: &crate::ast::CaptureSpec) -> &str {
     match capture {
@@ -327,6 +326,7 @@ fn collect_pattern_bindings(
     }
 }
 
+// arch-implements: ["arch.move-check.requirement-3"]
 fn verify_closure_capture_list(
     capture_specs: &[crate::ast::CaptureSpec],
     call_multiplicity: crate::types::CallMultiplicity,
@@ -452,6 +452,7 @@ fn verify_closure_capture_list(
     }
 }
 
+// arch-implements: ["arch.move-check.requirement-3"]
 fn verify_capture_specs(
     capture_specs: &[crate::ast::CaptureSpec],
     call_mutation: crate::types::CallMutation,
