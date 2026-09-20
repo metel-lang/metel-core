@@ -53,6 +53,7 @@ pub enum MoveViolationKind {
 /// `Named` (the full struct) and every non-row type return `false` here — those
 /// are not narrowed, so the ordinary partial-move rule applies.
 #[must_use]
+// arch-implements: ["arch.move-check.requirement-1"]
 fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Type) -> bool {
     let present: Vec<&str> = match ty {
         Type::Residual { fields, .. } | Type::Record(fields) => {
@@ -3079,6 +3080,7 @@ fun main() { }
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn assignment_move_then_use_is_reported() {
         assert_has_violation(

@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
+arch_verifies = ["arch.type-construction.requirement-8"]
 error = ["T0009"]
 spec = ["spec.modules.visibility.legality-1"]
 [expect]

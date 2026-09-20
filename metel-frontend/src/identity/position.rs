@@ -39,6 +39,7 @@ pub struct PositionIndex {
 impl PositionIndex {
     /// Build from `(span, hit)` pairs collected during the identity walk.
     #[must_use]
+    // arch-implements: ["arch.resolution.requirement-4"]
     pub fn from_entries(mut entries: Vec<(Span, PositionHit)>) -> Self {
         // Sort by start, then by widest-first, so a linear scan can stop early
         // and the innermost match is deterministic.

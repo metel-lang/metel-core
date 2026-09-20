@@ -70,6 +70,32 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 docs/rfcs/tools/rfc.py check
 
+  architecture-evidence:
+    name: Architecture evidence
+    runs-on: ubuntu-latest
+    steps:
+      # This is the authoritative pairing: citations in this revision of the
+      # code are checked against exactly the docs commit recorded below.
+      # fetch-depth: 0 is required, not cosmetic: generate_architecture_evidence.py's
+      # git_ref() does a `git log -S` pickaxe search across full history to find the
+      # commit its evidence URLs should cite. A default shallow (depth-1) checkout
+      # only has the tip commit available, so the search silently resolves to HEAD
+      # itself instead of the real match -- every citation's URL then mismatches
+      # whatever is actually pinned in the docs submodule, and --check reports the
+      # entire spec corpus stale regardless of whether the underlying symbol/line
+      # citations are correct.
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: generated Architecture evidence is current
+        run: python3 docs/architecture/tools/generate_architecture_evidence.py --core . --check
+
   grammar-doc-check:
     name: grammar.md up to date
     runs-on: ubuntu-latest

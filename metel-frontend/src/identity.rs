@@ -153,6 +153,7 @@ pub enum BindingId {
 impl BindingId {
     /// The global identity, if this is a global binding.
     #[must_use]
+    // arch-implements: ["arch.resolution.requirement-1"]
     pub fn as_global(self) -> Option<SymbolId> {
         match self {
             BindingId::Global(id) => Some(id),

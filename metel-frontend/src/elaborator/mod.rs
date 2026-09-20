@@ -41,6 +41,7 @@ pub struct ElaboratedModuleGraph(pub TypedModuleGraph);
 /// # Errors
 /// Returns an error if two different aspects provide the same method name for the
 /// same type, making dispatch ambiguous (T0013).
+// arch-implements: ["arch.elaboration.requirement-1"]
 pub fn elaborate(
     mut graph: TypedModuleGraph,
     names: &ResolvedNames,
@@ -554,6 +555,7 @@ mod tests {
     const FOO_ID: SymbolId = SymbolId(9001);
     const BAR_ID: SymbolId = SymbolId(9002);
 
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_aspect_returns_aspect_variant() {
         let mut map = HashMap::new();

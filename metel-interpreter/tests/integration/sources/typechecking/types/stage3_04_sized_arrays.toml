@@ -1,2 +1,3 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-3"]
 spec = ["spec.types.fixed-size-arrays.legality-1", "spec.types.fixed-size-arrays.legality-2", "spec.types.fixed-size-arrays.legality-3", "spec.types.fixed-size-arrays.legality-4"]

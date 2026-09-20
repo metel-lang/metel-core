@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.type-inference.requirement-3"]
 error = ["T0007"]
 spec = ["spec.functions.the-operator.legality-2"]
 

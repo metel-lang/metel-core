@@ -1,3 +1,4 @@
 [options]
+arch_verifies = ["arch.parsing.requirement-5"]
 move_check = true
 spec = ["spec.types.perhaps-t.legality-1"]

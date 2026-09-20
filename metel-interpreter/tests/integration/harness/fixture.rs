@@ -84,6 +84,14 @@ pub struct FixtureOptions {
     /// coverage. `rfc.py` reads it when regenerating the Formal-rules blocks.
     /// An empty / whitespace-only value is treated as unset.
     pub spec_title: Option<String>,
+    /// Architecture Spec claim citations this fixture verifies, e.g.
+    /// `arch_verifies = ["arch.evaluation.requirement-3"]`. Parallel to
+    /// `spec =`, but for `architecture/spec/*.md`'s `arch-*` requirements
+    /// (metel-core#1175) rather than the Language Spec's Formal-rules
+    /// blocks. `metel-docs/architecture/tools/generate_architecture_evidence.py`
+    /// reads this key straight from the `.toml` source (not through this
+    /// harness) to render each requirement's `verified by` evidence link.
+    pub arch_verifies: Vec<String>,
     /// Error-code citations this fixture demonstrates, e.g. `error =
     /// ["T0003"]` -- a fixture whose own `expect.code` produces that code.
     /// Deliberately a separate key from `spec =`, not a widened form of it:
@@ -105,6 +113,7 @@ struct PartialConfig {
     spec: Option<Vec<String>>,
     skip: Option<String>,
     spec_title: Option<String>,
+    arch_verifies: Option<Vec<String>>,
     error: Option<Vec<String>>,
     status: Option<ExpectStatus>,
     code: Option<String>,
@@ -220,6 +229,9 @@ fn merge_config(defaults: FixtureConfig, partial: PartialConfig) -> FixtureConfi
             spec: partial.spec.unwrap_or(defaults.options.spec),
             skip: partial.skip.or(defaults.options.skip),
             spec_title: partial.spec_title.or(defaults.options.spec_title),
+            arch_verifies: partial
+                .arch_verifies
+                .unwrap_or(defaults.options.arch_verifies),
             error: partial.error.unwrap_or(defaults.options.error),
         },
         expect: Expectation {
@@ -295,6 +307,9 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                     partial.spec_title = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 }
                 "error" => partial.error = Some(parse_error_code_list(&value, path)),
+                "arch_verifies" => {
+                    partial.arch_verifies = Some(parse_arch_verifies_list(&value, path));
+                }
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
                     path.display()
@@ -573,6 +588,46 @@ fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
                  `spec.<file>.<section>.<kind>-<n>` (kind is `legality` or `dynamics`, `n` is \
                  digits with an optional split-lineage letter suffix, no colons anywhere), \
                  per ADR-0050",
+                path.display()
+            );
+        }
+    }
+    citations
+}
+
+/// Parses and validates an `options.arch_verifies` list against the
+/// Architecture Spec's citation grammar (metel-core#1175):
+/// `arch.<section>.requirement-<n>`, where `section` is one or more
+/// dot-separated kebab-case segments naming an `architecture/spec/*.md`
+/// file's `##### Requirement {#arch....}` anchor, and `n` is one or more
+/// digits. Mirrors `parse_spec_list`'s shape but for `arch-*` Architecture
+/// Spec requirements rather than Language Spec Formal-rules blocks; kept to
+/// the exact grammar `generate_architecture_evidence.py`'s `ID` regex
+/// expects, since that script reads this key straight from the `.toml`
+/// source rather than through this harness.
+fn parse_arch_verifies_list(raw: &str, path: &Path) -> Vec<String> {
+    let citations = parse_list(raw);
+    for citation in &citations {
+        let valid = (|| {
+            let rest = citation.strip_prefix("arch.")?;
+            let (section, n) = rest.rsplit_once(".requirement-")?;
+            let is_kebab = |s: &str| {
+                !s.is_empty()
+                    && s.chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            };
+            (!n.is_empty()
+                && n.chars().all(|c| c.is_ascii_digit())
+                && !section.is_empty()
+                && section.split('.').all(is_kebab))
+            .then_some(())
+        })()
+        .is_some();
+        if !valid {
+            panic!(
+                "invalid `arch_verifies` citation `{citation}` in {} -- expected \
+                 `arch.<section>.requirement-<n>` (section is one or more dot-separated \
+                 kebab-case segments, n is digits), per metel-core#1175",
                 path.display()
             );
         }

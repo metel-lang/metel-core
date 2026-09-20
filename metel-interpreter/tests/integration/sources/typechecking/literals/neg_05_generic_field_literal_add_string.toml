@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-7"]
 error = ["T0005"]
 
 [expect]

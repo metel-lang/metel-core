@@ -1,5 +1,6 @@
 runner = "load_graph"
 [options]
+arch_verifies = ["arch.parsing.requirement-1"]
 spec = ["spec.modules.module-graph-loading.legality-2"]
 [expect]
 status = "load_error"

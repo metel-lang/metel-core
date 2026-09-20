@@ -1,2 +1,3 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-9", "arch.type-construction.requirement-1"]
 spec = ["spec.declarations.aspects.default-methods.dynamics-1"]
