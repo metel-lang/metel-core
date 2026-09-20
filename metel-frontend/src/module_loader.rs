@@ -19,7 +19,6 @@ use crate::parser;
 /// clone per load is equivalent to a fresh parse and cannot leak between runs.
 type StdlibParseCache = Mutex<HashMap<(Vec<String>, u64), Program>>;
 static STDLIB_PARSE_CACHE: OnceLock<StdlibParseCache> = OnceLock::new();
-// arch-implements: ["arch.parsing.requirement-2"]
 
 fn hash_source(source: &str) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -295,6 +294,7 @@ pub fn load_root_with<P: SourceProvider>(
 /// # Errors
 /// Returns an error if the provider cannot supply the root or an imported
 /// module, or if parsing or module-graph validation fails.
+// arch-implements: ["arch.parsing.requirement-2"]
 pub fn load_virtual_root_with<P: SourceProvider>(
     path: impl AsRef<Path>,
     provider: &P,
@@ -1016,6 +1016,7 @@ mod tests {
         assert!(src.contains("fun hi"));
     }
 
+    // arch-verifies: ["arch.parsing.requirement-2"]
     #[test]
     fn multi_file_source_provider_resolves_an_import() {
         // metel-core#1147: the virtual-root path could previously only ever
@@ -1043,6 +1044,56 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.parsing.requirement-1"]
+    #[test]
+    fn modules_load_in_dependency_order() {
+        let provider = MultiFileSourceProvider::new(
+            "editor.mtl",
+            "import b::from_b;\nfun main() -> i64 { from_b() }\n",
+        )
+        .with_file(
+            "b.mtl",
+            "import c::from_c;\npublic fun from_b() -> i64 { from_c() }\n",
+        )
+        .with_file("c.mtl", "public fun from_c() -> i64 { 1 }\n");
+        let graph = load_virtual_root_with("editor.mtl", &provider).expect("graph loads");
+        let position = |name: &str| {
+            graph
+                .modules
+                .iter()
+                .position(|m| m.module_path.last().is_some_and(|seg| seg == name))
+                .unwrap_or_else(|| panic!("module `{name}` missing from the graph"))
+        };
+        assert!(
+            position("c") < position("b"),
+            "c must precede its importer b"
+        );
+        assert!(
+            position("b") < graph.modules.len() - 1,
+            "the root module is last, after everything it imports"
+        );
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-1"]
+    #[test]
+    fn a_cycle_is_reported_with_its_full_chain() {
+        let provider = MultiFileSourceProvider::new(
+            "editor.mtl",
+            "import a::fa;\nfun main() -> i64 { fa() }\n",
+        )
+        .with_file("a.mtl", "import b::fb;\npublic fun fa() -> i64 { fb() }\n")
+        .with_file("b.mtl", "import a::fa;\npublic fun fb() -> i64 { fa() }\n");
+        let err =
+            load_virtual_root_with("editor.mtl", &provider).expect_err("cycle must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("circular module dependency")
+                && message.contains("a.mtl -> b.mtl -> a.mtl"),
+            "expected the traced cycle `a.mtl -> b.mtl -> a.mtl`, got: {message}"
+        );
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-2"]
     #[test]
     fn multi_file_source_provider_reports_a_missing_sibling() {
         // The other half of the same fix: a genuinely absent sibling must
@@ -1058,6 +1109,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.parsing.requirement-2"]
     #[test]
     fn virtual_root_loads_without_an_on_disk_root() {
         let provider = InMemorySourceProvider::new("playground.mtl", "fun main() {}");

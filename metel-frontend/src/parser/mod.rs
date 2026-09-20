@@ -3551,3 +3551,137 @@ mod path_segment_span_tests {
         assert_eq!(&src[seg_spans[1].start..seg_spans[1].end], "run");
     }
 }
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    //! Targeted evidence for `arch.parsing.*` claims.
+
+    use super::parse;
+    use crate::ast::{BinOp, Decl, Expr, Span, Stmt};
+
+    fn main_body(src: &str) -> crate::ast::Block {
+        let program = parse(src, "t.mtl").expect("parse");
+        program
+            .decls
+            .iter()
+            .find_map(|d| match d {
+                Decl::Fun(f) if f.name == "main" => Some(f.body.clone()),
+                _ => None,
+            })
+            .expect("fn main")
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-3"]
+    #[test]
+    fn span_is_eq_hash_and_carries_resolved_line_and_column() {
+        fn assert_key<T: Eq + std::hash::Hash>() {}
+        assert_key::<Span>();
+
+        let program = parse("fun a() {}\n  fun b() {}\n", "t.mtl").expect("parse");
+        let Decl::Fun(second) = &program.decls[1] else {
+            panic!("expected a fun decl");
+        };
+        assert_eq!(second.name, "b");
+        assert_eq!((second.span.line, second.span.col), (2, 3));
+        assert_eq!(second.span.filename, "t.mtl");
+        assert!(second.span.start < second.span.end);
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-4"]
+    #[test]
+    fn else_if_is_a_nested_if_in_the_else_block_and_a_bare_if_has_no_else() {
+        let body = main_body("fun main() { if (a) { 1 } else if (b) { 2 } else { 3 } }\n");
+        let Expr::If {
+            else_branch: Some(outer_else),
+            ..
+        } = *body.tail.expect("tail")
+        else {
+            panic!("expected an if with an else");
+        };
+        let Some(nested) = outer_else.tail.as_deref() else {
+            panic!("the else block should hold the nested if as its tail");
+        };
+        assert!(
+            matches!(
+                nested,
+                Expr::If {
+                    else_branch: Some(_),
+                    ..
+                }
+            ),
+            "`else if` must be a nested `if` inside a block, not a separate chain node"
+        );
+
+        let body = main_body("fun main() { if (a) { 1 } }\n");
+        assert!(matches!(
+            *body.tail.expect("tail"),
+            Expr::If {
+                else_branch: None,
+                ..
+            }
+        ));
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-4"]
+    #[test]
+    fn control_flow_is_an_expression_in_tail_and_statement_position() {
+        // Statement position wraps the very same `Expr` -- there are no
+        // statement-only `if`/`match`/`loop` forms.
+        let body = main_body(
+            "fun main() { if (a) { 1 } else { 2 }; loop { break 1 }; match (x) { _ => 1 }; }\n",
+        );
+        assert_eq!(body.stmts.len(), 3);
+        let stmt_expr = |d: &Decl| match d {
+            Decl::Stmt(stmt) => match &**stmt {
+                Stmt::Expr(expr) => Some(expr.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        assert!(matches!(stmt_expr(&body.stmts[0]), Some(Expr::If { .. })));
+        assert!(matches!(stmt_expr(&body.stmts[1]), Some(Expr::Loop { .. })));
+        assert!(matches!(stmt_expr(&body.stmts[2]), Some(Expr::Match(_))));
+
+        let body = main_body("fun main() { match (x) { _ => 1 } }\n");
+        assert!(matches!(*body.tail.expect("tail"), Expr::Match(_)));
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-6"]
+    #[test]
+    fn interpolation_lowers_to_add_of_to_string_calls() {
+        let body = main_body("fun main() { \"a${x}b\" }\n");
+        let Expr::BinOp(_, BinOp::Add, _, _) = *body.tail.expect("tail") else {
+            panic!("interpolation should lower to a `+` chain");
+        };
+        // Somewhere in the chain each hole is a `.to_string()` call.
+        fn has_to_string(e: &Expr) -> bool {
+            match e {
+                Expr::MethodCall { method, .. } if method == "to_string" => true,
+                Expr::BinOp(l, _, r, _) => has_to_string(l) || has_to_string(r),
+                _ => false,
+            }
+        }
+        let body = main_body("fun main() { \"a${x}b\" }\n");
+        assert!(has_to_string(&body.tail.expect("tail")));
+    }
+
+    // arch-verifies: ["arch.parsing.requirement-6"]
+    #[test]
+    fn the_ast_has_no_interpolation_node() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ast");
+        for entry in std::fs::read_dir(&dir).expect("ast/ exists") {
+            let path = entry.expect("dir entry").path();
+            let code: String = std::fs::read_to_string(&path)
+                .expect("ast source readable")
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !code.contains("Interpolat"),
+                "{} defines an interpolation node; interpolation must lower during parsing",
+                path.display()
+            );
+        }
+    }
+}
