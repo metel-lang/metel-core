@@ -1,3 +1,2 @@
 [options]
 arch_verifies = ["arch.evaluation.requirement-7"]
-move_check = true

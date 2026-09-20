@@ -1,0 +1,3 @@
+let x := 1;
+
+public fun get_a() -> i64 { x }

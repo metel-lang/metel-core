@@ -3996,6 +3996,7 @@ mod frame_tests {
         assert_eq!(as_i64(env.get_local(id)), Some(7));
     }
 
+    // arch-verifies: ["arch.evaluation.requirement-1"]
     #[test]
     fn a_binding_with_no_id_is_simply_not_stored() {
         // metel-core#1054: `id: None` means identity allocation had nothing
@@ -4006,6 +4007,7 @@ mod frame_tests {
         assert!(env.get_local(LocalId(0x9999)).is_none());
     }
 
+    // arch-verifies: ["arch.evaluation.requirement-1"]
     #[test]
     fn distinct_local_ids_do_not_alias() {
         // Two bindings at different lexical paths hash to different
@@ -4180,5 +4182,167 @@ mod frame_tests {
         assert_eq!(as_i64(Some(aliased_cell.borrow().clone())), Some(2));
 
         assert!(!env.set_local(LocalId(8), Value::I64(99)));
+    }
+}
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    //! Targeted evidence for `arch.evaluation.*` claims that integration
+    //! fixtures only exercise indirectly.
+
+    use super::{
+        Environment, RuntimeCallable, RuntimeMethod, RuntimeRegistry, RuntimeSignature, Value,
+        pop_frame, push_frame,
+    };
+    use crate::ast::Span;
+    use crate::error::MetelError;
+    use crate::identity::LocalId;
+    use crate::symbols::SymbolId;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    fn array(items: &[i64]) -> Rc<RefCell<Vec<Value>>> {
+        Rc::new(RefCell::new(items.iter().map(|n| Value::I64(*n)).collect()))
+    }
+
+    fn first_of(value: &Value) -> i64 {
+        match value {
+            Value::Array(items) => match items.borrow()[0] {
+                Value::I64(n) => n,
+                _ => panic!("expected an i64 element"),
+            },
+            _ => panic!("expected an array"),
+        }
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-5"]
+    #[test]
+    fn define_binding_deep_clones_arrays() {
+        let source = array(&[1, 2, 3]);
+        let mut env = Environment::new();
+        let id = LocalId(1);
+        env.define_binding(Some(id), Value::Array(Rc::clone(&source)));
+        source.borrow_mut()[0] = Value::I64(99);
+        assert_eq!(
+            first_of(&env.get_local(id).unwrap()),
+            1,
+            "the binding aliased its source array"
+        );
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-5"]
+    #[test]
+    fn set_local_deep_clones_arrays() {
+        let mut env = Environment::new();
+        let id = LocalId(2);
+        env.define_binding(Some(id), Value::Unit);
+        let source = array(&[1, 2, 3]);
+        assert!(env.set_local(id, Value::Array(Rc::clone(&source))));
+        source.borrow_mut()[0] = Value::I64(99);
+        assert_eq!(
+            first_of(&env.get_local(id).unwrap()),
+            1,
+            "the assignment aliased its source array"
+        );
+    }
+
+    fn depth() -> usize {
+        super::CALL_STACK.with(|s| s.borrow().len())
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-6"]
+    #[test]
+    fn call_frames_push_on_entry_and_pop_on_exit() {
+        let start = depth();
+        push_frame("outer".to_string(), Span::new(0, 0, "t"));
+        push_frame("inner".to_string(), Span::new(0, 0, "t"));
+        assert_eq!(depth(), start + 2);
+        pop_frame();
+        assert_eq!(depth(), start + 1);
+        pop_frame();
+        assert_eq!(depth(), start);
+    }
+
+    fn native(label: &str) -> RuntimeMethod {
+        fn zero(_: &[Value], _: &Span) -> Result<Value, MetelError> {
+            Ok(Value::I64(0))
+        }
+        RuntimeMethod {
+            label: label.to_string(),
+            receiver: None,
+            signature: RuntimeSignature::default(),
+            body: RuntimeCallable::Intrinsic {
+                label: label.to_string(),
+                fun: zero,
+            },
+        }
+    }
+
+    fn label_of(value: Option<Value>) -> Option<String> {
+        match value {
+            Some(Value::Callable(RuntimeCallable::Intrinsic { label, .. })) => Some(label),
+            _ => None,
+        }
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-2"]
+    #[test]
+    fn same_named_types_dispatch_by_symbol_id_not_name() {
+        let mut registry = RuntimeRegistry::new();
+        registry.register_type_value(SymbolId(1), "Config", "new", native("alpha"));
+        registry.register_type_value(SymbolId(2), "Config", "new", native("beta"));
+        assert_eq!(
+            label_of(registry.get_type_value_by_id(SymbolId(1), "new")).as_deref(),
+            Some("alpha")
+        );
+        assert_eq!(
+            label_of(registry.get_type_value_by_id(SymbolId(2), "new")).as_deref(),
+            Some("beta")
+        );
+        assert!(registry.get_type_value_by_id(SymbolId(3), "new").is_none());
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-3"]
+    #[test]
+    fn perhaps_and_result_have_no_dedicated_value_variants() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/evaluator/mod.rs");
+        let source = std::fs::read_to_string(path).expect("evaluator/mod.rs readable");
+        let start = source.find("pub enum Value {").expect("Value enum");
+        let end = start + source[start..].find("\n}\n").expect("end of Value enum");
+        let variants: Vec<&str> = source[start..end]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect();
+        let body = variants.join("\n");
+        for forbidden in ["Perhaps", "Result", "Some", "Ok", "Err"] {
+            assert!(
+                !body
+                    .split(|c: char| !c.is_alphanumeric())
+                    .any(|word| word == forbidden),
+                "`Value` has a dedicated `{forbidden}` variant; Perhaps/Result must be ordinary `Value::Enum`s"
+            );
+        }
+    }
+
+    // arch-verifies: ["arch.evaluation.requirement-8"]
+    #[test]
+    fn dyn_aspect_value_rebuilds_its_dyn_type_without_exposing_the_concrete_value() {
+        let value = Value::DynAspect {
+            data: Rc::new(RefCell::new(Value::I64(5))),
+            type_id: SymbolId(10),
+            aspect_id: SymbolId(11),
+            aspect_name: "Counter".to_string(),
+            type_args: vec![],
+        };
+        let registry = crate::typeinference::TypeDefinitionRegistry::new();
+        let ty = super::type_of::value_to_type(&value, &registry, &Span::new(0, 0, "t"));
+        assert_eq!(
+            ty,
+            crate::types::Type::Dyn {
+                aspect: "Counter".to_string(),
+                type_args: vec![]
+            },
+            "a dyn Aspect value's static type must stay `dyn Aspect`, never the wrapped i64"
+        );
     }
 }

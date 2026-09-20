@@ -1,0 +1,6 @@
+[options]
+arch_verifies = ["arch.evaluation.requirement-6"]
+
+[expect]
+status = "runtime_error"
+contains = "in outer_call"
