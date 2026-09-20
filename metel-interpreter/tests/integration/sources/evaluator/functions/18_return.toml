@@ -1,3 +1,2 @@
 [options]
-arch_verifies = ["arch.evaluation.requirement-6"]
 spec = ["spec.functions.named-function-declarations.dynamics-1"]

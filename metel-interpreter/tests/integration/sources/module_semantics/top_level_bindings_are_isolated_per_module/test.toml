@@ -1,0 +1,8 @@
+runner = "full_pipeline"
+prelude = "default"
+
+[options]
+arch_verifies = ["arch.evaluation.requirement-1"]
+
+[expect]
+status = "success"

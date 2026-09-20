@@ -1,3 +1,2 @@
 [options]
-arch_verifies = ["arch.evaluation.requirement-7"]
 spec = ["spec.types.fixed-size-arrays.legality-6"]

@@ -1,0 +1,9 @@
+// Two modules each declare a top-level `x`; each module runs in its own
+// environment, so neither observes the other's binding.
+import a::get_a;
+import b::get_b;
+
+fun main() {
+    assert(get_a() == 1);
+    assert(get_b() == 2);
+}

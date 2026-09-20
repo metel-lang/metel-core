@@ -1,0 +1,32 @@
+// Receiver modes are preserved through method dispatch: `&var self` shares the
+// caller's receiver cell, so a nested-field mutation is visible to the very next
+// call with no writeback; `&self` reads; `self` consumes.
+struct Inner {
+    n: i64,
+}
+
+struct Outer {
+    inner: Inner,
+}
+
+extend Outer {
+    fun bump(&var self) {
+        self.inner.n := self.inner.n + 1;
+    }
+
+    fun peek(&self) -> i64 {
+        self.inner.n
+    }
+
+    fun consume(self) -> i64 {
+        self.inner.n
+    }
+}
+
+fun main() {
+    var o := Outer { inner = Inner { n = 0 } };
+    o.bump();
+    o.bump();
+    assert(o.peek() == 2);
+    assert(o.consume() == 2);
+}

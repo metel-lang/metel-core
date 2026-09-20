@@ -1,3 +1,2 @@
 [options]
-arch_verifies = ["arch.evaluation.requirement-5"]
 spec = ["spec.expressions.control-flow.break-continue-and-return.dynamics-1"]
