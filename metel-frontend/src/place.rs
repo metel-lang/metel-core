@@ -46,7 +46,6 @@ pub enum Projection {
 impl Projection {
     /// A field step from a bare name, with no resolved identity yet.
     #[must_use]
-    // arch-implements: ["arch.move-check.requirement-2"]
     pub fn field(name: impl Into<String>) -> Self {
         Self::Field {
             name: name.into(),
@@ -192,6 +191,7 @@ impl std::fmt::Display for Place {
 /// Returns `None` for an expression that produces a fresh value rather than
 /// naming an existing location (a call, a literal, an arithmetic result).
 #[must_use]
+// arch-implements: ["arch.move-check.requirement-2"]
 pub fn from_expr(expr: &TypedExpr) -> Option<Place> {
     match expr {
         TypedExpr::Ident(name, _, _, _) => Some(Place::new(name.clone())),
@@ -313,5 +313,28 @@ mod tests {
         assert_ne!(reference, pointee);
         assert!(reference.is_prefix_of(&pointee));
         assert!(!pointee.is_prefix_of(&reference));
+    }
+}
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    // arch-verifies: ["arch.move-check.requirement-2"]
+    #[test]
+    fn place_representation_carries_no_move_analysis_state() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/place.rs");
+        let code: String = std::fs::read_to_string(path)
+            .expect("place.rs readable")
+            .lines()
+            .take_while(|line| !line.contains("#[cfg(test)]"))
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+            .to_lowercase();
+        for forbidden in ["moved", "movestate", "move_check", "partial_move"] {
+            assert!(
+                !code.contains(forbidden),
+                "place.rs mentions `{forbidden}`; places must stay analysis-neutral so a second analysis can share them"
+            );
+        }
     }
 }

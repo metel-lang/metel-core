@@ -319,3 +319,14 @@ mod tests {
         assert!(report.warnings.is_empty());
     }
 }
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    use super::RunOptions;
+
+    // arch-verifies: ["arch.move-check.requirement-1"]
+    #[test]
+    fn move_checking_is_off_unless_requested() {
+        assert!(!RunOptions::default().move_check);
+    }
+}

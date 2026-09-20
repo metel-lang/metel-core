@@ -53,7 +53,6 @@ pub enum MoveViolationKind {
 /// `Named` (the full struct) and every non-row type return `false` here — those
 /// are not narrowed, so the ordinary partial-move rule applies.
 #[must_use]
-// arch-implements: ["arch.move-check.requirement-1"]
 fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Type) -> bool {
     let present: Vec<&str> = match ty {
         Type::Residual { fields, .. } | Type::Record(fields) => {
@@ -156,6 +155,7 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
 ///
 /// # Errors
 /// Returns `T0019` when the graph contains a move-checking violation.
+// arch-implements: ["arch.move-check.requirement-1"]
 pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> {
     let report = collect_graph_violations(graph);
     if let Some(violation) = report
@@ -2977,6 +2977,7 @@ mod tests {
         warnings
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn unchecked_generic_body_is_reported_to_compiler_callers() {
         let warnings = move_warnings_for_source(
@@ -3191,6 +3192,7 @@ fun main() {
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn whole_value_use_after_partial_move_is_a_typecheck_error() {
         // RFC-0137 slice 2 (metel-core#858): `pair` narrows to `Pair.{ right }`
@@ -3217,6 +3219,7 @@ fun main() {
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn partial_move_of_drop_type_is_reported() {
         assert_has_violation(
@@ -3404,6 +3407,7 @@ fun main() {
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn array_element_move_is_reported() {
         assert_has_violation(
@@ -3515,6 +3519,7 @@ fun main() {
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn plain_binding_of_mut_ref_then_use_is_reported() {
         assert_has_violation(
@@ -3633,6 +3638,7 @@ fun main() {
         );
     }
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn borrowed_array_for_in_cannot_move_a_noncopy_element() {
         assert_has_violation(
@@ -4206,6 +4212,7 @@ fun main() {
     // reject it directly, not by tracking a move of the place that never
     // happens. Rejected at the first call, not the second.
 
+    // arch-verifies: ["arch.move-check.requirement-1"]
     #[test]
     fn a_by_value_method_through_a_shared_reference_is_rejected_at_the_first_call() {
         let violations = assert_has_violation(

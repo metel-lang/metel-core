@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
+arch_verifies = ["arch.elaboration.requirement-1"]
 error = ["T0013"]
 
 [expect]

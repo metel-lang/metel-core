@@ -27,6 +27,7 @@ fn is_through_shared_reference(expr: &TypedExpr) -> bool {
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.move-check.requirement-3"]
 pub(super) fn construct_call(
     callee: &Expr,
     type_args: &[TypeExpr],

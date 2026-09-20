@@ -1,2 +1,3 @@
 [options]
+arch_verifies = ["arch.coherence.requirement-2"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-8"]

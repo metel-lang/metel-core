@@ -687,3 +687,17 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    // arch-verifies: ["arch.path-normalization.requirement-1"]
+    #[test]
+    fn normalized_graph_can_only_be_built_inside_this_crate() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/path_normalizer.rs");
+        let source = std::fs::read_to_string(path).expect("path_normalizer.rs readable");
+        assert!(
+            source.contains("pub struct NormalizedModuleGraph(pub(crate) ModuleGraph);"),
+            "NormalizedModuleGraph's inner field must stay crate-private so only `normalize` can produce one"
+        );
+    }
+}

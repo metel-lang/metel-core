@@ -28,15 +28,16 @@ use crate::types::Type;
 /// | `MethodDispatch` per call site | `TypedExpr::MethodCall::dispatch` | Resolved during elaboration; evaluator reads, does not re-derive |
 /// | `TypedImplBlock::aspect_id` | `TypedImplBlock` | Set during typechecker construction pass (Pass 2) using the same symbol table |
 ///
-/// After `elaborate` returns, `MethodDispatch::Dynamic` sites are those whose receiver type
-/// had no aspect-method registration in the registry (e.g. calls on `fn` or tuple types).
-/// All others are `Inherent` or `Aspect { aspect_id }`.
+/// After `elaborate` returns, no method call is left `MethodDispatch::Dynamic`: a site is
+/// `Aspect { aspect_id }` when the receiver's type registers the method through an aspect,
+/// and `Inherent` otherwise (including a receiver with no nameable type, such as a `fn` or
+/// tuple -- the evaluator treats `Inherent` and `Dynamic` identically).
 pub struct ElaboratedModuleGraph(pub TypedModuleGraph);
 
 /// Run elaboration over `graph` and return an `ElaboratedModuleGraph`.
 ///
-/// Each `MethodCall::dispatch` field starts as `Dynamic`; this pass upgrades it to
-/// `Aspect { aspect_id }` or `Inherent` where the target can be statically determined.
+/// Each `MethodCall::dispatch` field starts as `Dynamic`; this pass resolves it to
+/// `Aspect { aspect_id }` or `Inherent`.
 ///
 /// # Errors
 /// Returns an error if two different aspects provide the same method name for the
@@ -568,6 +569,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_wrong_type_returns_inherent() {
         let mut map = HashMap::new();
@@ -581,6 +583,7 @@ mod tests {
 
     /// metel-core#1136: two unrelated modules' same-named types (same bare
     /// `"Foo"` spelling, distinct `SymbolId`s) must not collide.
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_same_bare_name_different_identity_returns_inherent() {
         let mut map = HashMap::new();
@@ -592,6 +595,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_no_type_returns_inherent() {
         let mut map = HashMap::new();
@@ -611,6 +615,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.elaboration.requirement-1"]
     #[test]
     fn resolve_dispatch_non_aspect_method_returns_inherent() {
         let mut map = HashMap::new();

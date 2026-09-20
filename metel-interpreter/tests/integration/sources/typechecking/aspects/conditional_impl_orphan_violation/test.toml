@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.coherence.requirement-1"]
 error = ["T0014"]
 spec = ["spec.declarations.aspects.implementing-an-aspect.legality-10"]
 
