@@ -1,0 +1,13 @@
+// Until destructors are invoked, a `std::core::Drop` impl may only declare an
+// empty `drop` body: cleanup code here would silently never run.
+struct Guard {
+    v: i64,
+}
+
+extend Guard: Drop {
+    fun drop(&var self) {
+        let _unused := self.v;
+    }
+}
+
+fun main() {}

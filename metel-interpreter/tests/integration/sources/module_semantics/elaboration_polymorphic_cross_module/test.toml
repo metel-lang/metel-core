@@ -2,6 +2,7 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
+arch_verifies = ["arch.type-construction.requirement-1"]
 move_check = true
 
 [expect]

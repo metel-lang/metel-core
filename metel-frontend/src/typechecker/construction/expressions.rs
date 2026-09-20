@@ -698,6 +698,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
+// arch-implements: ["arch.type-construction.requirement-6"]
 pub(super) fn construct_expr(
     expr: &Expr,
     expected_ty: Option<&Type>,

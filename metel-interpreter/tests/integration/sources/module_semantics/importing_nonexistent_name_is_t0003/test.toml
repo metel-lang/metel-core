@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
+arch_verifies = ["arch.type-construction.requirement-8"]
 error = ["T0003"]
 
 [expect]

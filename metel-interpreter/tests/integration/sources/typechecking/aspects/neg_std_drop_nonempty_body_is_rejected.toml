@@ -1,7 +1,7 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-5"]
 error = ["T0001"]
 
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "field `inner` has type `Inner<T>` which is not `Copy`"
