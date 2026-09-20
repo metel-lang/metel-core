@@ -193,9 +193,9 @@ pub struct EnumDecl {
 #[derive(Debug, Clone)]
 pub struct ImplBlock {
     /// `Negative` for `impl !Aspect for Type {}` (RFC-0081) — body must be empty,
-    /// checked by the parser. Not yet coherence-checked (issue #264's job); this
-    /// field exists so the syntax parses and `registry.rs` doesn't register a
-    /// negative impl as a positive one.
+    /// checked by the parser. Coherence checks it (`coherence.rs`: polarity
+    /// mismatches and negative-impl overlap, RFC-0081 §2.2), and `registry.rs`
+    /// uses it so a negative impl is never registered as a positive one.
     pub polarity: Polarity,
     /// Type parameters scoped to this impl block (RFC-0036), e.g. `impl<T: Bound>
     /// Aspect for Type<T> { ... }`. Empty for a non-generic impl.
@@ -204,13 +204,12 @@ pub struct ImplBlock {
     pub aspect_type_args: Vec<TypeExpr>,
     pub target_type: TypeExpr,
     /// The `where T: Bound` form of RFC-0036's conditional impls, equivalent to an
-    /// inline bound in `generics`. Not yet consumed — real bound-satisfaction
-    /// checking at each instantiation is issue #241's job.
+    /// inline bound in `generics`. Coherence merges it into the impl's bounds
+    /// (`coherence.rs`), and bound satisfaction is checked at each instantiation.
     #[allow(dead_code)]
     pub where_clause: Option<WhereClause>,
-    /// `type Name = ConcreteType;` definitions (RFC-0082). Not yet checked against
-    /// the aspect's own declared associated types (issue #242's job) — this only
-    /// makes the syntax parse and carry through to the typed AST.
+    /// `type Name = ConcreteType;` definitions (RFC-0082). Checked against the
+    /// aspect's own declared associated types: a missing definition is `T0017`.
     #[allow(dead_code)]
     pub assoc_type_defs: Vec<AssocTypeDef>,
     pub methods: Vec<FunDecl>,
@@ -242,7 +241,7 @@ pub struct AspectDecl {
     pub name: String,
     pub generics: Vec<String>,
     /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1).
-    /// Enforced against impl definitions (issue #242).
+    /// Enforced against impl definitions (a missing one is `T0017`).
     pub assoc_types: Vec<AssocTypeDecl>,
     pub methods: Vec<AspectMethod>,
     pub span: Span,
@@ -369,8 +368,9 @@ pub struct VariantDef {
     pub span: Span,
 }
 
-/// An aspect method declaration. Fields beyond `name` are reserved for
-/// aspect completeness checking and default body dispatch (not yet implemented).
+/// An aspect method declaration. Completeness checking (a missing required method
+/// is `T0012`) and default-body dispatch use it; some fields are kept for
+/// diagnostics that don't read them yet.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct AspectMethod {

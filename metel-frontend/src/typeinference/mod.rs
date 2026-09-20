@@ -2374,7 +2374,8 @@ impl TypeDefinitionRegistry {
     ///
     /// Field access / visibility checks start from a value whose `Type::Named`
     /// spelling inference already bound to a real declaration — but the typed IR
-    /// does not yet carry that declaration's id (metel-core#1052), and the
+    /// does not yet carry that declaration's id (metel-core#1052 threaded the id
+    /// through the evaluator, not through these sites; see metel-core#1222), and the
     /// spelling need not be importable from `current_module` (the value can
     /// arrive through a function return). Until the id rides on the typed node,
     /// those call sites fall back to the same name-approximate, cross-module

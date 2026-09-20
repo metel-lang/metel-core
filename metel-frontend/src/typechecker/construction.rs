@@ -1367,11 +1367,12 @@ fn construct_binop(
             // Deliberately *rejects* rather than peeling references: peeling would
             // silently commit the language to referent-equality semantics, and whether
             // two references should compare referents (Rust) or identity (Go) is an open
-            // design question (metel-core#263). Rejecting is direction-neutral, and
+            // design question (metel-core#263 was the tracking issue; it has since been
+            // retargeted to Copy rules, so this question has no open issue). Rejecting is direction-neutral, and
             // status-quo-preserving since these already failed, just badly.
             //
-            // The real fix is routing `==` through the `Eq` aspect (metel-core#263 /
-            // RFC-0062); this guard relaxes as that lands.
+            // The real fix is routing `==` through the `Eq` aspect (RFC-0062);
+            // this guard relaxes as that lands. Recorded as LIMIT-TYPE-CONSTRUCTION-003.
             let t = lhs.ty();
             if !matches!(t, Type::Str | Type::Char | Type::Boolean | Type::Never) && !t.is_numeric()
             {
