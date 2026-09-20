@@ -137,6 +137,7 @@ fn blank_lines_and_reformatting_change_no_identity() {
     );
 }
 
+// arch-verifies: ["arch.resolution.requirement-2"]
 #[test]
 fn inserting_an_earlier_binding_does_not_renumber_a_later_one() {
     let before = Fixture::build("fun main() { let target := 1; target; }");
@@ -149,6 +150,7 @@ fn inserting_an_earlier_binding_does_not_renumber_a_later_one() {
     );
 }
 
+// arch-verifies: ["arch.resolution.requirement-2"]
 #[test]
 fn editing_one_body_leaves_another_bodys_identities_untouched() {
     let v1 = Fixture::build("fun a() { let keep := 1; keep; }\nfun b() { let x := 1; }");
@@ -308,6 +310,7 @@ fn reference_table_is_total_and_unknown_names_are_explicit() {
     assert!(a.map().has_unresolved());
 }
 
+// arch-verifies: ["arch.resolution.requirement-1"]
 #[test]
 fn a_body_with_only_bound_names_has_no_unresolved_references() {
     let a = Fixture::build("fun main() { let x := 1; x + x; }");
@@ -320,6 +323,7 @@ fn a_body_with_only_bound_names_has_no_unresolved_references() {
     );
 }
 
+// arch-verifies: ["arch.resolution.requirement-1"]
 #[test]
 fn a_use_of_a_global_declaration_is_classified_as_global() {
     let a = Fixture::build("fun helper() -> i64 { 1 }\nfun main() { helper(); }");
@@ -688,6 +692,7 @@ fn module_qualified_path_segment_resolves_to_its_module() {
     );
 }
 
+// arch-verifies: ["arch.resolution.requirement-4"]
 #[test]
 fn module_segment_hit_is_position_stable_under_reformatting() {
     // ADR-0054 / #1048: `ModuleId` interns by canonical path, so an unrelated
@@ -751,6 +756,7 @@ fn module_segment_hit_is_position_stable_under_reformatting() {
 
 // ── position index ──────────────────────────────────────────────────────────
 
+// arch-verifies: ["arch.resolution.requirement-4"]
 #[test]
 fn position_index_finds_a_use_and_misses_whitespace() {
     let src = "fun main() { let value := 1; value; }";
@@ -771,3 +777,14 @@ fn position_index_finds_a_use_and_misses_whitespace() {
 // helpers above stop using `NameId` directly.
 #[allow(dead_code)]
 fn _name_id_is_used(_: NameId) {}
+
+// arch-verifies: ["arch.resolution.requirement-4"]
+#[test]
+fn the_durable_resolution_map_is_keyed_by_identity_not_position() {
+    // Compile-time assertion: if either table's key ever became a `Span` or
+    // a `String`, these bindings would stop type-checking.
+    use std::collections::HashMap;
+    let map = ResolutionMap::default();
+    let _definitions: &HashMap<BindingId, crate::identity::DefinitionInfo> = &map.definitions;
+    let _references: &HashMap<crate::identity::RefId, Resolution> = &map.references;
+}
