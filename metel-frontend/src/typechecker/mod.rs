@@ -1479,6 +1479,21 @@ mod tests {
             .collect()
     }
 
+    // arch-verifies: ["arch.resolution.requirement-3"]
+    #[test]
+    fn typed_ir_threads_member_ids_rather_than_rederiving_them() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/typed_ast/mod.rs");
+        let source = std::fs::read_to_string(path).expect("typed_ast/mod.rs readable");
+        assert!(
+            source.contains("Option<FieldId>"),
+            "typed field access/construction must carry a FieldId"
+        );
+        assert!(
+            source.contains("Option<VariantId>"),
+            "typed variant access/construction must carry a VariantId"
+        );
+    }
+
     // arch-verifies: ["arch.type-construction.requirement-6"]
     #[test]
     fn typed_ir_has_no_ascription_node() {

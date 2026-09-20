@@ -56,7 +56,6 @@ pub struct MemberTable {
 impl MemberTable {
     /// A fresh, empty table.
     #[must_use]
-    // arch-implements: ["arch.resolution.requirement-3"]
     pub fn new() -> Self {
         Self::default()
     }
@@ -154,6 +153,7 @@ impl MemberTable {
 /// dependency order, declarations in source order, members in declaration
 /// order. `names` supplies the owning type's `SymbolId`.
 #[must_use]
+// arch-implements: ["arch.resolution.requirement-3"]
 pub fn collect_members(
     modules: &[(Vec<String>, &[crate::ast::Decl])],
     names: &crate::name_resolver::ResolvedNames,
@@ -270,6 +270,7 @@ mod tests {
         assert_eq!(t.field_info(x).map(|i| i.owner), Some(p));
     }
 
+    // arch-verifies: ["arch.resolution.requirement-3"]
     #[test]
     fn same_field_name_on_different_types_is_a_different_id() {
         let (t, names) = members("struct A { v: i64 }\nstruct B { v: i64 }");
@@ -282,6 +283,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.resolution.requirement-3"]
     #[test]
     fn enum_variants_and_their_fields_are_interned() {
         let (t, names) = members("enum E { A { x: i64 }, B { x: i64 } }");
@@ -298,6 +300,7 @@ mod tests {
         assert_eq!(t.variant_count(), 2);
     }
 
+    // arch-verifies: ["arch.resolution.requirement-3"]
     #[test]
     fn interning_is_reformat_stable_and_order_independent() {
         let tight = "struct S { a: i64, b: i64 } enum E { V { c: i64 } }";
@@ -317,6 +320,7 @@ mod tests {
         assert_eq!(t1.field(s1, "b"), t3.field(s3, "b"));
     }
 
+    // arch-verifies: ["arch.resolution.requirement-3"]
     #[test]
     fn absent_members_report_none_not_a_fabricated_id() {
         let (t, names) = members("struct Point { x: i64 }");

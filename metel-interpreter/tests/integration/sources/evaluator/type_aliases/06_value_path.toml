@@ -1,3 +1,2 @@
 [options]
-arch_verifies = ["arch.resolution.requirement-4"]
 spec = ["spec.declarations.type-aliases.legality-4"]

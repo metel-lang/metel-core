@@ -1,6 +1,7 @@
 runner = "full_pipeline"
 prelude = "empty"
 [options]
+arch_verifies = ["arch.name-resolution.requirement-2"]
 spec = ["spec.modules.import-conflicts.legality-3", "spec.modules.import-conflicts.legality-4"]
 [expect]
 status = "success"
