@@ -1,0 +1,4 @@
+// A whole keyword is never an identifier: `ident` is `!keyword ~ ...`.
+fun main() {
+    let if := 1;
+}

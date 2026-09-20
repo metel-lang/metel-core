@@ -416,10 +416,12 @@ self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
 super_kw = @{ "super" ~ !(ASCII_ALPHANUMERIC | "_") }
 record_kw = @{ "record" ~ !(ASCII_ALPHANUMERIC | "_") }
 
+// arch-implements: ["arch.parsing.requirement-5"]
 ident = @{
     !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")*
 }
 
+// arch-implements: ["arch.parsing.requirement-5"]
 keyword = @{
     ("and" | "as" | "aspect" | "break" | "continue" | "dyn" | "else" | "enum" |
      "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
