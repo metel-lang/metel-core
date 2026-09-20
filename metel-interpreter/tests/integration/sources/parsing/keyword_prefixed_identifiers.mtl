@@ -1,0 +1,12 @@
+// A name that merely *starts with* a keyword is an ordinary identifier: the
+// grammar's `keyword` rule ends in a word-boundary lookahead, and `ident`
+// excludes only whole keywords (`!keyword`), never keyword prefixes.
+fun main() {
+    let letter := 1;
+    let iffy := 2;
+    let format := 3;
+    let returned := 4;
+    let variable := 5;
+    let structure := 6;
+    let true_ish := 7;
+}

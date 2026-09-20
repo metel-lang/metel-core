@@ -1,0 +1,8 @@
+[options]
+arch_verifies = ["arch.parsing.requirement-5"]
+error = ["P0001"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "neg_keyword_as_identifier.mtl"
