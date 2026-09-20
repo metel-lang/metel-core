@@ -70,7 +70,6 @@ pub struct SymbolTable {
 }
 
 impl Default for SymbolTable {
-    // arch-implements: ["arch.name-resolution.requirement-1"]
     fn default() -> Self {
         Self::new()
     }
@@ -78,6 +77,7 @@ impl Default for SymbolTable {
 
 impl SymbolTable {
     #[must_use]
+    // arch-implements: ["arch.name-resolution.requirement-1"]
     pub fn new() -> Self {
         let mut map = HashMap::new();
         let sc = || vec!["std".to_string(), "core".to_string()];
@@ -115,6 +115,7 @@ impl SymbolTable {
 
     /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign
     /// a fresh one. Two calls with identical arguments always return the same id.
+    // arch-implements: ["arch.name-resolution.requirement-1"]
     pub fn intern(&mut self, source_module: &[String], source_name: &str) -> SymbolId {
         let key = (source_module.to_vec(), source_name.to_string());
         *self.map.entry(key).or_insert_with(|| {
@@ -122,5 +123,37 @@ impl SymbolTable {
             self.next_id += 1;
             id
         })
+    }
+}
+
+#[cfg(test)]
+mod architecture_evidence_tests {
+    use super::*;
+
+    fn std_core() -> Vec<String> {
+        vec!["std".to_string(), "core".to_string()]
+    }
+
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
+    #[test]
+    fn builtin_std_core_declarations_are_pre_seeded_at_their_fixed_ids() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.intern(&std_core(), "Perhaps"), SYM_TYPE_PERHAPS);
+        assert_eq!(table.intern(&std_core(), "String"), SYM_TYPE_STRING);
+        assert_eq!(table.intern(&std_core(), "Display"), SYM_ASPECT_DISPLAY);
+    }
+
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
+    #[test]
+    fn user_declarations_are_allocated_from_the_user_range_below_the_overload_range() {
+        let mut table = SymbolTable::new();
+        let first = table.intern(&["app".to_string()], "Widget");
+        let second = table.intern(&["app".to_string()], "Gadget");
+        assert_eq!(first, SymbolId(USER_SYM_START));
+        assert_eq!(second, SymbolId(USER_SYM_START + 1));
+        assert!(
+            second.0 < OVERLOAD_SYM_START,
+            "overload-synthesized symbols have their own reserved range"
+        );
     }
 }

@@ -97,7 +97,6 @@ use crate::symbols::SymbolTable;
 /// Resolve a module path to its canonical form by dereferencing any alias. See ADR-0031.
 /// Handles prefix aliases: if `["a", "b"]` → `["x", "y"]`, then
 /// `["a", "b", "c"]` → `["x", "y", "c"]`.
-// arch-implements: ["arch.name-resolution.requirement-2"]
 pub(crate) fn canonical_path(
     path: &[String],
     aliases: &HashMap<Vec<String>, Vec<String>>,
@@ -425,6 +424,7 @@ fn decl_any_name(decl: &Decl) -> Option<String> {
 
 // ── Per-module resolution ─────────────────────────────────────────────────────
 
+// arch-implements: ["arch.name-resolution.requirement-2"]
 fn resolve_module(
     loaded: &LoadedModule,
     known_modules: &HashSet<Vec<String>>,
@@ -706,6 +706,7 @@ fn process_tree(
     Ok(())
 }
 
+// arch-implements: ["arch.name-resolution.requirement-2"]
 fn add_explicit(
     scope: &mut ModuleScope,
     local_name: String,
@@ -1335,6 +1336,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn aliased_import_has_same_symbol_id_as_direct_import() {
         // root imports parser::Token as Tok; other imports parser::Token directly.
@@ -1377,6 +1379,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn distinct_declarations_get_distinct_symbol_ids() {
         // parser::Token and parser::Ast must have different SymbolIds.
@@ -1478,6 +1481,7 @@ mod tests {
         assert_ne!(aspect_impl, aspect_decl);
     }
 
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn symbol_id_is_stable_in_symbol_table() {
         // names.symbols should contain the same (module, name) → id mapping.
@@ -1507,6 +1511,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn symbol_id_is_independent_of_module_resolution_order() {
         // ADR-0054's structural-allocation amendment (metel-core#1048): a

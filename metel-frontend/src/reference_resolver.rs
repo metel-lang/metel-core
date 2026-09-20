@@ -489,6 +489,7 @@ mod tests {
         );
     }
 
+    // arch-verifies: ["arch.name-resolution.requirement-3"]
     #[test]
     fn local_binding_shadows_top_level_declaration() {
         let graph = single_module_graph(

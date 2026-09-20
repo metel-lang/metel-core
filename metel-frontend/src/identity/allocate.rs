@@ -67,7 +67,6 @@ impl ModuleNav<'_> {
     /// module namespace, if any — dereferencing a leading local module handle
     /// and diamond-dependency aliases. Keyword roots (`root` / `self` / `super`)
     /// are not resolved here.
-    // arch-implements: ["arch.resolution.requirement-2"]
     fn prefix_module_path(&self, segments: &[String], len: usize) -> Option<Vec<String>> {
         let (first, rest) = segments.split_first()?;
         if matches!(first.as_str(), "root" | "self" | "super") {
@@ -168,6 +167,8 @@ impl BindingSpans {
 /// [`SymbolId`], and its span-keyed reference table drives the global-use
 /// post-pass ([`classify_globals`]).
 #[must_use]
+// arch-implements: ["arch.resolution.requirement-1"]
+// arch-implements: ["arch.resolution.requirement-2"]
 pub fn allocate_module(
     module_path: &[String],
     decls: &[Decl],
