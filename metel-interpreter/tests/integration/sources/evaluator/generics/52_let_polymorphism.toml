@@ -1,0 +1,2 @@
+[options]
+arch_verifies = ["arch.type-inference.requirement-5"]

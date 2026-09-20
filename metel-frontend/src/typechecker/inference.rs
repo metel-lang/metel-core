@@ -18,8 +18,6 @@ use super::conversions::{
     type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
     type_expr_to_infer_with_self, type_to_infer,
 };
-// arch-implements: ["arch.type-inference.requirement-3"]
-// arch-implements: ["arch.type-inference.requirement-5"]
 
 fn type_expr_to_infer_with_ctx(
     te: &TypeExpr,
@@ -1477,6 +1475,7 @@ fn infer_binop(
     }
 }
 
+// arch-implements: ["arch.type-inference.requirement-3"]
 fn infer_propagate_error(
     expr: &Expr,
     span: &Span,

@@ -16,6 +16,7 @@ use super::{
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
 // arch-implements: ["arch.type-construction.requirement-9"]
+// arch-implements: ["arch.type-inference.requirement-5"]
 pub(super) fn infer_decl(
     decl: &Decl,
     ctx: &mut InferContext,

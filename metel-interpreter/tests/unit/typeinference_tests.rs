@@ -479,6 +479,7 @@ mod phase_4_unification {
         assert!(unify(&InferType::Tuple(vec![InferType::int()]), &InferType::int()).is_err());
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-6"]
     #[test]
     fn test_occurs_check_array() {
         // ?t0 = ?t0[]  — should fail
@@ -487,6 +488,7 @@ mod phase_4_unification {
         assert!(unify(&a, &b).is_err());
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-6"]
     #[test]
     fn test_occurs_check_function() {
         // ?t0 = (?t0) -> i64  — should fail
@@ -681,6 +683,7 @@ mod phase_6_type_schemes {
         assert_eq!(scheme.quantified_vars, vec![TypeVar(0)]);
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-7"]
     #[test]
     fn test_generalize_env_blocks_capture() {
         // If ?t0 is free in the env, it must not be quantified
@@ -694,6 +697,7 @@ mod phase_6_type_schemes {
         assert_eq!(scheme.ty, ty);
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-7"]
     #[test]
     fn test_generalize_partial_capture() {
         // (?t0, ?t1) -> ?t0, env has ?t1  =>  only ?t0 is quantified
@@ -745,6 +749,7 @@ mod phase_6_type_schemes {
         assert_eq!(result, expected);
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-1"]
     #[test]
     fn test_instantiate_twice_gives_different_vars() {
         let mut var_gen = TypeVarGenerator::new();
