@@ -1,0 +1,13 @@
+// `T[]` is `Copy` regardless of its element type: the typechecker special-cases
+// `InferType::Array` and never inspects the element. `Plain` implements nothing,
+// so if copy eligibility looked at the element this call would be rejected.
+struct Plain {
+    v: i64,
+}
+
+fun needs_copy<T: Copy>(x: T) {}
+
+fun main() {
+    let items: Plain[] := [];
+    needs_copy(items);
+}

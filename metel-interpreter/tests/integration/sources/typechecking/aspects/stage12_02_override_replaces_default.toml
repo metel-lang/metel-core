@@ -1,3 +1,2 @@
 [options]
-arch_verifies = ["arch.type-construction.requirement-4", "arch.type-construction.requirement-5"]
 move_check = true

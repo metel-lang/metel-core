@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.type-construction.requirement-3"]
 error = ["T0018"]
 spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-16"]
 

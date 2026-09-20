@@ -626,6 +626,7 @@ fn module_dependencies(names: &ResolvedNames, module_path: &[String]) -> HashSet
 /// not pub) from T0003 (name does not exist). See #191.
 /// Returns the resolved import schemes plus a map of deferred same-tier glob conflicts.
 /// Conflicts are not rejected here; T0011 fires at the use site. (METEL-98)
+// arch-implements: ["arch.type-construction.requirement-8"]
 fn build_import_schemes(
     loaded: &LoadedModule,
     names: &ResolvedNames,
@@ -1476,6 +1477,26 @@ mod tests {
                 (path.display().to_string(), code)
             })
             .collect()
+    }
+
+    // arch-verifies: ["arch.type-construction.requirement-6"]
+    #[test]
+    fn typed_ir_has_no_ascription_node() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/typed_ast");
+        for entry in std::fs::read_dir(&dir).expect("typed_ast/ exists") {
+            let path = entry.expect("dir entry").path();
+            let code = std::fs::read_to_string(&path).expect("typed_ast source readable");
+            let code: String = code
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !code.contains("Ascribe"),
+                "{} defines an ascription node; ascriptions must be erased during construction",
+                path.display()
+            );
+        }
     }
 
     // arch-verifies: ["arch.type-inference.requirement-3"]

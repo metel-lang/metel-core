@@ -14,7 +14,6 @@ use super::{
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
-// arch-implements: ["arch.type-construction.requirement-6"]
 pub(super) fn infer_stmt(
     stmt: &Stmt,
     ctx: &mut InferContext,

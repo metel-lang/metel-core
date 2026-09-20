@@ -98,7 +98,6 @@ use crate::symbols::SymbolTable;
 /// Handles prefix aliases: if `["a", "b"]` → `["x", "y"]`, then
 /// `["a", "b", "c"]` → `["x", "y", "c"]`.
 // arch-implements: ["arch.name-resolution.requirement-2"]
-// arch-implements: ["arch.type-construction.requirement-8"]
 pub(crate) fn canonical_path(
     path: &[String],
     aliases: &HashMap<Vec<String>, Vec<String>>,

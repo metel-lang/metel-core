@@ -1,0 +1,2 @@
+[options]
+arch_verifies = ["arch.type-construction.requirement-5"]

@@ -9,7 +9,6 @@ use super::{
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
 /// straight off the source `FunDecl` (methods carry no top-level identity).
-// arch-implements: ["arch.type-construction.requirement-5"]
 fn method_fun_decl(
     method: &FunDecl,
     param_ids: Vec<Option<crate::identity::LocalId>>,
@@ -388,6 +387,7 @@ pub(super) fn construct_fun_decl(
 /// `T: !Drop` bounds, the ban on `Drop` for anonymous records, and the move
 /// checker's refusal to partially move a `Drop` value. An empty `fun drop(&var
 /// self) {}` claims nothing that is not delivered. A body with statements in it does.
+// arch-implements: ["arch.type-construction.requirement-5"]
 pub(super) fn reject_inert_destructor(
     ib: &ImplBlock,
     ctx: &ConstructCtx,
