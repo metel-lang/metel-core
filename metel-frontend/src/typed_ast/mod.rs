@@ -180,7 +180,8 @@ pub struct TypedEnumDecl {
 
 #[derive(Debug, Clone)]
 pub struct TypedImplBlock {
-    /// See `ast::ImplBlock::polarity`. Not yet coherence-checked (issue #264).
+    /// See `ast::ImplBlock::polarity`; coherence checks it on the AST, so this copy is
+    /// not read downstream.
     #[allow(dead_code)] // set by construction.rs; not yet read downstream
     pub polarity: Polarity,
     /// See `ast::ImplBlock::generics` (RFC-0036 conditional impls). `where_clause` is
