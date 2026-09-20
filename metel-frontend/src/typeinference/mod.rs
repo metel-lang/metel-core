@@ -828,7 +828,7 @@ fn contains_type_var(ty: &InferType) -> bool {
 // one coherent dispatch table across many small functions with no real gain in
 // clarity (same rationale as `type_expr_to_infer_in_context`, `infer_fun_decl`).
 #[allow(clippy::too_many_lines)]
-// arch-implements: ["arch.type-inference.requirement-1"]
+// arch-implements: ["arch.type-inference.requirement-6"]
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
     match (a, b) {
         // Never is the bottom type — it coerces to any type.
@@ -1690,7 +1690,7 @@ impl std::fmt::Display for TypeScheme {
 #[must_use]
 // See `solve_constraints` above for why hasher-generalization isn't worthwhile here.
 #[allow(clippy::implicit_hasher)]
-// arch-implements: ["arch.type-inference.requirement-1"]
+// arch-implements: ["arch.type-inference.requirement-7"]
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
     let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
@@ -5484,6 +5484,7 @@ mod registry_identity_tests {
         assert_eq!(reg.declared_type_name(beta), Some("Config"));
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn merge_from_does_not_collapse_same_named_structs() {
         let alpha = SymbolId(1000);
@@ -5518,6 +5519,7 @@ mod registry_identity_tests {
         );
     }
 
+    // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn block_local_type_id_is_disjoint_from_name_resolver_ids() {
         let mut reg = TypeDefinitionRegistry::new();

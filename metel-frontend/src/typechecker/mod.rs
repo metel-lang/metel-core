@@ -1457,6 +1457,51 @@ fn top_level_value_names(program: &Program) -> HashSet<String> {
 mod tests {
     use super::*;
 
+    /// The non-comment lines of every `typechecker/construction*` source file.
+    fn construction_code() -> Vec<(String, String)> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/typechecker");
+        let mut files = vec![root.join("construction.rs")];
+        for entry in std::fs::read_dir(root.join("construction")).expect("construction/ exists") {
+            files.push(entry.expect("dir entry").path());
+        }
+        files
+            .into_iter()
+            .map(|path| {
+                let code = std::fs::read_to_string(&path)
+                    .expect("construction source readable")
+                    .lines()
+                    .filter(|line| !line.trim_start().starts_with("//"))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (path.display().to_string(), code)
+            })
+            .collect()
+    }
+
+    // arch-verifies: ["arch.type-inference.requirement-3"]
+    #[test]
+    fn from_impl_lookup_runs_in_inference_not_construction() {
+        for (path, code) in construction_code() {
+            assert!(
+                !code.contains("has_from_impl"),
+                "{path} looks up `From` impls; `?` coercion is decided in inference (`infer_propagate_error`)"
+            );
+        }
+    }
+
+    // arch-verifies: ["arch.type-inference.requirement-4"]
+    #[test]
+    fn construction_never_runs_the_constraint_solver() {
+        for (path, code) in construction_code() {
+            for forbidden in ["InferContext", ".solve(", "solve_constraints", "occurs_in"] {
+                assert!(
+                    !code.contains(forbidden),
+                    "{path} references `{forbidden}`; construction consumes solved facts and must not re-run inference"
+                );
+            }
+        }
+    }
+
     /// The prelude's free-function schemes are derived from the embedded
     /// std::core source (METEL-181); this asserts the derivation covers every
     /// `native` declaration in core.mtl, so a new stdlib function can never
