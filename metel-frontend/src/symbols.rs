@@ -78,6 +78,7 @@ impl Default for SymbolTable {
 impl SymbolTable {
     #[must_use]
     // arch-implements: ["arch.name-resolution.requirement-1"]
+    // limit: ["LIMIT-NAME-RESOLUTION-004"]
     pub fn new() -> Self {
         let mut map = HashMap::new();
         let sc = || vec!["std".to_string(), "core".to_string()];

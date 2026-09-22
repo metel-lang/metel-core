@@ -388,6 +388,7 @@ pub(super) fn construct_fun_decl(
 /// checker's refusal to partially move a `Drop` value. An empty `fun drop(&var
 /// self) {}` claims nothing that is not delivered. A body with statements in it does.
 // arch-implements: ["arch.type-construction.requirement-5"]
+// limit: ["LIMIT-EVALUATION-005"]
 pub(super) fn reject_inert_destructor(
     ib: &ImplBlock,
     ctx: &ConstructCtx,

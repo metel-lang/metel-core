@@ -43,6 +43,7 @@ impl std::fmt::Display for TypeVar {
 /// call `ctx.split_gen()` to obtain a new generator that starts past all Pass 1 vars,
 /// then thread that single instance through Pass 2 (and any intermediate steps like
 /// `register_builtin_poly_schemes`).
+// limit: ["LIMIT-TYPE-INFERENCE-005", "LIMIT-TYPE-INFERENCE-006"]
 pub struct TypeVarGenerator {
     counter: u32,
 }
@@ -1691,6 +1692,7 @@ impl std::fmt::Display for TypeScheme {
 // See `solve_constraints` above for why hasher-generalization isn't worthwhile here.
 #[allow(clippy::implicit_hasher)]
 // arch-implements: ["arch.type-inference.requirement-7"]
+// limit: ["LIMIT-TYPE-INFERENCE-007"]
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
     let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
@@ -2380,6 +2382,7 @@ impl TypeDefinitionRegistry {
     /// arrive through a function return). Until the id rides on the typed node,
     /// those call sites fall back to the same name-approximate, cross-module
     /// lookup the pre-#1060 name-keyed maps did.
+    // limit: ["LIMIT-RESOLUTION-002"]
     fn resolve_type_key_broad(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
         self.resolve_type_key(current_module, name)
             .or_else(|| self.type_decl_ids.get(name).copied())
@@ -2396,6 +2399,7 @@ impl TypeDefinitionRegistry {
     /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn
     /// from the top of the `u32` space counting down so it can never collide
     /// with a name-resolver id (those count up from `USER_SYM_START`).
+    // limit: ["LIMIT-NAME-RESOLUTION-003"]
     fn fresh_local_type_id(&mut self) -> SymbolId {
         let id = SymbolId(self.next_local_type_id);
         self.next_local_type_id = self.next_local_type_id.saturating_sub(1);
@@ -4906,6 +4910,7 @@ impl InferContext {
     /// (Pass 2, `register_builtin_poly_schemes`) so that every `TypeVar` ever
     /// produced during a type-check run is globally unique.
     #[must_use]
+    // limit: ["LIMIT-TYPE-INFERENCE-005"]
     pub fn split_gen(&self) -> TypeVarGenerator {
         TypeVarGenerator::with_counter(self.var_gen.counter())
     }
