@@ -233,6 +233,7 @@ pub enum UnresolvedCause {
 /// Every key is an identity. No field is keyed by [`Span`] or by `String`; a
 /// [`Span`] appears only as metadata *inside* [`DefinitionInfo`]. Byte-offset
 /// queries go through the separate, rebuilt-per-snapshot [`PositionIndex`].
+// limit: ["LIMIT-RESOLUTION-001"]
 #[derive(Debug, Clone, Default)]
 pub struct ResolutionMap {
     /// Every value definition reachable in this run, by identity.

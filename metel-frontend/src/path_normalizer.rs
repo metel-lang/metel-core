@@ -401,6 +401,7 @@ fn normalize_arm(
 /// Returns `Some((resolved_name, symbol_id))` if the path is module-qualified and can be
 /// rewritten. Returns `None` to leave the path unchanged (type member access,
 /// single-segment, or unresolvable).
+// limit: ["LIMIT-PATH-NORMALIZATION-001"]
 fn try_resolve_path(
     segments: &[String],
     scope: Option<&ModuleScope>,

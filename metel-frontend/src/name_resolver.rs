@@ -245,6 +245,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
 /// Both the resolver (which assigns the id) and later consumers (which look it up)
 /// must build keys through this function so the identities agree.
 #[must_use]
+// limit: ["LIMIT-NAME-RESOLUTION-005"]
 pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> String {
     match aspect {
         Some(aspect) => format!("{target}::{aspect}::{method}"),
@@ -325,6 +326,7 @@ fn impl_target_name(target: &TypeExpr) -> Option<&str> {
 /// to visit them in (metel-core#1129's own "verify empirically" repro:
 /// reversing `graph.modules` and re-resolving used to change `SymbolId`s; a
 /// regression test pins this).
+// limit: ["LIMIT-NAME-RESOLUTION-005"]
 fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Span>) {
     let mut pending: Vec<(Vec<String>, String, Option<Span>)> = Vec::new();
     for loaded in &graph.modules {
@@ -409,6 +411,7 @@ fn decl_pub_name(decl: &Decl) -> Option<String> {
 }
 
 /// Returns the name of a declaration regardless of visibility.
+// limit: ["LIMIT-NAME-RESOLUTION-005"]
 fn decl_any_name(decl: &Decl) -> Option<String> {
     match decl {
         Decl::Fun(d) => Some(d.name.clone()),

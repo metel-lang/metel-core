@@ -905,6 +905,7 @@ pub(super) fn symbolic_impl_method_scheme(
     })
 }
 
+// limit: ["LIMIT-EVALUATION-001", "LIMIT-TYPE-INFERENCE-005"]
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::ast::Param],
@@ -1299,6 +1300,7 @@ fn construct_literal_type(
 }
 
 // arch-implements: ["arch.type-construction.requirement-7"]
+// limit: ["LIMIT-TYPE-CONSTRUCTION-003"]
 fn construct_binop(
     lhs: &Expr,
     op: &BinOp,

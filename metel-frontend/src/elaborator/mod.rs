@@ -32,6 +32,7 @@ use crate::types::Type;
 /// `Aspect { aspect_id }` when the receiver's type registers the method through an aspect,
 /// and `Inherent` otherwise (including a receiver with no nameable type, such as a `fn` or
 /// tuple -- the evaluator treats `Inherent` and `Dynamic` identically).
+// limit: ["LIMIT-ELABORATION-001"]
 pub struct ElaboratedModuleGraph(pub TypedModuleGraph);
 
 /// Run elaboration over `graph` and return an `ElaboratedModuleGraph`.

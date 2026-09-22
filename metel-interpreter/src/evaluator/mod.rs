@@ -426,6 +426,7 @@ pub struct RuntimeMethod {
     pub body: RuntimeCallable,
 }
 
+// limit: ["LIMIT-EVALUATION-003"]
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeRegistry {
     modules: HashMap<Vec<String>, RuntimeModuleEntry>,

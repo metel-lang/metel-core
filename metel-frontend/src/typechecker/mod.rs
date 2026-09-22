@@ -346,6 +346,7 @@ fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
 /// # Errors
 /// Returns an error if any module fails to typecheck.
 // arch-implements: ["arch.type-construction.requirement-1"]
+// limit: ["LIMIT-TYPE-INFERENCE-006"]
 pub fn check_graph(
     graph: &NormalizedModuleGraph,
     names: &ResolvedNames,
