@@ -70,12 +70,20 @@ pub struct FixtureOptions {
     /// running it -- for a fixture written ahead of the feature it exercises
     /// (checked in against an accepted RFC whose implementation issue hasn't
     /// landed yet). The `.mtl` source is real and checked in, but is not
-    /// attempted: it may use syntax the parser doesn't accept yet. Give the
-    /// reason a tracking issue, e.g. `skip = "metel-core#926 -- capture-list
-    /// syntax not implemented"`, and drop this key (plus add the real
-    /// `spec =` citation, if not already present) once the feature lands. A
-    /// skipped fixture does not count toward `rfc.py`'s spec-block fixture
-    /// coverage.
+    /// attempted: it may use syntax the parser doesn't accept yet. Drop this
+    /// key (plus add the real `spec =` citation, if not already present)
+    /// once the feature lands. A skipped fixture does not count toward
+    /// `rfc.py`'s spec-block fixture coverage.
+    ///
+    /// `docs/architecture/tools/check_architecture.py --core .` (metel-core#1219)
+    /// requires the reason to name what the skip is evidence for: cite the
+    /// `LIMIT-*` record this reproduces (a divergence from the *current*
+    /// spec, ADR-0057's sorting test), e.g. `skip = "LIMIT-EVALUATION-005 --
+    /// destructor invocation is not implemented (metel-core#261)"`; or, for
+    /// a fixture ahead of an accepted-but-unbuilt RFC (nothing to diverge
+    /// from yet, so no Atlas record applies), mark it plainly exempt, e.g.
+    /// `skip = "exempt: RFC-0134 accepted, not yet implemented,
+    /// metel-core#926"`. A tracking issue alone, with neither, is a finding.
     pub skip: Option<String>,
     /// Optional human-readable label for this fixture, shown instead of the
     /// `.mtl` filename by the rendered spec's inline fixture viewer

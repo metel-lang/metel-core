@@ -96,6 +96,13 @@ jobs:
       - name: generated Architecture evidence is current
         run: python3 docs/architecture/tools/generate_architecture_evidence.py --core . --check
 
+      # check_architecture.py's own suite runs in metel-docs's CI, from a bare checkout
+      # where the fixture corpus is unreachable (a documented no-op there, metel-core#1219).
+      # This repo's checkout has both docs/ and metel-interpreter/tests/ side by side, so
+      # --core . additionally validates every skipped fixture's LIMIT-* citation here.
+      - name: skipped-fixture LIMIT-* citations are current
+        run: python3 docs/architecture/tools/check_architecture.py --core . --check
+
   grammar-doc-check:
     name: grammar.md up to date
     runs-on: ubuntu-latest
