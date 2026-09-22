@@ -1,3 +1,3 @@
 [options]
-skip = "metel-core#261 -- destructor invocation is not implemented"
+skip = "LIMIT-EVALUATION-005 -- destructor invocation is not implemented (metel-core#261)"
 # intended once live: spec = ["spec.functions.closures.dynamics-11"]
