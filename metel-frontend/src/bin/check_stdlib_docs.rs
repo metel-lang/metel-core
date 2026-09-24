@@ -37,8 +37,8 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use metel_frontend::ast::{Decl, FunDecl, ImplBlock, ReceiverKind, TypeExpr, Visibility};
-use metel_frontend::parser;
+use metel_frontend::data::ast::{Decl, FunDecl, ImplBlock, ReceiverKind, TypeExpr, Visibility};
+use metel_frontend::pipeline::parsing::parser;
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,7 +57,7 @@ fn runtime_md_path() -> PathBuf {
     workspace_root().join("docs/reference/spec/runtime.md")
 }
 
-fn parse_stdlib(file: &str) -> metel_frontend::ast::Program {
+fn parse_stdlib(file: &str) -> metel_frontend::data::ast::Program {
     let path = stdlib_path(file);
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {file}: {e}"));
     parser::parse(&text, file).unwrap_or_else(|e| panic!("parsing {file}: {e}"))

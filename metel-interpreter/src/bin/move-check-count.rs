@@ -2,7 +2,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use metel::{coherence, module_loader, move_check, name_resolver, path_normalizer, typechecker};
+use metel::pipeline::coherence;
+use metel::pipeline::move_check;
+use metel::pipeline::name_resolution::name_resolver;
+use metel::pipeline::parsing::module_loader;
+use metel::pipeline::path_normalization;
+use metel::pipeline::type_checking;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -36,13 +41,14 @@ fn main() {
         let Ok(names) = name_resolver::resolve(&graph) else {
             continue;
         };
-        let Ok(normalized) = path_normalizer::normalize(graph, names) else {
+        let Ok(normalized) = path_normalization::normalize(graph, names) else {
             continue;
         };
         if coherence::check(&normalized).is_err() {
             continue;
         }
-        let Ok(typed) = typechecker::check_graph(&normalized, &typechecker::CorePrelude::default())
+        let Ok(typed) =
+            type_checking::check_graph(&normalized, &type_checking::CorePrelude::default())
         else {
             continue;
         };
@@ -187,7 +193,7 @@ fn is_projection_base_only_violation(violation: &move_check::MoveViolation) -> b
             .all(|(used, moved)| used == moved)
 }
 
-fn format_place(place: &metel::place::Place) -> String {
+fn format_place(place: &metel::ownership::place::Place) -> String {
     place.to_string()
 }
 

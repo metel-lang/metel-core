@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::ast::Literal;
+use crate::data::ast::Literal;
+use crate::data::typed_ast::TypedPattern;
 use crate::identity::LocalId;
-use crate::typed_ast::TypedPattern;
 
 use super::Value;
 
@@ -38,7 +38,7 @@ pub(super) fn match_pattern(
             (Literal::Str(a), Value::Str(b)) => a == b,
             (Literal::Unit, Value::Unit) => true,
             (Literal::SizedInt { value: a, kind }, v) => {
-                use crate::ast::IntKind;
+                use crate::data::ast::IntKind;
                 match kind {
                     IntKind::I8 => matches!(v, Value::I8(b)  if *b == *a as i8),
                     IntKind::I16 => matches!(v, Value::I16(b) if *b == *a as i16),
@@ -51,7 +51,7 @@ pub(super) fn match_pattern(
                 }
             }
             (Literal::SizedFloat { value: a, kind }, v) => {
-                use crate::ast::FloatKind;
+                use crate::data::ast::FloatKind;
                 match kind {
                     FloatKind::F32 => matches!(v, Value::F32(b) if *b == *a as f32),
                     FloatKind::F64 => matches!(v, Value::F64(b) if *b == *a),
@@ -224,7 +224,7 @@ pub(super) fn match_pattern(
 #[cfg(test)]
 mod tests {
     use super::{LocalId, TypedPattern, Value, match_pattern};
-    use crate::ast::Span;
+    use crate::data::ast::Span;
     use crate::identity::VariantId;
 
     #[test]

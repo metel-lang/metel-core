@@ -1,5 +1,5 @@
-use metel::ast::{ImportTree, PathRoot};
-use metel::parser;
+use metel::data::ast::{ImportTree, PathRoot};
+use metel::pipeline::parsing::parser;
 
 // Most of this file's former tests exercised *observable* parser behavior
 // (does source X parse, does source Y produce a P0001/P0002 with a given

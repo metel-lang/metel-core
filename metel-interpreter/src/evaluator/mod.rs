@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
-use crate::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
-use crate::error::{FrameInfo, MetelError, RuntimeErrorCode};
-use crate::typeinference::TypeCtx;
+use crate::data::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
+use crate::data::error::{FrameInfo, MetelError, RuntimeErrorCode};
+use crate::pipeline::type_checking::typeinference::TypeCtx;
 
 thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
@@ -44,14 +44,14 @@ fn snapshot_stack() -> Vec<FrameInfo> {
 pub(super) fn attach_stack(err: MetelError) -> MetelError {
     err.with_stack(snapshot_stack())
 }
-use crate::ast::Block;
-use crate::elaborator::ElaboratedModuleGraph;
-use crate::identity::{LocalId, VariantId};
-use crate::symbols::SymbolId;
-use crate::typed_ast::{
+use crate::data::ast::Block;
+use crate::data::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedProgram,
     TypedStmt,
 };
+use crate::identity::symbols::SymbolId;
+use crate::identity::{LocalId, VariantId};
+use crate::pipeline::elaboration::ElaboratedModuleGraph;
 
 // ── Runtime values ────────────────────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ pub enum Value {
         type_id: SymbolId,
         aspect_id: SymbolId,
         aspect_name: String,
-        type_args: Vec<crate::types::Type>,
+        type_args: Vec<crate::data::types::Type>,
     },
 }
 
@@ -195,7 +195,7 @@ pub struct RuntimeIdentity {
     /// unconditionally inside a reconstructed generic body -- the *type*-
     /// level identity gap `members`/`binding_spans` above never covered
     /// (those are for `FieldId`/`VariantId`/`LocalId`, not `SymbolId`).
-    pub symbols: Rc<HashMap<(Vec<String>, String), crate::symbols::SymbolId>>,
+    pub symbols: Rc<HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -420,7 +420,7 @@ pub struct RuntimeSignature {
 pub struct RuntimeMethod {
     #[allow(dead_code)] // stored for diagnostics/debugging; not used for structural lookup
     pub label: String,
-    pub receiver: Option<crate::ast::ReceiverKind>,
+    pub receiver: Option<crate::data::ast::ReceiverKind>,
     #[allow(dead_code)] // stored for future diagnostics/reflection and System F transition work
     pub signature: RuntimeSignature,
     pub body: RuntimeCallable,
@@ -913,14 +913,14 @@ pub struct ClosureValue {
     pub param_ids: Vec<Option<LocalId>>,
     pub body: ClosureBody,
     pub captured: Environment,
-    pub call_mutation: crate::types::CallMutation,
+    pub call_mutation: crate::data::types::CallMutation,
     pub in_call: Cell<bool>,
     /// Present only when `body` is `ClosureBody::Untyped` (generic function). Provides
     /// the type context for construction-at-call-time so the untyped path is not needed.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
     /// The concrete function type of this closure, if known. Used by `value_to_type` to
     /// recover the closure's parameter/return types when it is passed as a generic argument.
-    pub fun_type: Option<crate::types::Type>,
+    pub fun_type: Option<crate::data::types::Type>,
 }
 
 /// Deep-clone a value so that arrays get independent copies.
@@ -931,11 +931,11 @@ fn deep_clone_value(v: Value) -> Value {
         Value::Callable(RuntimeCallable::Closure(closure))
             if matches!(
                 closure.fun_type,
-                Some(crate::types::Type::Fun(
+                Some(crate::data::types::Type::Fun(
                     _,
                     _,
                     _,
-                    crate::types::UseMultiplicity::Copy,
+                    crate::data::types::UseMultiplicity::Copy,
                     _
                 ))
             ) =>
@@ -1250,10 +1250,10 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             let mut prefix = String::new();
-            if *call_multiplicity == crate::types::CallMultiplicity::Once {
+            if *call_multiplicity == crate::data::types::CallMultiplicity::Once {
                 prefix.push_str("once ");
             }
-            if *call_mutation == crate::types::CallMutation::Mutating {
+            if *call_mutation == crate::data::types::CallMutation::Mutating {
                 prefix.push_str("var ");
             }
             match ret {
@@ -1290,7 +1290,7 @@ fn runtime_signature(
 
 fn runtime_method_from_decl(
     label: String,
-    method: &crate::typed_ast::TypedFunDecl,
+    method: &crate::data::typed_ast::TypedFunDecl,
     body: RuntimeCallable,
 ) -> RuntimeMethod {
     let receiver = method
@@ -1349,11 +1349,11 @@ fn ident_rc(
 // the path encodes every field segment, and leaf_cell is a fresh Rc wrapping a clone
 // of the leaf value.  After a &mut self call the caller writes leaf_cell's value back.
 fn lvalue_field_cell(
-    receiver: &crate::typed_ast::TypedExpr,
+    receiver: &crate::data::typed_ast::TypedExpr,
     env: &Environment,
     runtime: &RuntimeRegistry,
 ) -> Option<FieldWriteback> {
-    use crate::typed_ast::TypedExpr;
+    use crate::data::typed_ast::TypedExpr;
     // metel-core#1113/#1054: the root's own `BindingId` is what `ident_rc`
     // below resolves the writeback target from -- purely by identity, no
     // name-map fallback left (this one had been missed: reads through a
@@ -1405,7 +1405,7 @@ fn lvalue_field_cell(
     Some((struct_cell, path, leaf_cell))
 }
 
-use crate::typed_ast::is_lvalue_path as is_lvalue_path_typed;
+use crate::data::typed_ast::is_lvalue_path as is_lvalue_path_typed;
 
 /// A lvalue path's root binding (name + identity, metel-core#1052b) and its
 /// segment list (root-to-leaf order).
@@ -1461,7 +1461,7 @@ fn build_mut_path(
             path.push(PathSegment::ArrayIndex(i));
             Ok(ControlFlow::Continue((root, binding, path)))
         }
-        TypedExpr::UnaryOp(crate::ast::UnaryOp::Deref, object, _, _) => {
+        TypedExpr::UnaryOp(crate::data::ast::UnaryOp::Deref, object, _, _) => {
             build_mut_path(object, env, runtime, span)
         }
         _ => Err(MetelError::internal("build_mut_path: not a lvalue path")),
@@ -1538,7 +1538,7 @@ pub struct Environment {
     /// (metel-core#712). `eval_call_expr` builds one on demand if it's called before
     /// its declaration line runs. Keyed by the nested function's structural
     /// [`LocalId`] (metel-core#1052b).
-    pending_funs: Vec<HashMap<LocalId, Rc<crate::typed_ast::TypedFunDecl>>>,
+    pending_funs: Vec<HashMap<LocalId, Rc<crate::data::typed_ast::TypedFunDecl>>>,
     /// Type context for construction-at-call-time of generic closures. Set once per module
     /// in `run_passes`; shared via `Rc` so cloning the environment is cheap.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -1576,13 +1576,20 @@ impl Environment {
     /// Panics if called with no scope pushed — cannot happen through normal
     /// use, since `Environment::new` always starts with one scope and callers
     /// never pop past it.
-    pub fn register_pending_fun(&mut self, id: LocalId, f: Rc<crate::typed_ast::TypedFunDecl>) {
+    pub fn register_pending_fun(
+        &mut self,
+        id: LocalId,
+        f: Rc<crate::data::typed_ast::TypedFunDecl>,
+    ) {
         self.pending_funs.last_mut().unwrap().insert(id, f);
     }
 
     /// Remove and return a pending `fun` by its [`LocalId`] (innermost scope
     /// first), so it is built at most once.
-    pub fn take_pending_fun(&mut self, id: LocalId) -> Option<Rc<crate::typed_ast::TypedFunDecl>> {
+    pub fn take_pending_fun(
+        &mut self,
+        id: LocalId,
+    ) -> Option<Rc<crate::data::typed_ast::TypedFunDecl>> {
         for scope in self.pending_funs.iter_mut().rev() {
             if let Some(f) = scope.remove(&id) {
                 return Some(f);
@@ -1958,7 +1965,7 @@ fn run_passes(
                     param_ids: f.param_ids.clone(),
                     body,
                     captured,
-                    call_mutation: crate::types::CallMutation::Reading,
+                    call_mutation: crate::data::types::CallMutation::Reading,
                     in_call: Cell::new(false),
                     type_ctx: ctx,
                     fun_type: None,
@@ -1968,7 +1975,7 @@ fn run_passes(
                 }
             }
             TypedDecl::Impl(impl_block) => match &impl_block.target_type {
-                crate::ast::TypeExpr::Named(type_name, _) => {
+                crate::data::ast::TypeExpr::Named(type_name, _) => {
                     let Some(target_id) = impl_block
                         .target_type_id
                         .or_else(|| builtins::builtin_type_id(type_name))
@@ -1988,7 +1995,7 @@ fn run_passes(
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
-                                call_mutation: crate::types::CallMutation::Reading,
+                                call_mutation: crate::data::types::CallMutation::Reading,
                                 in_call: Cell::new(false),
                                 type_ctx: None,
                                 fun_type: None,
@@ -2002,7 +2009,7 @@ fn run_passes(
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
-                                    call_mutation: crate::types::CallMutation::Reading,
+                                    call_mutation: crate::data::types::CallMutation::Reading,
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     fun_type: None,
@@ -2046,7 +2053,7 @@ fn run_passes(
                         }
                     }
                 }
-                crate::ast::TypeExpr::Array(_) => {
+                crate::data::ast::TypeExpr::Array(_) => {
                     for method in &impl_block.methods {
                         let body_callable = match &method.body {
                             FunBody::Native(key) => {
@@ -2060,7 +2067,7 @@ fn run_passes(
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
                                 captured: env.clone(),
-                                call_mutation: crate::types::CallMutation::Reading,
+                                call_mutation: crate::data::types::CallMutation::Reading,
                                 in_call: Cell::new(false),
                                 type_ctx: None,
                                 fun_type: None,
@@ -2074,7 +2081,7 @@ fn run_passes(
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
                                     captured: env.clone(),
-                                    call_mutation: crate::types::CallMutation::Reading,
+                                    call_mutation: crate::data::types::CallMutation::Reading,
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     fun_type: None,
@@ -2244,7 +2251,7 @@ fn run_main(
         // that zero-argument body here just as ordinary generic calls do.
         ClosureBody::Untyped(b) => match main_type_ctx {
             Some(type_ctx) => match type_ctx.scheme_env.get("main") {
-                Some(scheme) => crate::typechecker::construct_generic_body(
+                Some(scheme) => crate::pipeline::type_checking::construct_generic_body(
                     scheme,
                     &main_params,
                     &[],
@@ -2282,7 +2289,7 @@ fn run_main(
 /// install it over its own binding (already `define`d as a placeholder by
 /// `hoist_nested_funs`, or by a previous call to this same function).
 fn build_and_set_nested_fun(
-    f: &crate::typed_ast::TypedFunDecl,
+    f: &crate::data::typed_ast::TypedFunDecl,
     env: &mut Environment,
 ) -> Result<(), MetelError> {
     let (body, ctx) = match &f.body {
@@ -2305,7 +2312,7 @@ fn build_and_set_nested_fun(
         param_ids: f.param_ids.clone(),
         body,
         captured,
-        call_mutation: crate::types::CallMutation::Reading,
+        call_mutation: crate::data::types::CallMutation::Reading,
         in_call: Cell::new(false),
         type_ctx: ctx,
         fun_type: None,
@@ -2564,7 +2571,7 @@ pub fn eval_stmt(
 }
 
 fn eval_for_in(
-    fi: &crate::typed_ast::TypedForInStmt,
+    fi: &crate::data::typed_ast::TypedForInStmt,
     iterable: Value,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
@@ -2704,14 +2711,14 @@ fn range_field(
 #[inline(never)]
 #[allow(clippy::too_many_lines)]
 fn eval_assign_expr(
-    target: &crate::typed_ast::TypedPlace,
-    op: &crate::ast::AssignOp,
+    target: &crate::data::typed_ast::TypedPlace,
+    op: &crate::data::ast::AssignOp,
     value: &TypedExpr,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
-    use crate::typed_ast::TypedPlace;
+    use crate::data::typed_ast::TypedPlace;
 
     let rhs = match eval_to_value(value, env, runtime)? {
         ControlFlow::Continue(value) => value,
@@ -2730,7 +2737,7 @@ fn eval_assign_expr(
                 Some(crate::identity::BindingId::Local(id)) => Some(*id),
                 _ => None,
             };
-            let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+            let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                 rhs
             } else {
                 let cur = global_cell
@@ -2771,7 +2778,7 @@ fn eval_assign_expr(
             };
             match ptr {
                 Value::Reference(rc) | Value::MutReference(rc) => {
-                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                    let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                         rhs
                     } else {
                         let cur = rc.borrow().clone();
@@ -2780,7 +2787,7 @@ fn eval_assign_expr(
                     *rc.borrow_mut() = new_val;
                 }
                 Value::MutFieldReference { root, path } => {
-                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                    let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                         rhs
                     } else {
                         let cur = read_path(&root.borrow(), &path, tspan)?;
@@ -2831,7 +2838,7 @@ fn eval_assign_expr(
                             span,
                         ));
                     }
-                    let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+                    let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                         rhs
                     } else {
                         let cur = rc.borrow()[i].clone();
@@ -2857,7 +2864,7 @@ fn eval_assign_expr(
             span: tspan,
         } => {
             let (rc, path) = lvalue::resolve_place_assign_root(target, env, runtime, tspan)?;
-            let new_val = if matches!(op, crate::ast::AssignOp::Assign) {
+            let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                 rhs
             } else {
                 let cur = read_path(&rc.borrow(), &path, tspan)?;
@@ -2916,7 +2923,7 @@ fn eval_method_call_expr(
     method: &str,
     args: &[TypedExpr],
     dispatch: &MethodDispatch,
-    expected_ret: &crate::types::Type,
+    expected_ret: &crate::data::types::Type,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
@@ -2935,7 +2942,8 @@ fn eval_method_call_expr(
     }
     // metel-core#286: exact static argument types from the typed nodes, for a generic
     // body constructed at call time.
-    let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
+    let static_arg_tys: Vec<crate::data::types::Type> =
+        args.iter().map(|a| a.ty().clone()).collect();
     let static_receiver_ty = receiver.ty().clone();
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
@@ -2965,7 +2973,7 @@ fn eval_method_call_expr(
     })?;
     let func = method_entry.body.clone();
     match method_entry.receiver {
-        Some(crate::ast::ReceiverKind::Ref | crate::ast::ReceiverKind::RefMut) => {
+        Some(crate::data::ast::ReceiverKind::Ref | crate::data::ast::ReceiverKind::RefMut) => {
             let mut field_writeback: Option<FieldWriteback> = None;
 
             let receiver_binding = match receiver {
@@ -3043,7 +3051,7 @@ fn eval_method_call_expr(
 
             Ok(result)
         }
-        Some(crate::ast::ReceiverKind::Value) => call::call_method_function(
+        Some(crate::data::ast::ReceiverKind::Value) => call::call_method_function(
             func,
             call::ReceiverBinding::Value(recv_type_view),
             arg_vals,
@@ -3092,7 +3100,7 @@ fn eval_call_expr(
     callee: &TypedExpr,
     args: &[TypedExpr],
     callee_id: Option<SymbolId>,
-    expected_ret: &crate::types::Type,
+    expected_ret: &crate::data::types::Type,
     span: &Span,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
@@ -3100,7 +3108,7 @@ fn eval_call_expr(
     let func_val = if let Some(id) = callee_id {
         match runtime.get_symbol_value(id).cloned() {
             Some(value) => value,
-            None if id.0 >= crate::symbols::OVERLOAD_SYM_START => {
+            None if id.0 >= crate::identity::symbols::OVERLOAD_SYM_START => {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for overload symbol {id:?}"
                 )));
@@ -3151,7 +3159,8 @@ fn eval_call_expr(
     // Hand them down so a generic body constructed at call time does not have to
     // re-derive them from runtime values, which loses precision an empty collection
     // cannot supply.
-    let static_arg_tys: Vec<crate::types::Type> = args.iter().map(|a| a.ty().clone()).collect();
+    let static_arg_tys: Vec<crate::data::types::Type> =
+        args.iter().map(|a| a.ty().clone()).collect();
     call::call_function(
         func_val,
         &arg_vals,
@@ -3178,22 +3187,22 @@ pub fn eval_expr(
 ) -> Result<Signal, MetelError> {
     match expr {
         TypedExpr::Literal(lit, ty, _) => {
-            use crate::ast::{FloatKind, IntKind};
+            use crate::data::ast::{FloatKind, IntKind};
             let val = match lit {
                 // Unsuffixed int/float literals are polymorphic; their resolved type
                 // is determined by context (defaulting to i64/f64 when unconstrained).
                 Literal::Int(n) => match ty {
-                    crate::types::Type::I8 => Value::I8(*n as i8),
-                    crate::types::Type::I16 => Value::I16(*n as i16),
-                    crate::types::Type::I32 => Value::I32(*n as i32),
-                    crate::types::Type::U8 => Value::U8(*n as u8),
-                    crate::types::Type::U16 => Value::U16(*n as u16),
-                    crate::types::Type::U32 => Value::U32(*n as u32),
-                    crate::types::Type::U64 => Value::U64(*n as u64),
+                    crate::data::types::Type::I8 => Value::I8(*n as i8),
+                    crate::data::types::Type::I16 => Value::I16(*n as i16),
+                    crate::data::types::Type::I32 => Value::I32(*n as i32),
+                    crate::data::types::Type::U8 => Value::U8(*n as u8),
+                    crate::data::types::Type::U16 => Value::U16(*n as u16),
+                    crate::data::types::Type::U32 => Value::U32(*n as u32),
+                    crate::data::types::Type::U64 => Value::U64(*n as u64),
                     _ => Value::I64(*n), // i64 (default) and Int alias
                 },
                 Literal::Float(f) => match ty {
-                    crate::types::Type::F32 => Value::F32(*f as f32),
+                    crate::data::types::Type::F32 => Value::F32(*f as f32),
                     _ => Value::F64(*f), // f64 (default) and Float alias
                 },
                 Literal::SizedInt { value, kind } => match kind {
@@ -3578,7 +3587,7 @@ pub fn eval_expr(
             // Dispatch through From impl using the full aspect-signature key
             // "Target::From<Source>::from", then fall back to "Target::from"
             // (used by built-in Int::from / Float::from which have no type arg).
-            if let crate::ast::TypeExpr::Named(target_name, _) = target_type {
+            if let crate::data::ast::TypeExpr::Named(target_name, _) = target_type {
                 // Prefer the cast's own resolved target identity (metel-core#1054):
                 // two modules can each declare a same-named type with its own
                 // From impl, and target_type's bare spelling has no module
@@ -3588,7 +3597,7 @@ pub fn eval_expr(
                 // identity rode along (e.g. a block-local type, or a value
                 // reconstructed with no resolver context).
                 let target_id = match ty {
-                    crate::types::Type::Named(_, _, id) => id.get(),
+                    crate::data::types::Type::Named(_, _, id) => id.get(),
                     _ => None,
                 };
                 let from_fn = runtime_type_name(&v).and_then(|source| {
@@ -3806,7 +3815,7 @@ pub fn eval_expr(
             let type_id = runtime.resolve_value_type_id(&value).ok_or_else(|| {
                 MetelError::internal("dyn Aspect coercion: value has no resolvable concrete type")
             })?;
-            let crate::types::Type::Dyn { aspect, type_args } = ty else {
+            let crate::data::types::Type::Dyn { aspect, type_args } = ty else {
                 unreachable!("TypedExpr::DynCoerce::ty is always Type::Dyn")
             };
             Ok(Signal::Value(Value::DynAspect {
@@ -4040,7 +4049,7 @@ mod frame_tests {
         // metel-core#1052b-2: a closure body's reference to a captured variable
         // resolves to the *enclosing* binding's `LocalId`, so that id keys the
         // capture cell in the closure environment's frame.
-        use crate::ast::{CaptureSpec, Span};
+        use crate::data::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(7);
         outer.define_binding(Some(n_id), Value::I64(3));
@@ -4059,7 +4068,7 @@ mod frame_tests {
         // re-derives the cell straight from the capture's own LocalId in
         // `self` -- the only source since #1054 deleted the name map it used
         // to also fall back to.
-        use crate::ast::{CaptureSpec, Span};
+        use crate::data::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(9);
         outer.define_binding(Some(n_id), Value::I64(3));
@@ -4077,7 +4086,7 @@ mod frame_tests {
         // A `&var` capture re-points the closure's frame slot at the exact
         // same `Rc` cell the source binding holds -- not a copy -- so a
         // mutation through either side is visible through the other.
-        use crate::ast::{CaptureSpec, Span};
+        use crate::data::ast::{CaptureSpec, Span};
         let mut outer = Environment::new();
         let n_id = LocalId(8);
         outer.define_binding(Some(n_id), Value::I64(0));
@@ -4124,10 +4133,10 @@ mod frame_tests {
         // the *same* cell the frame holds (aliased, so a write through it is
         // observed by later reads), not a disconnected clone.
         use super::{RuntimeRegistry, lvalue_field_cell};
-        use crate::ast::Span;
+        use crate::data::ast::Span;
+        use crate::data::typed_ast::TypedExpr;
+        use crate::data::types::Type;
         use crate::identity::BindingId;
-        use crate::typed_ast::TypedExpr;
-        use crate::types::Type;
         use std::cell::RefCell;
         use std::collections::HashMap;
         use std::rc::Rc;
@@ -4195,10 +4204,10 @@ mod architecture_evidence_tests {
         Environment, RuntimeCallable, RuntimeMethod, RuntimeRegistry, RuntimeSignature, Value,
         pop_frame, push_frame,
     };
-    use crate::ast::Span;
-    use crate::error::MetelError;
+    use crate::data::ast::Span;
+    use crate::data::error::MetelError;
     use crate::identity::LocalId;
-    use crate::symbols::SymbolId;
+    use crate::identity::symbols::SymbolId;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -4335,11 +4344,11 @@ mod architecture_evidence_tests {
             aspect_name: "Counter".to_string(),
             type_args: vec![],
         };
-        let registry = crate::typeinference::TypeDefinitionRegistry::new();
+        let registry = crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry::new();
         let ty = super::type_of::value_to_type(&value, &registry, &Span::new(0, 0, "t"));
         assert_eq!(
             ty,
-            crate::types::Type::Dyn {
+            crate::data::types::Type::Dyn {
                 aspect: "Counter".to_string(),
                 type_args: vec![]
             },

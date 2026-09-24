@@ -10,7 +10,7 @@
 //!
 //! [`ResolutionMap`]: super::ResolutionMap
 
-use crate::ast::Span;
+use crate::data::ast::Span;
 
 use super::{BindingId, ModuleId, RefId};
 

@@ -20,7 +20,7 @@
 
 use std::collections::HashMap;
 
-use crate::ast::Span;
+use crate::data::ast::Span;
 
 use super::{FieldId, NameId, NameInterner, SymbolId, VariantId};
 
@@ -155,11 +155,11 @@ impl MemberTable {
 #[must_use]
 // arch-implements: ["arch.resolution.requirement-3"]
 pub fn collect_members(
-    modules: &[(Vec<String>, &[crate::ast::Decl])],
-    names: &crate::name_resolver::ResolvedNames,
+    modules: &[(Vec<String>, &[crate::data::ast::Decl])],
+    names: &crate::pipeline::name_resolution::name_resolver::ResolvedNames,
     interner: &mut NameInterner,
 ) -> MemberTable {
-    use crate::ast::Decl;
+    use crate::data::ast::Decl;
 
     let mut table = MemberTable::new();
     for (module_path, decls) in modules {
@@ -207,14 +207,14 @@ pub fn collect_members(
 /// [`FieldId`] / [`VariantId`] assignment is a plain declaration-order counter,
 /// so the ids match what `analyze_*` produces for the same graph.
 ///
-/// [`ModuleGraph`]: crate::module_loader::ModuleGraph
+/// [`ModuleGraph`]: crate::pipeline::parsing::module_loader::ModuleGraph
 /// [`allocate_graph`]: super::allocate_graph
 #[must_use]
 pub fn collect_members_for_graph(
-    graph: &crate::module_loader::ModuleGraph,
-    names: &crate::name_resolver::ResolvedNames,
+    graph: &crate::pipeline::parsing::module_loader::ModuleGraph,
+    names: &crate::pipeline::name_resolution::name_resolver::ResolvedNames,
 ) -> MemberTable {
-    let modules: Vec<(Vec<String>, &[crate::ast::Decl])> = graph
+    let modules: Vec<(Vec<String>, &[crate::data::ast::Decl])> = graph
         .modules
         .iter()
         .map(|module| (module.module_path.clone(), module.program.decls.as_slice()))
@@ -227,8 +227,8 @@ mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    use crate::module_loader::{LoadedModule, ModuleGraph};
-    use crate::name_resolver::resolve;
+    use crate::pipeline::name_resolution::name_resolver::resolve;
+    use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 
     use super::super::NameInterner;
     use super::collect_members;
@@ -237,9 +237,9 @@ mod tests {
         source: &str,
     ) -> (
         super::MemberTable,
-        std::rc::Rc<crate::name_resolver::ResolvedNames>,
+        std::rc::Rc<crate::pipeline::name_resolution::name_resolver::ResolvedNames>,
     ) {
-        let program = crate::parser::parse(source, "test.mtl").expect("parse");
+        let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
         let graph = ModuleGraph {
             root: PathBuf::from("test.mtl"),
             modules: vec![LoadedModule {
@@ -256,7 +256,10 @@ mod tests {
         (table, names)
     }
 
-    fn sym(names: &crate::name_resolver::ResolvedNames, name: &str) -> super::SymbolId {
+    fn sym(
+        names: &crate::pipeline::name_resolution::name_resolver::ResolvedNames,
+        name: &str,
+    ) -> super::SymbolId {
         *names
             .symbols
             .get(&(vec![], name.to_string()))

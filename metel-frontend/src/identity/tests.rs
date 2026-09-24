@@ -13,9 +13,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::ast::Span;
-use crate::module_loader::{LoadedModule, ModuleGraph};
-use crate::name_resolver::resolve;
+use crate::data::ast::Span;
+use crate::pipeline::name_resolution::name_resolver::resolve;
+use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 
 use super::allocate::{
     GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph, allocate_module,
@@ -33,12 +33,12 @@ use super::{
 struct Fixture {
     alloc: Allocation,
     interner: NameInterner,
-    names: std::rc::Rc<crate::name_resolver::ResolvedNames>,
+    names: std::rc::Rc<crate::pipeline::name_resolution::name_resolver::ResolvedNames>,
 }
 
 impl Fixture {
     fn build(source: &str) -> Self {
-        let program = crate::parser::parse(source, "test.mtl").expect("parse");
+        let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
         let graph = ModuleGraph {
             root: PathBuf::from("test.mtl"),
             modules: vec![LoadedModule {
@@ -191,7 +191,8 @@ fn local_binding_identity_is_independent_of_module_resolution_order() {
                 .map(|(name, src)| LoadedModule {
                     module_path: vec![(*name).to_string()],
                     file_path: PathBuf::from(format!("{name}.mtl")),
-                    program: crate::parser::parse(src, &format!("{name}.mtl")).expect("parses"),
+                    program: crate::pipeline::parsing::parser::parse(src, &format!("{name}.mtl"))
+                        .expect("parses"),
                 })
                 .collect(),
             path_aliases: HashMap::new(),
@@ -508,7 +509,7 @@ fn graph_allocation_is_module_order_independent_and_module_unique() {
                 LoadedModule {
                     module_path: vec!["left".to_string()],
                     file_path: PathBuf::from("left.mtl"),
-                    program: crate::parser::parse(
+                    program: crate::pipeline::parsing::parser::parse(
                         "fun main(param) { let x := param; x; }",
                         "left.mtl",
                     )
@@ -517,7 +518,7 @@ fn graph_allocation_is_module_order_independent_and_module_unique() {
                 LoadedModule {
                     module_path: vec!["right".to_string()],
                     file_path: PathBuf::from("right.mtl"),
-                    program: crate::parser::parse(
+                    program: crate::pipeline::parsing::parser::parse(
                         "fun main(param) { let x := param; x; }",
                         "right.mtl",
                     )
@@ -616,14 +617,20 @@ fn module_qualified_path_segment_resolves_to_its_module() {
             LoadedModule {
                 module_path: vec!["net".to_string()],
                 file_path: PathBuf::from("net.mtl"),
-                program: crate::parser::parse("fun connect() -> i64 { 0 }", "net.mtl")
-                    .expect("net parses"),
+                program: crate::pipeline::parsing::parser::parse(
+                    "fun connect() -> i64 { 0 }",
+                    "net.mtl",
+                )
+                .expect("net parses"),
             },
             LoadedModule {
                 module_path: vec![],
                 file_path: PathBuf::from("app.mtl"),
-                program: crate::parser::parse("fun main() -> i64 { net::connect() }", "app.mtl")
-                    .expect("app parses"),
+                program: crate::pipeline::parsing::parser::parse(
+                    "fun main() -> i64 { net::connect() }",
+                    "app.mtl",
+                )
+                .expect("app parses"),
             },
         ],
         path_aliases: HashMap::new(),
@@ -704,13 +711,17 @@ fn module_segment_hit_is_position_stable_under_reformatting() {
                 LoadedModule {
                     module_path: vec!["net".to_string()],
                     file_path: PathBuf::from("net.mtl"),
-                    program: crate::parser::parse("fun connect() -> i64 { 0 }", "net.mtl")
-                        .expect("net"),
+                    program: crate::pipeline::parsing::parser::parse(
+                        "fun connect() -> i64 { 0 }",
+                        "net.mtl",
+                    )
+                    .expect("net"),
                 },
                 LoadedModule {
                     module_path: vec![],
                     file_path: PathBuf::from("app.mtl"),
-                    program: crate::parser::parse(app_src, "app.mtl").expect("app"),
+                    program: crate::pipeline::parsing::parser::parse(app_src, "app.mtl")
+                        .expect("app"),
                 },
             ],
             path_aliases: HashMap::new(),

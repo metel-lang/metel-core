@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::Value;
-use crate::ast::Span;
-use crate::typeinference::TypeDefinitionRegistry;
-use crate::types::Type;
+use crate::data::ast::Span;
+use crate::data::types::Type;
+use crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry;
 
 /// Derive a concrete `Type` from a runtime `Value`.
 ///
@@ -63,13 +63,18 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args =
-                crate::typechecker::infer_named_type_args(name, None, &field_types, registry, span);
+            let args = crate::pipeline::type_checking::infer_named_type_args(
+                name,
+                None,
+                &field_types,
+                registry,
+                span,
+            );
             // metel-core#1129: carry the value's own resolved declaration
             // identity, when it has one, instead of only the bare name --
             // this is what lets a bound check on this type find the *actual*
             // impl rather than guessing by name across the whole program.
-            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
+            Type::Named(name.clone(), args, crate::data::types::NominalId(*type_id))
         }
         Value::Enum {
             name,
@@ -80,22 +85,22 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args = crate::typechecker::infer_named_type_args(
+            let args = crate::pipeline::type_checking::infer_named_type_args(
                 name,
                 Some(variant),
                 &field_types,
                 registry,
                 span,
             );
-            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
+            Type::Named(name.clone(), args, crate::data::types::NominalId(*type_id))
         }
         Value::Callable(callable) => match callable {
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
                 .clone()
-                .unwrap_or_else(|| crate::types::default_fun_type(vec![], Type::Unit)),
+                .unwrap_or_else(|| crate::data::types::default_fun_type(vec![], Type::Unit)),
             super::RuntimeCallable::Intrinsic { .. } => {
-                crate::types::default_fun_type(vec![], Type::Unit)
+                crate::data::types::default_fun_type(vec![], Type::Unit)
             }
         },
         Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
@@ -109,7 +114,11 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                     (super::PathSegment::Field(f), Type::Named(name, ..)) => {
                         // A synthetic "Outer.field" phantom name, not a real
                         // declared type -- no identity to carry.
-                        Type::Named(format!("{name}.{f}"), vec![], crate::types::NominalId::NONE)
+                        Type::Named(
+                            format!("{name}.{f}"),
+                            vec![],
+                            crate::data::types::NominalId::NONE,
+                        )
                     }
                     (super::PathSegment::Field(f), Type::Record(fields)) => fields
                         .into_iter()
@@ -187,7 +196,7 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                 // its identity wins when it has one, same as everywhere else
                 // here. Only take the static side's id when the runtime type
                 // couldn't resolve one at all.
-                crate::types::NominalId(rid.get().or_else(|| sid.get())),
+                crate::data::types::NominalId(rid.get().or_else(|| sid.get())),
             )
         }
         (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mutation))

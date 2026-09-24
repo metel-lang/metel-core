@@ -227,10 +227,10 @@ The product pipeline is:
 
 Do not create a shortcut entry point that silently skips stages.
 
-- `module_loader::load_root` produces a topologically ordered module graph.
-- `name_resolver::resolve` owns import scopes, visibility, and re-exports.
-- `path_normalizer::normalize` rewrites qualified paths before typechecking.
-- `typechecker::check_graph` consumes normalized modules and resolved names.
+- `pipeline::parsing::module_loader::load_root` produces a topologically ordered module graph.
+- `pipeline::name_resolution::name_resolver::resolve` owns import scopes, visibility, and re-exports.
+- `pipeline::path_normalization::normalize` rewrites qualified paths before typechecking.
+- `pipeline::type_checking::check_graph` consumes normalized modules and resolved names.
 - Cross-module public APIs require explicit annotations.
 - A boundary change requires architecture-doc review and usually an ADR.
 
@@ -253,7 +253,7 @@ Sensitive rules:
 - `Perhaps` and `Result` are distinct `Type` variants; normalize through established
   conversions where named types are handled uniformly.
 - Apply substitutions before `infer_type_to_type`; unresolved variables are errors.
-- `crate::types::Type` contains no type variables. Abstract parameters are
+- `crate::data::types::Type` contains no type variables. Abstract parameters are
   `InferType::Var(TypeVar)`.
 - Generic instantiation follows `instantiate_scheme_for_call`: fresh variables,
   initial substitution, unification, composed substitution, then extraction.

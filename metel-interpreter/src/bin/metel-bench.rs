@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use metel::evaluator::{CallEdgeProfile, EvaluatorProfile, FunctionProfile};
-use metel::pipeline::{self, EvaluatorFixturePhaseTimings, EvaluatorFixtureRunReport, RunOptions};
+use metel::orchestrator::{
+    self, EvaluatorFixturePhaseTimings, EvaluatorFixtureRunReport, RunOptions,
+};
 use serde::Serialize;
 
 #[derive(Debug, Parser)]
@@ -73,7 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .to_string();
 
         for _ in 0..args.warmups {
-            pipeline::run_evaluator_fixture(
+            orchestrator::run_evaluator_fixture(
                 fixture.to_string_lossy().as_ref(),
                 &RunOptions::default(),
             )?;
@@ -81,13 +83,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut reports = Vec::new();
         for _ in 0..args.iterations {
-            reports.push(pipeline::run_evaluator_fixture(
+            reports.push(orchestrator::run_evaluator_fixture(
                 fixture.to_string_lossy().as_ref(),
                 &RunOptions::default(),
             )?);
         }
 
-        let profile_report = pipeline::run_evaluator_fixture(
+        let profile_report = orchestrator::run_evaluator_fixture(
             fixture.to_string_lossy().as_ref(),
             &RunOptions {
                 collect_evaluator_profile: true,

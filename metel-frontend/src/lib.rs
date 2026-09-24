@@ -8,27 +8,9 @@
     clippy::cast_lossless
 )]
 
-pub mod analysis;
-pub mod ast;
-pub mod coherence;
-pub mod elaborator;
-pub mod error;
-pub(crate) mod flow_state;
+pub mod data;
 pub mod identity;
-pub mod module_loader;
-pub mod module_paths;
-pub mod move_check;
-pub mod name_resolver;
-pub mod native_keys;
-pub mod parser;
-pub mod path_normalizer;
-pub mod place;
-pub mod query;
-pub mod reference_resolver;
+pub mod ownership;
+pub mod pipeline;
 pub mod stdlib;
-pub mod symbols;
-pub mod type_alias;
-pub mod typechecker;
-pub mod typed_ast;
-pub mod typeinference;
-pub mod types;
+pub mod tooling;
