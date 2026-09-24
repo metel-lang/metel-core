@@ -8,7 +8,7 @@ use crate::typed_ast::{
 };
 use crate::typeinference::{
     AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx, TypeDefinitionRegistry,
-    TypeScheme, TypeVar, TypeVarGenerator, type_to_infer,
+    TypeScheme, TypeVar, type_to_infer,
 };
 use crate::types::Type;
 
@@ -397,7 +397,7 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(span, "function type scheme was unavailable");
             return None;
         };
-        let scheme = scheme_with_source_generics(raw_scheme, generics);
+        let scheme = crate::typechecker::repair_scheme_with_source_generics(raw_scheme, generics);
         let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
         else {
             self.record_skipped_generic_body(
@@ -459,7 +459,8 @@ impl<'a> Checker<'a> {
         };
         let mut source_generics = impl_block.generics.clone();
         source_generics.extend_from_slice(&method.generics);
-        let scheme = scheme_with_source_generics(&raw_scheme, &source_generics);
+        let scheme =
+            crate::typechecker::repair_scheme_with_source_generics(&raw_scheme, &source_generics);
         let Some(type_ctx) = self.type_ctx.as_ref() else {
             self.record_skipped_generic_body(&method.span, "type context was unavailable");
             return;
@@ -545,7 +546,10 @@ impl<'a> Checker<'a> {
             .iter()
             .map(|param| {
                 let substituted = subst.apply(param);
-                infer_to_type(&substitute_named_generics(&substituted, &named_samples))
+                infer_to_type(&crate::typechecker::substitute_named_generics(
+                    &substituted,
+                    &named_samples,
+                ))
             })
             .collect::<Option<Vec<_>>>()?;
         generic_env.arg_types.clone_from(&arg_types);
@@ -1943,58 +1947,12 @@ fn generic_placeholder_name(var: TypeVar) -> String {
     format!("__metel_move_check_generic_{}", var.0)
 }
 
-fn scheme_with_source_generics(scheme: &TypeScheme, generics: &[GenericParam]) -> TypeScheme {
-    let mut repaired = scheme.clone();
-    let existing = repaired.quantified_vars.len();
-    repaired.bounds.resize_with(existing, Vec::new);
-    repaired.neg_bounds.resize_with(existing, Vec::new);
-    repaired.record_kinds.resize(existing, false);
-    repaired.assoc_projections.resize(existing, None);
-    repaired
-        .assoc_eq_constraints
-        .resize_with(existing, Vec::new);
-    repaired.opaque_returns.resize(existing, None);
-    let mut replacements = HashMap::new();
-    let mut type_var_gen = TypeVarGenerator::with_counter(4_000_000);
-    for generic in generics {
-        if repaired.param_names.contains(&generic.name) {
-            continue;
-        }
-        let var = type_var_gen.fresh();
-        replacements.insert(generic.name.clone(), InferType::Var(var));
-        repaired.quantified_vars.push(var);
-        repaired.param_names.push(generic.name.clone());
-        repaired.bounds.push(
-            generic
-                .bounds
-                .iter()
-                .filter(|bound| bound.polarity == Polarity::Positive)
-                .filter_map(GenericBound::from_ast)
-                .collect(),
-        );
-        repaired.neg_bounds.push(
-            generic
-                .bounds
-                .iter()
-                .filter(|bound| bound.polarity == Polarity::Negative)
-                .filter_map(GenericBound::from_ast)
-                .collect(),
-        );
-        repaired.record_kinds.push(generic.is_record);
-        repaired.assoc_projections.push(None);
-        repaired.assoc_eq_constraints.push(Vec::new());
-        repaired.opaque_returns.push(None);
-    }
-    repaired.ty = substitute_named_generics(&repaired.ty, &replacements);
-    repaired
-}
-
 fn type_ctx_with_symbolic_aspect_methods(
     type_ctx: &TypeCtx,
     generic_env: &GenericMoveEnv,
 ) -> TypeCtx {
     let mut enriched = type_ctx.clone();
-    let mut method_gen = TypeVarGenerator::with_counter(2_000_000);
+    let mut method_gen = crate::typechecker::symbolic_aspect_method_generator();
     for (placeholder, aspects) in &generic_env.symbolic_aspects {
         enriched
             .registry
@@ -2164,85 +2122,6 @@ fn infer_method_arg_types(fun_ty: &crate::typeinference::InferType) -> Option<Ve
             .map(infer_to_type)
             .collect::<Option<Vec<_>>>(),
         _ => None,
-    }
-}
-
-fn substitute_named_generics(
-    ty: &InferType,
-    named_samples: &HashMap<String, InferType>,
-) -> InferType {
-    match ty {
-        InferType::Named(name, args, ..) if args.is_empty() => named_samples
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| ty.clone()),
-        InferType::Named(name, args, ..) => InferType::Named(
-            name.clone(),
-            args.iter()
-                .map(|arg| substitute_named_generics(arg, named_samples))
-                .collect(),
-            crate::types::NominalId::NONE,
-        ),
-        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
-            params
-                .iter()
-                .map(|param| substitute_named_generics(param, named_samples))
-                .collect(),
-            Box::new(substitute_named_generics(ret, named_samples)),
-            *call_mult,
-            *use_mult,
-            *call_mutation,
-        ),
-        InferType::Tuple(items) => InferType::Tuple(
-            items
-                .iter()
-                .map(|item| substitute_named_generics(item, named_samples))
-                .collect(),
-        ),
-        InferType::Record(fields) => InferType::Record(
-            fields
-                .iter()
-                .map(|(name, field_ty)| {
-                    (
-                        name.clone(),
-                        substitute_named_generics(field_ty, named_samples),
-                    )
-                })
-                .collect(),
-        ),
-        InferType::Array(item) => {
-            InferType::Array(Box::new(substitute_named_generics(item, named_samples)))
-        }
-        InferType::SizedArray(item, len) => InferType::SizedArray(
-            Box::new(substitute_named_generics(item, named_samples)),
-            *len,
-        ),
-        InferType::Reference(inner) => {
-            InferType::Reference(Box::new(substitute_named_generics(inner, named_samples)))
-        }
-        InferType::MutReference(inner) => {
-            InferType::MutReference(Box::new(substitute_named_generics(inner, named_samples)))
-        }
-        InferType::Residual { brand, fields } => InferType::Residual {
-            brand: brand.clone(),
-            fields: fields
-                .iter()
-                .map(|(name, field_ty)| {
-                    (
-                        name.clone(),
-                        substitute_named_generics(field_ty, named_samples),
-                    )
-                })
-                .collect(),
-        },
-        InferType::Dyn { aspect, type_args } => InferType::Dyn {
-            aspect: aspect.clone(),
-            type_args: type_args
-                .iter()
-                .map(|arg| substitute_named_generics(arg, named_samples))
-                .collect(),
-        },
-        InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
     }
 }
 

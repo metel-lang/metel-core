@@ -905,6 +905,158 @@ pub(super) fn symbolic_impl_method_scheme(
     })
 }
 
+/// A fresh generator for move check's symbolic aspect-method scheme resolution
+/// (`typechecker::symbolic_aspect_method_scheme`), one instance threaded across every
+/// method registered in one `type_ctx_with_symbolic_aspect_methods` call so ids stay
+/// unique within it. Move check owns *when* to call this and what to do with the
+/// result; the starting offset itself is `type_checking`'s call, not something a caller
+/// picks (metel-core#1251).
+pub(super) fn symbolic_aspect_method_generator() -> TypeVarGenerator {
+    TypeVarGenerator::with_counter(2_000_000)
+}
+
+/// Substitute every bare, zero-argument named type in `ty` that appears in
+/// `named_samples` with its sample -- the same generic-placeholder substitution move
+/// check's symbolic instantiation uses on both sides (a repaired scheme's body here,
+/// a scheme's argument types in `crate::move_check`'s own `generic_sample_args`).
+pub(super) fn substitute_named_generics(
+    ty: &InferType,
+    named_samples: &HashMap<String, InferType>,
+) -> InferType {
+    match ty {
+        InferType::Named(name, args, ..) if args.is_empty() => named_samples
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| ty.clone()),
+        InferType::Named(name, args, ..) => InferType::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| substitute_named_generics(arg, named_samples))
+                .collect(),
+            crate::types::NominalId::NONE,
+        ),
+        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
+            params
+                .iter()
+                .map(|param| substitute_named_generics(param, named_samples))
+                .collect(),
+            Box::new(substitute_named_generics(ret, named_samples)),
+            *call_mult,
+            *use_mult,
+            *call_mutation,
+        ),
+        InferType::Tuple(items) => InferType::Tuple(
+            items
+                .iter()
+                .map(|item| substitute_named_generics(item, named_samples))
+                .collect(),
+        ),
+        InferType::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        substitute_named_generics(field_ty, named_samples),
+                    )
+                })
+                .collect(),
+        ),
+        InferType::Array(item) => {
+            InferType::Array(Box::new(substitute_named_generics(item, named_samples)))
+        }
+        InferType::SizedArray(item, len) => InferType::SizedArray(
+            Box::new(substitute_named_generics(item, named_samples)),
+            *len,
+        ),
+        InferType::Reference(inner) => {
+            InferType::Reference(Box::new(substitute_named_generics(inner, named_samples)))
+        }
+        InferType::MutReference(inner) => {
+            InferType::MutReference(Box::new(substitute_named_generics(inner, named_samples)))
+        }
+        InferType::Residual { brand, fields } => InferType::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        substitute_named_generics(field_ty, named_samples),
+                    )
+                })
+                .collect(),
+        },
+        InferType::Dyn { aspect, type_args } => InferType::Dyn {
+            aspect: aspect.clone(),
+            type_args: type_args
+                .iter()
+                .map(|arg| substitute_named_generics(arg, named_samples))
+                .collect(),
+        },
+        InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
+    }
+}
+
+/// Repair `scheme` to also quantify over any of `generics` it doesn't already --
+/// move check's own path can see a function's or impl's declared generics (from the
+/// AST) growing past what its `TypeScheme` already quantifies, when a caller resolves
+/// against a scheme built before every generic parameter was known. Mints one fresh
+/// placeholder `TypeVar` per missing generic and substitutes it through the scheme's
+/// body, so the repaired scheme quantifies over the same set the AST declares.
+///
+/// Owns its own `TypeVarGenerator` (offset 4,000,000) rather than taking one from the
+/// caller: nothing outside this one call needs the vars it mints to stay live past it
+/// (metel-core#1251).
+pub(super) fn repair_scheme_with_source_generics(
+    scheme: &TypeScheme,
+    generics: &[crate::ast::GenericParam],
+) -> TypeScheme {
+    let mut repaired = scheme.clone();
+    let existing = repaired.quantified_vars.len();
+    repaired.bounds.resize_with(existing, Vec::new);
+    repaired.neg_bounds.resize_with(existing, Vec::new);
+    repaired.record_kinds.resize(existing, false);
+    repaired.assoc_projections.resize(existing, None);
+    repaired
+        .assoc_eq_constraints
+        .resize_with(existing, Vec::new);
+    repaired.opaque_returns.resize(existing, None);
+    let mut replacements = HashMap::new();
+    let mut type_var_gen = TypeVarGenerator::with_counter(4_000_000);
+    for generic in generics {
+        if repaired.param_names.contains(&generic.name) {
+            continue;
+        }
+        let var = type_var_gen.fresh();
+        replacements.insert(generic.name.clone(), InferType::Var(var));
+        repaired.quantified_vars.push(var);
+        repaired.param_names.push(generic.name.clone());
+        repaired.bounds.push(
+            generic
+                .bounds
+                .iter()
+                .filter(|bound| bound.polarity == crate::ast::Polarity::Positive)
+                .filter_map(GenericBound::from_ast)
+                .collect(),
+        );
+        repaired.neg_bounds.push(
+            generic
+                .bounds
+                .iter()
+                .filter(|bound| bound.polarity == crate::ast::Polarity::Negative)
+                .filter_map(GenericBound::from_ast)
+                .collect(),
+        );
+        repaired.record_kinds.push(generic.is_record);
+        repaired.assoc_projections.push(None);
+        repaired.assoc_eq_constraints.push(Vec::new());
+        repaired.opaque_returns.push(None);
+    }
+    repaired.ty = substitute_named_generics(&repaired.ty, &replacements);
+    repaired
+}
+
 // limit: ["LIMIT-EVALUATION-001", "LIMIT-TYPE-INFERENCE-005"]
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,

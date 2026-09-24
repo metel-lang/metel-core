@@ -1124,6 +1124,24 @@ pub(crate) fn symbolic_impl_method_scheme(
     )
 }
 
+pub(crate) fn symbolic_aspect_method_generator() -> crate::typeinference::TypeVarGenerator {
+    construction::symbolic_aspect_method_generator()
+}
+
+pub(crate) fn substitute_named_generics(
+    ty: &crate::typeinference::InferType,
+    named_samples: &std::collections::HashMap<String, crate::typeinference::InferType>,
+) -> crate::typeinference::InferType {
+    construction::substitute_named_generics(ty, named_samples)
+}
+
+pub(crate) fn repair_scheme_with_source_generics(
+    scheme: &crate::typeinference::TypeScheme,
+    generics: &[crate::ast::GenericParam],
+) -> crate::typeinference::TypeScheme {
+    construction::repair_scheme_with_source_generics(scheme, generics)
+}
+
 /// Recover concrete type arguments for a generic struct/enum instance, given the
 /// already-computed `Type` of each of its fields (issue #267).
 ///
