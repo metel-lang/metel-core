@@ -33,7 +33,7 @@ use super::{
 struct Fixture {
     alloc: Allocation,
     interner: NameInterner,
-    names: crate::name_resolver::ResolvedNames,
+    names: std::rc::Rc<crate::name_resolver::ResolvedNames>,
 }
 
 impl Fixture {

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use crate::ast::{Decl, ImportTree, PathRoot, Span, TypeExpr, Visibility};
 use crate::error::{MetelError, TypeErrorCode};
@@ -113,10 +114,16 @@ pub(crate) fn canonical_path(
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/// Returns an `Rc` since every later pipeline stage (path normalization,
+/// coherence, typechecking, elaboration) reads the same `ResolvedNames` --
+/// wrapping it once here, at its one real construction site, lets each stage's
+/// own graph type carry a cheap clone forward instead of a raw `&ResolvedNames`
+/// side parameter reaching back to this pass (metel-core#1250).
+///
 /// # Errors
 /// Returns an error if an import or export cannot be resolved (e.g. an unknown
 /// module or name) or if a glob-import conflict cannot be settled.
-pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
+pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
     let path_aliases = &graph.path_aliases;
     let known_modules: HashSet<Vec<String>> = graph
         .modules
@@ -222,14 +229,14 @@ pub fn resolve(graph: &ModuleGraph) -> Result<ResolvedNames, MetelError> {
         },
     );
 
-    Ok(ResolvedNames {
+    Ok(Rc::new(ResolvedNames {
         scopes,
         pub_surface,
         declared_names,
         symbols: sym.map,
         definitions,
         references,
-    })
+    }))
 }
 
 /// Build the canonical symbol-table name for an `impl`/`aspect` method (METEL-185).

@@ -81,17 +81,16 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let allocation = identity::allocate_for_graph(&graph, &names);
 
     let started = Instant::now();
-    let normalized = path_normalizer::normalize(graph, &names)?;
+    let normalized = path_normalizer::normalize(graph, names.clone())?;
     let normalize_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    coherence::check(&normalized, &names)?;
+    coherence::check(&normalized)?;
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
     let typed_report = typechecker::check_graph_with_report(
         &normalized,
-        &names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &members,
@@ -106,7 +105,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     }
 
     let started = Instant::now();
-    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
+    let elaborated = elaborator::elaborate(typed_report.graph)?;
     let elaborate_ns = elapsed_ns(started);
 
     let runtime_identity = RuntimeIdentity {
@@ -169,17 +168,16 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let allocation = identity::allocate_for_graph(&graph, &names);
 
     let started = Instant::now();
-    let normalized = path_normalizer::normalize(graph, &names)?;
+    let normalized = path_normalizer::normalize(graph, names.clone())?;
     let normalize_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    coherence::check(&normalized, &names)?;
+    coherence::check(&normalized)?;
     let coherence_ns = elapsed_ns(started);
 
     let started = Instant::now();
     let typed_report = typechecker::check_graph_with_report(
         &normalized,
-        &names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &members,
@@ -194,7 +192,7 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     }
 
     let started = Instant::now();
-    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
+    let elaborated = elaborator::elaborate(typed_report.graph)?;
     let elaborate_ns = elapsed_ns(started);
 
     let runtime_identity = RuntimeIdentity {
@@ -252,14 +250,13 @@ pub fn run_evaluator_fixture(
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized = path_normalizer::normalize(graph, &names)?;
-    coherence::check(&normalized, &names)?;
+    let normalized = path_normalizer::normalize(graph, names.clone())?;
+    coherence::check(&normalized)?;
     let parse_ns = elapsed_ns(started);
 
     let started = Instant::now();
     let typed_report = typechecker::check_graph_with_report(
         &normalized,
-        &names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &members,
@@ -272,7 +269,7 @@ pub fn run_evaluator_fixture(
         warnings.extend(move_check::check_graph(&typed_report.graph)?);
     }
 
-    let elaborated = elaborator::elaborate(typed_report.graph, &names)?;
+    let elaborated = elaborator::elaborate(typed_report.graph)?;
     let typecheck_ns = elapsed_ns(started);
 
     let runtime_identity = RuntimeIdentity {

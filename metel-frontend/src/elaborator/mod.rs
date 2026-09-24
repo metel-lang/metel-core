@@ -24,7 +24,7 @@ use crate::types::Type;
 /// | Artifact | Owner | Responsibility |
 /// |---|---|---|
 /// | `TypeDefinitionRegistry` | `TypedModuleGraph::type_registry` | Type/aspect/method definitions; the elaboration-facing `aspect_declaring_module` lookup |
-/// | `ResolvedNames::symbols` | Caller-supplied to `elaborate` | Stable `SymbolId` intern table; elaboration reads but does not write it |
+/// | `ResolvedNames::symbols` | `TypedModuleGraph::names` | Stable `SymbolId` intern table; elaboration reads but does not write it |
 /// | `MethodDispatch` per call site | `TypedExpr::MethodCall::dispatch` | Resolved during elaboration; evaluator reads, does not re-derive |
 /// | `TypedImplBlock::aspect_id` | `TypedImplBlock` | Set during typechecker construction pass (Pass 2) using the same symbol table |
 ///
@@ -40,16 +40,17 @@ pub struct ElaboratedModuleGraph(pub TypedModuleGraph);
 /// Each `MethodCall::dispatch` field starts as `Dynamic`; this pass resolves it to
 /// `Aspect { aspect_id }` or `Inherent`.
 ///
+/// Reads `ResolvedNames` off `graph.names` (metel-core#1250) rather than taking it
+/// as a second parameter -- the same `ResolvedNames` `check_graph` threaded through.
+///
 /// # Errors
 /// Returns an error if two different aspects provide the same method name for the
 /// same type, making dispatch ambiguous (T0013).
 // arch-implements: ["arch.elaboration.requirement-1"]
-pub fn elaborate(
-    mut graph: TypedModuleGraph,
-    names: &ResolvedNames,
-) -> Result<ElaboratedModuleGraph, MetelError> {
-    let methods = build_aspect_method_map(&graph, names)?;
-    let aspect_ids = build_aspect_id_map(&graph, names);
+pub fn elaborate(mut graph: TypedModuleGraph) -> Result<ElaboratedModuleGraph, MetelError> {
+    let names = graph.names.clone();
+    let methods = build_aspect_method_map(&graph, &names)?;
+    let aspect_ids = build_aspect_id_map(&graph, &names);
 
     // Disjoint field borrows: `type_registry` is read-only for the whole walk while
     // `modules` is mutated. Splitting the struct into locals lets the borrow checker

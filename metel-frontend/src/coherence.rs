@@ -658,7 +658,8 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
 /// with another `impl` of the same aspect/type instantiation (T0015).
 #[allow(clippy::too_many_lines)]
 // arch-implements: ["arch.coherence.requirement-1"]
-pub fn check(graph: &NormalizedModuleGraph, names: &ResolvedNames) -> Result<(), MetelError> {
+pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
+    let names = &graph.names;
     let declaring = declaring_modules(names);
 
     let mut impls: Vec<CollectedImpl> = Vec::new();

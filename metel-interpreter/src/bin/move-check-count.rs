@@ -36,14 +36,13 @@ fn main() {
         let Ok(names) = name_resolver::resolve(&graph) else {
             continue;
         };
-        let Ok(normalized) = path_normalizer::normalize(graph, &names) else {
+        let Ok(normalized) = path_normalizer::normalize(graph, names) else {
             continue;
         };
-        if coherence::check(&normalized, &names).is_err() {
+        if coherence::check(&normalized).is_err() {
             continue;
         }
-        let Ok(typed) =
-            typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
+        let Ok(typed) = typechecker::check_graph(&normalized, &typechecker::CorePrelude::default())
         else {
             continue;
         };

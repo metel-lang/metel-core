@@ -233,7 +233,12 @@ mod tests {
     use super::super::NameInterner;
     use super::collect_members;
 
-    fn members(source: &str) -> (super::MemberTable, crate::name_resolver::ResolvedNames) {
+    fn members(
+        source: &str,
+    ) -> (
+        super::MemberTable,
+        std::rc::Rc<crate::name_resolver::ResolvedNames>,
+    ) {
         let program = crate::parser::parse(source, "test.mtl").expect("parse");
         let graph = ModuleGraph {
             root: PathBuf::from("test.mtl"),

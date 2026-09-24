@@ -6,6 +6,7 @@
 //! code.
 
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::coherence;
 use crate::error::MetelError;
@@ -30,7 +31,7 @@ pub struct Analysis {
     /// Fully typed modules in dependency order.
     pub graph: TypedModuleGraph,
     /// Name-resolution facts, including definition and reference tables.
-    pub names: ResolvedNames,
+    pub names: Rc<ResolvedNames>,
     /// Structural binding identities for every lexical binding and value
     /// reference (metel-core#1049). Identity-keyed; carries no source spans.
     pub resolution: ResolutionMap,
@@ -259,7 +260,7 @@ fn finish_diagnostics(
 /// diagnostics-collecting [`analyze_graph_with_diagnostics`], which differ
 /// only in what happens after this point.
 struct GraphFacts {
-    names: ResolvedNames,
+    names: Rc<ResolvedNames>,
     name_interner: NameInterner,
     modules: ModuleTable,
     identity: identity::Allocation,
@@ -333,11 +334,10 @@ pub(crate) fn analyze_graph(
     options: AnalysisOptions,
 ) -> Result<Analysis, MetelError> {
     let facts = resolve_graph_facts(&graph)?;
-    let normalized = path_normalizer::normalize(graph, &facts.names)?;
-    coherence::check(&normalized, &facts.names)?;
+    let normalized = path_normalizer::normalize(graph, facts.names.clone())?;
+    coherence::check(&normalized)?;
     let report = typechecker::check_graph_with_report(
         &normalized,
-        &facts.names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &facts.members,
@@ -381,17 +381,16 @@ pub(crate) fn analyze_graph_with_diagnostics(
         Ok(facts) => facts,
         Err(e) => return AnalysisReport::failure(e),
     };
-    let normalized = match path_normalizer::normalize(graph, &facts.names) {
+    let normalized = match path_normalizer::normalize(graph, facts.names.clone()) {
         Ok(normalized) => normalized,
         Err(e) => return AnalysisReport::failure(e),
     };
-    if let Err(e) = coherence::check(&normalized, &facts.names) {
+    if let Err(e) = coherence::check(&normalized) {
         return AnalysisReport::failure(e);
     }
 
     let report = typechecker::check_graph_collecting_diagnostics(
         &normalized,
-        &facts.names,
         &CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &facts.members,

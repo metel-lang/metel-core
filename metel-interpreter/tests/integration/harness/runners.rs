@@ -75,11 +75,10 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized = path_normalizer::normalize(graph, &names)?;
-    coherence::check(&normalized, &names)?;
+    let normalized = path_normalizer::normalize(graph, names)?;
+    coherence::check(&normalized)?;
     let typed = typechecker::check_graph_with_report(
         &normalized,
-        &names,
         &typechecker::CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &members,
@@ -143,11 +142,10 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized = path_normalizer::normalize(graph, &names)?;
-    coherence::check(&normalized, &names)?;
+    let normalized = path_normalizer::normalize(graph, names.clone())?;
+    coherence::check(&normalized)?;
     let typed = typechecker::check_graph_with_report(
         &normalized,
-        &names,
         &std_prelude(config.prelude),
         Some(identity::FrozenIdentity {
             members: &members,
@@ -160,7 +158,7 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
             eprintln!("warning: {warning}");
         }
     }
-    let elaborated = elaborator::elaborate(typed.graph, &names)?;
+    let elaborated = elaborator::elaborate(typed.graph)?;
     let runtime_identity = evaluator::RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
