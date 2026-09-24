@@ -19,27 +19,30 @@ use super::conversions::{
     type_expr_to_infer_with_self, type_to_infer,
 };
 
+/// A resolved struct field alongside the declaration metadata needed to
+/// finish typing the access: the substitution-ready field entry, its
+/// declaring module and visibility (for [`check_field_visibility`]), and the
+/// struct's own type params (for a generic remap). See
+/// [`resolve_struct_field_by_identity`].
+pub(super) type ResolvedStructField = (
+    FieldEntry,
+    Option<Vec<String>>,
+    Option<Visibility>,
+    Option<Vec<TypeVar>>,
+);
+
 /// metel-core#1222: resolve a struct field by the value's own declaration
 /// identity when available -- same-named structs declared in different
 /// modules are otherwise conflated by a bare-name lookup. Shared by the read
 /// side (`Expr::FieldAccess` in `inference/expressions.rs`) and the write
 /// side (`infer_field_assign_type` below).
-#[allow(clippy::type_complexity)]
 pub(super) fn resolve_struct_field_by_identity(
     ctx: &InferContext,
     nominal_struct_id: Option<crate::identity::symbols::SymbolId>,
     struct_name: &str,
     field: &str,
     span: &Span,
-) -> Result<
-    (
-        FieldEntry,
-        Option<Vec<String>>,
-        Option<Visibility>,
-        Option<Vec<TypeVar>>,
-    ),
-    MetelError,
-> {
+) -> Result<ResolvedStructField, MetelError> {
     if let Some(id) = nominal_struct_id
         && let Some(fields) = ctx.registry().struct_fields_by_id(id)
     {
