@@ -2891,11 +2891,10 @@ mod tests {
             let graph = module_loader::load_root(&path).expect("load temp fixture");
             let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
             let normalized =
-                path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
-            coherence::check(&normalized, &names).expect("coherence temp fixture");
-            let typed =
-                typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
-                    .expect("typecheck temp fixture");
+                path_normalizer::normalize(graph, names).expect("normalize temp fixture");
+            coherence::check(&normalized).expect("coherence temp fixture");
+            let typed = typechecker::check_graph(&normalized, &typechecker::CorePrelude::default())
+                .expect("typecheck temp fixture");
             collect_graph_violations(&typed)
                 .violations
                 .into_iter()
@@ -2919,10 +2918,9 @@ mod tests {
         let result = (|| {
             let graph = module_loader::load_root(&path)?;
             let names = name_resolver::resolve(&graph)?;
-            let normalized = path_normalizer::normalize(graph, &names)?;
-            coherence::check(&normalized, &names)?;
-            typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
-                .map(|_| ())
+            let normalized = path_normalizer::normalize(graph, names)?;
+            coherence::check(&normalized)?;
+            typechecker::check_graph(&normalized, &typechecker::CorePrelude::default()).map(|_| ())
         })();
         let _ = std::fs::remove_file(&path);
         let err = result.expect_err("expected a typecheck error, got a clean typecheck");
@@ -2968,11 +2966,10 @@ mod tests {
             let graph = module_loader::load_root(&path).expect("load temp fixture");
             let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
             let normalized =
-                path_normalizer::normalize(graph, &names).expect("normalize temp fixture");
-            coherence::check(&normalized, &names).expect("coherence temp fixture");
-            let typed =
-                typechecker::check_graph(&normalized, &names, &typechecker::CorePrelude::default())
-                    .expect("typecheck temp fixture");
+                path_normalizer::normalize(graph, names).expect("normalize temp fixture");
+            coherence::check(&normalized).expect("coherence temp fixture");
+            let typed = typechecker::check_graph(&normalized, &typechecker::CorePrelude::default())
+                .expect("typecheck temp fixture");
             check_graph(&typed).expect("move-check temp fixture")
         })();
         let _ = std::fs::remove_file(&path);

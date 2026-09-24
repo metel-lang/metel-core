@@ -3,12 +3,14 @@
 // Generic declarations do not appear here — they are monomorphised by the type checker.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::ast::{
     AspectMethod, AssignOp, BinOp, Block, CaptureSpec, FieldDef, GenericParam, Literal, Param,
     Polarity, Span, TypeExpr, UnaryOp, VariantDef,
 };
 use crate::identity::{BindingId, FieldId, LocalId, VariantId};
+use crate::name_resolver::ResolvedNames;
 use crate::symbols::SymbolId;
 use crate::typeinference::{TypeDefinitionRegistry, TypeScheme};
 use crate::types::{CallMultiplicity, CallMutation, Type};
@@ -54,6 +56,10 @@ pub struct TypedModuleGraph {
     /// all struct, enum, aspect, and method definitions visible after the full graph is
     /// checked. Available to the evaluator for construction-at-call-time of generic bodies.
     pub type_registry: TypeDefinitionRegistry,
+    /// The same `ResolvedNames` the checked `NormalizedModuleGraph` carried, threaded
+    /// forward so `elaborator::elaborate` reads it off this graph instead of taking
+    /// it as a second, separately-threaded parameter (metel-core#1250).
+    pub names: Rc<ResolvedNames>,
 }
 
 // ── Typed Declarations ────────────────────────────────────────────────────────

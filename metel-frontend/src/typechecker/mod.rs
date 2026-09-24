@@ -349,10 +349,9 @@ fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
 // limit: ["LIMIT-TYPE-INFERENCE-006"]
 pub fn check_graph(
     graph: &NormalizedModuleGraph,
-    names: &ResolvedNames,
     std_prelude: &CorePrelude,
 ) -> Result<TypedModuleGraph, MetelError> {
-    Ok(check_graph_with_report(graph, names, std_prelude, None)?.graph)
+    Ok(check_graph_with_report(graph, std_prelude, None)?.graph)
 }
 
 /// # Errors
@@ -366,7 +365,6 @@ pub fn check_graph(
 // arch-implements: ["arch.type-construction.requirement-2"]
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
-    names: &ResolvedNames,
     std_prelude: &CorePrelude,
     identity: Option<FrozenIdentity<'_>>,
 ) -> Result<CheckGraphReport, MetelError> {
@@ -393,7 +391,6 @@ pub fn check_graph_with_report(
     for loaded in graph.modules() {
         let checked = check_one_module(
             loaded,
-            names,
             graph,
             &global_exports,
             &type_registry,
@@ -412,6 +409,7 @@ pub fn check_graph_with_report(
         graph: TypedModuleGraph {
             modules: typed_modules,
             type_registry,
+            names: graph.names.clone(),
         },
         timings,
         warnings,
@@ -441,7 +439,6 @@ struct CheckedModule {
 #[allow(clippy::too_many_arguments)]
 fn check_one_module(
     loaded: &LoadedModule,
-    names: &ResolvedNames,
     graph: &NormalizedModuleGraph,
     global_exports: &GlobalExports,
     type_registry: &TypeDefinitionRegistry,
@@ -449,6 +446,7 @@ fn check_one_module(
     identity: Option<FrozenIdentity<'_>>,
     export_gen: &mut TypeVarGenerator,
 ) -> Result<CheckedModule, MetelError> {
+    let names = &graph.names;
     check_pub_annotations(loaded, names)?;
     let warnings = inert_public_field_warnings(loaded);
     let (imported_schemes, deferred_conflicts) =
@@ -540,10 +538,10 @@ pub struct ModuleDiagnosticsReport {
 #[must_use]
 pub fn check_graph_collecting_diagnostics(
     graph: &NormalizedModuleGraph,
-    names: &ResolvedNames,
     std_prelude: &CorePrelude,
     identity: Option<FrozenIdentity<'_>>,
 ) -> ModuleDiagnosticsReport {
+    let names = &graph.names;
     let mut global_exports = GlobalExports::new();
     let mut typed_modules: Vec<TypedModule> = Vec::new();
     let mut type_registry = TypeDefinitionRegistry::new();
@@ -566,7 +564,6 @@ pub fn check_graph_collecting_diagnostics(
 
         match check_one_module(
             loaded,
-            names,
             graph,
             &global_exports,
             &type_registry,
@@ -592,6 +589,7 @@ pub fn check_graph_collecting_diagnostics(
         graph: TypedModuleGraph {
             modules: typed_modules,
             type_registry,
+            names: graph.names.clone(),
         },
         timings,
         warnings,
@@ -1608,11 +1606,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -1747,11 +1745,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -1839,11 +1837,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -1935,11 +1933,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -2038,11 +2036,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -2116,11 +2114,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -2207,11 +2205,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -2293,11 +2291,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,
@@ -2385,11 +2383,11 @@ mod tests {
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
         let members = identity::collect_members_for_graph(&graph, &names);
         let allocation = identity::allocate_for_graph(&graph, &names);
-        let normalized = crate::path_normalizer::normalize(graph, &names).expect("normalizes");
-        crate::coherence::check(&normalized, &names).expect("coheres");
+        let normalized =
+            crate::path_normalizer::normalize(graph, names.clone()).expect("normalizes");
+        crate::coherence::check(&normalized).expect("coheres");
         let typed_report = check_graph_with_report(
             &normalized,
-            &names,
             &CorePrelude::default(),
             Some(FrozenIdentity {
                 members: &members,

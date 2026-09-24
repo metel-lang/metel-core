@@ -11,6 +11,7 @@
 //! unchanged so the typechecker's existing type-member handling works unmodified.
 
 use std::collections::HashSet;
+use std::rc::Rc;
 
 use crate::ast::{
     Block, Decl, Expr, ForInit, FunDecl, ImplBlock, LetDecl, MatchArm, MutDecl, Stmt,
@@ -25,12 +26,20 @@ use crate::symbols::SymbolId;
 /// Opaque wrapper around `ModuleGraph` that proves the normalization pass has run.
 /// `check_graph` requires this type; calling it with a raw `ModuleGraph` is a
 /// compile-time error. See ADR-0021.
-pub struct NormalizedModuleGraph(pub(crate) ModuleGraph);
+///
+/// Also carries the `ResolvedNames` the normalization pass ran against, so
+/// `coherence::check` and the typechecker's graph-level entry points read it
+/// off this graph instead of taking it as a second, separately-threaded
+/// parameter (metel-core#1250).
+pub struct NormalizedModuleGraph {
+    pub(crate) graph: ModuleGraph,
+    pub(crate) names: Rc<ResolvedNames>,
+}
 
 impl NormalizedModuleGraph {
     #[must_use]
     pub fn modules(&self) -> &[LoadedModule] {
-        &self.0.modules
+        &self.graph.modules
     }
 }
 
@@ -39,14 +48,16 @@ impl NormalizedModuleGraph {
 /// nodes to `Expr::ResolvedPath` using the scope information in `names`.
 ///
 /// Returns `NormalizedModuleGraph` — a newtype that downstream passes must accept
-/// to enforce that normalization ran before typechecking.
+/// to enforce that normalization ran before typechecking. It carries `names`
+/// forward so coherence checking and typechecking don't need it as a second
+/// parameter of their own (metel-core#1250).
 ///
 /// # Errors
 /// Returns an error if a qualified path cannot be resolved against `names`
 /// (e.g. references an unknown module or name).
 pub fn normalize(
     mut graph: ModuleGraph,
-    names: &ResolvedNames,
+    names: Rc<ResolvedNames>,
 ) -> Result<NormalizedModuleGraph, MetelError> {
     let module_names: HashSet<String> = graph
         .modules
@@ -64,7 +75,7 @@ pub fn normalize(
             &names.symbols,
         )?;
     }
-    Ok(NormalizedModuleGraph(graph))
+    Ok(NormalizedModuleGraph { graph, names })
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -590,7 +601,7 @@ mod tests {
         let project = TempProject::new(sources);
         let graph = module_loader::load_root(project.dir.join(root)).expect("root loads");
         let names = crate::name_resolver::resolve(&graph).expect("resolves");
-        let normalized = super::normalize(graph, &names).expect("normalizes");
+        let normalized = super::normalize(graph, names).expect("normalizes");
         let root_module = normalized
             .modules()
             .iter()
@@ -697,8 +708,9 @@ mod architecture_evidence_tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/path_normalizer.rs");
         let source = std::fs::read_to_string(path).expect("path_normalizer.rs readable");
         assert!(
-            source.contains("pub struct NormalizedModuleGraph(pub(crate) ModuleGraph);"),
-            "NormalizedModuleGraph's inner field must stay crate-private so only `normalize` can produce one"
+            source.contains("pub(crate) graph: ModuleGraph,")
+                && source.contains("pub(crate) names: Rc<ResolvedNames>,"),
+            "NormalizedModuleGraph's fields must stay crate-private so only `normalize` can produce one"
         );
     }
 }
