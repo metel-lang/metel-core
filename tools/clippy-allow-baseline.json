@@ -1,70 +1,70 @@
 {
   "note": "Grandfathered BARE #[allow(clippy::...)] counts per (file, lint), plus files carrying a module-level #![allow(clippy::...)]. A `// clippy-allow: <reason>` comment (trailing the attribute or on the line above) marks a suppression justified; justified suppressions are never counted here and never fail the check. New bare allows beyond these counts, and any new module-level #![allow(clippy::...)], fail tools/clippy_allow_ratchet.py --check in CI. Regenerate with tools/clippy_allow_ratchet.py --write-baseline after fixing a warning (to tighten the ratchet) or after deliberately grandfathering more.",
   "buckets": {
-    "metel-frontend/src/coherence.rs": {
+    "metel-frontend/src/pipeline/coherence/mod.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/move_check/mod.rs": {
+    "metel-frontend/src/pipeline/move_check/mod.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/name_resolver.rs": {
+    "metel-frontend/src/pipeline/name_resolution/name_resolver.rs": {
       "too_many_arguments": 2
     },
-    "metel-frontend/src/parser/mod.rs": {
+    "metel-frontend/src/pipeline/parsing/parser/mod.rs": {
       "only_used_in_recursion": 1,
       "too_many_lines": 6
     },
-    "metel-frontend/src/path_normalizer.rs": {
+    "metel-frontend/src/pipeline/path_normalization/mod.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/construction.rs": {
+    "metel-frontend/src/pipeline/type_checking/construction.rs": {
       "too_many_arguments": 2
     },
-    "metel-frontend/src/typechecker/construction/calls.rs": {
+    "metel-frontend/src/pipeline/type_checking/construction/calls.rs": {
       "too_many_arguments": 4,
       "too_many_lines": 2
     },
-    "metel-frontend/src/typechecker/construction/declarations.rs": {
+    "metel-frontend/src/pipeline/type_checking/construction/declarations.rs": {
       "too_many_lines": 2
     },
-    "metel-frontend/src/typechecker/construction/expressions.rs": {
+    "metel-frontend/src/pipeline/type_checking/construction/expressions.rs": {
       "too_many_lines": 2
     },
-    "metel-frontend/src/typechecker/construction/patterns.rs": {
+    "metel-frontend/src/pipeline/type_checking/construction/patterns.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/conversions.rs": {
+    "metel-frontend/src/pipeline/type_checking/conversions.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/inference.rs": {
+    "metel-frontend/src/pipeline/type_checking/inference.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/inference/declarations.rs": {
+    "metel-frontend/src/pipeline/type_checking/inference/declarations.rs": {
       "match_same_arms": 1,
       "too_many_lines": 3
     },
-    "metel-frontend/src/typechecker/inference/expressions.rs": {
+    "metel-frontend/src/pipeline/type_checking/inference/expressions.rs": {
       "too_many_lines": 2
     },
-    "metel-frontend/src/typechecker/inference/lowering.rs": {
+    "metel-frontend/src/pipeline/type_checking/inference/lowering.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/inference/patterns.rs": {
+    "metel-frontend/src/pipeline/type_checking/inference/patterns.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/typechecker/mod.rs": {
+    "metel-frontend/src/pipeline/type_checking/mod.rs": {
       "implicit_hasher": 1,
       "large_enum_variant": 1,
       "too_many_arguments": 2
     },
-    "metel-frontend/src/typechecker/projections.rs": {
+    "metel-frontend/src/pipeline/type_checking/projections.rs": {
       "too_many_arguments": 2,
       "too_many_lines": 2
     },
-    "metel-frontend/src/typechecker/registry.rs": {
+    "metel-frontend/src/pipeline/type_checking/registry.rs": {
       "too_many_lines": 2
     },
-    "metel-frontend/src/typeinference/mod.rs": {
+    "metel-frontend/src/pipeline/type_checking/typeinference/mod.rs": {
       "implicit_hasher": 3,
       "too_many_lines": 4
     },

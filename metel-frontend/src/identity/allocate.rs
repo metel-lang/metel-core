@@ -20,11 +20,11 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{
+use crate::data::ast::{
     AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
     TypeExpr,
 };
-use crate::name_resolver::{
+use crate::pipeline::name_resolution::name_resolver::{
     BindingKind, ModuleScope, ResolvedNames, canonical_path, method_symbol_name,
 };
 
@@ -49,7 +49,7 @@ pub struct ModuleNav<'a> {
     pub scope: Option<&'a ModuleScope>,
     /// The name resolver's canonical `(module path, name) -> SymbolId` table,
     /// for resolving a qualified path's own item segment (metel-core#1050).
-    pub symbols: &'a HashMap<(Vec<String>, String), crate::symbols::SymbolId>,
+    pub symbols: &'a HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
 }
 
 /// Graph-wide inputs for module-segment resolution, from which
@@ -107,7 +107,7 @@ impl ModuleNav<'_> {
     /// `Expr::Ident` covers that) or a prefix that isn't a known module (a
     /// type/member-position path, e.g. `Type::method` -- that identity rides
     /// the typed IR via `type_id`/`variant_id` instead, metel-core#1093).
-    fn item_ref(&self, segments: &[String]) -> Option<(usize, crate::symbols::SymbolId)> {
+    fn item_ref(&self, segments: &[String]) -> Option<(usize, crate::identity::symbols::SymbolId)> {
         let prefix_len = segments.len().checked_sub(1).filter(|&n| n > 0)?;
         let module_path = self.prefix_module_path(segments, prefix_len)?;
         let item_name = segments.last()?;
@@ -367,10 +367,10 @@ pub fn allocate_graph(
 /// hang the tables on and does not need module-segment navigation, so a
 /// throwaway [`ModuleTable`] backs `GraphModuleNav`.
 ///
-/// [`ModuleGraph`]: crate::module_loader::ModuleGraph
+/// [`ModuleGraph`]: crate::pipeline::parsing::module_loader::ModuleGraph
 #[must_use]
 pub fn allocate_for_graph(
-    graph: &crate::module_loader::ModuleGraph,
+    graph: &crate::pipeline::parsing::module_loader::ModuleGraph,
     names: &ResolvedNames,
 ) -> Allocation {
     let modules: Vec<(Vec<String>, &[Decl])> = graph
@@ -380,7 +380,7 @@ pub fn allocate_for_graph(
         .collect();
     // Sorted, not `graph.modules`'s own load order -- see the matching comment
     // in `analysis::analyze_graph` (metel-core#1048).
-    let mut sorted_modules: Vec<&crate::module_loader::LoadedModule> =
+    let mut sorted_modules: Vec<&crate::pipeline::parsing::module_loader::LoadedModule> =
         graph.modules.iter().collect();
     sorted_modules.sort_by(|a, b| a.module_path.cmp(&b.module_path));
     let mut module_table = ModuleTable::new();
@@ -572,7 +572,7 @@ impl Walker<'_> {
         &mut self,
         joined_name: &str,
         span: &Span,
-        sym: crate::symbols::SymbolId,
+        sym: crate::identity::symbols::SymbolId,
     ) {
         let counter_key = (self.path.0.clone(), joined_name.to_string());
         let occ = self.use_counter.entry(counter_key).or_insert(0);

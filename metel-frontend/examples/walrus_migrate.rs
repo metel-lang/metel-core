@@ -19,8 +19,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use metel_frontend::parser::MetelParser;
-use metel_frontend::parser::Rule;
+use metel_frontend::pipeline::parsing::parser::MetelParser;
+use metel_frontend::pipeline::parsing::parser::Rule;
 use pest::Parser;
 
 fn main() -> ExitCode {

@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod phase_1_type_variables {
-    use metel::typeinference::{TypeVar, TypeVarGenerator};
+    use metel::pipeline::type_checking::typeinference::{TypeVar, TypeVarGenerator};
 
     #[test]
     fn test_type_var_creation() {
@@ -78,8 +78,8 @@ mod phase_1_type_variables {
 
 #[cfg(test)]
 mod phase_2_infer_types {
-    use metel::typeinference::{InferType, TypeVar};
-    use metel::types::Type;
+    use metel::data::types::Type;
+    use metel::pipeline::type_checking::typeinference::{InferType, TypeVar};
 
     #[test]
     fn test_concrete_variants() {
@@ -140,7 +140,11 @@ mod phase_2_infer_types {
 
     #[test]
     fn test_display_named_no_args() {
-        let ty = InferType::Named("Foo".to_string(), vec![], metel::types::NominalId::NONE);
+        let ty = InferType::Named(
+            "Foo".to_string(),
+            vec![],
+            metel::data::types::NominalId::NONE,
+        );
         assert_eq!(format!("{}", ty), "Foo");
     }
 
@@ -149,7 +153,7 @@ mod phase_2_infer_types {
         let ty = InferType::Named(
             "Map".to_string(),
             vec![InferType::str(), InferType::int()],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         assert_eq!(format!("{}", ty), "Map<String, i64>");
     }
@@ -194,7 +198,7 @@ mod phase_2_infer_types {
 
 #[cfg(test)]
 mod phase_3_substitution {
-    use metel::typeinference::{InferType, Substitution, TypeVar};
+    use metel::pipeline::type_checking::typeinference::{InferType, Substitution, TypeVar};
 
     #[test]
     fn test_bind_and_lookup() {
@@ -276,14 +280,14 @@ mod phase_3_substitution {
         let ty = InferType::Named(
             "List".to_string(),
             vec![InferType::var(TypeVar(0))],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         assert_eq!(
             s.apply(&ty),
             InferType::Named(
                 "List".to_string(),
                 vec![InferType::int()],
-                metel::types::NominalId::NONE
+                metel::data::types::NominalId::NONE
             )
         );
     }
@@ -328,7 +332,7 @@ mod phase_3_substitution {
 
 #[cfg(test)]
 mod phase_4_unification {
-    use metel::typeinference::{InferType, TypeVar, unify};
+    use metel::pipeline::type_checking::typeinference::{InferType, TypeVar, unify};
 
     #[test]
     fn test_unify_identical_concrete() {
@@ -442,12 +446,12 @@ mod phase_4_unification {
         let a = InferType::Named(
             "List".to_string(),
             vec![InferType::var(TypeVar(0))],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         let b = InferType::Named(
             "List".to_string(),
             vec![InferType::int()],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         let s = unify(&a, &b).unwrap();
         assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::int());
@@ -458,12 +462,12 @@ mod phase_4_unification {
         let a = InferType::Named(
             "List".to_string(),
             vec![InferType::int()],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         let b = InferType::Named(
             "Set".to_string(),
             vec![InferType::int()],
-            metel::types::NominalId::NONE,
+            metel::data::types::NominalId::NONE,
         );
         assert!(unify(&a, &b).is_err());
     }
@@ -516,8 +520,10 @@ mod phase_4_unification {
 
 #[cfg(test)]
 mod phase_5_constraints {
-    use metel::ast::Span;
-    use metel::typeinference::{Constraint, InferType, TypeVar, solve_constraints};
+    use metel::data::ast::Span;
+    use metel::pipeline::type_checking::typeinference::{
+        Constraint, InferType, TypeVar, solve_constraints,
+    };
     use std::collections::HashSet;
 
     fn span() -> Span {
@@ -638,7 +644,7 @@ mod phase_5_constraints {
 
 #[cfg(test)]
 mod phase_6_type_schemes {
-    use metel::typeinference::{
+    use metel::pipeline::type_checking::typeinference::{
         InferType, TypeScheme, TypeVar, TypeVarGenerator, free_vars, generalize, instantiate,
     };
     use std::collections::HashSet;
@@ -826,8 +832,10 @@ mod phase_6_type_schemes {
 
 #[cfg(test)]
 mod phase_7_infer_context {
-    use metel::ast::Span;
-    use metel::typeinference::{InferContext, InferType, TypeScheme, TypeVar, generalize};
+    use metel::data::ast::Span;
+    use metel::pipeline::type_checking::typeinference::{
+        InferContext, InferType, TypeScheme, TypeVar, generalize,
+    };
     use std::collections::HashSet;
 
     fn span() -> Span {
@@ -1091,8 +1099,8 @@ mod phase_7_infer_context {
 
 #[cfg(test)]
 mod phase_8_known_limitations {
-    use metel::ast::Span;
-    use metel::typeinference::{
+    use metel::data::ast::Span;
+    use metel::pipeline::type_checking::typeinference::{
         Constraint, InferType, TypeScheme, TypeVar, TypeVarGenerator, instantiate,
         solve_constraints,
     };
@@ -1241,7 +1249,7 @@ mod phase_8_known_limitations {
     fn test_eager_partial_solve_var_has_no_named_type() {
         // Applying ctx.solve() to an unbound type variable leaves it as a Var.
         // named_type_name on a Var returns None — field lookup cannot proceed.
-        use metel::typeinference::Substitution;
+        use metel::pipeline::type_checking::typeinference::Substitution;
 
         let s = Substitution::new();
         let unresolved = s.apply(&InferType::var(TypeVar(0)));

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::ast::{BinOp, Span};
-use crate::error::{MetelError, RuntimeErrorCode};
-use crate::typed_ast::TypedPlace;
+use crate::data::ast::{BinOp, Span};
+use crate::data::error::{MetelError, RuntimeErrorCode};
+use crate::data::typed_ast::TypedPlace;
 
 use super::{Environment, PathSegment, RuntimeRegistry, Signal, Value, eval_expr};
 
@@ -227,12 +227,12 @@ pub(super) fn eval_typed_place_value(
 }
 
 pub(super) fn apply_assign_op(
-    op: &crate::ast::AssignOp,
+    op: &crate::data::ast::AssignOp,
     cur: Value,
     rhs: Value,
     span: &Span,
 ) -> Result<Value, MetelError> {
-    use crate::ast::AssignOp;
+    use crate::data::ast::AssignOp;
     let fake_binop = match op {
         AssignOp::AddAssign => BinOp::Add,
         AssignOp::SubAssign => BinOp::Sub,
@@ -654,7 +654,7 @@ pub(super) fn eval_binop(
         // Range — produce a Struct value understood by for-in (issue #55)
         (BinOp::Range, Value::I64(a), Value::I64(b)) => Value::Struct {
             name: "Range".to_string(),
-            type_id: Some(crate::symbols::SYM_TYPE_RANGE),
+            type_id: Some(crate::identity::symbols::SYM_TYPE_RANGE),
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));
@@ -664,7 +664,7 @@ pub(super) fn eval_binop(
         },
         (BinOp::RangeInclusive, Value::I64(a), Value::I64(b)) => Value::Struct {
             name: "RangeInclusive".to_string(),
-            type_id: Some(crate::symbols::SYM_TYPE_RANGE_INCLUSIVE),
+            type_id: Some(crate::identity::symbols::SYM_TYPE_RANGE_INCLUSIVE),
             fields: {
                 let mut m = HashMap::new();
                 m.insert("start".to_string(), Value::I64(a));

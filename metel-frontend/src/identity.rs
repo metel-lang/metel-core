@@ -20,7 +20,7 @@
 //! an entity is*, never of where its text sits or the order a traversal reached
 //! it:
 //!
-//! - [`SymbolId`] (defined in [`crate::symbols`]) keys on
+//! - [`SymbolId`] (defined in [`crate::identity::symbols`]) keys on
 //!   `(canonical module path, declared name, overload ordinal)`.
 //! - [`LocalId`] and [`RefId`] key on `(owner, `[`LexicalPath`]`)` — the chain
 //!   of structural positions from the owning body to the binding or use. They
@@ -41,9 +41,10 @@ use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::ast::Span;
+use crate::data::ast::Span;
 
-pub use crate::symbols::SymbolId;
+pub mod symbols;
+pub use symbols::SymbolId;
 
 mod lexical_path;
 pub use lexical_path::{LexicalPath, LexicalSeg};
@@ -381,7 +382,7 @@ impl Interner {
 /// is declared, for module-segment go-to-definition.
 ///
 /// The path handed in must already be canonical — alias dereferencing
-/// (`crate::name_resolver::canonical_path`) happens before interning, so
+/// (`crate::pipeline::name_resolution::name_resolver::canonical_path`) happens before interning, so
 /// `["a", "b"]` and an alias `["x", "y"] -> ["a", "b"]` land on the same id.
 #[derive(Debug, Clone, Default)]
 pub struct ModuleTable {

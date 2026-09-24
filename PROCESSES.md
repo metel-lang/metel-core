@@ -113,7 +113,7 @@ all.
 | `.github/workflows/ci.yml` — `publish-develop-binary` job | push to `develop` only (not PRs) | this repo, at the pushed commit | this repo's GitHub Releases — rolling pre-release `develop-latest`, deleted and recreated each run (metel-core#696) | built-in `GITHUB_TOKEN` (`contents: write`, this repo only) |
 | `.github/workflows/ci.yml` — `inventory` job | push/PR to `develop`/`main` | this repo's own workflows/tools/commands | — | — |
 | `.github/workflows/ci.yml` — `clippy-allow-ratchet` job | push/PR to `develop`/`main` | `metel-frontend/src`, `metel-interpreter/src`, `tools/clippy-allow-baseline.json` | — | — |
-| `.github/workflows/ci.yml` — `resolution-freeze-check` job | push/PR to `develop`/`main` | `metel-frontend/src/identity.rs`, `metel-frontend/src/typed_ast/mod.rs`, `metel-frontend/src/place.rs`, `metel-frontend/src/query.rs` | — | — |
+| `.github/workflows/ci.yml` — `resolution-freeze-check` job | push/PR to `develop`/`main` | `metel-frontend/src/identity.rs`, `metel-frontend/src/data/typed_ast.rs`, `metel-frontend/src/ownership/place.rs`, `metel-frontend/src/tooling/query.rs` | — | — |
 | `.github/workflows/release.yml` — `validate-release` | tag `vX.Y.Z` pushed | `docs` submodule | — | — |
 | `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule (reads this repo's own pinned commit, does not write to `metel-docs` — ADR-0051 removed the sync) | `metel-website` main + tag | `WEBSITE_TOKEN` |
 | `.github/workflows/release.yml` — `github-release` | after `validate-release` | `docs` submodule | this repo's GitHub Releases | built-in `GITHUB_TOKEN` |

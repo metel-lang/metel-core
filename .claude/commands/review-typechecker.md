@@ -1,6 +1,7 @@
 # /review-typechecker
 
-Review a change to any file under `src/typeinference/` or `src/typechecker/` before committing.
+Review a change to any file under `src/pipeline/type_checking/` (including its nested
+`typeinference/` submodule) before committing.
 Work through every checklist item. Report pass/fail for each section. Do not skip items.
 
 ---

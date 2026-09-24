@@ -43,9 +43,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # String/Span-keyed fields have been reviewed and exempted (or removed).
 SCAN_FILES = [
     REPO_ROOT / "metel-frontend" / "src" / "identity.rs",
-    REPO_ROOT / "metel-frontend" / "src" / "typed_ast" / "mod.rs",
-    REPO_ROOT / "metel-frontend" / "src" / "place.rs",
-    REPO_ROOT / "metel-frontend" / "src" / "query.rs",
+    REPO_ROOT / "metel-frontend" / "src" / "data" / "typed_ast.rs",
+    REPO_ROOT / "metel-frontend" / "src" / "ownership" / "place.rs",
+    REPO_ROOT / "metel-frontend" / "src" / "tooling" / "query.rs",
 ]
 
 MAP_RE = re.compile(r"\b(?:HashMap|BTreeMap)\s*<")

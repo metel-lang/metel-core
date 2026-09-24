@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use super::Value;
-use crate::ast::Span;
-use crate::typeinference::TypeDefinitionRegistry;
-use crate::types::Type;
+use crate::data::ast::Span;
+use crate::data::types::{NominalId, Type, default_fun_type};
+use crate::pipeline::type_checking::infer_named_type_args;
+use crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry;
 
 /// Derive a concrete `Type` from a runtime `Value`.
 ///
@@ -18,7 +19,7 @@ use crate::types::Type;
 /// Generic structs/enums (issue #267): the runtime value itself carries no type
 /// argument info (`Wrapper { value: 5 }`'s only intrinsic type tag is bare
 /// `Named("Wrapper", [])`), so `registry` and `span` are used to recover them —
-/// see `typechecker::infer_named_type_args`'s own doc comment for the mechanism.
+/// see `crate::pipeline::type_checking::infer_named_type_args`'s own doc comment for the mechanism.
 // arch-implements: ["arch.evaluation.requirement-8"]
 pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, span: &Span) -> Type {
     let go = |v: &Value| value_to_type(v, registry, span);
@@ -63,13 +64,12 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args =
-                crate::typechecker::infer_named_type_args(name, None, &field_types, registry, span);
+            let args = infer_named_type_args(name, None, &field_types, registry, span);
             // metel-core#1129: carry the value's own resolved declaration
             // identity, when it has one, instead of only the bare name --
             // this is what lets a bound check on this type find the *actual*
             // impl rather than guessing by name across the whole program.
-            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
+            Type::Named(name.clone(), args, NominalId(*type_id))
         }
         Value::Enum {
             name,
@@ -80,23 +80,15 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args = crate::typechecker::infer_named_type_args(
-                name,
-                Some(variant),
-                &field_types,
-                registry,
-                span,
-            );
-            Type::Named(name.clone(), args, crate::types::NominalId(*type_id))
+            let args = infer_named_type_args(name, Some(variant), &field_types, registry, span);
+            Type::Named(name.clone(), args, NominalId(*type_id))
         }
         Value::Callable(callable) => match callable {
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
                 .clone()
-                .unwrap_or_else(|| crate::types::default_fun_type(vec![], Type::Unit)),
-            super::RuntimeCallable::Intrinsic { .. } => {
-                crate::types::default_fun_type(vec![], Type::Unit)
-            }
+                .unwrap_or_else(|| default_fun_type(vec![], Type::Unit)),
+            super::RuntimeCallable::Intrinsic { .. } => default_fun_type(vec![], Type::Unit),
         },
         Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
         Value::MutReference(rc) => Type::MutReference(Box::new(go(&rc.borrow()))),
@@ -109,7 +101,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                     (super::PathSegment::Field(f), Type::Named(name, ..)) => {
                         // A synthetic "Outer.field" phantom name, not a real
                         // declared type -- no identity to carry.
-                        Type::Named(format!("{name}.{f}"), vec![], crate::types::NominalId::NONE)
+                        Type::Named(format!("{name}.{f}"), vec![], NominalId::NONE)
                     }
                     (super::PathSegment::Field(f), Type::Record(fields)) => fields
                         .into_iter()
@@ -187,7 +179,7 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
                 // its identity wins when it has one, same as everywhere else
                 // here. Only take the static side's id when the runtime type
                 // couldn't resolve one at all.
-                crate::types::NominalId(rid.get().or_else(|| sid.get())),
+                NominalId(rid.get().or_else(|| sid.get())),
             )
         }
         (Type::Fun(rp, rr, _, _, _), Type::Fun(sp, sr, call_mult, use_mult, call_mutation))

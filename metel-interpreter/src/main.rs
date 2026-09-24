@@ -13,8 +13,9 @@ use std::process;
 
 use clap::Parser;
 
-use metel::error::MetelError;
-use metel::{module_loader, pipeline};
+use metel::data::error::MetelError;
+use metel::orchestrator;
+use metel::pipeline::parsing::module_loader;
 
 #[derive(Parser)]
 #[command(name = "metel")]
@@ -50,11 +51,11 @@ fn main() {
 
 fn run(filename: &str, debug_ast: bool, move_check: bool) -> Result<(), MetelError> {
     if !debug_ast {
-        let report = pipeline::run_file(
+        let report = orchestrator::run_file(
             filename,
-            &pipeline::RunOptions {
+            &orchestrator::RunOptions {
                 move_check,
-                ..pipeline::RunOptions::default()
+                ..orchestrator::RunOptions::default()
             },
         )?;
         for warning in report.warnings {

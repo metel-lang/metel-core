@@ -1,11 +1,16 @@
 use std::fs;
 use std::path::Path;
 
-use metel::error::MetelError;
-use metel::{
-    coherence, elaborator, evaluator, identity, module_loader, name_resolver, parser,
-    path_normalizer, pipeline, typechecker,
-};
+use metel::data::error::MetelError;
+use metel::evaluator;
+use metel::identity;
+use metel::orchestrator;
+use metel::pipeline::coherence;
+use metel::pipeline::elaboration;
+use metel::pipeline::name_resolution::name_resolver;
+use metel::pipeline::parsing::{module_loader, parser};
+use metel::pipeline::path_normalization;
+use metel::pipeline::type_checking;
 
 use super::fixture::{
     CorePreludeMode, ExpectStatus, FixtureConfig, GraphChecks, ProgramChecks, main_source_path,
@@ -64,7 +69,7 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
 }
 
 // Both `run_typecheck` and `run_evaluate` drive the *full module pipeline* (the
-// same one `pipeline::run_file` and the shipped binary use), loading std::core
+// same one `orchestrator::run_file` and the shipped binary use), loading std::core
 // as a real embedded module. The earlier single-program path (`check_with_ctx` /
 // `evaluate_with_ctx`) skipped module loading + elaboration and hand-seeded
 // std::core, which drifted from the product path and could not run Metel-bodied
@@ -75,11 +80,11 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized = path_normalizer::normalize(graph, names)?;
+    let normalized = path_normalization::normalize(graph, names)?;
     coherence::check(&normalized)?;
-    let typed = typechecker::check_graph_with_report(
+    let typed = type_checking::check_graph_with_report(
         &normalized,
-        &typechecker::CorePrelude::default(),
+        &type_checking::CorePrelude::default(),
         Some(identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
@@ -87,7 +92,7 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
-        for warning in metel::move_check::check_graph(&typed.graph)? {
+        for warning in metel::pipeline::move_check::check_graph(&typed.graph)? {
             eprintln!("warning: {warning}");
         }
     }
@@ -95,11 +100,11 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
 }
 
 fn run_evaluate(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
-    let report = pipeline::run_evaluator_fixture(
+    let report = orchestrator::run_evaluator_fixture(
         &main_source_path(path).to_string_lossy(),
-        &pipeline::RunOptions {
+        &orchestrator::RunOptions {
             move_check: config.options.move_check,
-            ..pipeline::RunOptions::default()
+            ..orchestrator::RunOptions::default()
         },
     )?;
     assert_warnings(path, &report.warnings, config.expect.warnings.as_deref());
@@ -142,9 +147,9 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     let names = name_resolver::resolve(&graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized = path_normalizer::normalize(graph, names.clone())?;
+    let normalized = path_normalization::normalize(graph, names.clone())?;
     coherence::check(&normalized)?;
-    let typed = typechecker::check_graph_with_report(
+    let typed = type_checking::check_graph_with_report(
         &normalized,
         &std_prelude(config.prelude),
         Some(identity::FrozenIdentity {
@@ -154,11 +159,11 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
-        for warning in metel::move_check::check_graph(&typed.graph)? {
+        for warning in metel::pipeline::move_check::check_graph(&typed.graph)? {
             eprintln!("warning: {warning}");
         }
     }
-    let elaborated = elaborator::elaborate(typed.graph)?;
+    let elaborated = elaboration::elaborate(typed.graph)?;
     let runtime_identity = evaluator::RuntimeIdentity {
         members: std::rc::Rc::new(members),
         binding_spans: std::rc::Rc::new(allocation.binding_spans),
@@ -193,10 +198,10 @@ fn assert_warnings(path: &Path, actual: &[String], expected: Option<&[String]>) 
     }
 }
 
-fn std_prelude(mode: CorePreludeMode) -> typechecker::CorePrelude {
+fn std_prelude(mode: CorePreludeMode) -> type_checking::CorePrelude {
     match mode {
-        CorePreludeMode::Empty => typechecker::CorePrelude::empty(),
-        CorePreludeMode::Default => typechecker::CorePrelude::default(),
+        CorePreludeMode::Empty => type_checking::CorePrelude::empty(),
+        CorePreludeMode::Default => type_checking::CorePrelude::default(),
     }
 }
 
@@ -302,7 +307,7 @@ fn assert_contains(path: &Path, actual: &str, expected: Option<&str>) {
 
 fn assert_graph_checks(
     path: &Path,
-    graph: &metel::module_loader::ModuleGraph,
+    graph: &metel::pipeline::parsing::module_loader::ModuleGraph,
     checks: &GraphChecks,
 ) {
     if let Some(expected) = checks.module_count {

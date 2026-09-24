@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::ast::Span;
-use crate::error::{MetelError, RuntimeErrorCode};
+use crate::data::ast::Span;
+use crate::data::error::{MetelError, RuntimeErrorCode};
 
 use super::{
     ClosureBody, ClosureValue, Environment, RuntimeCallable, RuntimeRegistry, Signal, Value,
@@ -44,8 +44,8 @@ pub(super) enum ReceiverBinding {
 /// Extract the named-type key for a receiver's runtime type, peeling pointer
 /// layers (a `&self` / `&mut self` receiver arrives as a pointer to the value).
 /// Used to look up a generic method's scheme in the registry's method env.
-fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
-    use crate::types::Type;
+fn receiver_type_name(ty: &crate::data::types::Type) -> Option<&str> {
+    use crate::data::types::Type;
     match ty {
         Type::Named(name, ..) => Some(name.as_str()),
         Type::Reference(inner) | Type::MutReference(inner) => receiver_type_name(inner),
@@ -57,8 +57,8 @@ fn receiver_type_name(ty: &crate::types::Type) -> Option<&str> {
 fn call_runtime_callable(
     callable: RuntimeCallable,
     args: &[Value],
-    static_arg_tys: Option<&[crate::types::Type]>,
-    expected_ret: Option<&crate::types::Type>,
+    static_arg_tys: Option<&[crate::data::types::Type]>,
+    expected_ret: Option<&crate::data::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -70,7 +70,7 @@ fn call_runtime_callable(
             result
         }
         RuntimeCallable::Closure(rc) => {
-            let is_mutating = rc.call_mutation == crate::types::CallMutation::Mutating;
+            let is_mutating = rc.call_mutation == crate::data::types::CallMutation::Mutating;
             if is_mutating && rc.in_call.replace(true) {
                 return Err(attach_stack(MetelError::panic(
                     RuntimeErrorCode::R0015,
@@ -121,7 +121,7 @@ fn call_runtime_callable(
                                     }
                                 })
                                 .collect();
-                            let tb = crate::typechecker::construct_generic_body(
+                            let tb = crate::pipeline::type_checking::construct_generic_body(
                                 scheme,
                                 &closure.params,
                                 &arg_types,
@@ -133,7 +133,7 @@ fn call_runtime_callable(
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(attach_stack(MetelError::panic(
-                            crate::error::RuntimeErrorCode::R0002,
+                            crate::data::error::RuntimeErrorCode::R0002,
                             format!(
                                 "generic closure `{}` has no type context — construction-at-call-time unavailable",
                                 closure.name.as_deref().unwrap_or("<anonymous>")
@@ -162,8 +162,8 @@ fn call_runtime_callable(
 pub(super) fn call_function(
     func: Value,
     args: &[Value],
-    static_arg_tys: Option<&[crate::types::Type]>,
-    expected_ret: Option<&crate::types::Type>,
+    static_arg_tys: Option<&[crate::data::types::Type]>,
+    expected_ret: Option<&crate::data::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -202,9 +202,9 @@ pub(super) fn call_method_function(
     func: RuntimeCallable,
     receiver: ReceiverBinding,
     mut args: Vec<Value>,
-    static_arg_tys: Option<&[crate::types::Type]>,
-    static_receiver_ty: Option<&crate::types::Type>,
-    expected_ret: Option<&crate::types::Type>,
+    static_arg_tys: Option<&[crate::data::types::Type]>,
+    static_receiver_ty: Option<&crate::data::types::Type>,
+    expected_ret: Option<&crate::data::types::Type>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<Signal, MetelError> {
@@ -227,7 +227,8 @@ pub(super) fn call_method_function(
             // registry isn't always available yet here (only `ClosureBody::Untyped` with a
             // present `type_ctx` has one; `Typed` bodies never consult `receiver_type` at
             // all, so an empty fallback registry is harmless for them).
-            let default_registry = crate::typeinference::TypeDefinitionRegistry::new();
+            let default_registry =
+                crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry::new();
             let registry_ref = closure
                 .type_ctx
                 .as_deref()
@@ -254,7 +255,7 @@ pub(super) fn call_method_function(
                         .zip(closure.type_ctx.as_ref())
                         .and_then(|(name, type_ctx)| {
                             let method_scheme = match &receiver_type {
-                                crate::types::Type::Array(_) => type_ctx
+                                crate::data::types::Type::Array(_) => type_ctx
                                     .registry
                                     .array_method_scheme_for(name)
                                     .map(|(s, _)| s),
@@ -289,7 +290,7 @@ pub(super) fn call_method_function(
                                     None => rt,
                                 }
                             }));
-                            let tb = crate::typechecker::construct_generic_body(
+                            let tb = crate::pipeline::type_checking::construct_generic_body(
                                 scheme,
                                 &closure.params,
                                 &arg_types,
@@ -301,7 +302,7 @@ pub(super) fn call_method_function(
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(attach_stack(MetelError::panic(
-                            crate::error::RuntimeErrorCode::R0002,
+                            crate::data::error::RuntimeErrorCode::R0002,
                             format!(
                                 "generic method `{}` has no type context — construction-at-call-time unavailable",
                                 closure.name.as_deref().unwrap_or("<anonymous>")

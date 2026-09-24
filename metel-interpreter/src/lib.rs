@@ -23,10 +23,6 @@
     clippy::cast_lossless
 )]
 
-pub use metel_frontend::{
-    analysis, ast, coherence, elaborator, error, identity, module_loader, module_paths, move_check,
-    name_resolver, native_keys, parser, path_normalizer, place, query, reference_resolver, stdlib,
-    symbols, typechecker, typed_ast, typeinference, types,
-};
+pub use metel_frontend::{data, identity, ownership, pipeline, stdlib, tooling};
 pub mod evaluator;
-pub mod pipeline;
+pub mod orchestrator;
