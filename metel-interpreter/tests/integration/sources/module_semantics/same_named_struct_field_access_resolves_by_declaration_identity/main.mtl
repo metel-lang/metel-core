@@ -1,0 +1,22 @@
+// metel-core#1222: `a::Item` and `b::Item` share a bare name but are distinct
+// declarations. A value of `a::Item` reaches `main` only through `make_a()`'s
+// return type -- `Item` itself is never imported -- so field access on it must
+// resolve by the declaration identity carried on the value's own type, not by
+// re-resolving "Item" as a name (which would land on whichever of the two
+// declarations a bare-name lookup happens to find).
+import a::make as make_a;
+import b::make as make_b;
+
+fun main() {
+    let p := make_a();
+    assert(p.x == 1);
+    let q := make_b();
+    assert(q.y == 2);
+
+    let var p2 := make_a();
+    p2.x := 99;
+    assert(p2.x == 99);
+
+    let r := p.{ x };
+    assert(r.x == 1);
+}

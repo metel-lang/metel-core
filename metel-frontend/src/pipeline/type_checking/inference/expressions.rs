@@ -701,40 +701,35 @@ pub(super) fn infer_expr(
                 }
                 _ => vec![],
             };
-            let fields = ctx
-                .get_struct_fields(&struct_name)
-                .ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!("unknown type `{struct_name}`"),
-                        span,
-                    )
-                })?
-                .clone();
-            let field_entry = fields
-                .iter()
-                .find(|entry| entry.name == *field)
-                .ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!("no field `{field}` on `{struct_name}`"),
-                        span,
-                    )
-                })?;
+            // metel-core#1222: the value's own type already carries the
+            // declaration's identity (populated when its annotation was
+            // resolved from the declaring module, e.g. a function's return
+            // type) -- prefer it over a bare-name lookup, which conflates
+            // same-named structs declared in different modules.
+            let nominal_struct_id = match &peeled {
+                InferType::Named(_, _, id) => id.get(),
+                _ => None,
+            };
+            let (field_entry, declaring_module, visibility, resolved_type_params) =
+                super::resolve_struct_field_by_identity(
+                    ctx,
+                    nominal_struct_id,
+                    &struct_name,
+                    field,
+                    span,
+                )?;
             check_field_visibility(
-                field_entry,
+                &field_entry,
                 &struct_name,
                 ctx.current_module_path(),
-                ctx.registry()
-                    .struct_declaring_module(ctx.current_module_path(), &struct_name),
-                ctx.registry()
-                    .struct_visibility_for(ctx.current_module_path(), &struct_name),
+                declaring_module.as_ref(),
+                visibility.as_ref(),
                 span,
                 "access",
             )?;
             let raw_ty = field_entry.ty.clone();
             // For generic structs, substitute declared type params with the resolved args.
-            if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned() {
+            if let Some(type_params) = resolved_type_params {
                 let mut remap = Substitution::new();
                 for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
                     remap.bind(tp, arg.clone());
@@ -1242,16 +1237,29 @@ pub(super) fn infer_expr(
                 }
                 _ => None,
             };
-            let declared_fields = ctx
-                .get_struct_fields(&struct_name)
-                .ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!("unknown type `{struct_name}`"),
-                        span,
-                    )
-                })?
-                .clone();
+            // metel-core#1222: prefer the identity captured above over a
+            // bare-name lookup, which conflates same-named structs declared
+            // in different modules.
+            let (declared_fields, resolved_type_params) = if let Some(id) = struct_id
+                && let Some(fields) = ctx.registry().struct_fields_by_id(id)
+            {
+                (
+                    fields.clone(),
+                    ctx.registry().struct_type_params_by_id(id).cloned(),
+                )
+            } else {
+                let fields = ctx
+                    .get_struct_fields(&struct_name)
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("unknown type `{struct_name}`"),
+                            span,
+                        )
+                    })?
+                    .clone();
+                (fields, ctx.get_struct_type_params(&struct_name).cloned())
+            };
             let mut projected = Vec::with_capacity(fields.len());
             for field in fields {
                 let field_entry = declared_fields
@@ -1265,16 +1273,15 @@ pub(super) fn infer_expr(
                         )
                     })?;
                 let raw_ty = field_entry.ty.clone();
-                let ty =
-                    if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned() {
-                        let mut remap = Substitution::new();
-                        for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
-                            remap.bind(tp, arg.clone());
-                        }
-                        remap.apply(&raw_ty)
-                    } else {
-                        raw_ty
-                    };
+                let ty = if let Some(type_params) = &resolved_type_params {
+                    let mut remap = Substitution::new();
+                    for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+                        remap.bind(tp, arg.clone());
+                    }
+                    remap.apply(&raw_ty)
+                } else {
+                    raw_ty
+                };
                 projected.push((field.clone(), ty));
             }
             // RFC-0137 (metel-core#857): branded, not a bare Record -- and a full-width
