@@ -524,6 +524,7 @@ pub(super) fn rewrite_impl_aspect_returns(
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
+// limit: ["LIMIT-TYPE-INFERENCE-007"]
 pub(super) fn infer_fun_decl(
     fun: &FunDecl,
     ctx: &mut InferContext,
@@ -800,7 +801,9 @@ pub(super) fn infer_fun_decl(
         // (other), then apply the combined substitution to fun_ty. The marker
         // vars are rebound to fresh placeholders that partial_subst cannot
         // resolve, so they survive as free vars for `generalize` to quantify.
-        reabstraction.compose(&partial_subst).apply(&fun_ty)
+        reabstraction
+            .compose(&partial_subst.to_substitution())
+            .apply(&fun_ty)
     };
 
     // Overloaded definitions are dispatched by SymbolId, never by name: the
@@ -833,7 +836,7 @@ pub(super) fn infer_fun_decl(
     let proj_map = if body_assoc_log.is_empty() {
         HashMap::new()
     } else {
-        build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme)
+        build_assoc_projection_map(&body_assoc_log, &partial_subst.to_substitution(), &scheme)
     };
     let scheme = if proj_map.is_empty() {
         scheme
@@ -1326,7 +1329,11 @@ pub(super) fn infer_impl_method(
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {
-            let proj_map = build_assoc_projection_map(&body_assoc_log, &partial_subst, &scheme);
+            let proj_map = build_assoc_projection_map(
+                &body_assoc_log,
+                &partial_subst.to_substitution(),
+                &scheme,
+            );
             scheme.with_assoc_projections(&proj_map)
         };
         if array_target_generic_name.is_some() {

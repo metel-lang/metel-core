@@ -1341,7 +1341,10 @@ fn check_impl_with_report(
     let started = Instant::now();
     let solved = ctx.solve()?;
     let final_solve_ns = elapsed_ns(started);
-    let subst = ctx.default_literal_vars(&solved);
+    // One-time, whole-program call (unlike the per-function ones this type
+    // exists to speed up) -- downstream needs a real `&Substitution`, and
+    // paying for that once here is fine.
+    let subst = ctx.default_literal_vars(&solved).to_substitution();
     // metel-core#285: a bare variant that never resolved. Pass 2 only resolves these
     // where an expected type exists, so one still unresolved here is a name that means
     // nothing — reachable when it sits somewhere pass 2 never constructs, such as the
