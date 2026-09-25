@@ -26,6 +26,13 @@ pub struct MetelParser;
 /// Returns an error if `source` does not conform to the Metel grammar.
 // arch-implements: ["arch.parsing.requirement-3"]
 pub fn parse(source: &str, filename: &str) -> Result<Program, MetelError> {
+    // metel-core#1232: every `Span::of` call below resolves its line/column
+    // through this precomputed index instead of `pest::Position::line_col`'s
+    // own from-the-start-of-the-file scan -- see `with_line_index`'s doc.
+    crate::data::ast::with_line_index(source, || parse_inner(source, filename))
+}
+
+fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
     let mut pairs = MetelParser::parse(Rule::program, source).map_err(|e| {
         let (start, end) = match e.location {
             pest::error::InputLocation::Pos(p) => (p, p),

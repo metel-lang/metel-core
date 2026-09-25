@@ -34,7 +34,7 @@ impl Span {
         filename: impl Into<String>,
     ) -> Self {
         let s = pair.as_span();
-        let (line, col) = s.start_pos().line_col();
+        let (line, col) = line_col_for(s.start());
         Span {
             start: s.start(),
             end: s.end(),
@@ -43,6 +43,91 @@ impl Span {
             col: col as u32,
         }
     }
+}
+
+// ── Line/column lookup (metel-core#1232) ───────────────────────────────────────
+//
+// `pest::Position::line_col()` finds a byte offset's line by scanning the
+// input from its *start*, counting newlines as it goes -- O(offset) per call.
+// `Span::of` is called once per parsed AST node (every sub-expression in a
+// precedence-climbing grammar gets its own node), so a module of `n`
+// declarations at increasing file positions paid a sum of `O(offset)` costs
+// that totals `O(n^2)` in the file's own length: parsing an 8,000-function
+// module took over a minute, almost all of it in this one call, even though
+// nothing about the grammar or the declarations themselves was quadratic.
+//
+// `LineIndexCache` precomputes each line's starting byte offset once per
+// parse (`O(file length)`) and answers each `line_col` query by binary search
+// (`O(log line count)`), matching `pest`'s own 1-based line/1-based-character
+// column convention. It's a thread-local rather than a parameter threaded
+// through the ~100 `parse_*` helpers in `parser/mod.rs` (all of which call
+// `Span::of` several layers removed from `parse`'s own entry point) because
+// every one of them would need it purely to forward it to `Span::of`, never
+// to read it themselves.
+thread_local! {
+    static LINE_INDEX: std::cell::RefCell<Option<LineIndex>> = const { std::cell::RefCell::new(None) };
+}
+
+struct LineIndex {
+    /// Owned copy of the source being parsed -- cloned once per parse
+    /// (`O(file length)`) so the index needs no lifetime of its own and can
+    /// live in a plain `'static` thread-local.
+    source: String,
+    /// Byte offset of each line's first byte; `line_starts[0] == 0`.
+    line_starts: Vec<usize>,
+}
+
+impl LineIndex {
+    fn new(source: &str) -> Self {
+        let mut line_starts = vec![0];
+        line_starts.extend(
+            source
+                .bytes()
+                .enumerate()
+                .filter(|&(_, b)| b == b'\n')
+                .map(|(i, _)| i + 1),
+        );
+        Self {
+            source: source.to_string(),
+            line_starts,
+        }
+    }
+
+    /// 1-based (line, column), column counted in `char`s like `pest`'s own
+    /// `Position::line_col()` -- only the line lookup is binary-searched;
+    /// the column still counts forward from that line's own start, but that
+    /// is bounded by one line's length, never by the whole file's.
+    fn line_col(&self, byte_offset: usize) -> (usize, usize) {
+        let line_idx = self
+            .line_starts
+            .partition_point(|&start| start <= byte_offset)
+            .saturating_sub(1);
+        let line_start = self.line_starts[line_idx];
+        let col = self.source[line_start..byte_offset].chars().count() + 1;
+        (line_idx + 1, col)
+    }
+}
+
+/// Installs `source`'s line index for the duration of `f` (normally one
+/// `parser::parse` call), so every `Span::of` inside it hits the fast path.
+/// Restores whatever was installed before on the way out -- parsing one
+/// module never nests inside parsing another today, but this stays correct
+/// if that changes.
+pub(crate) fn with_line_index<T>(source: &str, f: impl FnOnce() -> T) -> T {
+    let previous = LINE_INDEX.with(|cell| cell.borrow_mut().replace(LineIndex::new(source)));
+    let result = f();
+    LINE_INDEX.with(|cell| *cell.borrow_mut() = previous);
+    result
+}
+
+fn line_col_for(byte_offset: usize) -> (usize, usize) {
+    LINE_INDEX
+        .with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .map(|index| index.line_col(byte_offset))
+        })
+        .unwrap_or((1, byte_offset + 1))
 }
 
 // ── Top-level ─────────────────────────────────────────────────────────────────

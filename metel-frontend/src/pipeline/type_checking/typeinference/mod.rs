@@ -640,6 +640,40 @@ impl Substitution {
     }
 }
 
+/// A `Substitution` (`base`) chained with a small literal-defaulting overlay
+/// -- see [`InferContext::default_literal_vars`], which builds this instead
+/// of a merged, cloned `Substitution`.
+pub struct DefaultedSubstitution<'a> {
+    base: &'a Substitution,
+    literal_defaults: Substitution,
+}
+
+impl DefaultedSubstitution<'_> {
+    /// Resolves `ty` through `base` first, then through this call's own
+    /// (small) literal-defaulting overlay -- the same result
+    /// `default_literal_vars`'s old merged substitution gave, without ever
+    /// materializing that merge.
+    #[must_use]
+    pub fn apply(&self, ty: &InferType) -> InferType {
+        self.literal_defaults.apply(&self.base.apply(ty))
+    }
+
+    /// Materializes the merge as one owned `Substitution`, for the rare
+    /// caller that needs a real `&Substitution` (to `compose` with another,
+    /// or pass to a function expecting one) rather than just `.apply`ing it.
+    /// This is the clone `default_literal_vars` used to always pay -- fine
+    /// for a call site that only reaches it conditionally (RFC-0037 opaque
+    /// returns, associated-type projections), not for every function.
+    #[must_use]
+    pub fn to_substitution(&self) -> Substitution {
+        let mut merged = self.base.clone();
+        for (&var, ty) in &self.literal_defaults.bindings {
+            merged.bind(var, ty.clone());
+        }
+        merged
+    }
+}
+
 // ── Phase 4: Unification ──────────────────────────────────────────────────────
 
 /// Returns true if `var` appears anywhere inside `ty`.
@@ -1700,7 +1734,6 @@ impl std::fmt::Display for TypeScheme {
 // See `solve_constraints` above for why hasher-generalization isn't worthwhile here.
 #[allow(clippy::implicit_hasher)]
 // arch-implements: ["arch.type-inference.requirement-7"]
-// limit: ["LIMIT-TYPE-INFERENCE-007"]
 pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme {
     let mut quantified: Vec<TypeVar> = free_vars(&ty).difference(env_free_vars).copied().collect();
     quantified.sort();
@@ -4991,27 +5024,42 @@ impl InferContext {
         }
     }
 
-    /// Extend `subst` so that any literal `TypeVar` still free (unbound to a concrete type)
-    /// is defaulted: integer literal vars → `i64`, float literal vars → `f64`.
-    /// Also propagates defaults through `TypeVar` chains: if a literal var resolves to
-    /// another free `TypeVar`, both are bound to the default type.
-    /// Call this immediately after each `ctx.solve()` before using the substitution.
+    /// A view of `subst` extended so that any literal `TypeVar` still free
+    /// (unbound to a concrete type) is defaulted: integer literal vars →
+    /// `i64`, float literal vars → `f64`. Also propagates defaults through
+    /// `TypeVar` chains: if a literal var resolves to another free `TypeVar`,
+    /// both are bound to the default type. Call this immediately after each
+    /// `ctx.solve()`, before applying the substitution.
+    ///
+    /// Returns a small overlay chained onto `subst`, not a merged copy: this
+    /// runs once per function (the "inline solve-and-generalize" step), and
+    /// `subst` is `InferContext`'s single substitution accumulated across the
+    /// whole module, so a module of `n` functions calling `subst.clone()`
+    /// here once each summed to `O(n^2)` in the module's own function count
+    /// (metel-core#1232) even though the number of *new* literal vars to
+    /// default is small and roughly constant per call. `DefaultedSubstitution
+    /// ::apply` gets the identical result by applying `subst` first and this
+    /// call's own (tiny) defaulting overlay second, without ever
+    /// materializing their merge as one substitution.
     #[must_use]
-    pub fn default_literal_vars(&self, subst: &Substitution) -> Substitution {
-        let mut extended = subst.clone();
+    pub fn default_literal_vars<'a>(&self, subst: &'a Substitution) -> DefaultedSubstitution<'a> {
+        let mut literal_defaults = Substitution::new();
         for &var in &self.integer_literal_vars {
-            if let InferType::Var(final_var) = extended.apply(&InferType::Var(var)) {
-                extended.bind(final_var, InferType::int());
-                extended.bind(var, InferType::int());
+            if let InferType::Var(final_var) = subst.apply(&InferType::Var(var)) {
+                literal_defaults.bind(final_var, InferType::int());
+                literal_defaults.bind(var, InferType::int());
             }
         }
         for &var in &self.float_literal_vars {
-            if let InferType::Var(final_var) = extended.apply(&InferType::Var(var)) {
-                extended.bind(final_var, InferType::float());
-                extended.bind(var, InferType::float());
+            if let InferType::Var(final_var) = subst.apply(&InferType::Var(var)) {
+                literal_defaults.bind(final_var, InferType::float());
+                literal_defaults.bind(var, InferType::float());
             }
         }
-        extended
+        DefaultedSubstitution {
+            base: subst,
+            literal_defaults,
+        }
     }
 
     /// Record that `var` was minted for the declared generic parameter `name`
