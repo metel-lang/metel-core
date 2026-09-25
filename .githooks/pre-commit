@@ -1,0 +1,14 @@
+#!/bin/sh
+# metel-core#1268: fast, non-negotiable checks only. Nothing here should ever
+# be slow enough to tempt --no-verify -- a full clippy/test pass belongs in
+# pre-push (heavier, less frequent) or Tier 3 (AGENTS.md), not here.
+set -e
+
+echo "pre-commit: cargo fmt --check"
+cargo fmt --check --all
+
+echo "pre-commit: clippy-allow ratchet"
+python3 tools/clippy_allow_ratchet.py --check
+
+echo "pre-commit: no post-freeze semantic name lookup"
+python3 tools/check_no_semantic_name_lookup.py

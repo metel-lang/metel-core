@@ -161,6 +161,19 @@ git merge --ff-only origin/<branch>
 git push origin develop
 ```
 
+**Local git hooks (metel-core#1268), one-time per clone:**
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`commit-msg` rejects Claude/Anthropic attribution; `pre-commit` runs `cargo fmt --check`
+plus the two instant text-scan tools (`clippy_allow_ratchet.py --check`,
+`check_no_semantic_name_lookup.py`); `pre-push` runs clippy, `cargo test --workspace`, and
+refuses to push a merge commit reaching `develop`. Not a substitute for Tier 3 or CI —
+branch protection ("Require linear history" on `develop`) is the actual backstop; these
+hooks just catch the same classes of mistake earlier, for whoever has them enabled.
+
 "Commit and push directly" means push the completed work to `develop`; it does not
 authorize writing to `main`. Only an instruction that explicitly names `main` and
 acknowledges its release-only role can override this convention.

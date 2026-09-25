@@ -1,0 +1,34 @@
+#!/bin/sh
+# metel-core#1268: heavier local checks, once per push rather than per commit.
+set -e
+
+echo "pre-push: cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic"
+cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic
+
+echo "pre-push: cargo test --workspace"
+cargo test --workspace
+
+# AGENTS.md: develop only ever advances by local fast-forward, never a merge
+# commit (GitHub's hosted merge button doesn't give a true fast-forward).
+# Branch protection enforces this server-side; this catches it locally too,
+# before the push even leaves the machine.
+zero="0000000000000000000000000000000000000000"
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ "$remote_ref" = "refs/heads/develop" ] || continue
+    [ "$local_sha" = "$zero" ] && continue  # a delete, nothing to check
+
+    if [ "$remote_sha" = "$zero" ]; then
+        range="$local_sha"
+    else
+        range="$remote_sha..$local_sha"
+    fi
+
+    merges=$(git rev-list --merges "$range" 2>/dev/null || true)
+    if [ -n "$merges" ]; then
+        echo "pre-push: refused -- merge commit(s) in this push to develop:" >&2
+        echo "$merges" >&2
+        echo "AGENTS.md requires a local fast-forward merge, never a merge commit." >&2
+        echo "See 'GitHub and branch workflow' in AGENTS.md for the correct procedure." >&2
+        exit 1
+    fi
+done

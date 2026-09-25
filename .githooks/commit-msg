@@ -1,0 +1,14 @@
+#!/bin/sh
+# metel-core#1268: reject Claude/Anthropic attribution in commit messages.
+# AGENTS.md: "Do not add Claude/Codex attribution trailers." Catches both an
+# accidental add and a prompt-injected one, since a human reviewing a diff
+# doesn't normally re-read the commit message template it came from.
+set -e
+
+msg_file="$1"
+
+if grep -qiE 'co-authored-by:.*claude|generated (with|by) \[?claude|claude-session:|claude code' "$msg_file"; then
+    echo "commit-msg: rejected -- commit message contains Claude/Anthropic attribution." >&2
+    echo "AGENTS.md: 'Do not add Claude/Codex attribution trailers.'" >&2
+    exit 1
+fi
