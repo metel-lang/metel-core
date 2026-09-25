@@ -50,9 +50,19 @@ jobs:
       # Before ADR-0051 this pulled a private submodule (metel-docs-internal)
       # and needed DOCS_REPO_TOKEN's SSH-to-HTTPS rewrite; that credential and
       # this dance are both gone now that the submodule itself is public.
+      #
+      # fetch-depth: 0 is required, not cosmetic, since metel-core#1192: rfc.py
+      # check's Formal Rules `last_reviewed` staleness check resolves each cited
+      # fixture's last-touch commit and each rule's recorded review SHA against
+      # this checkout's own history (metel_core_tests_dir() resolves to the
+      # checkout the workflow itself runs in, not a separate clone). A default
+      # shallow (depth-1) checkout only has the tip commit, so every historical
+      # SHA fails to resolve -- same root cause the architecture-evidence job
+      # below already documents and fixes for the same reason.
       - uses: actions/checkout@v4
         with:
           submodules: true
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
