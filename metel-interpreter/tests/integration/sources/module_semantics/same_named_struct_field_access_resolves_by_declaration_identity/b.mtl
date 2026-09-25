@@ -1,0 +1,2 @@
+public struct Item { public y: i64 }
+public fun make() -> Item { Item { y = 2 } }

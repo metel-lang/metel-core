@@ -19,6 +19,85 @@ use super::conversions::{
     type_expr_to_infer_with_self, type_to_infer,
 };
 
+/// A resolved struct field alongside the declaration metadata needed to
+/// finish typing the access: the substitution-ready field entry, its
+/// declaring module and visibility (for [`check_field_visibility`]), and the
+/// struct's own type params (for a generic remap). See
+/// [`resolve_struct_field_by_identity`].
+pub(super) type ResolvedStructField = (
+    FieldEntry,
+    Option<Vec<String>>,
+    Option<Visibility>,
+    Option<Vec<TypeVar>>,
+);
+
+/// metel-core#1222: resolve a struct field by the value's own declaration
+/// identity when available -- same-named structs declared in different
+/// modules are otherwise conflated by a bare-name lookup. Shared by the read
+/// side (`Expr::FieldAccess` in `inference/expressions.rs`) and the write
+/// side (`infer_field_assign_type` below).
+pub(super) fn resolve_struct_field_by_identity(
+    ctx: &InferContext,
+    nominal_struct_id: Option<crate::identity::symbols::SymbolId>,
+    struct_name: &str,
+    field: &str,
+    span: &Span,
+) -> Result<ResolvedStructField, MetelError> {
+    if let Some(id) = nominal_struct_id
+        && let Some(fields) = ctx.registry().struct_fields_by_id(id)
+    {
+        let entry = fields
+            .iter()
+            .find(|entry| entry.name == field)
+            .cloned()
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on `{struct_name}`"),
+                    span,
+                )
+            })?;
+        Ok((
+            entry,
+            ctx.registry().struct_declaring_module_by_id(id).cloned(),
+            ctx.registry().struct_visibility_by_id(id).cloned(),
+            ctx.registry().struct_type_params_by_id(id).cloned(),
+        ))
+    } else {
+        let fields = ctx
+            .get_struct_fields(struct_name)
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("unknown type `{struct_name}`"),
+                    span,
+                )
+            })?
+            .clone();
+        let entry = fields
+            .iter()
+            .find(|entry| entry.name == field)
+            .cloned()
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on `{struct_name}`"),
+                    span,
+                )
+            })?;
+        Ok((
+            entry,
+            ctx.registry()
+                .struct_declaring_module(ctx.current_module_path(), struct_name)
+                .cloned(),
+            ctx.registry()
+                .struct_visibility_for(ctx.current_module_path(), struct_name)
+                .cloned(),
+            ctx.get_struct_type_params(struct_name).cloned(),
+        ))
+    }
+}
+
 fn type_expr_to_infer_with_ctx(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,
@@ -2038,39 +2117,26 @@ fn infer_field_assign_type(
         },
         _ => vec![],
     };
-    let fields = ctx
-        .get_struct_fields(&struct_name)
-        .ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("unknown type `{struct_name}`"),
-                target_span,
-            )
-        })?
-        .clone();
-    let field_entry = fields
-        .iter()
-        .find(|entry| entry.name == field)
-        .ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("no field `{field}` on `{struct_name}`"),
-                target_span,
-            )
-        })?;
+    // metel-core#1222: prefer the identity the value's own type already
+    // carries over a bare-name lookup; see the mirrored read-side fix in
+    // `inference/expressions.rs`'s `Expr::FieldAccess` arm.
+    let nominal_struct_id = match &peeled {
+        InferType::Named(_, _, id) => id.get(),
+        _ => None,
+    };
+    let (field_entry, declaring_module, visibility, resolved_type_params) =
+        resolve_struct_field_by_identity(ctx, nominal_struct_id, &struct_name, field, target_span)?;
     check_field_visibility(
-        field_entry,
+        &field_entry,
         &struct_name,
         ctx.current_module_path(),
-        ctx.registry()
-            .struct_declaring_module(ctx.current_module_path(), &struct_name),
-        ctx.registry()
-            .struct_visibility_for(ctx.current_module_path(), &struct_name),
+        declaring_module.as_ref(),
+        visibility.as_ref(),
         target_span,
         "assign to",
     )?;
     let raw_ty = field_entry.ty.clone();
-    if let Some(type_params) = ctx.get_struct_type_params(&struct_name).cloned() {
+    if let Some(type_params) = resolved_type_params {
         let mut remap = Substitution::new();
         for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
             remap.bind(tp, arg.clone());

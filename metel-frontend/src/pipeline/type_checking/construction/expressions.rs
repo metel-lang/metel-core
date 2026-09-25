@@ -1173,17 +1173,21 @@ pub(super) fn construct_expr(
                     span: span.clone(),
                 });
             }
-            let (struct_name, type_args) = match peeled {
-                Type::Named(name, args, ..) => (name.clone(), args.clone()),
+            let (struct_name, type_args, nominal_id) = match peeled {
+                Type::Named(name, args, id) => (name.clone(), args.clone(), id.clone()),
                 t => {
                     return Err(MetelError::internal(format!(
                         "field access on non-struct type {t}"
                     )));
                 }
             };
-            let struct_id = ctx
-                .registry
-                .resolve_type_id(ctx.current_module, &struct_name);
+            // metel-core#1222: prefer the identity the value's own type already
+            // carries over a bare-name re-lookup, which conflates same-named
+            // structs declared in different modules.
+            let struct_id = nominal_id.get().or_else(|| {
+                ctx.registry
+                    .resolve_type_id(ctx.current_module, &struct_name)
+            });
             let field_ty = if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
@@ -1205,6 +1209,21 @@ pub(super) fn construct_expr(
                     remap.bind(tp, type_to_infer(arg));
                 }
                 infer_type_to_type(&remap.apply(&raw_ty), span)?
+            } else if let Some(raw_fields) =
+                struct_id.and_then(|id| ctx.registry.raw_struct_env().get(&id))
+            {
+                // Non-generic struct with a resolved declaration identity
+                // (#1222): look up by `SymbolId`, not by bare name --
+                // `ConstructCtx::struct_scopes`'s global scope collapses
+                // same-named structs from different modules into one slot.
+                let raw_ty = raw_fields
+                    .iter()
+                    .find(|entry| entry.name == *field)
+                    .map(|entry| entry.ty.clone())
+                    .ok_or_else(|| {
+                        MetelError::internal(format!("no field `{field}` on `{struct_name}`"))
+                    })?;
+                infer_type_to_type(&ctx.subst.apply(&raw_ty), span)?
             } else {
                 ctx.get_struct_fields(&struct_name)
                     .and_then(|fs| fs.iter().find(|(name, _, _)| name == field))
@@ -1726,8 +1745,8 @@ pub(super) fn construct_expr(
                 Expr::Path(path.clone(), Vec::new(), path_span.clone())
             };
             let typed_base = construct_expr(&base_expr, None, ctx)?;
-            let (struct_name, type_args) = match peel_type_references(typed_base.ty()) {
-                Type::Named(name, args, ..) => (name.clone(), args.clone()),
+            let (struct_name, type_args, nominal_id) = match peel_type_references(typed_base.ty()) {
+                Type::Named(name, args, id) => (name.clone(), args.clone(), id.clone()),
                 // RFC-0137 slice 2: re-projecting a narrowed residual, as long as
                 // every named field is still in its current row.
                 Type::Residual {
@@ -1745,7 +1764,11 @@ pub(super) fn construct_expr(
                             ));
                         }
                     }
-                    (brand.clone(), Vec::new())
+                    (
+                        brand.clone(),
+                        Vec::new(),
+                        crate::data::types::NominalId::NONE,
+                    )
                 }
                 other => {
                     return Err(MetelError::type_error(
@@ -1763,9 +1786,13 @@ pub(super) fn construct_expr(
             // branded Residual (§3's own worked example: naming every field is still
             // just the struct, not a distinct form).
             let mut total_field_count: Option<usize> = None;
-            let struct_id = ctx
-                .registry
-                .resolve_type_id(ctx.current_module, &struct_name);
+            // metel-core#1222: prefer the identity the value's own type already
+            // carries (see the `FieldAccess` arm above) over a bare-name
+            // re-lookup.
+            let struct_id = nominal_id.get().or_else(|| {
+                ctx.registry
+                    .resolve_type_id(ctx.current_module, &struct_name)
+            });
             for field in fields {
                 let field_ty = if let Some(type_params) =
                     struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
@@ -1792,6 +1819,22 @@ pub(super) fn construct_expr(
                         remap.bind(tp, type_to_infer(arg));
                     }
                     infer_type_to_type(&remap.apply(&raw_ty), span)?
+                } else if let Some(raw_fields) =
+                    struct_id.and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                {
+                    total_field_count.get_or_insert(raw_fields.len());
+                    let raw_ty = raw_fields
+                        .iter()
+                        .find(|entry| entry.name == *field)
+                        .map(|entry| entry.ty.clone())
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!("no field `{field}` on `{struct_name}`"),
+                                span,
+                            )
+                        })?;
+                    infer_type_to_type(&ctx.subst.apply(&raw_ty), span)?
                 } else {
                     let entries = ctx.get_struct_fields(&struct_name);
                     total_field_count.get_or_insert(entries.map_or(0, Vec::len));
@@ -1820,10 +1863,14 @@ pub(super) fn construct_expr(
                 ));
             }
             let ty = if total_field_count == Some(record_ty.len()) {
+                // metel-core#1222/#1137: carry the base's own resolved identity
+                // through a full-width projection instead of dropping it, so a
+                // later field access on the projected value can still resolve
+                // by declaration id.
                 Type::Named(
                     struct_name.clone(),
                     type_args.clone(),
-                    crate::data::types::NominalId::NONE,
+                    crate::data::types::NominalId(struct_id),
                 )
             } else {
                 // `Residual::fields` is always lexicographically sorted (mirrors

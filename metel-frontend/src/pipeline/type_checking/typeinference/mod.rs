@@ -3629,6 +3629,20 @@ impl TypeDefinitionRegistry {
         self.struct_type_params.get(&id)
     }
 
+    /// Visibility of the struct registered under `id` (metel-core#1222):
+    /// callers that already resolved the declaration by identity, like
+    /// [`struct_fields_by_id`](Self::struct_fields_by_id).
+    #[must_use]
+    pub fn struct_visibility_by_id(&self, id: SymbolId) -> Option<&Visibility> {
+        self.struct_visibility.get(&id)
+    }
+
+    /// Declaring module of the struct registered under `id` (metel-core#1222).
+    #[must_use]
+    pub fn struct_declaring_module_by_id(&self, id: SymbolId) -> Option<&Vec<String>> {
+        self.struct_decl_modules.get(&id)
+    }
+
     /// `type_name` is resolved the same broad, `current_module`-first way as
     /// `struct_fields`/`method_scheme_for` (metel-core#1124).
     #[must_use]

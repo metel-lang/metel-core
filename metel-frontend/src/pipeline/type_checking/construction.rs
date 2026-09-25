@@ -2384,10 +2384,14 @@ fn typed_place_field_ty(
                     field_span,
                 )
             }),
-        Type::Named(struct_name, type_args, ..) => {
-            let struct_id = ctx
-                .registry
-                .resolve_type_id(ctx.current_module, struct_name);
+        Type::Named(struct_name, type_args, nominal_id) => {
+            // metel-core#1222: prefer the identity the value's own type
+            // already carries over a bare-name re-lookup, which conflates
+            // same-named structs declared in different modules.
+            let struct_id = nominal_id.get().or_else(|| {
+                ctx.registry
+                    .resolve_type_id(ctx.current_module, struct_name)
+            });
             if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
@@ -2416,6 +2420,21 @@ fn typed_place_field_ty(
                     remap.bind(tp, type_to_infer(arg));
                 }
                 infer_type_to_type(&remap.apply(&raw_ty), field_span)
+            } else if let Some(raw_fields) =
+                struct_id.and_then(|id| ctx.registry.raw_struct_env().get(&id))
+            {
+                let raw_ty = raw_fields
+                    .iter()
+                    .find(|entry| entry.name == field)
+                    .map(|entry| entry.ty.clone())
+                    .ok_or_else(|| {
+                        MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on `{struct_name}`"),
+                            field_span,
+                        )
+                    })?;
+                infer_type_to_type(&ctx.subst.apply(&raw_ty), field_span)
             } else {
                 let fields = ctx.get_struct_fields(struct_name).ok_or_else(|| {
                     MetelError::type_error(
