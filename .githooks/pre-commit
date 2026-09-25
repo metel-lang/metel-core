@@ -2,6 +2,16 @@
 # metel-core#1268: fast, non-negotiable checks only. Nothing here should ever
 # be slow enough to tempt --no-verify -- a full clippy/test pass belongs in
 # pre-push (heavier, less frequent) or Tier 3 (AGENTS.md), not here.
+#
+# Git sets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/GIT_PREFIX when invoking a
+# hook, and it leaks into anything this script shells out to -- if any tool
+# below (now or later) spawns its own nested git subprocess against a
+# different path, GIT_DIR overrides that path's `-C`/cwd and silently
+# operates on *this* repo's real gitdir instead. Confirmed hit exactly this
+# in metel-docs' equivalent hook (metel-core#1268): it corrupted the docs
+# submodule's real git config. Unset defensively.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 set -e
 
 echo "pre-commit: cargo fmt --check"

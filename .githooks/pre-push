@@ -1,5 +1,13 @@
 #!/bin/sh
 # metel-core#1268: heavier local checks, once per push rather than per commit.
+#
+# See pre-commit's comment: git sets GIT_DIR/etc. for hook invocations, and
+# it leaks into anything spawned here. Unset defensively -- the merge-commit
+# check below reads *this* repo's own history on purpose (via the `git
+# rev-list` calls further down, run without -C so they still target the
+# right repo once GIT_DIR no longer overrides it).
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
 set -e
 
 echo "pre-push: cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic"
