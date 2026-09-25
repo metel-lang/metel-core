@@ -1,0 +1,15 @@
+// metel-core#1226: move-check's symbolic construction of a generic body
+// used to fail outright on a row-bound field access (the placeholder it
+// sampled for `T` had no fields at all), silently skipping the whole body
+// -- including the use-after-move below -- instead of analyzing it.
+fun f<record T: { y: i64, .. }>(value: T) -> (T, T, i64) {
+    let n := value.y;
+    let a := value;
+    let b := value;
+    (a, b, n)
+}
+
+fun main() {
+    let r := { y = 1 };
+    let p := f(r);
+}

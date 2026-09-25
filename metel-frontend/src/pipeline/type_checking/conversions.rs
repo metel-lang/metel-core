@@ -377,7 +377,10 @@ pub(super) fn type_expr_to_infer_with_generics_and_self(
 }
 
 /// Convert a source-level `TypeExpr` to an `InferType` for use during inference.
-pub(super) fn type_expr_to_infer(te: &TypeExpr) -> InferType {
+// metel-core#1226: `pub(crate)`, not `pub(super)` -- move_check's symbolic
+// generic-body construction needs this to sample a concrete type for a
+// `<record T: { field: TypeExpr, .. }>` bound's typed fields.
+pub(crate) fn type_expr_to_infer(te: &TypeExpr) -> InferType {
     type_expr_to_infer_in_context(te, None, None, None)
 }
 

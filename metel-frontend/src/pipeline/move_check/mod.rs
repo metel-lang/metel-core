@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::data::ast::Visibility;
 use crate::data::ast::{GenericParam, Polarity, ReceiverKind, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::typed_ast::{
@@ -7,9 +8,10 @@ use crate::data::typed_ast::{
     TypedModuleGraph, TypedPattern, TypedPlace, TypedStmt,
 };
 use crate::data::types::Type;
+use crate::pipeline::type_checking::type_expr_to_infer;
 use crate::pipeline::type_checking::typeinference::{
-    AspectAssumptions, GenericBound, InferType, Substitution, TypeCtx, TypeDefinitionRegistry,
-    TypeScheme, TypeVar, type_to_infer,
+    AspectAssumptions, FieldEntry, GenericBound, InferType, RowConstraintField, Substitution,
+    TypeCtx, TypeDefinitionRegistry, TypeScheme, TypeVar, type_to_infer,
 };
 
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
@@ -189,6 +191,10 @@ struct GenericMoveEnv {
     placeholders: HashMap<String, TypeVar>,
     assumptions: AspectAssumptions,
     symbolic_aspects: HashMap<String, HashSet<String>>,
+    /// metel-core#1226: a quantified var's `<record T: { field: Type, .. }>`
+    /// row bound, by the var's own placeholder name. See
+    /// `type_ctx_with_symbolic_row_fields`.
+    row_fields: HashMap<String, Vec<RowConstraintField>>,
     arg_types: Vec<Type>,
 }
 
@@ -408,7 +414,10 @@ impl<'a> Checker<'a> {
             );
             return None;
         };
-        let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
+        let symbolic_type_ctx = type_ctx_with_symbolic_row_fields(
+            &type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env),
+            &generic_env,
+        );
         match crate::pipeline::type_checking::construct_generic_body(
             &scheme,
             params,
@@ -477,7 +486,10 @@ impl<'a> Checker<'a> {
             );
             return;
         };
-        let symbolic_type_ctx = type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env);
+        let symbolic_type_ctx = type_ctx_with_symbolic_row_fields(
+            &type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env),
+            &generic_env,
+        );
         match crate::pipeline::type_checking::construct_generic_body(
             &scheme,
             &method.params,
@@ -517,6 +529,14 @@ impl<'a> Checker<'a> {
         let mut named_samples = HashMap::new();
         for (index, var) in scheme.quantified_vars.iter().enumerate() {
             let placeholder = generic_placeholder_name(*var);
+            // A bare nominal placeholder, not a `Type::Record` -- a record
+            // sample would make the whole placeholder structurally `Copy`
+            // whenever its bound's fields happen to all be `Copy` (RFC-0050's
+            // usual rule for a literal record type), which the bound itself
+            // never claimed. Move-checking's `is_copy` has to see the same
+            // unbound-by-default nominal type an unconstrained `<T>` gets;
+            // see `type_ctx_with_symbolic_row_fields` for how a `<record T:
+            // { field: Type, .. }>` bound's fields still resolve.
             let sample = Type::Named(
                 placeholder.clone(),
                 Vec::new(),
@@ -525,7 +545,7 @@ impl<'a> Checker<'a> {
             if let Some(name) = scheme.param_names.get(index) {
                 named_samples.insert(name.clone(), type_to_infer(&sample));
             }
-            generic_env.placeholders.insert(placeholder, *var);
+            generic_env.placeholders.insert(placeholder.clone(), *var);
             if let Some(bounds) = scheme.bounds.get(index) {
                 let assumed: HashSet<String> = bounds
                     .iter()
@@ -534,6 +554,19 @@ impl<'a> Checker<'a> {
                     .collect();
                 if !assumed.is_empty() {
                     generic_env.assumptions.insert(*var, assumed);
+                }
+                // metel-core#1226: record the row bound's own fields (by
+                // placeholder name) so `type_ctx_with_symbolic_row_fields` can
+                // register them for the symbolic construction pass below --
+                // otherwise a body that accesses one of them can't construct
+                // at all, and its use-after-move is never checked.
+                if let Some(row) = bounds.iter().find_map(|bound| match bound {
+                    GenericBound::Row(row) => Some(row),
+                    GenericBound::Aspect(_) => None,
+                }) {
+                    generic_env
+                        .row_fields
+                        .insert(placeholder.clone(), row.fields.clone());
                 }
             }
             subst.bind(*var, type_to_infer(&sample));
@@ -1777,6 +1810,32 @@ impl<'a> Checker<'a> {
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
                 Type::Named(name, args, ..) => {
+                    // metel-core#1226: a symbolic generic body's row-bound
+                    // placeholder has no entry in the shared, immutable
+                    // `self.registry` (unlike `symbolic_type_ctx`'s own
+                    // enriched clone the construction pass above used) --
+                    // its fields live in the enclosing `GenericMoveEnv`
+                    // instead, the same place `type_satisfies_aspect` already
+                    // looks first for a placeholder's symbolic aspects.
+                    if args.is_empty()
+                        && let Some(row_fields) = self
+                            .generic_envs
+                            .last()
+                            .and_then(|env| env.row_fields.get(name))
+                    {
+                        let entry = row_fields.iter().find(|f| f.label == *field)?;
+                        let infer_ty = entry.ty.as_ref().map_or_else(
+                            || {
+                                InferType::Named(
+                                    format!("{name}__field_{field}"),
+                                    Vec::new(),
+                                    crate::data::types::NominalId::NONE,
+                                )
+                            },
+                            type_expr_to_infer,
+                        );
+                        return infer_to_type(&infer_ty);
+                    }
                     let (type_id, _resolved_name, fields) = self
                         .registry
                         .projection_struct_fields(current_module, name)?;
@@ -2016,6 +2075,53 @@ fn type_ctx_with_symbolic_aspect_methods(
                     .register_method_receiver(owner, method.name.clone(), receiver);
             }
         }
+    }
+    enriched
+}
+
+/// metel-core#1226: register a `<record T: { field: Type, .. }>` bound's own
+/// fields as a struct declaration under `T`'s placeholder id, so the
+/// symbolic construction pass below can resolve `value.field` the same way
+/// it resolves a field on any other nominal type -- a placeholder that
+/// carries no row bound otherwise has no fields at all, and construction
+/// fails outright on the first field access, silently skipping the whole
+/// body (and any use-after-move inside it) instead of analyzing it.
+///
+/// The sample given to construction stays a bare nominal placeholder (not a
+/// `Type::Record`) precisely so this registration is what supplies its
+/// fields: a `Type::Record` sample would also make the placeholder
+/// structurally `Copy` whenever the bound's fields happen to all be `Copy`,
+/// which the bound never claimed and move-checking must not assume.
+fn type_ctx_with_symbolic_row_fields(type_ctx: &TypeCtx, generic_env: &GenericMoveEnv) -> TypeCtx {
+    let mut enriched = type_ctx.clone();
+    for (placeholder, fields) in &generic_env.row_fields {
+        let owner = enriched.registry.local_placeholder_id(placeholder);
+        let field_entries = fields
+            .iter()
+            .map(|field| FieldEntry {
+                name: field.label.clone(),
+                ty: field.ty.as_ref().map_or_else(
+                    || {
+                        InferType::Named(
+                            format!("{placeholder}__field_{}", field.label),
+                            Vec::new(),
+                            crate::data::types::NominalId::NONE,
+                        )
+                    },
+                    type_expr_to_infer,
+                ),
+                span: Span::new(0, 0, ""),
+                visibility: Visibility::Public,
+                id: None,
+            })
+            .collect();
+        enriched.registry.register_struct_fields(
+            owner,
+            placeholder.clone(),
+            field_entries,
+            Vec::new(),
+            Visibility::Public,
+        );
     }
     enriched
 }

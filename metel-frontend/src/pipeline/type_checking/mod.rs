@@ -24,6 +24,7 @@ mod inference;
 mod object_safety;
 mod overload;
 mod projections;
+pub(crate) use conversions::type_expr_to_infer;
 pub use overload::core_native_symbol;
 mod registry;
 pub mod typeinference;

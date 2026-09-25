@@ -1,0 +1,8 @@
+[options]
+move_check = true
+error = ["T0019"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "use of moved value `value`"
