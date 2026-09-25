@@ -1,0 +1,38 @@
+// metel-core#1228: `extend W<i64>: Tag` and `extend W<String>: Tag` -- two
+// impls for different instantiations of the same generic type -- used to
+// share one dispatch-table entry (keyed by the target's bare name, ignoring
+// its type arguments), so whichever was declared last silently answered
+// every instantiation's calls. Covers an aspect method, an inherent method,
+// and dispatch through a generic bound, for both instantiations each.
+aspect Tag { fun t(&self) -> i64; }
+struct W<T> { v: T }
+
+extend W<i64>: Tag {
+    fun t(&self) -> i64 { 1 }
+}
+extend W<String>: Tag {
+    fun t(&self) -> i64 { 2 }
+}
+
+extend W<i64> {
+    fun f(&self) -> i64 { 10 }
+}
+extend W<String> {
+    fun f(&self) -> i64 { 20 }
+}
+
+fun show<X: Tag>(x: &X) -> i64 { x.t() }
+
+fun main() {
+    let a := W { v = 1 };
+    let b := W { v = "s" };
+
+    assert(a.t() == 1);
+    assert(b.t() == 2);
+
+    assert(a.f() == 10);
+    assert(b.f() == 20);
+
+    assert(show(&a) == 1);
+    assert(show(&b) == 2);
+}

@@ -382,8 +382,18 @@ pub struct RuntimeModuleEntry {
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeTypeEntry {
     associated_values: HashMap<String, RuntimeMethod>,
-    inherent_methods: HashMap<String, RuntimeMethod>,
+    inherent_impls: Vec<RuntimeInherentImpl>,
     aspect_impls: Vec<RuntimeAspectImpl>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeInherentImpl {
+    /// metel-core#1228: see `RuntimeAspectImpl::target_type_args` -- same
+    /// per-instantiation disambiguation, for a receiver-taking inherent
+    /// `extend` block instead of an aspect one (`extend W<i64> { ... }` vs
+    /// `extend W<String> { ... }`).
+    target_type_args: Option<Vec<String>>,
+    methods: HashMap<String, RuntimeMethod>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -393,6 +403,20 @@ pub struct RuntimeAspectImpl {
     /// string-only path (builtins / single-module pipeline without name resolver).
     aspect_id: Option<SymbolId>,
     type_args: Vec<String>,
+    /// metel-core#1228: the impl *target*'s own type arguments, e.g. `[i64]` for
+    /// `extend W<i64>: Tag { ... }` -- distinct from `type_args` above, which is
+    /// the *aspect*'s own type arguments (`Iterable<i64>`'s `[i64]`). `None`
+    /// means this impl covers every instantiation of the target (an ordinary
+    /// non-generic target, or a target generic over the impl's own `<T>`, e.g.
+    /// `extend<T> Wrapper<T>: Iterable<T> { ... }`) -- there is exactly one
+    /// impl to run regardless of the receiver's concrete type arguments.
+    /// `Some(args)` means this impl is for one specific instantiation of a
+    /// generic target and must only be selected for a receiver whose own type
+    /// arguments match exactly; two `extend`s for different instantiations of
+    /// the same generic type (`W<i64>` vs `W<String>`) previously shared this
+    /// same target `type_id`/aspect, so whichever was registered last silently
+    /// answered every receiver's method calls.
+    target_type_args: Option<Vec<String>>,
     methods: HashMap<String, RuntimeMethod>,
 }
 
@@ -564,12 +588,26 @@ impl RuntimeRegistry {
         &mut self,
         type_id: SymbolId,
         type_name: &str,
+        target_type_args: Option<Vec<String>>,
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
-        self.type_entry_mut(type_id, type_name)
-            .inherent_methods
-            .insert(method_name.into(), value);
+        let entry = self.type_entry_mut(type_id, type_name);
+        let method_name = method_name.into();
+        if let Some(inherent_impl) = entry
+            .inherent_impls
+            .iter_mut()
+            .find(|inherent_impl| inherent_impl.target_type_args == target_type_args)
+        {
+            inherent_impl.methods.insert(method_name, value);
+            return;
+        }
+        let mut methods = HashMap::new();
+        methods.insert(method_name, value);
+        entry.inherent_impls.push(RuntimeInherentImpl {
+            target_type_args,
+            methods,
+        });
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -580,6 +618,7 @@ impl RuntimeRegistry {
         aspect_name: impl Into<String>,
         aspect_id: Option<SymbolId>,
         type_args: Vec<String>,
+        target_type_args: Option<Vec<String>>,
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
@@ -587,7 +626,9 @@ impl RuntimeRegistry {
         let aspect_name = aspect_name.into();
         let method_name = method_name.into();
         if let Some(aspect_impl) = entry.aspect_impls.iter_mut().find(|aspect_impl| {
-            aspect_impl.aspect_name == aspect_name && aspect_impl.type_args == type_args
+            aspect_impl.aspect_name == aspect_name
+                && aspect_impl.type_args == type_args
+                && aspect_impl.target_type_args == target_type_args
         }) {
             // Update aspect_id if we now have one (a later registration may have the id).
             if aspect_impl.aspect_id.is_none() {
@@ -603,35 +644,49 @@ impl RuntimeRegistry {
             aspect_name,
             aspect_id,
             type_args,
+            target_type_args,
             methods,
         });
     }
 
     /// Look up a method belonging to a specific aspect impl, by the aspect's stable
-    /// `SymbolId`. Selection is purely id-based: builtin aspect impls are seeded with
-    /// their `SYM_ASPECT_*` ids and user impls carry the elaboration-stamped id, so
-    /// no surface-name fallback is needed (METEL-185 / ADR-0041).
+    /// `SymbolId`. Selection is id-based for the aspect (builtin aspect impls are
+    /// seeded with their `SYM_ASPECT_*` ids and user impls carry the
+    /// elaboration-stamped id, so no surface-name fallback is needed -- METEL-185
+    /// / ADR-0041) and, additionally, by the receiver's own concrete type
+    /// arguments where the target is generic (metel-core#1228): an exact
+    /// per-instantiation impl (`extend W<i64>: Tag`) is preferred over a
+    /// blanket one covering every instantiation (`target_type_args: None`,
+    /// either an ordinary non-generic target or one generic over the impl's
+    /// own `<T>`), so `W<i64>` and `W<String>` each reliably run their own
+    /// `extend`'s method instead of whichever was declared last.
     #[must_use]
     pub fn get_aspect_method_by_id(
         &self,
         type_id: SymbolId,
         aspect_id: SymbolId,
         method_name: &str,
+        receiver_target_type_args: &[String],
     ) -> Option<RuntimeMethod> {
-        self.types
-            .get(&type_id)?
-            .aspect_impls
+        let aspect_impls = &self.types.get(&type_id)?.aspect_impls;
+        aspect_impls
             .iter()
             .rev()
-            .find_map(|ai| {
-                if ai.aspect_id == Some(aspect_id) {
-                    ai.methods
-                        .get(method_name)
-                        .cloned()
-                        .filter(|m| m.receiver.is_some())
-                } else {
-                    None
-                }
+            .find(|ai| {
+                ai.aspect_id == Some(aspect_id)
+                    && ai.target_type_args.as_deref() == Some(receiver_target_type_args)
+            })
+            .or_else(|| {
+                aspect_impls
+                    .iter()
+                    .rev()
+                    .find(|ai| ai.aspect_id == Some(aspect_id) && ai.target_type_args.is_none())
+            })
+            .and_then(|ai| {
+                ai.methods
+                    .get(method_name)
+                    .cloned()
+                    .filter(|m| m.receiver.is_some())
             })
     }
 
@@ -675,6 +730,7 @@ impl RuntimeRegistry {
             aspect_name,
             aspect_id,
             type_args: Vec::new(),
+            target_type_args: None,
             methods,
         });
     }
@@ -744,18 +800,34 @@ impl RuntimeRegistry {
             })
     }
 
+    /// `receiver_target_type_args` disambiguates a generic target's
+    /// per-instantiation `extend` blocks (metel-core#1228, see
+    /// `RuntimeInherentImpl::target_type_args`): an exact match wins, and a
+    /// blanket impl (`target_type_args: None`) is the fallback.
     #[must_use]
     pub fn get_inherent_method(
         &self,
         type_id: SymbolId,
         method_name: &str,
+        receiver_target_type_args: &[String],
     ) -> Option<RuntimeMethod> {
-        self.types
-            .get(&type_id)?
-            .inherent_methods
-            .get(method_name)
-            .cloned()
-            .filter(|method| method.receiver.is_some())
+        let inherent_impls = &self.types.get(&type_id)?.inherent_impls;
+        inherent_impls
+            .iter()
+            .rev()
+            .find(|ii| ii.target_type_args.as_deref() == Some(receiver_target_type_args))
+            .or_else(|| {
+                inherent_impls
+                    .iter()
+                    .rev()
+                    .find(|ii| ii.target_type_args.is_none())
+            })
+            .and_then(|ii| {
+                ii.methods
+                    .get(method_name)
+                    .cloned()
+                    .filter(|method| method.receiver.is_some())
+            })
     }
 
     #[must_use]
@@ -763,27 +835,36 @@ impl RuntimeRegistry {
         &self,
         type_id: SymbolId,
         method_name: &str,
+        receiver_target_type_args: &[String],
     ) -> Option<RuntimeMethod> {
-        self.get_inherent_method(type_id, method_name).or_else(|| {
-            self.types
-                .get(&type_id)?
-                .aspect_impls
-                .iter()
-                .rev()
-                .find_map(|aspect_impl| {
-                    aspect_impl
-                        .methods
-                        .get(method_name)
-                        .cloned()
-                        .filter(|method| method.receiver.is_some())
-                })
-        })
+        self.get_inherent_method(type_id, method_name, receiver_target_type_args)
+            .or_else(|| {
+                self.types
+                    .get(&type_id)?
+                    .aspect_impls
+                    .iter()
+                    .rev()
+                    .find_map(|aspect_impl| {
+                        aspect_impl
+                            .methods
+                            .get(method_name)
+                            .cloned()
+                            .filter(|method| method.receiver.is_some())
+                    })
+            })
     }
 
     #[must_use]
-    pub fn get_method_for_value(&self, value: &Value, method_name: &str) -> Option<RuntimeMethod> {
+    pub fn get_method_for_value(
+        &self,
+        value: &Value,
+        method_name: &str,
+        receiver_target_type_args: &[String],
+    ) -> Option<RuntimeMethod> {
         self.resolve_value_type_id(value)
-            .and_then(|type_id| self.get_regular_method(type_id, method_name))
+            .and_then(|type_id| {
+                self.get_regular_method(type_id, method_name, receiver_target_type_args)
+            })
             .or_else(|| {
                 runtime_type_pattern(value).and_then(|pattern| {
                     self.pattern_methods
@@ -856,9 +937,14 @@ impl RuntimeRegistry {
         type_id: SymbolId,
         method_name: &str,
     ) -> Option<RuntimeMethod> {
+        // No receiver value to derive an instantiation's type arguments from,
+        // so only a blanket impl (`target_type_args: None`) can answer here.
         self.types
             .get(&type_id)?
-            .inherent_methods
+            .inherent_impls
+            .iter()
+            .find(|ii| ii.target_type_args.is_none())?
+            .methods
             .get(method_name)
             .cloned()
             .filter(|method| method.receiver.is_none())
@@ -1982,6 +2068,16 @@ fn run_passes(
                     else {
                         continue;
                     };
+                    // metel-core#1228: `None` (matches every instantiation) unless
+                    // construction determined this impl names one specific
+                    // instantiation (`extend W<i64>: Tag`) -- see
+                    // `TypedImplBlock::target_instantiation_args`'s own doc for why
+                    // that decision needs registry access construction has and the
+                    // evaluator doesn't.
+                    let target_type_args = impl_block
+                        .target_instantiation_args
+                        .as_ref()
+                        .map(|args| args.iter().map(runtime_type_key).collect::<Vec<_>>());
                     for method in &impl_block.methods {
                         let body_callable = match &method.body {
                             FunBody::Native(key) => {
@@ -2033,6 +2129,7 @@ fn run_passes(
                                 aspect_name,
                                 impl_block.aspect_id,
                                 aspect_type_args,
+                                target_type_args.clone(),
                                 &method.name,
                                 runtime_method,
                             );
@@ -2047,6 +2144,7 @@ fn run_passes(
                             runtime.register_inherent_method(
                                 target_id,
                                 type_name,
+                                target_type_args.clone(),
                                 &method.name,
                                 runtime_method,
                             );
@@ -2619,7 +2717,7 @@ fn eval_for_in(
     };
     let next_fn = runtime
         .resolve_value_type_id(&iterable)
-        .and_then(|id| runtime.get_regular_method(id, "next"))
+        .and_then(|id| runtime.get_regular_method(id, "next", &[]))
         .ok_or_else(|| {
             MetelError::panic(
                 RuntimeErrorCode::R0011,
@@ -2914,6 +3012,18 @@ fn eval_struct_literal_expr(
     }
 }
 
+/// Peels every reference layer of a chain down to the first non-reference type
+/// (mirrors `construction.rs`'s own `peel_type_references`, private per-file
+/// same as that copy) -- an explicitly-reference-typed receiver (`r: &W<i64>`)
+/// must still expose `W<i64>`'s own type arguments for #1228's dispatch.
+fn peel_static_type_references(ty: &crate::data::types::Type) -> &crate::data::types::Type {
+    match ty {
+        crate::data::types::Type::Reference(inner)
+        | crate::data::types::Type::MutReference(inner) => peel_static_type_references(inner),
+        other => other,
+    }
+}
+
 // Keep this as one dispatch table so receiver-mode handling stays in one place.
 #[allow(clippy::too_many_lines)]
 #[inline(never)]
@@ -2945,12 +3055,25 @@ fn eval_method_call_expr(
     let static_arg_tys: Vec<crate::data::types::Type> =
         args.iter().map(|a| a.ty().clone()).collect();
     let static_receiver_ty = receiver.ty().clone();
+    // metel-core#1228: the receiver's own concrete type arguments, so dispatch
+    // can prefer an exact per-instantiation `extend` (`extend W<i64>: Tag`)
+    // over a blanket one, instead of picking whichever was registered last
+    // regardless of which instantiation actually declared it.
+    let receiver_target_type_args: Vec<String> =
+        match peel_static_type_references(&static_receiver_ty) {
+            crate::data::types::Type::Named(_, args, ..) => {
+                args.iter().map(ToString::to_string).collect()
+            }
+            _ => Vec::new(),
+        };
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
     let method_entry = match dispatch {
         MethodDispatch::Aspect { aspect_id } => runtime
             .resolve_value_type_id(&recv_type_view)
-            .and_then(|tid| runtime.get_aspect_method_by_id(tid, *aspect_id, method))
+            .and_then(|tid| {
+                runtime.get_aspect_method_by_id(tid, *aspect_id, method, &receiver_target_type_args)
+            })
             .or_else(|| {
                 // Structural receivers (arrays/tuples/etc.) have no type_id, so
                 // `resolve_value_type_id` above is always `None` for them --
@@ -2959,9 +3082,11 @@ fn eval_method_call_expr(
                     runtime.get_pattern_aspect_method_by_id(&pattern, *aspect_id, method)
                 })
             })
-            .or_else(|| runtime.get_method_for_value(&recv_type_view, method)),
+            .or_else(|| {
+                runtime.get_method_for_value(&recv_type_view, method, &receiver_target_type_args)
+            }),
         MethodDispatch::Inherent | MethodDispatch::Dynamic => {
-            runtime.get_method_for_value(&recv_type_view, method)
+            runtime.get_method_for_value(&recv_type_view, method, &receiver_target_type_args)
         }
     }
     .ok_or_else(|| {
