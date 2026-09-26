@@ -1,5 +1,9 @@
 use super::*;
-use crate::pipeline::type_checking::{CorePrelude, check_graph_with_report};
+use crate::identity::{Allocation, MemberTable};
+use crate::pipeline::name_resolution::name_resolver::ResolvedNames;
+use crate::pipeline::path_normalization::NormalizedModuleGraph;
+use crate::pipeline::type_checking::{CheckGraphReport, CorePrelude, check_graph_with_report};
+use std::rc::Rc;
 
 /// The non-comment lines of every `pipeline/type_checking/construction*` source
 /// file — excluding this test module itself, which quotes the very API names
@@ -25,6 +29,49 @@ fn construction_code() -> Vec<(String, String)> {
             (path.display().to_string(), code)
         })
         .collect()
+}
+
+/// The full pipeline (parse → resolve → identity → normalize → coherence →
+/// typecheck) that most tests below need before they can inspect a typed
+/// program's identity annotations. Bundles the identity tables alongside the
+/// typed report since a couple of tests need to rebuild a `TypeCtx` from
+/// them directly, rather than only reading the already-typed IR.
+struct TypedFixture {
+    report: CheckGraphReport,
+    normalized: NormalizedModuleGraph,
+    members: MemberTable,
+    allocation: Allocation,
+    names: Rc<ResolvedNames>,
+}
+
+fn typecheck_source(root: &str, source: &str) -> TypedFixture {
+    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
+
+    let provider = InMemorySourceProvider::new(root, source);
+    let graph =
+        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
+    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
+    let members = crate::identity::collect_members_for_graph(&graph, &names);
+    let allocation = crate::identity::allocate_for_graph(&graph, &names);
+    let normalized =
+        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
+    crate::pipeline::coherence::check(&normalized).expect("coheres");
+    let report = check_graph_with_report(
+        &normalized,
+        &CorePrelude::default(),
+        Some(crate::identity::FrozenIdentity {
+            members: &members,
+            binding_spans: &allocation.binding_spans,
+        }),
+    )
+    .expect("typechecks");
+    TypedFixture {
+        report,
+        normalized,
+        members,
+        allocation,
+        names,
+    }
 }
 
 // arch-verifies: ["arch.type-inference.requirement-3"]
@@ -62,30 +109,17 @@ fn construction_never_runs_the_constraint_solver() {
 fn construct_generic_body_stamps_a_real_local_id() {
     use crate::data::typed_ast::TypedExpr;
     use crate::data::types::Type;
-    use crate::identity::{self, BindingId, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
-    use std::rc::Rc;
+    use crate::identity::BindingId;
 
     let root = "generic.mtl";
     let source = "fun pick<T>(a: T, b: T) -> T {\n\tlet r := a;\n\tr\n}\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let TypedFixture {
+        report: typed_report,
+        normalized,
+        members,
+        allocation,
+        names,
+    } = typecheck_source(root, source);
 
     // The raw (untyped) declaration — `construct_generic_body` takes the
     // same `ast::Block` the identity walk already saw. std::core is a
@@ -198,8 +232,6 @@ fn construct_generic_body_stamps_a_real_local_id() {
 #[test]
 fn propagate_error_desugar_shares_one_local_id_between_arms() {
     use crate::data::typed_ast::{FunBody, TypedExpr, TypedPattern};
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
 
     let root = "prop.mtl";
     let source = "fun get_id() -> Result<i64, i64> { Result::Ok { value = 5 } }\n\
@@ -207,24 +239,7 @@ fn propagate_error_desugar_shares_one_local_id_between_arms() {
                        \tlet v := get_id()?;\n\
                        \tResult::Ok { value = v }\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let module = typed_report
         .graph
@@ -290,8 +305,7 @@ fn propagate_error_desugar_shares_one_local_id_between_arms() {
 #[test]
 fn toplevel_let_initializer_reference_carries_a_symbol_id() {
     use crate::data::typed_ast::{FunBody, TypedExpr};
-    use crate::identity::{self, BindingId, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
+    use crate::identity::BindingId;
 
     let root = "toplevel_init.mtl";
     let source = "fun add_one(x: i64) -> i64 { x + 1 }\n\
@@ -299,24 +313,7 @@ fn toplevel_let_initializer_reference_carries_a_symbol_id() {
                        fun main() -> i64 {\n\
                        \tapply_fn(41)\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let module = typed_report
         .graph
@@ -384,8 +381,6 @@ fn toplevel_let_initializer_reference_carries_a_symbol_id() {
 #[test]
 fn implicit_copy_capture_carries_the_enclosing_local_id() {
     use crate::data::typed_ast::{FunBody, TypedExpr};
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
 
     let root = "implicit_capture.mtl";
     let source = "fun make_adder(x: i64) -> |i64| -> i64 {\n\
@@ -395,24 +390,7 @@ fn implicit_copy_capture_carries_the_enclosing_local_id() {
                        \tlet add5 := make_adder(5);\n\
                        \tadd5(3)\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let module = typed_report
         .graph
@@ -479,9 +457,6 @@ fn implicit_copy_capture_carries_the_enclosing_local_id() {
 /// a literal `extend Array: Aspect { ... }` nominal target).
 #[test]
 fn array_extend_method_self_param_carries_a_local_id() {
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
-
     let root = "array_extend.mtl";
     let source = "aspect Show {\n\
                        \tfun show(&self) -> i64;\n\
@@ -498,24 +473,7 @@ fn array_extend_method_self_param_carries_a_local_id() {
                        fun main() -> i64 {\n\
                        \t[1, 2, 3].show()\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let method = typed_report
         .graph
@@ -554,9 +512,6 @@ fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
     // to the *same* LocalId. Fixed by keying the structural case under
     // "[]Array" instead, a string no `TypeExpr::Named` target can ever
     // spell (Metel identifiers can't contain `[`/`]`).
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
-
     let root = "array_owner_collision.mtl";
     let source = "aspect Show {\n\
                        \tfun show(&self) -> i64;\n\
@@ -576,24 +531,7 @@ fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
                        fun main() -> i64 {\n\
                        \t[1, 2, 3].show()\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     // Search across every module's decls, not just the root's own --
     // std::core's prelude has its own `extend<T> T[]: ...` impls loaded
@@ -653,8 +591,6 @@ fn qualified_path_static_method_call_carries_a_type_id() {
     // through `match` or an immediate struct literal instead, neither of
     // which builds a `TypedExpr::Path`.
     use crate::data::typed_ast::{FunBody, TypedExpr};
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
 
     let root = "qualified_path.mtl";
     let source = "struct Point {\n\
@@ -669,24 +605,7 @@ fn qualified_path_static_method_call_carries_a_type_id() {
                        \tlet p := Point::origin();\n\
                        \tp.x\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let main_body = typed_report
         .graph
@@ -739,8 +658,7 @@ fn record_projection_base_carries_its_binding_id() {
     // to `self`'s own `LocalId`, the same as any other reference to
     // `self` in the method body, not `None`.
     use crate::data::typed_ast::{FunBody, TypedExpr};
-    use crate::identity::{self, BindingId, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
+    use crate::identity::BindingId;
 
     let root = "record_projection.mtl";
     let source = "struct Handle {\n\
@@ -755,24 +673,7 @@ fn record_projection_base_carries_its_binding_id() {
                        fun main() -> i64 {\n\
                        \tHandle { fd = 5 }.narrow()\n\
                        }\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let narrow_body = typed_report
         .graph
@@ -833,8 +734,6 @@ fn toplevel_bare_statement_reference_carries_a_symbol_id() {
     // whole-module walk that does cover bare statements) -- verified here
     // by checking the receiver Ident still carries a real SymbolId.
     use crate::data::typed_ast::{TypedExpr, TypedStmt};
-    use crate::identity::{self, FrozenIdentity};
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
 
     let root = "toplevel_stmt.mtl";
     let source = "struct Wrapper {\n\
@@ -847,24 +746,7 @@ fn toplevel_bare_statement_reference_carries_a_symbol_id() {
                        }\n\
                        let w := Wrapper { n = 5 };\n\
                        w.get();\n";
-    let provider = InMemorySourceProvider::new(root, source);
-    let graph =
-        module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
-    let members = identity::collect_members_for_graph(&graph, &names);
-    let allocation = identity::allocate_for_graph(&graph, &names);
-    let normalized =
-        crate::pipeline::path_normalization::normalize(graph, names.clone()).expect("normalizes");
-    crate::pipeline::coherence::check(&normalized).expect("coheres");
-    let typed_report = check_graph_with_report(
-        &normalized,
-        &CorePrelude::default(),
-        Some(FrozenIdentity {
-            members: &members,
-            binding_spans: &allocation.binding_spans,
-        }),
-    )
-    .expect("typechecks");
+    let typed_report = typecheck_source(root, source).report;
 
     let stmt = typed_report
         .graph
