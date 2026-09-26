@@ -249,9 +249,10 @@ mod architecture_evidence_tests {
     // arch-verifies: ["arch.move-check.requirement-2"]
     #[test]
     fn place_representation_carries_no_move_analysis_state() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ownership/place.rs");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ownership/place/mod.rs");
         let code: String = std::fs::read_to_string(path)
-            .expect("ownership/place.rs readable")
+            .expect("ownership/place/mod.rs readable")
             .lines()
             .take_while(|line| !line.contains("#[cfg(test)]"))
             .filter(|line| !line.trim_start().starts_with("//"))

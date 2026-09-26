@@ -395,5 +395,4 @@ fn ns_to_ms_f64(ns: f64) -> f64 {
 }
 
 #[cfg(test)]
-#[path = "metel-bench/tests.rs"]
 mod tests;

@@ -7,7 +7,7 @@
     "metel-frontend/src/pipeline/move_check/mod.rs": {
       "too_many_lines": 1
     },
-    "metel-frontend/src/pipeline/name_resolution/name_resolver.rs": {
+    "metel-frontend/src/pipeline/name_resolution/name_resolver/mod.rs": {
       "too_many_arguments": 2
     },
     "metel-frontend/src/pipeline/parsing/parser/mod.rs": {
@@ -16,9 +16,6 @@
     },
     "metel-frontend/src/pipeline/path_normalization/mod.rs": {
       "too_many_lines": 1
-    },
-    "metel-frontend/src/pipeline/type_checking/construction.rs": {
-      "too_many_arguments": 2
     },
     "metel-frontend/src/pipeline/type_checking/construction/calls.rs": {
       "too_many_arguments": 4,
@@ -29,6 +26,9 @@
     },
     "metel-frontend/src/pipeline/type_checking/construction/expressions.rs": {
       "too_many_lines": 2
+    },
+    "metel-frontend/src/pipeline/type_checking/construction/mod.rs": {
+      "too_many_arguments": 2
     },
     "metel-frontend/src/pipeline/type_checking/construction/patterns.rs": {
       "too_many_lines": 1
@@ -71,7 +71,7 @@
     "metel-interpreter/src/evaluator/call.rs": {
       "too_many_arguments": 1
     },
-    "metel-interpreter/src/evaluator/display.rs": {
+    "metel-interpreter/src/evaluator/display/mod.rs": {
       "too_many_lines": 1
     },
     "metel-interpreter/src/evaluator/lvalue.rs": {
@@ -82,7 +82,7 @@
       "too_many_arguments": 2,
       "too_many_lines": 4
     },
-    "metel-interpreter/src/evaluator/pattern.rs": {
+    "metel-interpreter/src/evaluator/pattern/mod.rs": {
       "float_cmp": 1,
       "too_many_lines": 1
     }

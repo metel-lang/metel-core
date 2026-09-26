@@ -6,7 +6,7 @@ use crate::pipeline::type_checking::{CorePrelude, check_graph_with_report};
 /// these checks forbid (as string literals in its own assertions).
 fn construction_code() -> Vec<(String, String)> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/pipeline/type_checking");
-    let mut files = vec![root.join("construction.rs")];
+    let mut files = Vec::new();
     for entry in std::fs::read_dir(root.join("construction")).expect("construction/ exists") {
         let path = entry.expect("dir entry").path();
         if path.file_name().and_then(|n| n.to_str()) != Some("tests.rs") {
