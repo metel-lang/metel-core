@@ -1398,6 +1398,9 @@ use calls::{
     resolve_generic_method_call,
 };
 
+#[cfg(test)]
+mod tests;
+
 fn construct_literal_type(
     lit: &Literal,
     expected_ty: Option<&Type>,
