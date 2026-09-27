@@ -161,6 +161,19 @@ git merge --ff-only origin/<branch>
 git push origin develop
 ```
 
+### Branch retirement
+
+Retire a topic branch as part of handoff once its change has reached `develop`; do not
+accumulate merged branches as an archive. Before deleting a branch, fetch with
+`git fetch --prune origin`, confirm its PR is closed, and confirm its tip is an ancestor
+of `origin/develop`. Never delete `main`, `develop`, a branch with an open PR, an
+unmerged branch, or a branch checked out in any worktree.
+
+Delete the verified remote branch and its local counterpart after the fast-forward.
+Before each release, audit both the core and public-docs repositories for merged remote
+topic branches using the same criteria. Branch age alone is never sufficient evidence for
+deletion.
+
 **Local git hooks (metel-core#1268), one-time per clone:**
 
 ```bash
