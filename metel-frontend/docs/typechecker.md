@@ -41,8 +41,8 @@ NormalizedModuleGraph + ResolvedNames
 ```
 
 Entry points:
-- `typechecker::check(program) -> Result<TypedProgram>` — single-module legacy path
-- `typechecker::check_graph(graph, names, std_prelude) -> Result<TypedModuleGraph>` — multi-module path (v0.6.0)
+- `pipeline::type_checking::check(program) -> Result<TypedProgram>` — single-module legacy path
+- `pipeline::type_checking::check_graph(graph, names, std_prelude) -> Result<TypedModuleGraph>` — multi-module path (v0.6.0)
 
 ---
 
@@ -52,21 +52,21 @@ Entry points:
 |---|---|
 | `mod.rs` | `check()` / `check_graph()` entry points; `CorePrelude`, `GlobalExports`, `check_impl` |
 | `registry.rs` | `build_registry` (drives `populate_schemes_from_embedded_core` + `register_program_decls`), `build_concrete_*_env`; registers aspect declaring modules for elaboration |
-| `overload.rs` | `build_overload_table`, `core_overload_table()`, `select`, `no_match_error`; SymbolId allocation for overload sets |
-| `inference.rs` | Pass 1 orchestration, signature validation, block/statement traversal, and expression helpers |
+| `overload/mod.rs` | `build_overload_table`, `core_overload_table()`, `select`, `no_match_error`; SymbolId allocation for overload sets |
+| `inference/mod.rs` | Pass 1 orchestration, signature validation, block/statement traversal, and expression helpers |
 | `inference/declarations.rs` | Declaration, function, impl, and default-method inference and generalization |
 | `inference/expressions.rs` | The exhaustive expression constraint-emission dispatch |
 | `inference/patterns.rs` | Match and pattern constraint emission, record-row pattern access, and built-in pattern method typing |
 | `inference/lowering.rs` | Pre-inference lowering for `impl Aspect` parameters and associated-type projections |
-| `handoff.rs` | `ResolvedInferenceFacts`, the immutable concrete decisions passed from inference to construction |
-| `construction.rs` | Pass 2 context, block/statement construction, literals, coercions, and places |
+| `handoff/mod.rs` | `ResolvedInferenceFacts`, the immutable concrete decisions passed from inference to construction |
+| `construction/mod.rs` | Pass 2 context, block/statement construction, literals, coercions, and places |
 | `construction/declarations.rs` | Declaration, function, impl, and default-method typed-AST construction |
 | `construction/expressions.rs` | The exhaustive expression typed-AST dispatch |
 | `construction/patterns.rs` | Pattern binding, match construction, exhaustiveness, and control-flow result merging |
 | `construction/calls.rs` | Calls, generic instantiation, method dispatch, and bound validation |
 | `conversions.rs` | `type_expr_to_infer`, `infer_type_to_type`, `resolved_to_type`, `type_to_infer` |
 
-The inference engine lives in `src/typeinference/` (type vars, unification, substitution, constraints, schemes). The typechecker modules in `src/typechecker/` walk the AST and drive that engine.
+The inference engine lives in `pipeline/type_checking/type_engine/` (type vars, unification, substitution, constraints, schemes). The typechecker modules in `pipeline/type_checking/` walk the AST and drive that engine.
 
 ---
 
@@ -177,7 +177,7 @@ Struct and enum declarations follow **lexical scope rules** matching Rust's mode
 
 ## Pass 1 — Type Inference
 
-**Modules:** `typeinference/mod.rs` (engine) + `typechecker/inference.rs` (AST walkers)
+**Modules:** `type_engine/mod.rs` (engine) + `inference/mod.rs` (AST walkers)
 
 ### Environment Structure
 
@@ -264,7 +264,7 @@ The constraint propagates the annotation into the solver without changing contro
 
 ## Pass 2 — Construction
 
-**Modules:** `typechecker/construction.rs` and its `construction/` submodules
+**Modules:** `construction/mod.rs` and its sibling `construction/` submodules
 
 Pass 2 re-walks the untyped AST with:
 - `subst: &Substitution` — the final solved substitution from Pass 1
@@ -337,7 +337,7 @@ types to build the substitution used to construct the body. `Value::Struct`/
 `Value::Enum` carry no type-argument info of their own, so naively this
 unification always failed on an arity mismatch for any generic struct/enum
 receiver, silently defaulting the type parameter to `Unit`.
-`typechecker::infer_named_type_args` fixes this by unifying each field's
+`pipeline::type_checking::infer_named_type_args` fixes this by unifying each field's
 *declared* type template (from the registry, `FieldEntry.ty`) against that
 field's *actual* type (computed by the evaluator recursing over the live value)
 and reading the type's own quantified type variables back out of the resulting
@@ -431,10 +431,11 @@ checks, in order:
 
 `conditional_impl_bounds`/`array_impl_bounds` (and their negative-bound twins)
 store each conditional impl's per-position bound requirements, keyed by aspect and
-target. `type_satisfies_aspect` (`src/typeinference/mod.rs`) is the single
-recursive query every use site funnels through: method calls, struct/enum literal
-construction, and generic function-call bound checking (`check_type_satisfies_bounds`
-in `src/typechecker/construction.rs`) all ask this same function rather than each
+target. `type_satisfies_aspect` (`pipeline/type_checking/type_engine/mod.rs`) is the
+single recursive query every use site funnels through: method calls, struct/enum
+literal construction, and generic function-call bound checking
+(`check_type_satisfies_bounds` in `pipeline/type_checking/construction/mod.rs`) all
+ask this same function rather than each
 re-implementing bound satisfaction. For `Type::Array`, it recurses into the
 element type through the same function — so `T[]: Display` is satisfied
 recursively for `T[][]` without any special nested-array case.
