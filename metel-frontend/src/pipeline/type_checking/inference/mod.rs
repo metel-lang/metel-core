@@ -7,7 +7,7 @@ use crate::data::ast::{
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext, InferType, Substitution,
     TypeScheme, TypeVar, VariantInfo, free_vars, generalize,
 };
@@ -118,8 +118,8 @@ fn type_expr_to_infer_with_ctx(
 /// the scheme and gets its projection info attached.
 fn build_assoc_projection_map(
     body_assoc_log: &[(TypeVar, String, String, TypeVar)],
-    subst: &crate::pipeline::type_checking::typeinference::Substitution,
-    scheme: &crate::pipeline::type_checking::typeinference::TypeScheme,
+    subst: &crate::pipeline::type_checking::type_engine::Substitution,
+    scheme: &crate::pipeline::type_checking::type_engine::TypeScheme,
 ) -> std::collections::HashMap<TypeVar, (usize, String, String, TypeVar)> {
     use std::collections::HashMap;
     let mut map: HashMap<TypeVar, (usize, String, String, TypeVar)> = HashMap::new();
@@ -604,7 +604,7 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
 fn substituted_type_is_copy(
     ty: &InferType,
     assumptions: &AspectAssumptions,
-    registry: &crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry,
+    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     current_module: &[String],
 ) -> bool {
     registry.infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions)
@@ -1744,7 +1744,7 @@ fn constrain_with_read_copy(
     // registry-aware retry (`apply_constraint_with_coercion`) is what actually
     // verifies (or rejects) the coercion once types are fully resolved — this is
     // only an optimistic environment-binding choice, not the enforcement point.
-    if crate::pipeline::type_checking::typeinference::singleton_coerce_field_ty(
+    if crate::pipeline::type_checking::type_engine::singleton_coerce_field_ty(
         ctx.registry(),
         &actual,
     )

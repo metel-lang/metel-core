@@ -33,7 +33,7 @@ use crate::data::ast::{
     GenericParam, ImplBlock, Param, Program, Span, Stmt, TypeExpr, WhereClause,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
-use crate::pipeline::type_checking::typeinference::{TypeDefinitionRegistry, VisibleTypeKind};
+use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, VisibleTypeKind};
 
 /// Check every type and aspect name reachable in an annotation position.
 ///

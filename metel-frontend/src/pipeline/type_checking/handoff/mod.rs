@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::data::ast::Span;
 use crate::data::error::MetelError;
 use crate::data::types::Type;
-use crate::pipeline::type_checking::typeinference::{InferContext, Substitution, free_vars};
+use crate::pipeline::type_checking::type_engine::{InferContext, Substitution, free_vars};
 
 use super::conversions::infer_type_to_type;
 

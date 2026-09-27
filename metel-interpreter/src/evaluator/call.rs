@@ -228,7 +228,7 @@ pub(super) fn call_method_function(
             // present `type_ctx` has one; `Typed` bodies never consult `receiver_type` at
             // all, so an empty fallback registry is harmless for them).
             let default_registry =
-                crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry::new();
+                crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry::new();
             let registry_ref = closure
                 .type_ctx
                 .as_deref()

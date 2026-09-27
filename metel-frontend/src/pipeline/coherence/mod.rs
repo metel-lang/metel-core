@@ -19,12 +19,12 @@ use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
-use crate::pipeline::type_checking::typeinference::GenericBound;
+use crate::pipeline::type_checking::type_engine::GenericBound;
 
 /// Resolve a bare type- or aspect-position name to its declaring `SymbolId`,
 /// from the perspective of `current_module`. Mirrors the precedence used by
 /// `reference_resolver::resolve_name` and
-/// `typeinference::TypeDefinitionRegistry::resolve_type_position_id` (local
+/// `type_engine::TypeDefinitionRegistry::resolve_type_position_id` (local
 /// declaration -> explicit import -> glob, user tier before std) — duplicated
 /// here in miniature because coherence runs before `TypeDefinitionRegistry`
 /// exists.

@@ -318,3 +318,18 @@ jobs:
       # String/Span without a `// resolution-freeze-allow: <reason>` comment.
       - name: frozen IR / ResolutionMap carry no String/Span key
         run: tools/check_no_semantic_name_lookup.py --check
+
+  flat-module-dir-check:
+    name: no flat module file beside its own directory
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pure file scan, no Rust toolchain: fails the PR if a library module
+      # `foo.rs` sits beside a same-named `foo/` directory -- Rust nests
+      # `foo/mod.rs` + `foo/` identically, but the flat-file shape reads as a
+      # file/directory name collision. metel-core#1272 hit this twice by
+      # accident (`identity.rs`, `inference.rs`); this is the backstop against
+      # a third.
+      - name: no foo.rs beside foo/
+        run: tools/check_no_flat_module_dir_collision.py --check

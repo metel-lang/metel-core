@@ -156,7 +156,7 @@ fn construct_generic_body_stamps_a_real_local_id() {
         .expect("a scheme for `pick`")
         .clone();
 
-    let type_ctx = crate::pipeline::type_checking::typeinference::TypeCtx {
+    let type_ctx = crate::pipeline::type_checking::type_engine::TypeCtx {
         scheme_env: typed_module.scheme_env.clone(),
         registry: typed_report.graph.type_registry.clone(),
         members: Some(Rc::new(members)),

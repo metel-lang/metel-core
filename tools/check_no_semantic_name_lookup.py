@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # The frozen IR / durable resolution-map types. Add a file here once its
 # String/Span-keyed fields have been reviewed and exempted (or removed).
 SCAN_FILES = [
-    REPO_ROOT / "metel-frontend" / "src" / "identity.rs",
+    REPO_ROOT / "metel-frontend" / "src" / "identity" / "mod.rs",
     REPO_ROOT / "metel-frontend" / "src" / "data" / "typed_ast.rs",
     REPO_ROOT / "metel-frontend" / "src" / "ownership" / "place.rs",
     REPO_ROOT / "metel-frontend" / "src" / "tooling" / "query.rs",

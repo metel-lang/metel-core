@@ -274,7 +274,7 @@ struct DispatchMap<'a> {
     aspect_ids: HashMap<(Vec<String>, String), SymbolId>,
     /// Read-only, for resolving a `dyn Aspect`'s bare name to its declaring module
     /// in the scope of the module the call appears in.
-    registry: &'a crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry,
+    registry: &'a crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
 }
 
 /// The walk's per-module context: the shared dispatch map plus which module's scope a

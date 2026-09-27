@@ -13,7 +13,7 @@ use crate::data::types::{CallMultiplicity, CallMutation, Type};
 use crate::identity::symbols::SymbolId;
 use crate::identity::{BindingId, FieldId, LocalId, VariantId};
 use crate::pipeline::name_resolution::name_resolver::ResolvedNames;
-use crate::pipeline::type_checking::typeinference::{TypeDefinitionRegistry, TypeScheme};
+use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, TypeScheme};
 
 /// How a method call is dispatched, resolved by the elaboration pass.
 #[derive(Debug, Clone, PartialEq)]

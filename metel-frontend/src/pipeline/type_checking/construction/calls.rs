@@ -2,8 +2,8 @@ use super::{
     AssocResolveCtx, ConstructCtx, Expr, GenericBound, HashMap, InferType, MetelError,
     MethodDispatch, RowConstraint, Span, Substitution, SymbolId, Type, TypeDefinitionRegistry,
     TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypeVarGenerator, TypedExpr, construct_expr,
-    infer_type_to_type, maybe_dyn_coerce, reject_dynamic_array_where_sized_expected,
-    type_expr_to_infer_with_assoc_ctx, type_to_infer, typeinference, unify,
+    infer_type_to_type, maybe_dyn_coerce, reject_dynamic_array_where_sized_expected, type_engine,
+    type_expr_to_infer_with_assoc_ctx, type_to_infer, unify,
 };
 
 fn is_through_shared_reference(expr: &TypedExpr) -> bool {
@@ -627,7 +627,7 @@ pub(super) fn try_generic_method_scheme(
     }
     if let Some(explicit) = explicit_method_tys {
         let free: Vec<TypeVar> = {
-            let mut fv: Vec<TypeVar> = typeinference::free_vars(&scheme.ty)
+            let mut fv: Vec<TypeVar> = type_engine::free_vars(&scheme.ty)
                 .into_iter()
                 .filter(|v| !struct_tvars.contains(v))
                 .collect();
@@ -676,7 +676,7 @@ pub(super) fn try_generic_method_scheme(
         .collect::<Result<_, _>>()?;
     for (param_it, arg) in partial_params.iter().skip(1).zip(typed_args.iter()) {
         let arg_it = type_to_infer(arg.ty());
-        if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
+        if let Ok(s) = type_engine::unify(&subst.apply(param_it), &arg_it) {
             subst = subst.compose(&s);
         }
     }
@@ -1005,7 +1005,7 @@ pub(super) fn check_record_kind_requirement(
         Type::Record(_) => Ok(()),
         Type::Named(name, ..) => {
             let message = match registry.visible_type_kind(current_module, name) {
-                Some(crate::pipeline::type_checking::typeinference::VisibleTypeKind::Struct) => {
+                Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Struct) => {
                     format!(
                         "`{name}` is a struct, but a struct never satisfies a row bound; conversion to a record is not available in this release"
                     )
@@ -1432,7 +1432,7 @@ pub(super) fn instantiate_scheme_for_call(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, type_var_gen);
+    let (instance, renaming) = type_engine::instantiate_with_renaming(scheme, type_var_gen);
 
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
@@ -1568,7 +1568,7 @@ pub(super) fn instantiate_scheme_with_expected_ret(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(Type, HashMap<TypeVar, Type>), MetelError> {
-    let (instance, renaming) = typeinference::instantiate_with_renaming(scheme, type_var_gen);
+    let (instance, renaming) = type_engine::instantiate_with_renaming(scheme, type_var_gen);
     let InferType::Fun(params, ret, call_mult, use_mult, call_mutation) = instance else {
         return Err(MetelError::internal("scheme type is not a function"));
     };
@@ -1577,13 +1577,13 @@ pub(super) fn instantiate_scheme_with_expected_ret(
         let applied = subst.apply(param);
         // `unify` accepts a `dyn Aspect`/concrete-type pairing as a coercion
         // (RFC-0008 §6) -- see the comment in `instantiate_scheme_for_call`.
-        let s = typeinference::unify(&applied, &type_to_infer(arg_ty)).map_err(|_| {
+        let s = type_engine::unify(&applied, &type_to_infer(arg_ty)).map_err(|_| {
             MetelError::type_error(TypeErrorCode::T0001, "argument type mismatch", span)
         })?;
         subst = subst.compose(&s);
     }
     let applied_ret = subst.apply(&ret);
-    let s = typeinference::unify(&applied_ret, &type_to_infer(expected_ret)).map_err(|_| {
+    let s = type_engine::unify(&applied_ret, &type_to_infer(expected_ret)).map_err(|_| {
         MetelError::type_error(
             TypeErrorCode::T0001,
             "return type does not match annotation",

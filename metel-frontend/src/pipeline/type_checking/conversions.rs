@@ -1,7 +1,7 @@
 use crate::data::ast::{Span, TypeExpr};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     InferType, Substitution, TypeDefinitionRegistry, TypeVar,
 };
 use std::collections::HashMap;
@@ -469,8 +469,8 @@ pub(super) fn resolved_to_type(
     infer_type_to_type(&subst.apply(ty), span)
 }
 
-// `type_to_infer` now lives in `typeinference` alongside `InferType` itself:
+// `type_to_infer` now lives in `type_engine` alongside `InferType` itself:
 // it is the canonical embedding of a concrete `Type` into inference space, and
 // the aspect-satisfaction query there needs it. Re-exported so the many call
 // sites in this module's siblings keep their existing import.
-pub(super) use crate::pipeline::type_checking::typeinference::type_to_infer;
+pub(super) use crate::pipeline::type_checking::type_engine::type_to_infer;

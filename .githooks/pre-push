@@ -16,6 +16,9 @@ cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic
 echo "pre-push: cargo test --workspace"
 cargo test --workspace
 
+echo "pre-push: no flat module file beside its own directory"
+python3 tools/check_no_flat_module_dir_collision.py --check
+
 # AGENTS.md: develop only ever advances by local fast-forward, never a merge
 # commit (GitHub's hosted merge button doesn't give a true fast-forward).
 # Branch protection enforces this server-side; this catches it locally too,

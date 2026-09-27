@@ -175,7 +175,7 @@ impl InferType {
             CallMutation::Reading,
         )
     }
-    #[allow(dead_code)] // public API used by typeinference test suite
+    #[allow(dead_code)] // public API used by type_engine test suite
     #[must_use]
     pub fn var(v: TypeVar) -> Self {
         InferType::Var(v)
@@ -4488,7 +4488,7 @@ impl InferContext {
     pub fn register_struct_fields(
         &mut self,
         name: String,
-        fields: Vec<crate::pipeline::type_checking::typeinference::FieldEntry>,
+        fields: Vec<crate::pipeline::type_checking::type_engine::FieldEntry>,
         visibility: Visibility,
     ) {
         self.registry.register_local_struct_fields(
@@ -4535,7 +4535,7 @@ impl InferContext {
     pub fn get_struct_fields(
         &self,
         name: &str,
-    ) -> Option<&Vec<crate::pipeline::type_checking::typeinference::FieldEntry>> {
+    ) -> Option<&Vec<crate::pipeline::type_checking::type_engine::FieldEntry>> {
         self.registry.struct_fields(&self.current_module_path, name)
     }
 
