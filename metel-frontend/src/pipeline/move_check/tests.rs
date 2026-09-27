@@ -829,7 +829,7 @@ assert(apply(f) == 2);
 // wholesale instead. So there is no `.mtl` fixture that would fail without the fix;
 // asserting on the helpers is what actually pins the invariant.
 
-use crate::pipeline::type_checking::typeinference::{InferType, TypeVar};
+use crate::pipeline::type_checking::type_engine::{InferType, TypeVar};
 
 fn var() -> InferType {
     InferType::Var(TypeVar(0))

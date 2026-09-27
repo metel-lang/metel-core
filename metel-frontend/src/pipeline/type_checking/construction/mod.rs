@@ -16,7 +16,7 @@ use crate::data::types::Type;
 use crate::identity::symbols::SymbolId;
 use crate::identity::{BindingId, FieldId, FrozenIdentity, VariantId};
 use crate::ownership::flow_state::FlowState;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     self, EnumInfo, GenericBound, InferType, RowConstraint, Substitution, TypeDefinitionRegistry,
     TypeScheme, TypeVar, TypeVarGenerator, VariantInfo, unify,
 };
@@ -81,7 +81,7 @@ pub(super) fn build_concrete_method_env(
                 .filter_map(|(mname, mty)| {
                     let resolved = subst.apply(mty);
                     // Skip methods that still have unresolved TypeVars — they belong in scheme env.
-                    if !typeinference::free_vars(&resolved).is_empty() {
+                    if !type_engine::free_vars(&resolved).is_empty() {
                         return None;
                     }
                     infer_type_to_type(&resolved, &dummy)
@@ -127,7 +127,7 @@ struct ConstructCtx<'a> {
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's `SymbolId`.
-    overloads: &'a crate::pipeline::type_checking::typeinference::OverloadTable,
+    overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
     /// Module path being constructed; used with `symbols` to assign `def_id` to
     /// top-level functions and to resolve constructed struct/enum types to their
     /// type `SymbolId` (METEL-185 / ADR-0041).
@@ -180,7 +180,7 @@ impl<'a> ConstructCtx<'a> {
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
-        overloads: &'a crate::pipeline::type_checking::typeinference::OverloadTable,
+        overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
         references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
@@ -1064,11 +1064,11 @@ pub(super) fn construct_generic_body(
     arg_types: &[crate::data::types::Type],
     body: &crate::data::ast::Block,
     span: &crate::data::ast::Span,
-    type_ctx: &crate::pipeline::type_checking::typeinference::TypeCtx,
+    type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
     expected_ret: Option<&crate::data::types::Type>,
 ) -> Result<crate::data::typed_ast::TypedBlock, crate::data::error::MetelError> {
     use super::conversions::{infer_type_to_type, type_to_infer};
-    use crate::pipeline::type_checking::typeinference::{
+    use crate::pipeline::type_checking::type_engine::{
         TypeVarGenerator, instantiate_with_renaming,
     };
 
@@ -1092,7 +1092,7 @@ pub(super) fn construct_generic_body(
     let mut subst = Substitution::new();
     for (param_it, arg_ty) in param_infertypes.iter().zip(arg_types.iter()) {
         let arg_it = type_to_infer(arg_ty);
-        if let Ok(s) = typeinference::unify(&subst.apply(param_it), &arg_it) {
+        if let Ok(s) = type_engine::unify(&subst.apply(param_it), &arg_it) {
             subst = subst.compose(&s);
         }
     }
@@ -1107,7 +1107,7 @@ pub(super) fn construct_generic_body(
     // Unification failures here are skipped for the same "good enough substitution"
     // reason as the argument loop above.
     if let Some(expected) = expected_ret
-        && let Ok(s) = typeinference::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
+        && let Ok(s) = type_engine::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
     {
         subst = subst.compose(&s);
     }
@@ -1130,7 +1130,7 @@ pub(super) fn construct_generic_body(
     let all_free: std::collections::HashSet<_> = param_infertypes
         .iter()
         .chain(std::iter::once(&*ret_infertype))
-        .flat_map(typeinference::free_vars)
+        .flat_map(type_engine::free_vars)
         .collect();
     for v in all_free {
         if subst.lookup(v).is_none() {
@@ -1142,7 +1142,7 @@ pub(super) fn construct_generic_body(
 
     // Generic bodies are constructed at call time; overloaded functions are never
     // generic, so there is no overload table to consult here.
-    let empty_overloads = crate::pipeline::type_checking::typeinference::OverloadTable::new();
+    let empty_overloads = crate::pipeline::type_checking::type_engine::OverloadTable::new();
     // Generic bodies are reconstructed at runtime; their inner direct calls are
     // re-resolved here without a reference table (callee_id stamping is skipped),
     // and without pass 1's write-through analysis (empty set — same limitation).
@@ -1221,7 +1221,7 @@ pub(super) fn construct_program(
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
-    overloads: &crate::pipeline::type_checking::typeinference::OverloadTable,
+    overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
     references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,

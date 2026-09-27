@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod phase_1_type_variables {
-    use metel::pipeline::type_checking::typeinference::{TypeVar, TypeVarGenerator};
+    use metel::pipeline::type_checking::type_engine::{TypeVar, TypeVarGenerator};
 
     #[test]
     fn test_type_var_creation() {
@@ -79,7 +79,7 @@ mod phase_1_type_variables {
 #[cfg(test)]
 mod phase_2_infer_types {
     use metel::data::types::Type;
-    use metel::pipeline::type_checking::typeinference::{InferType, TypeVar};
+    use metel::pipeline::type_checking::type_engine::{InferType, TypeVar};
 
     #[test]
     fn test_concrete_variants() {
@@ -198,7 +198,7 @@ mod phase_2_infer_types {
 
 #[cfg(test)]
 mod phase_3_substitution {
-    use metel::pipeline::type_checking::typeinference::{InferType, Substitution, TypeVar};
+    use metel::pipeline::type_checking::type_engine::{InferType, Substitution, TypeVar};
 
     #[test]
     fn test_bind_and_lookup() {
@@ -332,7 +332,7 @@ mod phase_3_substitution {
 
 #[cfg(test)]
 mod phase_4_unification {
-    use metel::pipeline::type_checking::typeinference::{InferType, TypeVar, unify};
+    use metel::pipeline::type_checking::type_engine::{InferType, TypeVar, unify};
 
     #[test]
     fn test_unify_identical_concrete() {
@@ -521,7 +521,7 @@ mod phase_4_unification {
 #[cfg(test)]
 mod phase_5_constraints {
     use metel::data::ast::Span;
-    use metel::pipeline::type_checking::typeinference::{
+    use metel::pipeline::type_checking::type_engine::{
         Constraint, InferType, TypeVar, solve_constraints,
     };
     use std::collections::HashSet;
@@ -644,7 +644,7 @@ mod phase_5_constraints {
 
 #[cfg(test)]
 mod phase_6_type_schemes {
-    use metel::pipeline::type_checking::typeinference::{
+    use metel::pipeline::type_checking::type_engine::{
         InferType, TypeScheme, TypeVar, TypeVarGenerator, free_vars, generalize, instantiate,
     };
     use std::collections::HashSet;
@@ -833,7 +833,7 @@ mod phase_6_type_schemes {
 #[cfg(test)]
 mod phase_7_infer_context {
     use metel::data::ast::Span;
-    use metel::pipeline::type_checking::typeinference::{
+    use metel::pipeline::type_checking::type_engine::{
         InferContext, InferType, TypeScheme, TypeVar, generalize,
     };
     use std::collections::HashSet;
@@ -1100,7 +1100,7 @@ mod phase_7_infer_context {
 #[cfg(test)]
 mod phase_8_known_limitations {
     use metel::data::ast::Span;
-    use metel::pipeline::type_checking::typeinference::{
+    use metel::pipeline::type_checking::type_engine::{
         Constraint, InferType, TypeScheme, TypeVar, TypeVarGenerator, instantiate,
         solve_constraints,
     };
@@ -1249,7 +1249,7 @@ mod phase_8_known_limitations {
     fn test_eager_partial_solve_var_has_no_named_type() {
         // Applying ctx.solve() to an unbound type variable leaves it as a Var.
         // named_type_name on a Var returns None — field lookup cannot proceed.
-        use metel::pipeline::type_checking::typeinference::Substitution;
+        use metel::pipeline::type_checking::type_engine::Substitution;
 
         let s = Substitution::new();
         let unresolved = s.apply(&InferType::var(TypeVar(0)));

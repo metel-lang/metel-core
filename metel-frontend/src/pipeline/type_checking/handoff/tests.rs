@@ -1,5 +1,5 @@
 use super::*;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     InferType, TypeDefinitionRegistry, TypeVar, TypeVarGenerator,
 };
 

@@ -84,7 +84,7 @@ impl ConstructCtx<'_> {
             brand_id.and_then(|id| self.registry.raw_struct_type_params().get(&id))
         {
             let raw_fields = brand_id.and_then(|id| self.registry.raw_struct_env().get(&id))?;
-            let mut remap = crate::pipeline::type_checking::typeinference::Substitution::new();
+            let mut remap = crate::pipeline::type_checking::type_engine::Substitution::new();
             for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
                 remap.bind(tp, super::type_to_infer(arg));
             }

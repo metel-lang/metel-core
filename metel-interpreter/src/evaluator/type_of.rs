@@ -4,7 +4,7 @@ use super::Value;
 use crate::data::ast::Span;
 use crate::data::types::{NominalId, Type, default_fun_type};
 use crate::pipeline::type_checking::infer_named_type_args;
-use crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry;
+use crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry;
 
 /// Derive a concrete `Type` from a runtime `Value`.
 ///

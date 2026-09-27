@@ -1,5 +1,5 @@
 /// A nominal type's resolved declaration identity, carried on `Type::Named`
-/// (and `InferType::Named` in `typeinference`) as metadata (metel-core#1129,
+/// (and `InferType::Named` in `type_engine`) as metadata (metel-core#1129,
 /// groundwork for #1053).
 ///
 /// **Deliberately excluded from `Type`'s equality** — its `PartialEq` impl

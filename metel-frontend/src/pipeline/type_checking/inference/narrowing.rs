@@ -14,7 +14,7 @@
 use crate::data::typed_ast::TypedExpr;
 use crate::ownership::flow_state::MoveCause;
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr};
-use crate::pipeline::type_checking::typeinference::{AspectAssumptions, InferContext, InferType};
+use crate::pipeline::type_checking::type_engine::{AspectAssumptions, InferContext, InferType};
 
 impl InferContext {
     /// The current type of `name` once move-triggered narrowing is applied, or
@@ -105,7 +105,7 @@ impl InferContext {
             brand_id.and_then(|id| self.registry().raw_struct_type_params().get(&id))
         {
             let raw = brand_id.and_then(|id| self.registry().raw_struct_env().get(&id))?;
-            let mut remap = crate::pipeline::type_checking::typeinference::Substitution::new();
+            let mut remap = crate::pipeline::type_checking::type_engine::Substitution::new();
             for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
                 remap.bind(tp, arg.clone());
             }

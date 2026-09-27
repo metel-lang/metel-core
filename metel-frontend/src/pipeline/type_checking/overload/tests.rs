@@ -1,5 +1,5 @@
 use super::*;
-use crate::pipeline::type_checking::typeinference::OverloadEntry;
+use crate::pipeline::type_checking::type_engine::OverloadEntry;
 
 fn entry(params: Vec<Type>, ret: Type) -> OverloadEntry {
     OverloadEntry {

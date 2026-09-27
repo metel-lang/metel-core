@@ -12,7 +12,7 @@ use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::parsing::module_loader::LoadedModule;
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     GenericBound, InferContext, InferType, Substitution, TypeDefinitionRegistry, TypeScheme,
     TypeVar, TypeVarGenerator, generalize_with_names, unify,
 };
@@ -27,7 +27,7 @@ mod projections;
 pub(crate) use conversions::type_expr_to_infer;
 pub use overload::core_native_symbol;
 mod registry;
-pub mod typeinference;
+pub mod type_engine;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
 type DeferredGlobConflicts = HashMap<String, Vec<Vec<String>>>;
@@ -54,7 +54,7 @@ struct CheckImplReport {
     /// `overload::build_overload_table` returns it. Exported (pub names only)
     /// into `GlobalExports` so dependent modules can import overload groups
     /// too, not just single-definition names (metel-core#1143).
-    overloads: crate::pipeline::type_checking::typeinference::OverloadTable,
+    overloads: crate::pipeline::type_checking::type_engine::OverloadTable,
     timings: TypecheckPhaseTimings,
 }
 
@@ -173,7 +173,7 @@ struct ModuleExports {
     /// (metel-core#1143). A dependent module's explicit or glob import of an
     /// overloaded name is resolved from here, the same way `pub_schemes`
     /// resolves a single-definition one.
-    pub_overloads: crate::pipeline::type_checking::typeinference::OverloadTable,
+    pub_overloads: crate::pipeline::type_checking::type_engine::OverloadTable,
 }
 
 struct GlobalExports {
@@ -205,7 +205,7 @@ impl GlobalExports {
         &self,
         module_path: &[String],
         name: &str,
-    ) -> Option<&[crate::pipeline::type_checking::typeinference::OverloadEntry]> {
+    ) -> Option<&[crate::pipeline::type_checking::type_engine::OverloadEntry]> {
         self.modules
             .get(module_path)?
             .pub_overloads
@@ -218,7 +218,7 @@ impl GlobalExports {
     fn all_pub_overloads(
         &self,
         module_path: &[String],
-    ) -> Option<&crate::pipeline::type_checking::typeinference::OverloadTable> {
+    ) -> Option<&crate::pipeline::type_checking::type_engine::OverloadTable> {
         Some(&self.modules.get(module_path)?.pub_overloads)
     }
 }
@@ -234,7 +234,7 @@ fn refresh_scheme_for_export(
     if scheme.quantified_vars.is_empty() {
         return scheme.clone();
     }
-    let (ty, renaming) = crate::pipeline::type_checking::typeinference::instantiate_with_renaming(
+    let (ty, renaming) = crate::pipeline::type_checking::type_engine::instantiate_with_renaming(
         scheme,
         type_var_gen,
     );
@@ -763,8 +763,8 @@ fn build_import_overloads(
     loaded: &LoadedModule,
     names: &ResolvedNames,
     global_exports: &GlobalExports,
-) -> crate::pipeline::type_checking::typeinference::OverloadTable {
-    let mut result = crate::pipeline::type_checking::typeinference::OverloadTable::new();
+) -> crate::pipeline::type_checking::type_engine::OverloadTable {
+    let mut result = crate::pipeline::type_checking::type_engine::OverloadTable::new();
     let Some(scope) = names.scopes.get(&loaded.module_path) else {
         return result;
     };
@@ -885,12 +885,12 @@ fn filter_pub_schemes(
 /// draws for transitive re-export chains. Left for follow-up; #1143 is about
 /// a plain import failing outright, not this narrower re-export case.
 fn filter_pub_overloads(
-    overloads: &crate::pipeline::type_checking::typeinference::OverloadTable,
+    overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     loaded: &LoadedModule,
     names: &ResolvedNames,
-) -> crate::pipeline::type_checking::typeinference::OverloadTable {
+) -> crate::pipeline::type_checking::type_engine::OverloadTable {
     let Some(pub_names) = names.pub_surface.get(&loaded.module_path) else {
-        return crate::pipeline::type_checking::typeinference::OverloadTable::new();
+        return crate::pipeline::type_checking::type_engine::OverloadTable::new();
     };
     overloads
         .iter()
@@ -1074,7 +1074,7 @@ pub fn construct_generic_body(
     arg_types: &[crate::data::types::Type],
     body: &crate::data::ast::Block,
     span: &crate::data::ast::Span,
-    type_ctx: &crate::pipeline::type_checking::typeinference::TypeCtx,
+    type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
     expected_ret: Option<&crate::data::types::Type>,
 ) -> Result<crate::data::typed_ast::TypedBlock, MetelError> {
     construction::construct_generic_body(
@@ -1089,33 +1089,33 @@ pub fn construct_generic_body(
 }
 
 pub(crate) fn symbolic_aspect_method_type(
-    registry: &crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry,
+    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     aspect: &str,
     method: &crate::data::ast::AspectMethod,
     placeholder: &str,
-) -> Option<crate::pipeline::type_checking::typeinference::InferType> {
+) -> Option<crate::pipeline::type_checking::type_engine::InferType> {
     construction::symbolic_aspect_method_type(registry, aspect, method, placeholder)
 }
 
 pub(crate) fn symbolic_aspect_method_scheme(
-    registry: &crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry,
+    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     aspect: &str,
     method: &crate::data::ast::AspectMethod,
     placeholder: &str,
-    type_var_gen: &mut crate::pipeline::type_checking::typeinference::TypeVarGenerator,
-) -> Option<crate::pipeline::type_checking::typeinference::TypeScheme> {
+    type_var_gen: &mut crate::pipeline::type_checking::type_engine::TypeVarGenerator,
+) -> Option<crate::pipeline::type_checking::type_engine::TypeScheme> {
     construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, type_var_gen)
 }
 
 pub(crate) fn symbolic_impl_method_scheme(
-    registry: &crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry,
+    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     impl_generics: &[crate::data::ast::GenericParam],
     method_generics: &[crate::data::ast::GenericParam],
     target_type: &crate::data::ast::TypeExpr,
     aspect_name: Option<&str>,
     params: &[crate::data::ast::Param],
     return_type: Option<&crate::data::ast::TypeExpr>,
-) -> Option<crate::pipeline::type_checking::typeinference::TypeScheme> {
+) -> Option<crate::pipeline::type_checking::type_engine::TypeScheme> {
     construction::symbolic_impl_method_scheme(
         registry,
         impl_generics,
@@ -1128,24 +1128,24 @@ pub(crate) fn symbolic_impl_method_scheme(
 }
 
 pub(crate) fn symbolic_aspect_method_generator()
--> crate::pipeline::type_checking::typeinference::TypeVarGenerator {
+-> crate::pipeline::type_checking::type_engine::TypeVarGenerator {
     construction::symbolic_aspect_method_generator()
 }
 
 pub(crate) fn substitute_named_generics(
-    ty: &crate::pipeline::type_checking::typeinference::InferType,
+    ty: &crate::pipeline::type_checking::type_engine::InferType,
     named_samples: &std::collections::HashMap<
         String,
-        crate::pipeline::type_checking::typeinference::InferType,
+        crate::pipeline::type_checking::type_engine::InferType,
     >,
-) -> crate::pipeline::type_checking::typeinference::InferType {
+) -> crate::pipeline::type_checking::type_engine::InferType {
     construction::substitute_named_generics(ty, named_samples)
 }
 
 pub(crate) fn repair_scheme_with_source_generics(
-    scheme: &crate::pipeline::type_checking::typeinference::TypeScheme,
+    scheme: &crate::pipeline::type_checking::type_engine::TypeScheme,
     generics: &[crate::data::ast::GenericParam],
-) -> crate::pipeline::type_checking::typeinference::TypeScheme {
+) -> crate::pipeline::type_checking::type_engine::TypeScheme {
     construction::repair_scheme_with_source_generics(scheme, generics)
 }
 
@@ -1184,7 +1184,7 @@ pub fn infer_named_type_args(
 
     let (type_params, field_templates): (
         &[TypeVar],
-        &[crate::pipeline::type_checking::typeinference::FieldEntry],
+        &[crate::pipeline::type_checking::type_engine::FieldEntry],
     ) = match variant {
         Some(variant_name) => match registry.enum_info_by_decl_name(name) {
             Some(info) => match info.variants.iter().find(|v| v.name == variant_name) {
@@ -1254,7 +1254,7 @@ fn check_impl(
         program,
         imported_schemes,
         deferred_conflicts,
-        &crate::pipeline::type_checking::typeinference::OverloadTable::new(),
+        &crate::pipeline::type_checking::type_engine::OverloadTable::new(),
         base_registry,
         std_prelude,
         current_module_path,
@@ -1271,7 +1271,7 @@ fn check_impl_with_report(
     program: &Program,
     imported_schemes: &SchemeEnv,
     deferred_conflicts: HashMap<String, Vec<Vec<String>>>,
-    imported_overloads: &crate::pipeline::type_checking::typeinference::OverloadTable,
+    imported_overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     base_registry: &TypeDefinitionRegistry,
     std_prelude: &CorePrelude,
     current_module_path: &[String],

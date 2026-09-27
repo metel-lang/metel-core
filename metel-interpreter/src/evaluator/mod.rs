@@ -18,7 +18,7 @@ use serde::Serialize;
 
 use crate::data::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
 use crate::data::error::{FrameInfo, MetelError, RuntimeErrorCode};
-use crate::pipeline::type_checking::typeinference::TypeCtx;
+use crate::pipeline::type_checking::type_engine::TypeCtx;
 
 thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
@@ -4469,7 +4469,7 @@ mod architecture_evidence_tests {
             aspect_name: "Counter".to_string(),
             type_args: vec![],
         };
-        let registry = crate::pipeline::type_checking::typeinference::TypeDefinitionRegistry::new();
+        let registry = crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry::new();
         let ty = super::type_of::value_to_type(&value, &registry, &Span::new(0, 0, "t"));
         assert_eq!(
             ty,

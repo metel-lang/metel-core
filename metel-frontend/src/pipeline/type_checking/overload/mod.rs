@@ -22,7 +22,7 @@ use crate::data::ast::{Decl, Expr, FunDecl, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
 use crate::identity::symbols::SymbolId;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     OverloadEntry, OverloadTable, TypeDefinitionRegistry, TypeVar,
 };
 
@@ -182,7 +182,7 @@ fn build_table_from_decls(
 fn type_expr_to_infer_for_overload(
     te: &crate::data::ast::TypeExpr,
     assoc_ctx: Option<(&TypeDefinitionRegistry, &[String])>,
-) -> crate::pipeline::type_checking::typeinference::InferType {
+) -> crate::pipeline::type_checking::type_engine::InferType {
     let Some((registry, current_module)) = assoc_ctx else {
         return type_expr_to_infer(te);
     };

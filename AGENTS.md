@@ -169,8 +169,9 @@ git config core.hooksPath .githooks
 
 `commit-msg` rejects Claude/Anthropic attribution; `pre-commit` runs `cargo fmt --check`
 plus the two instant text-scan tools (`clippy_allow_ratchet.py --check`,
-`check_no_semantic_name_lookup.py`); `pre-push` runs clippy, `cargo test --workspace`, and
-refuses to push a merge commit reaching `develop`. Not a substitute for Tier 3 or CI —
+`check_no_semantic_name_lookup.py`); `pre-push` runs clippy, `cargo test --workspace`,
+`check_no_flat_module_dir_collision.py --check`, and refuses to push a merge commit
+reaching `develop`. Not a substitute for Tier 3 or CI —
 branch protection ("Require linear history" on `develop`) is the actual backstop; these
 hooks just catch the same classes of mistake earlier, for whoever has them enabled.
 

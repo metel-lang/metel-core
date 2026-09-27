@@ -10,7 +10,7 @@ use crate::data::ast::{
 };
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::ModuleScope;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     EnumInfo, FieldEntry, GenericBound, InferContext, InferType, TypeDefinitionRegistry,
     TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
 };
@@ -210,7 +210,7 @@ fn populate_schemes_from_embedded_core(
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
                 let neg_bounds =
                     super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
-                let scheme = crate::pipeline::type_checking::typeinference::generalize(
+                let scheme = crate::pipeline::type_checking::type_engine::generalize(
                     fun_ty,
                     &HashSet::default(),
                 )
@@ -261,7 +261,7 @@ fn populate_schemes_from_embedded_core(
                             type_expr_to_infer_with_generics(ann, &generic_map)
                         });
                     let fun_ty = InferType::fun(params, ret);
-                    let scheme = crate::pipeline::type_checking::typeinference::generalize(
+                    let scheme = crate::pipeline::type_checking::type_engine::generalize(
                         fun_ty,
                         &HashSet::default(),
                     );

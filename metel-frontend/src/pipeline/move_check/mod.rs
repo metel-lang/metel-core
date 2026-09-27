@@ -8,11 +8,11 @@ use crate::data::typed_ast::{
     TypedModuleGraph, TypedPattern, TypedPlace, TypedStmt,
 };
 use crate::data::types::Type;
-use crate::pipeline::type_checking::type_expr_to_infer;
-use crate::pipeline::type_checking::typeinference::{
+use crate::pipeline::type_checking::type_engine::{
     AspectAssumptions, FieldEntry, GenericBound, InferType, RowConstraintField, Substitution,
     TypeCtx, TypeDefinitionRegistry, TypeScheme, TypeVar, type_to_infer,
 };
+use crate::pipeline::type_checking::type_expr_to_infer;
 
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
 
@@ -2226,10 +2226,10 @@ fn symbolic_method_ambiguity_reason(
 /// every argument, which can only over-report moves, never miss one. A shifted list can do
 /// either.
 fn infer_method_arg_types(
-    fun_ty: &crate::pipeline::type_checking::typeinference::InferType,
+    fun_ty: &crate::pipeline::type_checking::type_engine::InferType,
 ) -> Option<Vec<Type>> {
     match fun_ty {
-        crate::pipeline::type_checking::typeinference::InferType::Fun(params, ..) => params
+        crate::pipeline::type_checking::type_engine::InferType::Fun(params, ..) => params
             .iter()
             .skip(1)
             .map(infer_to_type)
@@ -2355,8 +2355,8 @@ fn type_to_infer_under_generic_env(
 /// - `infer_method_arg_types` propagates it to `observe_call_args`, which records *no*
 ///   diagnostic and simply proceeds without reborrow information, consuming each argument.
 ///   That is more conservative than a shifted list, not less.
-fn infer_to_type(ty: &crate::pipeline::type_checking::typeinference::InferType) -> Option<Type> {
-    use crate::pipeline::type_checking::typeinference::InferType;
+fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) -> Option<Type> {
+    use crate::pipeline::type_checking::type_engine::InferType;
     match ty {
         InferType::Concrete(inner) => Some(inner.clone()),
         InferType::Never => Some(Type::Never),
