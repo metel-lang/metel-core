@@ -39,8 +39,8 @@ section="$(grep -m1 '^## ' "$changelog" || true)"
 echo "Changelog top section: ${section:-<none>}"
 
 # When was the changelog last actually edited, in the submodule's own history?
-last_entry_epoch="$(git -C docs log -1 --format=%ct -- public/release-notes/changelog.md 2>/dev/null || echo 0)"
-if [[ "$last_entry_epoch" == "0" ]]; then
+last_entry_epoch="$(git -C docs log -1 --format=%ct -- release-notes/changelog.md 2>/dev/null || echo 0)"
+if [[ -z "$last_entry_epoch" || "$last_entry_epoch" == "0" ]]; then
     echo "Changelog last edited: never (in submodule history)"
 else
     echo "Changelog last edited: $(date -d "@$last_entry_epoch" '+%Y-%m-%d %H:%M')"
