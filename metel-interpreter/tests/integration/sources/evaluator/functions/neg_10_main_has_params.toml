@@ -5,4 +5,4 @@ spec = ["spec.functions.program-entry-point.legality-1"]
 [expect]
 status = "typecheck_error"
 code = "T0031"
-contains = "not a function"
+contains = "zero arguments"

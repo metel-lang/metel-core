@@ -1,0 +1,4 @@
+// `main` exists and is a function, but is itself generic -- RFC-0167's other
+// documented `main`-shape violation (the sibling case is `neg_08`'s "not a
+// function" one). The program entry point must be non-generic.
+fun main<T>() {}

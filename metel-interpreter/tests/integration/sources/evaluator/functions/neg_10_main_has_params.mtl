@@ -1,0 +1,6 @@
+// `main` exists, is a function, and is non-generic, but takes an argument --
+// spec.functions.program-entry-point.legality-1 requires it be callable with
+// zero arguments.
+fun main(x: i64) {
+    let _ := x;
+}

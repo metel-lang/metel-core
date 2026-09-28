@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::data::ast::Span;
-use crate::data::error::{MetelError, RuntimeErrorCode};
+use crate::data::error::{InternalErrorCode, MetelError, RuntimeErrorCode};
 
 use super::{
     ClosureBody, ClosureValue, Environment, RuntimeCallable, RuntimeRegistry, Signal, Value,
@@ -132,14 +132,13 @@ fn call_runtime_callable(
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
-                        None => Err(attach_stack(MetelError::panic(
-                            crate::data::error::RuntimeErrorCode::R0002,
+                        None => Err(MetelError::internal_with_code(
+                            InternalErrorCode::I0009,
                             format!(
                                 "generic closure `{}` has no type context — construction-at-call-time unavailable",
                                 closure.name.as_deref().unwrap_or("<anonymous>")
                             ),
-                            span,
-                        ))),
+                        )),
                     }
                 }
             };
@@ -180,20 +179,18 @@ pub(super) fn call_function(
             call_runtime_callable(callable, args, static_arg_tys, expected_ret, span, runtime)
         }
 
-        Value::Unit => Err(attach_stack(MetelError::panic(
-            RuntimeErrorCode::R0002,
+        Value::Unit => Err(MetelError::internal_with_code(
+            InternalErrorCode::I0007,
             "call: target is Unit, not a function",
-            span,
-        ))),
+        )),
 
-        other => Err(attach_stack(MetelError::panic(
-            RuntimeErrorCode::R0010,
+        other => Err(MetelError::internal_with_code(
+            InternalErrorCode::I0007,
             format!(
                 "call: expected a closure or builtin, got {:?}",
                 std::mem::discriminant(&other)
             ),
-            span,
-        ))),
+        )),
     }
 }
 
@@ -301,14 +298,13 @@ pub(super) fn call_method_function(
                             )?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
-                        None => Err(attach_stack(MetelError::panic(
-                            crate::data::error::RuntimeErrorCode::R0002,
+                        None => Err(MetelError::internal_with_code(
+                            InternalErrorCode::I0009,
                             format!(
                                 "generic method `{}` has no type context — construction-at-call-time unavailable",
                                 closure.name.as_deref().unwrap_or("<anonymous>")
                             ),
-                            span,
-                        ))),
+                        )),
                     }
                 }
             };

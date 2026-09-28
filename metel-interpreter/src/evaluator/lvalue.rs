@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::data::ast::{BinOp, Span};
-use crate::data::error::{MetelError, RuntimeErrorCode};
+use crate::data::error::{InternalErrorCode, MetelError, RuntimeErrorCode};
 use crate::data::typed_ast::TypedPlace;
 
 use super::{Environment, PathSegment, RuntimeRegistry, Signal, Value, eval_expr};
@@ -17,17 +17,15 @@ pub(super) fn resolve_place_assign_root(
     place: &TypedPlace,
     env: &mut Environment,
     runtime: &RuntimeRegistry,
-    span: &Span,
 ) -> Result<(std::rc::Rc<std::cell::RefCell<Value>>, Vec<PathSegment>), MetelError> {
     fn walk(
         place: &TypedPlace,
         path: &mut Vec<PathSegment>,
         env: &mut Environment,
         runtime: &RuntimeRegistry,
-        span: &Span,
     ) -> Result<std::rc::Rc<std::cell::RefCell<Value>>, MetelError> {
         match place {
-            TypedPlace::Ident(name, binding, ident_span) => {
+            TypedPlace::Ident(name, binding, _ident_span) => {
                 // A top-level `let` / `var`'s live global slot cell, or a
                 // local's frame cell, by identity (metel-core#1052b). No
                 // name-map fallback remains (metel-core#1054).
@@ -39,10 +37,9 @@ pub(super) fn resolve_place_assign_root(
                     None => None,
                 };
                 let rc = id_cell.ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0003,
+                    MetelError::internal_with_code(
+                        InternalErrorCode::I0003,
                         format!("assign: `{name}` not found"),
-                        ident_span,
                     )
                 })?;
                 // Auto-deref: if the binding holds a &mut reference, follow it.
@@ -56,39 +53,34 @@ pub(super) fn resolve_place_assign_root(
                 };
                 Ok(inner.unwrap_or(rc))
             }
-            TypedPlace::Deref {
-                object,
-                span: tspan,
-            } => {
+            TypedPlace::Deref { object, span: _ } => {
                 let ptr = eval_expr(object, env, runtime)?.into_value();
                 match ptr {
                     Value::MutReference(inner_rc) => Ok(inner_rc),
-                    _ => Err(MetelError::panic(
-                        RuntimeErrorCode::R0003,
+                    _ => Err(MetelError::internal_with_code(
+                        InternalErrorCode::I0003,
                         "assign: not a &var reference",
-                        tspan,
                     )),
                 }
             }
             TypedPlace::Field { object, field, .. } => {
-                let root_rc = walk(object, path, env, runtime, span)?;
+                let root_rc = walk(object, path, env, runtime)?;
                 path.push(PathSegment::Field(field.clone()));
                 Ok(root_rc)
             }
             TypedPlace::Tuple { object, index, .. } => {
-                let root_rc = walk(object, path, env, runtime, span)?;
+                let root_rc = walk(object, path, env, runtime)?;
                 path.push(PathSegment::TupleIndex(*index));
                 Ok(root_rc)
             }
-            TypedPlace::Index { .. } => Err(MetelError::panic(
-                RuntimeErrorCode::R0003,
+            TypedPlace::Index { .. } => Err(MetelError::internal_with_code(
+                InternalErrorCode::I0003,
                 "assign: unsupported receiver form",
-                span,
             )),
         }
     }
     let mut path = Vec::new();
-    let root_rc = walk(place, &mut path, env, runtime, span)?;
+    let root_rc = walk(place, &mut path, env, runtime)?;
     Ok((root_rc, path))
 }
 
@@ -103,7 +95,7 @@ pub(super) fn eval_typed_place_value(
     runtime: &RuntimeRegistry,
 ) -> Result<Value, MetelError> {
     match place {
-        TypedPlace::Ident(name, binding, ident_span) => {
+        TypedPlace::Ident(name, binding, _ident_span) => {
             match binding {
                 Some(crate::identity::BindingId::Global(sym)) => {
                     if let Some(cell) = runtime.global_slot(*sym) {
@@ -117,40 +109,34 @@ pub(super) fn eval_typed_place_value(
                 }
                 None => {}
             }
-            Err(MetelError::panic(
-                RuntimeErrorCode::R0003,
+            Err(MetelError::internal_with_code(
+                InternalErrorCode::I0003,
                 format!("assign: `{name}` not found"),
-                ident_span,
             ))
         }
-        TypedPlace::Deref {
-            object,
-            span: tspan,
-        } => {
+        TypedPlace::Deref { object, span: _ } => {
             let ptr = eval_expr(object, env, runtime)?.into_value();
             match ptr {
                 Value::Reference(rc) | Value::MutReference(rc) => Ok(rc.borrow().clone()),
-                _ => Err(MetelError::panic(
-                    RuntimeErrorCode::R0003,
+                _ => Err(MetelError::internal_with_code(
+                    InternalErrorCode::I0003,
                     "assign: not a pointer",
-                    tspan,
                 )),
             }
         }
         TypedPlace::Field {
             object,
             field,
-            span: tspan,
+            span: _,
         } => {
             let parent = eval_typed_place_value(object, env, runtime)?;
             match parent {
                 Value::Record { fields }
                 | Value::Struct { fields, .. }
                 | Value::Enum { fields, .. } => fields.get(field).cloned().ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0008,
+                    MetelError::internal_with_code(
+                        InternalErrorCode::I0005,
                         format!("field access: no field `{field}`"),
-                        tspan,
                     )
                 }),
                 _ => Err(MetelError::internal(format!(

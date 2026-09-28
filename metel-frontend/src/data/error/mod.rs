@@ -50,21 +50,17 @@ pub enum TypeErrorCode {
     T0028, // Closure requires `var` (RFC-0153)
     T0029, // Mutating closure called through shared reference (RFC-0153)
     T0030, // Borrow into enclosing closure environment (RFC-0050)
+    T0031, // Invalid program entry point (RFC-0167)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeErrorCode {
-    R0001, // No `main` function defined
-    R0002, // `main` is not a valid entry point
-    R0003, // Undefined variable at runtime
+    // R0001 and R0002 are retired (RFC-0167): their `main`-entry meaning moved to
+    // T0031, a compile-time Legality Rule; R0002's other two raise sites moved to
+    // I0007 and I0009. Retired numbers are never reused (STYLEGUIDE.md).
     R0004, // Index out of bounds
     R0005, // Tuple index out of bounds
-    R0006, // Non-exhaustive match at runtime
     R0007, // Arithmetic error (division or remainder by zero)
-    R0008, // Field not found
-    R0009, // Method not found
-    R0010, // Call on non-callable value
-    R0011, // Invalid for-in iterator
     R0012, // Assertion failed
     R0013, // Unwrap on `None`/`Err` (`.yolo()`)
     R0014, // Explicit panic (`panic()`)
@@ -75,6 +71,13 @@ pub enum RuntimeErrorCode {
 pub enum InternalErrorCode {
     I0001, // Internal interpreter error (interpreter bug — should never happen)
     I0002, // Not implemented (feature not yet supported in this version)
+    I0003, // Scoping/hoisting invariant violated (was R0003, RFC-0167)
+    I0004, // Exhaustiveness-checker invariant violated (was R0006, RFC-0167)
+    I0005, // Field-resolution invariant violated (was R0008, RFC-0167)
+    I0006, // Method-dispatch invariant violated (was R0009, RFC-0167)
+    I0007, // Callability invariant violated (was R0010, merged with R0002's non-`main` call-target case, RFC-0167)
+    I0008, // Iterator-dispatch invariant violated (was R0011, RFC-0167)
+    I0009, // Generic construction-at-call-time invariant violated (was R0002's construction-machinery case, RFC-0167)
 }
 
 macro_rules! impl_display_via_debug {
@@ -294,6 +297,17 @@ impl MetelError {
     pub fn not_implemented(msg: impl Into<String>) -> Self {
         Self::Internal {
             code: InternalErrorCode::I0002,
+            message: msg.into(),
+        }
+    }
+
+    /// Interpreter bug under a specific `I00NN` code — the typechecker (or an
+    /// earlier static check) should have prevented this state. Use this over
+    /// [`Self::internal`] when the invariant being violated has its own
+    /// documented code (see `error-codes.md`'s I0003-I0009).
+    pub fn internal_with_code(code: InternalErrorCode, msg: impl Into<String>) -> Self {
+        Self::Internal {
+            code,
             message: msg.into(),
         }
     }

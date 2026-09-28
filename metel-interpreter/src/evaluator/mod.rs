@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::data::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
-use crate::data::error::{FrameInfo, MetelError, RuntimeErrorCode};
+use crate::data::error::{FrameInfo, InternalErrorCode, MetelError, RuntimeErrorCode, TypeErrorCode};
 use crate::pipeline::type_checking::type_engine::TypeCtx;
 
 thread_local! {
@@ -1099,18 +1099,16 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
                 | Value::Struct { fields, .. }
                 | Value::Enum { fields, .. },
             ) => fields.get(f.as_str()).cloned().ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0008,
+                MetelError::internal_with_code(
+                    InternalErrorCode::I0005,
                     format!("fat pointer: no field `{f}`"),
-                    span,
                 )
             })?,
             (PathSegment::TupleIndex(i), Value::Tuple(elems)) => {
                 elems.get(*i).cloned().ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0008,
+                    MetelError::internal_with_code(
+                        InternalErrorCode::I0005,
                         format!("fat pointer: tuple index {i} out of bounds"),
-                        span,
                     )
                 })?
             }
@@ -1146,10 +1144,9 @@ fn write_path(
     }
     match root {
         Value::Reference(_) | Value::FieldReference { .. } => {
-            return Err(MetelError::panic(
-                RuntimeErrorCode::R0003,
+            return Err(MetelError::internal_with_code(
+                InternalErrorCode::I0003,
                 "cannot write through a shared reference",
-                span,
             ));
         }
         Value::MutReference(rc) => {
@@ -1173,20 +1170,18 @@ fn write_path(
             Value::Record { fields } | Value::Struct { fields, .. } | Value::Enum { fields, .. },
         ) => {
             let child = fields.get_mut(f.as_str()).ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0008,
+                MetelError::internal_with_code(
+                    InternalErrorCode::I0005,
                     format!("fat pointer: no field `{f}`"),
-                    span,
                 )
             })?;
             write_path(child, &path[1..], new_val, span)
         }
         (PathSegment::TupleIndex(i), Value::Tuple(elems)) => {
             let child = elems.get_mut(*i).ok_or_else(|| {
-                MetelError::panic(
-                    RuntimeErrorCode::R0008,
+                MetelError::internal_with_code(
+                    InternalErrorCode::I0005,
                     format!("fat pointer: tuple index {i} out of bounds"),
-                    span,
                 )
             })?;
             write_path(child, &path[1..], new_val, span)
@@ -1835,7 +1830,7 @@ impl Environment {
         &self,
         captures: &[CaptureSpec],
         capture_ids: &[Option<LocalId>],
-        span: &Span,
+        _span: &Span,
     ) -> Result<Self, MetelError> {
         if captures.is_empty() {
             return Ok(self.capture_clone());
@@ -1855,20 +1850,18 @@ impl Environment {
             match capture {
                 CaptureSpec::Owned { name, .. } | CaptureSpec::Clone { name, .. } => {
                     let value = id.and_then(|id| self.get_local(id)).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
+                        MetelError::internal_with_code(
+                            InternalErrorCode::I0003,
                             format!("undefined variable `{name}`"),
-                            span,
                         )
                     })?;
                     closure_environment.define_binding(id, value);
                 }
                 CaptureSpec::SharedRef { name, .. } | CaptureSpec::MutRef { name, .. } => {
                     let cell = id.and_then(|id| self.get_local_rc(id)).ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
+                        MetelError::internal_with_code(
+                            InternalErrorCode::I0003,
                             format!("undefined variable `{name}`"),
-                            span,
                         )
                     })?;
                     closure_environment.define_binding_rc(id, cell);
@@ -1901,26 +1894,26 @@ pub fn evaluate_graph_with_options(
         .last()
         .map(|m| m.module_path.clone())
         .unwrap_or_default();
-    // `main`'s stable identity (metel-core#1052b), read off the root module's
-    // own declarations while they're still in scope — `run_main` then resolves
-    // it by id first, the same as every other top-level lookup.
-    let mut main_def_id: Option<SymbolId> = None;
+
+    // RFC-0167 §2 / spec.functions.program-entry-point.legality-1: the root
+    // module must declare exactly one function named `main`, non-generic,
+    // callable with zero arguments, with a body the type checker can type.
+    // Checked once here, before any module's declarations run — a purely
+    // static, declarative fact answerable from the declaration table alone —
+    // so a bad program is rejected before any evaluation side effect occurs,
+    // not lazily once `main` was about to be invoked. `main`'s stable identity
+    // (metel-core#1052b) comes back with it; `run_main` then resolves it by id
+    // first, the same as every other top-level lookup.
+    let root_decls = &graph
+        .modules
+        .iter()
+        .find(|m| m.module_path == root_path)
+        .ok_or_else(|| MetelError::internal("root module not found"))?
+        .decls;
+    let main_def_id = check_program_entry_point(root_decls)?;
 
     for module in graph.modules {
         let mut env = Environment::new();
-
-        if module.module_path == root_path {
-            // metel-core#1112: `main` can also be a top-level `let`/`mut`
-            // (the R0002 "`main` is not a function" case) -- its identity
-            // lives on `def_id` the same as `Fun`'s, just via a different
-            // `TypedDecl` arm.
-            main_def_id = module.decls.iter().find_map(|d| match d {
-                TypedDecl::Fun(f) if f.name == "main" => f.def_id,
-                TypedDecl::Let(l) if l.name == "main" => l.def_id,
-                TypedDecl::Mut(m) if m.name == "main" => m.def_id,
-                _ => None,
-            });
-        }
 
         // An imported name's own reference sites already carry the exporting
         // module's `SymbolId` (explicit imports directly; glob imports via
@@ -1951,20 +1944,92 @@ pub fn evaluate_graph_with_options(
     }
 
     // Run main() from the root module's environment.
-    let dummy = Span {
+    let env = module_envs
+        .get_mut(&root_path)
+        .ok_or_else(|| MetelError::internal("root module not found"))?;
+    let result = run_main(env, &runtime, main_def_id);
+    let profile = finish_profile();
+    result?;
+    Ok(EvaluationReport { profile })
+}
+
+/// RFC-0167 §2 / spec.functions.program-entry-point.legality-1: the root
+/// module must declare exactly one function named `main`, non-generic,
+/// callable with zero arguments, with a body the type checker can type.
+/// Returns `main`'s stable identity (metel-core#1052b) on success.
+fn check_program_entry_point(root_decls: &[TypedDecl]) -> Result<SymbolId, MetelError> {
+    fn decl_span(decl: &TypedDecl) -> Option<Span> {
+        match decl {
+            TypedDecl::Let(d) => Some(d.span.clone()),
+            TypedDecl::Mut(d) => Some(d.span.clone()),
+            TypedDecl::Fun(d) => Some(d.span.clone()),
+            TypedDecl::Struct(d) => Some(d.span.clone()),
+            TypedDecl::Enum(d) => Some(d.span.clone()),
+            TypedDecl::Impl(d) => Some(d.span.clone()),
+            TypedDecl::Aspect(d) => Some(d.span.clone()),
+            TypedDecl::Stmt(_) => None,
+        }
+    }
+    let fallback_span = root_decls.iter().find_map(decl_span).unwrap_or(Span {
         start: 0,
         end: 0,
         filename: "<program>".to_string(),
         line: 0,
         col: 0,
-    };
-    let env = module_envs.get_mut(&root_path).ok_or_else(|| {
-        MetelError::panic(RuntimeErrorCode::R0001, "root module not found", &dummy)
-    })?;
-    let result = run_main(env, &runtime, main_def_id);
-    let profile = finish_profile();
-    result?;
-    Ok(EvaluationReport { profile })
+    });
+
+    // metel-core#1112: `main` can also be a top-level `let`/`mut` (the
+    // "`main` is not a function" case) — its identity lives on `def_id` the
+    // same as `Fun`'s, just via a different `TypedDecl` arm.
+    let found = root_decls.iter().find(|d| {
+        matches!(d, TypedDecl::Fun(f) if f.name == "main")
+            || matches!(d, TypedDecl::Let(l) if l.name == "main")
+            || matches!(d, TypedDecl::Mut(m) if m.name == "main")
+    });
+
+    match found {
+        Some(TypedDecl::Fun(f)) => {
+            // `f.generics` is `main`'s source-level generic parameter list,
+            // untouched by whether its body ends up eagerly typed or deferred
+            // as `FunBody::Generic` — an unannotated, all-diverging `main` is
+            // stored as a generic body too (a free return variable that `!`
+            // satisfies without binding it during inference), despite having
+            // no source-level generic parameters. `generics.is_empty()` is
+            // therefore the right static signal here, independent of that
+            // internal representation quirk.
+            if !f.generics.is_empty() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0031,
+                    "main() is generic — the program entry point must be non-generic",
+                    &f.span,
+                ));
+            }
+            if !f.params.is_empty() {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0031,
+                    "main() must be callable with zero arguments",
+                    &f.span,
+                ));
+            }
+            f.def_id
+                .ok_or_else(|| MetelError::internal("main: top-level function has no def_id"))
+        }
+        Some(TypedDecl::Let(l)) => Err(MetelError::type_error(
+            TypeErrorCode::T0031,
+            "`main` is not a function",
+            &l.span,
+        )),
+        Some(TypedDecl::Mut(m)) => Err(MetelError::type_error(
+            TypeErrorCode::T0031,
+            "`main` is not a function",
+            &m.span,
+        )),
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0031,
+            "no main() function defined",
+            &fallback_span,
+        )),
+    }
 }
 
 /// Run the standard evaluation passes on `decls` into `env`.
@@ -2293,10 +2358,15 @@ fn run_passes(
 }
 
 /// Locate and execute `main()` in `env`. Called after all passes complete.
+///
+/// By this point [`check_program_entry_point`] has already statically proven
+/// `main_def_id` names a non-generic, zero-argument, well-typed function
+/// (RFC-0167 §2/T0031) -- every fallback below is therefore a "this shouldn't
+/// happen" internal-invariant guard, not a user-facing diagnostic.
 fn run_main(
     env: &mut Environment,
     runtime: &RuntimeRegistry,
-    main_def_id: Option<SymbolId>,
+    main_def_id: SymbolId,
 ) -> Result<(), MetelError> {
     let dummy = Span {
         start: 0,
@@ -2306,37 +2376,19 @@ fn run_main(
         col: 0,
     };
     // `main`'s `def_id` (metel-core#1052b) resolves it the same way any other
-    // top-level call would: a top-level `let`/`var` (the R0002 "not a
-    // function" case, metel-core#1112) has its live cell in the global slot
-    // table, `fn main` a stable registered value -- same order as
-    // `TypedExpr::Ident`'s own `BindingId::Global` arm. No name-map fallback
-    // remains (metel-core#1054).
-    let main_value = main_def_id
-        .and_then(|id| runtime.global_slot(id).map(|cell| cell.borrow().clone()))
-        .or_else(|| main_def_id.and_then(|id| runtime.get_symbol_value(id).cloned()));
+    // top-level call would -- same order as `TypedExpr::Ident`'s own
+    // `BindingId::Global` arm. No name-map fallback remains (metel-core#1054).
+    let main_value = runtime
+        .global_slot(main_def_id)
+        .map(|cell| cell.borrow().clone())
+        .or_else(|| runtime.get_symbol_value(main_def_id).cloned());
     let (main_body, main_params, main_type_ctx) = match main_value {
         Some(Value::Callable(RuntimeCallable::Closure(rc))) => {
             (rc.body.clone(), rc.params.clone(), rc.type_ctx.clone())
         }
-        Some(Value::Unit) => {
-            return Err(MetelError::panic(
-                RuntimeErrorCode::R0002,
-                "main() is generic — not supported",
-                &dummy,
-            ));
-        }
-        Some(_) => {
-            return Err(MetelError::panic(
-                RuntimeErrorCode::R0002,
-                "`main` is not a function",
-                &dummy,
-            ));
-        }
-        None => {
-            return Err(MetelError::panic(
-                RuntimeErrorCode::R0001,
-                "no main() function defined",
-                &dummy,
+        _ => {
+            return Err(MetelError::internal(
+                "main: expected a callable closure after program-entry-point validation (T0031)",
             ));
         }
     };
@@ -2359,16 +2411,12 @@ fn run_main(
                     None,
                 )
                 .and_then(|typed| eval_block(&typed, env, runtime)),
-                None => Err(MetelError::panic(
-                    RuntimeErrorCode::R0002,
-                    "main() body could not be typed",
-                    &dummy,
+                None => Err(MetelError::internal(
+                    "main: generic body has no scheme after program-entry-point validation (T0031)",
                 )),
             },
-            None => Err(MetelError::panic(
-                RuntimeErrorCode::R0002,
-                "main() body could not be typed",
-                &dummy,
+            None => Err(MetelError::internal(
+                "main: generic body has no type context after program-entry-point validation (T0031)",
             )),
         },
     };
@@ -2708,10 +2756,9 @@ fn eval_for_in(
     let type_name = match &iterable {
         Value::Struct { name, .. } => name.clone(),
         _ => {
-            return Err(MetelError::panic(
-                RuntimeErrorCode::R0011,
+            return Err(MetelError::internal_with_code(
+                InternalErrorCode::I0008,
                 "for-in: expected Array, Range, or Iterable value",
-                span,
             ));
         }
     };
@@ -2719,10 +2766,9 @@ fn eval_for_in(
         .resolve_value_type_id(&iterable)
         .and_then(|id| runtime.get_regular_method(id, "next", &[]))
         .ok_or_else(|| {
-            MetelError::panic(
-                RuntimeErrorCode::R0011,
+            MetelError::internal_with_code(
+                InternalErrorCode::I0008,
                 format!("for-in: `{type_name}` does not implement Iterable (no `next` method)"),
-                span,
             )
         })?;
 
@@ -2823,7 +2869,7 @@ fn eval_assign_expr(
         ControlFlow::Break(signal) => return Ok(signal),
     };
     match target {
-        TypedPlace::Ident(name, binding, ident_span) => {
+        TypedPlace::Ident(name, binding, _ident_span) => {
             // A top-level `let` / `var`'s live global slot cell, or a
             // local's frame cell, by identity (metel-core#1052b). No
             // name-map fallback remains (metel-core#1054).
@@ -2843,10 +2889,9 @@ fn eval_assign_expr(
                     .map(|c| c.borrow().clone())
                     .or_else(|| local_id.and_then(|id| env.get_local(id)))
                     .ok_or_else(|| {
-                        MetelError::panic(
-                            RuntimeErrorCode::R0003,
+                        MetelError::internal_with_code(
+                            InternalErrorCode::I0003,
                             format!("assign: undefined `{name}`"),
-                            ident_span,
                         )
                     })?;
                 lvalue::apply_assign_op(op, cur, rhs, span)?
@@ -2856,10 +2901,9 @@ fn eval_assign_expr(
             } else {
                 let written = local_id.is_some_and(|id| env.set_local(id, new_val.clone()));
                 if !written {
-                    return Err(MetelError::panic(
-                        RuntimeErrorCode::R0003,
+                    return Err(MetelError::internal_with_code(
+                        InternalErrorCode::I0003,
                         format!("assign: undefined `{name}`"),
-                        ident_span,
                     ));
                 }
             }
@@ -2894,10 +2938,9 @@ fn eval_assign_expr(
                     write_path(&mut root.borrow_mut(), &path, new_val, tspan)?;
                 }
                 _ => {
-                    return Err(MetelError::panic(
-                        RuntimeErrorCode::R0003,
+                    return Err(MetelError::internal_with_code(
+                        InternalErrorCode::I0003,
                         "assign: dereference target is not a pointer",
-                        tspan,
                     ));
                 }
             }
@@ -2961,7 +3004,7 @@ fn eval_assign_expr(
             index: _,
             span: tspan,
         } => {
-            let (rc, path) = lvalue::resolve_place_assign_root(target, env, runtime, tspan)?;
+            let (rc, path) = lvalue::resolve_place_assign_root(target, env, runtime)?;
             let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
                 rhs
             } else {
@@ -3090,10 +3133,9 @@ fn eval_method_call_expr(
         }
     }
     .ok_or_else(|| {
-        MetelError::panic(
-            RuntimeErrorCode::R0009,
+        MetelError::internal_with_code(
+            InternalErrorCode::I0006,
             format!("method `{method}` not found on this value"),
-            span,
         )
     })?;
     let func = method_entry.body.clone();
@@ -3186,10 +3228,9 @@ fn eval_method_call_expr(
             span,
             runtime,
         ),
-        None => Err(MetelError::panic(
-            RuntimeErrorCode::R0009,
+        None => Err(MetelError::internal_with_code(
+            InternalErrorCode::I0006,
             format!("runtime method `{method}` is not callable with a receiver"),
-            span,
         )),
     }
 }
@@ -3352,7 +3393,7 @@ pub fn eval_expr(
             Ok(Signal::Value(val))
         }
 
-        TypedExpr::Ident(name, binding, _, span) => {
+        TypedExpr::Ident(name, binding, _, _span) => {
             // Resolve by frozen identity first (metel-core#1052b): a lexical
             // local through the id-indexed frame, a global through the
             // `SymbolId` value registry. `std_core_lookup` remains the
@@ -3380,10 +3421,9 @@ pub fn eval_expr(
             }
             match std_core_lookup(name, runtime) {
                 Some(val) => Ok(Signal::Value(val)),
-                None => Err(MetelError::panic(
-                    RuntimeErrorCode::R0003,
+                None => Err(MetelError::internal_with_code(
+                    InternalErrorCode::I0003,
                     format!("undefined variable `{name}`"),
-                    span,
                 )),
             }
         }
@@ -3398,13 +3438,11 @@ pub fn eval_expr(
             // A single-segment path is treated as an ident lookup.
             if segments.len() == 1 {
                 let name = &segments[0];
-                let span = expr.span();
                 match std_core_lookup(name, runtime) {
                     Some(val) => Ok(Signal::Value(val)),
-                    None => Err(MetelError::panic(
-                        RuntimeErrorCode::R0003,
+                    None => Err(MetelError::internal_with_code(
+                        InternalErrorCode::I0003,
                         format!("undefined variable `{name}`"),
-                        span,
                     )),
                 }
             } else {
@@ -3589,10 +3627,9 @@ pub fn eval_expr(
                         Value::MutFieldReference { root, path } => {
                             Ok(Signal::Value(Value::MutFieldReference { root, path }))
                         }
-                        other => Err(MetelError::panic(
-                            RuntimeErrorCode::R0003,
+                        other => Err(MetelError::internal_with_code(
+                            InternalErrorCode::I0003,
                             format!("cannot take `&var` through a shared reference: {other:?}"),
-                            span,
                         )),
                     };
                 }
@@ -3601,10 +3638,9 @@ pub fn eval_expr(
                         TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
                             .map(|rc| Signal::Value(Value::Reference(rc)))
                             .ok_or_else(|| {
-                                MetelError::panic(
-                                    RuntimeErrorCode::R0003,
+                                MetelError::internal_with_code(
+                                    InternalErrorCode::I0003,
                                     format!("undefined variable `{name}`"),
-                                    span,
                                 )
                             }),
                         other if is_lvalue_path_typed(other) => {
@@ -3614,10 +3650,9 @@ pub fn eval_expr(
                                     ControlFlow::Break(signal) => return Ok(signal),
                                 };
                             let root = ident_rc(root_binding, env, runtime).ok_or_else(|| {
-                                MetelError::panic(
-                                    RuntimeErrorCode::R0003,
+                                MetelError::internal_with_code(
+                                    InternalErrorCode::I0003,
                                     format!("undefined variable `{root_name}`"),
-                                    span,
                                 )
                             })?;
                             Ok(Signal::Value(Value::FieldReference { root, path }))
@@ -3632,10 +3667,9 @@ pub fn eval_expr(
                         TypedExpr::Ident(name, binding, _, _) => ident_rc(*binding, env, runtime)
                             .map(|rc| Signal::Value(Value::MutReference(rc)))
                             .ok_or_else(|| {
-                                MetelError::panic(
-                                    RuntimeErrorCode::R0003,
+                                MetelError::internal_with_code(
+                                    InternalErrorCode::I0003,
                                     format!("undefined variable `{name}`"),
-                                    span,
                                 )
                             }),
                         other if is_lvalue_path_typed(other) => {
@@ -3645,10 +3679,9 @@ pub fn eval_expr(
                                     ControlFlow::Break(signal) => return Ok(signal),
                                 };
                             let root = ident_rc(root_binding, env, runtime).ok_or_else(|| {
-                                MetelError::panic(
-                                    RuntimeErrorCode::R0003,
+                                MetelError::internal_with_code(
+                                    InternalErrorCode::I0003,
                                     format!("undefined variable `{root_name}`"),
-                                    span,
                                 )
                             })?;
                             Ok(Signal::Value(Value::MutFieldReference { root, path }))
@@ -3898,10 +3931,9 @@ pub fn eval_expr(
                 env.pop_scope();
                 return result;
             }
-            Err(MetelError::panic(
-                RuntimeErrorCode::R0006,
+            Err(MetelError::internal_with_code(
+                InternalErrorCode::I0004,
                 "match: no arm matched scrutinee",
-                &m.span,
             ))
         }
 
@@ -4019,10 +4051,9 @@ pub fn eval_expr(
                 .cloned()
                 .map(Signal::Value)
                 .ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0008,
+                    MetelError::internal_with_code(
+                        InternalErrorCode::I0005,
                         format!("no field `{field}` on value"),
-                        span,
                     )
                 })
         }

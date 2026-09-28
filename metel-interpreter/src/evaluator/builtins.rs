@@ -6,7 +6,7 @@
 // Narrowing or removing this module-level allow is tracked by metel-core#889.
 #![allow(clippy::unnecessary_wraps)]
 
-use crate::data::error::{MetelError, RuntimeErrorCode};
+use crate::data::error::{InternalErrorCode, MetelError, RuntimeErrorCode};
 
 use super::display::{format_value, value_to_display_string};
 use super::{
@@ -53,30 +53,28 @@ fn numeric_as_f64_val(v: &Value) -> Option<f64> {
 
 use crate::stdlib::native_keys::NativeKey;
 
-fn native_print(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
+fn native_print(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     let v = args
         .first()
         .ok_or_else(|| MetelError::internal("print: expected one argument"))?;
     let s = value_to_display_string(v).ok_or_else(|| {
-        MetelError::panic(
-            RuntimeErrorCode::R0009,
+        MetelError::internal_with_code(
+            InternalErrorCode::I0006,
             "print: value does not implement Display",
-            span,
         )
     })?;
     print!("{s}");
     Ok(Value::Unit)
 }
 
-fn native_println(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
+fn native_println(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     let v = args
         .first()
         .ok_or_else(|| MetelError::internal("println: expected one argument"))?;
     let s = value_to_display_string(v).ok_or_else(|| {
-        MetelError::panic(
-            RuntimeErrorCode::R0009,
+        MetelError::internal_with_code(
+            InternalErrorCode::I0006,
             "println: value does not implement Display",
-            span,
         )
     })?;
     println!("{s}");
@@ -402,13 +400,12 @@ fn native_string_substring(
 
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
-fn native_to_string(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
+fn native_to_string(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(v) => value_to_display_string(v).map(Value::Str).ok_or_else(|| {
-            MetelError::panic(
-                RuntimeErrorCode::R0009,
+            MetelError::internal_with_code(
+                InternalErrorCode::I0006,
                 "to_string: value does not implement Display",
-                span,
             )
         }),
         None => Err(MetelError::internal("to_string: expected a receiver")),
@@ -469,13 +466,20 @@ fn native_u32_from(args: &[Value], _span: &crate::data::ast::Span) -> Result<Val
     }
 }
 
-fn native_char_from(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
+fn native_char_from(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::U32(n)) => char::from_u32(*n).map(Value::Char).ok_or_else(|| {
-            MetelError::panic(
-                RuntimeErrorCode::R0009,
+            // metel-core#986 classified every R0009 raise site as an
+            // unreachable-under-a-sound-typechecker invariant (RFC-0167). This
+            // one is not that: a `u32` outside the Unicode scalar range is an
+            // ordinary, well-typed runtime value -- reclassified here to match
+            // the RFC's Rust-enum-level scheme regardless, since R0009 is fully
+            // retired by it; whether this specific site deserves a genuine
+            // R00NN "invalid conversion value" code instead is tracked as a
+            // follow-up (metel-core#1297), not this RFC's own scope.
+            MetelError::internal_with_code(
+                InternalErrorCode::I0006,
                 format!("u32 value {n} is not a valid Unicode scalar"),
-                span,
             )
         }),
         _ => Err(MetelError::internal("Char::from: expected a u32 argument")),

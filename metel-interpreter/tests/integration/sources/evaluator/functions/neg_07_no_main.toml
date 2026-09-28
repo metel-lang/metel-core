@@ -1,7 +1,8 @@
 [options]
-error = ["R0001"]
+error = ["T0031"]
+spec = ["spec.functions.program-entry-point.legality-1"]
 
 [expect]
-status = "runtime_error"
-code = "R0001"
+status = "typecheck_error"
+code = "T0031"
 contains = "no main"
