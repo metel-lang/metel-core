@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::data::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, UnaryOp};
-use crate::data::error::{FrameInfo, InternalErrorCode, MetelError, RuntimeErrorCode, TypeErrorCode};
+use crate::data::error::{
+    FrameInfo, InternalErrorCode, MetelError, RuntimeErrorCode, TypeErrorCode,
+};
 use crate::pipeline::type_checking::type_engine::TypeCtx;
 
 thread_local! {
