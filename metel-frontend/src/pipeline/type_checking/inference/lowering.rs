@@ -42,6 +42,24 @@ pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
     }
 }
 
+/// Shared by `TypeExpr::Record`'s and `TypeExpr::OpenRecord`'s identical
+/// per-field lowering below.
+fn lower_impl_aspect_fields(
+    fields: &[(String, TypeExpr)],
+    counter: &mut usize,
+    extra_generics: &mut Vec<GenericParam>,
+) -> Vec<(String, TypeExpr)> {
+    fields
+        .iter()
+        .map(|(name, field_ty)| {
+            (
+                name.clone(),
+                lower_impl_aspect_param_type(field_ty, counter, extra_generics),
+            )
+        })
+        .collect()
+}
+
 fn lower_impl_aspect_param_type(
     type_expr: &TypeExpr,
     counter: &mut usize,
@@ -54,6 +72,7 @@ fn lower_impl_aspect_param_type(
             extra_generics.push(GenericParam {
                 name: anon_name.clone(),
                 is_record: false,
+                is_row: false,
                 bounds: vec![Bound {
                     polarity: Polarity::Positive,
                     head: crate::data::ast::BoundHead::Aspect(bound.as_ref().clone()),
@@ -75,16 +94,16 @@ fn lower_impl_aspect_param_type(
                 .map(|item| lower_impl_aspect_param_type(item, counter, extra_generics))
                 .collect(),
         ),
-        TypeExpr::Record(fields) => TypeExpr::Record(
-            fields
-                .iter()
-                .map(|(name, field_ty)| {
-                    (
-                        name.clone(),
-                        lower_impl_aspect_param_type(field_ty, counter, extra_generics),
-                    )
-                })
-                .collect(),
+        TypeExpr::Record(fields) => {
+            TypeExpr::Record(lower_impl_aspect_fields(fields, counter, extra_generics))
+        }
+        // RFC-0121: a `fun_decl` parameter's open-row-tailed type can contain
+        // `impl Aspect` sugar in a named field exactly as a closed `Record`
+        // can (`{ x: impl Display, ..R }`) -- lower each field the same way;
+        // the tail carries no `TypeExpr` of its own.
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            lower_impl_aspect_fields(fields, counter, extra_generics),
+            tail.clone(),
         ),
         TypeExpr::Array(inner) => TypeExpr::Array(Box::new(lower_impl_aspect_param_type(
             inner,
@@ -628,6 +647,17 @@ fn lower_projections_in_type(
             bound: Box::new(go(bound)),
             span: span.clone(),
         },
+        // RFC-0121: a `fun_decl` parameter's own type can be `{ x: T::AssocType,
+        // ..R }` just as legitimately as an ordinary `T::AssocType` elsewhere in
+        // its signature -- lower each named field's type the same way; the tail
+        // itself (`RowTail`) carries no `TypeExpr` to lower.
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), go(ty)))
+                .collect(),
+            tail.clone(),
+        ),
     }
 }
 

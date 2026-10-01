@@ -412,6 +412,27 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
+            // RFC-0121: `{ x: Handle.{ fd }, ..R }` needs its named fields'
+            // projections checked exactly like a closed `Record`'s; the tail
+            // itself carries no `TypeExpr` (its row-variable name is checked
+            // against the enclosing `fun_decl`'s declared `row` params
+            // separately, in `infer_fun_decl`, which has that generic-param
+            // context and this pass does not).
+            TypeExpr::OpenRecord(fields, _tail) => {
+                for (_, t) in fields {
+                    self.ty_at(
+                        t,
+                        span,
+                        field_of,
+                        generics,
+                        self_allowed,
+                        self_target,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
+                }
+                Ok(())
+            }
             TypeExpr::Array(inner)
             | TypeExpr::SizedArray(inner, _)
             | TypeExpr::Reference(inner)

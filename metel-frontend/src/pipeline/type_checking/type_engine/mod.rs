@@ -2010,6 +2010,12 @@ impl fmt::Display for GenericBound {
                     f.write_str("dyn ")?;
                     write_type_expr(f, bound)
                 }
+                // RFC-0121: grammar-restricted to a `fun_decl` parameter's own
+                // type; a bound's own field types (`row_bound`/`bound_arg`,
+                // the only thing this `Display` formats) never contain one.
+                TypeExpr::OpenRecord(..) => {
+                    unreachable!("OpenRecord cannot appear in a bound's type argument")
+                }
             }
         }
 

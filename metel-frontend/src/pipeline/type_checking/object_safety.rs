@@ -168,5 +168,11 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         // associated type -- `RecordProjection`'s path names a struct, and unit
         // carries no type at all.
         TypeExpr::RecordProjection { .. } | TypeExpr::Unit => None,
+        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
+        // this function only ever walks an aspect method's declared
+        // signature (`aspect_method`'s own, unchanged, `param`/`type_expr`).
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear in an aspect method's signature")
+        }
     }
 }

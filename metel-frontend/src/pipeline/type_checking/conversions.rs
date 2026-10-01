@@ -355,6 +355,21 @@ fn type_expr_to_infer_in_context(
                     .collect(),
             }
         }
+        // RFC-0121: `{ x: f64, ..R }` is grammar-restricted to a `fun_decl`
+        // parameter's own type annotation, and `infer_fun_decl` intercepts it
+        // there -- minting a fresh bounded `TypeVar` for the parameter and
+        // registering the named fields as a positive, open row bound (reusing
+        // RFC-0118/0120's existing structural row-bound checking) -- before
+        // the parameter's annotation ever reaches this general conversion.
+        // This function is otherwise infallible by signature, so a stray
+        // `OpenRecord` elsewhere (which the grammar cannot produce) panics
+        // here rather than silently lowering to something wrong.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!(
+                "OpenRecord must be intercepted in infer_fun_decl before reaching \
+                 type_expr_to_infer; it is grammar-restricted to fun_decl_param"
+            )
+        }
     }
 }
 

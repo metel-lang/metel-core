@@ -1,0 +1,13 @@
+// RFC-0121 (Open Rows, metel-core#1301): an open-row-tailed parameter is
+// grammar-legal on a method too (`extend` blocks reuse `fun_decl`'s own param
+// list), but this installment's structural resolution only runs for a plain
+// free function -- rejected explicitly at parse time rather than silently
+// mishandled later.
+
+struct Point { x: f64, y: f64 }
+
+extend Point {
+    fun get_x<row R>(self, extra: { x: f64, ..R }) -> f64 { extra.x }
+}
+
+fun main() {}

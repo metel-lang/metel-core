@@ -1048,6 +1048,11 @@ fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
             v
         }
         TypeExpr::Unit | TypeExpr::RecordProjection { .. } => vec![],
+        // RFC-0121: a `fun_decl` parameter's own type can reference a type
+        // alias in a named field (`{ x: MyAlias, ..R }`) exactly as a closed
+        // `Record` can -- expose each field's type for substitution; the
+        // tail carries no `TypeExpr` of its own.
+        TypeExpr::OpenRecord(fields, _tail) => fields.iter_mut().map(|(_, t)| t).collect(),
     }
 }
 

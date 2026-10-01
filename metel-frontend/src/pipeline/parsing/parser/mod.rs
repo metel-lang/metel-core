@@ -7,8 +7,8 @@ use crate::data::ast::{
     Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
     ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath,
     ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot,
-    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, Span, Stmt,
-    StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
+    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowTail, Span,
+    Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
     WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
@@ -226,7 +226,7 @@ fn parse_single_decl(
     match inner.as_rule() {
         Rule::let_decl => Ok(Decl::Let(parse_let_decl(inner, filename)?)),
         Rule::let_mut_decl => Ok(Decl::Mut(parse_mut_decl(inner, filename)?)),
-        Rule::fun_decl => Ok(Decl::Fun(parse_fun_decl(inner, filename)?)),
+        Rule::fun_decl => Ok(Decl::Fun(parse_fun_decl(inner, filename, false)?)),
         Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(
             inner,
             filename,
@@ -316,9 +316,58 @@ fn parse_opt_type_then_expr(
     }
 }
 
+/// RFC-0121: an open-row-tailed parameter (`{ x: f64, ..R }`) is grammar-legal
+/// in a method's or a native function's param list too (`fun_decl_param`,
+/// reached from `extend_impl_braced` and `native_attr?` alike), but neither has
+/// the ordinary free-function call sites this installment's structural
+/// resolution (`infer_fun_decl`) checks against -- reject explicitly here
+/// rather than silently mishandling it downstream (LIMIT-TYPES-001).
+fn reject_open_record_param_outside_free_fun(
+    params: &[Param],
+    is_method: bool,
+    is_native: bool,
+    span: &Span,
+) -> Result<(), MetelError> {
+    if !is_method && !is_native {
+        return Ok(());
+    }
+    let Some(open_record_param) = params
+        .iter()
+        .find(|p| matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))))
+    else {
+        return Ok(());
+    };
+    let row_var = open_record_param
+        .type_ann
+        .as_ref()
+        .and_then(|t| {
+            if let TypeExpr::OpenRecord(_, tail) = t {
+                tail.var.as_deref()
+            } else {
+                None
+            }
+        })
+        .unwrap_or("");
+    let kind = if is_method {
+        "a method's"
+    } else {
+        "a native function's"
+    };
+    Err(MetelError::parse(
+        ParseErrorCode::P0001,
+        format!(
+            "an open row tail (`..{row_var}`) is not yet supported on {kind} parameter \
+             `{}` -- only a plain free function's parameters support it today",
+            open_record_param.name
+        ),
+        span,
+    ))
+}
+
 fn parse_fun_decl(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
+    is_method: bool,
 ) -> Result<FunDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner().peekable();
@@ -361,12 +410,14 @@ fn parse_fun_decl(
         match p.as_rule() {
             Rule::generic_params => generics = parse_generic_params(p, filename)?,
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
-            Rule::param_list => params = parse_param_list(p, filename)?,
+            Rule::fun_decl_param_list => params = parse_param_list(p, filename)?,
             Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
             Rule::block => body = Some(parse_block(p, filename)?),
             _ => {}
         }
     }
+
+    reject_open_record_param_outside_free_fun(&params, is_method, native.is_some(), &span)?;
 
     // A native function has no block body (`;`); other functions require one.
     let body = match (native.is_some(), body) {
@@ -573,7 +624,7 @@ fn parse_extend_impl_block(
                         Rule::assoc_type_def => {
                             assoc_type_defs.push(parse_assoc_type_def(inner, filename)?);
                         }
-                        Rule::fun_decl => methods.push(parse_fun_decl(inner, filename)?),
+                        Rule::fun_decl => methods.push(parse_fun_decl(inner, filename, true)?),
                         _ => {}
                     }
                 }
@@ -709,7 +760,12 @@ fn parse_param_list(
 ) -> Result<Vec<Param>, MetelError> {
     let mut params = vec![];
     for p in pair.into_inner() {
-        if p.as_rule() == Rule::param {
+        // `fun_decl_param` (RFC-0121's `fun_decl`-only param list) shares
+        // `param`'s own shape exactly except for its extra `open_record_type`
+        // type-position alternative, which `parse_param`'s generic
+        // `ident (":" type_expr)?` destructuring and `parse_type_expr`
+        // dispatch both already handle rule-name-agnostically.
+        if p.as_rule() == Rule::param || p.as_rule() == Rule::fun_decl_param {
             params.push(parse_param(p, filename)?);
         }
     }
@@ -2799,6 +2855,52 @@ fn parse_type_expr(
             sort_type_record_fields(&mut fields, filename, &span)?;
             Ok(TypeExpr::Record(fields))
         }
+        // RFC-0121: `{ x: f64, ..R }` / `{ .. }`, reached only from a
+        // `fun_decl` parameter's type (`fun_decl_param`'s own
+        // `open_record_type | type_expr` alternative, not `param`'s plain
+        // `type_expr`) -- see `TypeExpr::OpenRecord`'s doc comment.
+        Rule::open_record_type => {
+            let span = Span::of(&pair, filename);
+            let mut fields = vec![];
+            let mut tail = None;
+            for inner_pair in pair.into_inner() {
+                match inner_pair.as_rule() {
+                    Rule::record_type_field => {
+                        let mut inner = inner_pair.into_inner();
+                        let name = inner
+                            .next()
+                            .ok_or_else(|| {
+                                MetelError::internal("open_record_type: expected field name")
+                            })?
+                            .as_str()
+                            .to_string();
+                        let ty = parse_type_expr(
+                            inner.next().ok_or_else(|| {
+                                MetelError::internal("open_record_type: expected field type")
+                            })?,
+                            filename,
+                        )?;
+                        fields.push((name, ty));
+                    }
+                    Rule::row_tail => {
+                        let tail_span = Span::of(&inner_pair, filename);
+                        let var = inner_pair
+                            .into_inner()
+                            .find(|p| p.as_rule() == Rule::ident)
+                            .map(|p| p.as_str().to_string());
+                        tail = Some(RowTail {
+                            var,
+                            span: tail_span,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            sort_type_record_fields(&mut fields, filename, &span)?;
+            let tail =
+                tail.ok_or_else(|| MetelError::internal("open_record_type: expected a row tail"))?;
+            Ok(TypeExpr::OpenRecord(fields, tail))
+        }
         Rule::reference_type => {
             let elem = parse_type_expr(
                 pair.into_inner().next().ok_or_else(|| {
@@ -3312,15 +3414,22 @@ fn parse_generic_params(
         if p.as_rule() == Rule::generic_param {
             let mut it = p.into_inner();
             let mut is_record = false;
+            let mut is_row = false;
             let first = it
                 .next()
                 .ok_or_else(|| MetelError::internal("generic_param: expected name"))?;
-            let name_pair = if first.as_rule() == Rule::record_kw {
-                is_record = true;
-                it.next()
-                    .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
-            } else {
-                first
+            let name_pair = match first.as_rule() {
+                Rule::record_kw => {
+                    is_record = true;
+                    it.next()
+                        .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
+                }
+                Rule::row_kw => {
+                    is_row = true;
+                    it.next()
+                        .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
+                }
+                _ => first,
             };
             let name = name_pair.as_str().to_string();
             let bounds = it
@@ -3331,6 +3440,7 @@ fn parse_generic_params(
             params.push(GenericParam {
                 name,
                 is_record,
+                is_row,
                 bounds,
             });
         }

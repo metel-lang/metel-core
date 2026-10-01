@@ -5,9 +5,9 @@ use super::{
     build_assoc_projection_map, check_copy_impl_eligibility, closed_nominal_target,
     collect_fun_assoc_eq_constraints, collect_fun_type_var_bounds,
     collect_fun_type_var_record_kinds, collect_negative_fun_type_var_bounds,
-    constrain_with_read_copy, dyn_array_elem_ann, free_vars, fun_generic_map, generalize,
-    infer_block, infer_dyn_array_literal, infer_expr, infer_stmt, infer_type_to_type,
-    native_fun_ty, primitive_type_from_name, type_expr_to_infer_with_assoc_ctx,
+    collect_open_record_param_vars, constrain_with_read_copy, dyn_array_elem_ann, free_vars,
+    fun_generic_map, generalize, infer_block, infer_dyn_array_literal, infer_expr, infer_stmt,
+    infer_type_to_type, native_fun_ty, primitive_type_from_name, type_expr_to_infer_with_assoc_ctx,
     type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
     type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
@@ -432,6 +432,11 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         }
         TypeExpr::DynAspect { bound, .. } => type_expr_contains_impl_aspect(bound),
         TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => false,
+        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
+        // every call site here checks a *return* type instead.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear in a return-type annotation")
+        }
     }
 }
 
@@ -517,6 +522,11 @@ pub(super) fn rewrite_impl_aspect_returns(
         TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => {
             te.clone()
         }
+        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
+        // this function only ever rewrites a *return* type annotation.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear in a return-type annotation")
+        }
     }
 }
 
@@ -572,12 +582,22 @@ pub(super) fn infer_fun_decl(
     // For generic functions, create fresh type variables for each parameter name.
     let generic_map = fun_generic_map(fun, ctx);
 
+    // RFC-0121 installment 1: an open-row-tailed parameter (`{ x: f64, ..R }`)
+    // desugars to its own anonymous, record-kinded, row-bounded `TypeVar` --
+    // fold its bound/record-kind entries in *before* registration below, so
+    // every call site checks it exactly as it would a declared
+    // `<record T: { x: f64, .. }>` parameter.
+    let (open_record_param_vars, open_record_bounds, open_record_record_kinds) =
+        collect_open_record_param_vars(fun, ctx)?;
+
     // Collect merged bounds (inline + where clause) per TypeVar, register for call-site checking.
-    let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+    let mut type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+    type_var_bounds.extend(open_record_bounds);
     if !type_var_bounds.is_empty() {
         ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
     }
-    let type_var_record_kinds = collect_fun_type_var_record_kinds(fun, &generic_map);
+    let mut type_var_record_kinds = collect_fun_type_var_record_kinds(fun, &generic_map);
+    type_var_record_kinds.extend(open_record_record_kinds);
     if !type_var_record_kinds.is_empty() {
         ctx.register_fun_record_kinds(fun.name.clone(), type_var_record_kinds.clone());
     }
@@ -656,8 +676,11 @@ pub(super) fn infer_fun_decl(
     let param_types: Vec<InferType> = fun
         .params
         .iter()
-        .map(|p| {
-            if let Some(ann) = &p.type_ann {
+        .enumerate()
+        .map(|(i, p)| {
+            if let Some(&tv) = open_record_param_vars.get(&i) {
+                Ok(InferType::Var(tv))
+            } else if let Some(ann) = &p.type_ann {
                 te_to_infer(ann, ctx)
             } else {
                 Ok(ctx.fresh_var())
@@ -1453,6 +1476,14 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
             bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
             span: span.clone(),
         },
+        // RFC-0121: grammar-legal on a method's parameter too, but
+        // `parse_fun_decl` itself rejects it there at parse time
+        // (LIMIT-TYPES-001) -- a method's own type expressions, the only
+        // thing this `Self`-substitution function ever processes, can
+        // therefore never actually contain one.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        }
     }
 }
 

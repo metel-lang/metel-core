@@ -1,0 +1,23 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec1: a `row`-kinded generic parameter's
+// only use site implemented so far is a function parameter's own open-row-tailed
+// record type (`{ x: f64, ..R }`). It is desugared to an anonymous, record-kinded,
+// positively-row-bounded type parameter (reusing RFC-0118/0120's existing
+// structural row-bound checking unchanged) -- so it accepts any value whose
+// current row has at least the named fields, open, exactly like an explicit
+// `<record T: { x: f64, .. }>` parameter already does. `R` itself carries no
+// value yet in this installment (not usable in a `where` equation or elsewhere
+// in the signature).
+
+record Point { public x: f64, public y: f64 }
+
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let anon := { x = 3.0, y = 4.0 };
+    assert(get_x(anon) == 3.0);
+
+    let pt := Point { x = 7.0, y = 8.0 };
+    assert(get_x(pt) == 7.0);
+
+    println("ok");
+}

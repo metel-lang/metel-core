@@ -1354,6 +1354,14 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             format!("{} .{{ {} }}", path.join("::"), fields.join(", "))
         }
         TypeExpr::DynAspect { bound, .. } => format!("dyn {}", runtime_type_key(bound)),
+        // RFC-0121: grammar-legal on a method's parameter too, but
+        // `parse_fun_decl` itself rejects it there at parse time
+        // (LIMIT-TYPES-001); this function only ever keys a *method*'s
+        // runtime dispatch signature (`runtime_signature`'s one caller,
+        // `runtime_method_from_decl`), never a free function's.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        }
     }
 }
 

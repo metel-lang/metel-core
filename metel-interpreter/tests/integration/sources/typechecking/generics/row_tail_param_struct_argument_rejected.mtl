@@ -1,0 +1,13 @@
+// RFC-0121 (Open Rows, metel-core#1301): an open-row-tailed parameter desugars
+// to a record-kinded row bound, so a plain `struct` argument is rejected exactly
+// as it already is for an explicit `<record T: { x: f64, .. }>` parameter
+// (RFC-0137/0120) -- a struct's row is never visible to row-bound satisfaction.
+
+struct Point { x: f64, y: f64 }
+
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let pt := Point { x = 3.0, y = 4.0 };
+    let _ := get_x(pt);
+}
