@@ -11,7 +11,7 @@ extend Handle: Display {
 fun by_value(x: dyn Display) -> i64 { 0 }
 fun by_ref(x: &dyn Display) -> i64 { 0 }
 fun by_mut_ref(x: &var dyn Display) -> i64 { 0 }
-fun as_array(x: dyn Display[]) -> i64 { 0 }
+fun as_array(x: [dyn Display]) -> i64 { 0 }
 // Return position: no coercion needed here (that's slice 2's job) -- the
 // parameter is already `&dyn Display`, so this just unifies identically-typed
 // positions against each other.

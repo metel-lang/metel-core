@@ -2790,33 +2790,28 @@ fn parse_type_expr(
             )?;
             Ok(TypeExpr::MutReference(Box::new(elem)))
         }
-        Rule::sized_array_type => {
+        Rule::bracket_array_type => {
             let mut inner = pair.into_inner();
             let elem = parse_type_expr(
                 inner.next().ok_or_else(|| {
-                    MetelError::internal("sized_array_type: expected element type")
+                    MetelError::internal("bracket_array_type: expected element type")
                 })?,
                 filename,
             )?;
-            let n_str = inner
-                .next()
-                .ok_or_else(|| MetelError::internal("sized_array_type: expected count"))?
-                .as_str();
-            let n: u64 = n_str.parse().map_err(|_| {
-                MetelError::internal(format!(
-                    "sized_array_type: count '{n_str}' is not a valid u64"
-                ))
-            })?;
-            Ok(TypeExpr::SizedArray(Box::new(elem), n))
-        }
-        Rule::array_type => {
-            let elem = parse_type_expr(
-                pair.into_inner()
-                    .next()
-                    .ok_or_else(|| MetelError::internal("array_type: expected element type"))?,
-                filename,
-            )?;
-            Ok(TypeExpr::Array(Box::new(elem)))
+            // The `";" ~ decimal_int` suffix is optional (RFC-0171): present means
+            // `[T; N]` (fixed-size), absent means `[T]` (dynamic).
+            match inner.next() {
+                Some(n_pair) => {
+                    let n_str = n_pair.as_str();
+                    let n: u64 = n_str.parse().map_err(|_| {
+                        MetelError::internal(format!(
+                            "bracket_array_type: count '{n_str}' is not a valid u64"
+                        ))
+                    })?;
+                    Ok(TypeExpr::SizedArray(Box::new(elem), n))
+                }
+                None => Ok(TypeExpr::Array(Box::new(elem))),
+            }
         }
         Rule::fun_type => {
             let mut params = vec![];

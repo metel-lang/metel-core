@@ -7,7 +7,7 @@
 // -------------------------------------------------------------------------
 
 struct Stack<T> {
-    items: T[],
+    items: [T],
 }
 
 extend Stack<i64> {
@@ -26,7 +26,7 @@ extend Stack<i64> {
         }
         let top := self.items[len - 1];
         // rebuild without last element
-        var new_items: i64[]  := [];
+        var new_items: [i64]  := [];
         var i := 0;
         while (i < len - 1) {
             array_push(new_items, self.items[i]);
@@ -112,7 +112,7 @@ extend Task {
     }
 }
 
-fun count_done(tasks: Task[]) -> i64 {
+fun count_done(tasks: [Task]) -> i64 {
     var n := 0;
     for (t in tasks) {
         if (t.done) { n += 1; }
@@ -159,7 +159,7 @@ fun main() {
     }
 
     // --- Tokens ---
-    let tokens: Token[] := [
+    let tokens: [Token] := [
         Token::Number { value = 3 },
         Token::Times,
         Token::Number { value = 4 },
@@ -177,7 +177,7 @@ fun main() {
     println(token_str);   // 3 * 4 + 5
 
     // --- Tasks ---
-    var tasks: Task[]  := [
+    var tasks: [Task]  := [
         Task::new("Write interpreter", Priority::High),
         Task::new("Write tests", Priority::High),
         Task::new("Update docs", Priority::Medium),
@@ -201,9 +201,9 @@ fun main() {
     println(int_to_string(done) + "/" + int_to_string(total) + " done");  // 2/4 done
 
     // --- closures + arrays together ---
-    let multipliers: i64[] := [1, 2, 3, 4, 5];
+    let multipliers: [i64] := [1, 2, 3, 4, 5];
     let base := 7;
-    var products: i64[]  := [];
+    var products: [i64]  := [];
     for (m in multipliers) {
         array_push(products, m * base);
     }

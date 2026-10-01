@@ -23,8 +23,8 @@ fun identity<T>(value: T) -> T {
     return value;
 }
 
-fun map_array(arr: i64[], f: |i64| -> i64) -> i64[] {
-    var result: i64[]  := [];
+fun map_array(arr: [i64], f: |i64| -> i64) -> [i64] {
+    var result: [i64]  := [];
     for (item in arr) {
         array_push(result, f(item));
     }
@@ -69,7 +69,7 @@ fun main() {
     println(int_to_string(apply2(add, 8, 9)));  // 17
 
     // --- map_array (closure params inferred from map_array's signature) ---
-    let nums: i64[] := [1, 2, 3, 4, 5];
+    let nums: [i64] := [1, 2, 3, 4, 5];
     let squares := map_array(nums, |x| { return x * x; });
     for (n in squares) {
         print(int_to_string(n) + " ");    // 1 4 9 16 25

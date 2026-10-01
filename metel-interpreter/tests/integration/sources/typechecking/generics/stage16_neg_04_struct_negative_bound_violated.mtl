@@ -6,7 +6,7 @@ aspect Drop {
 }
 
 struct Arena<T: !Drop> {
-    items: T[],
+    items: [T],
 }
 
 struct Resource { x: i64 }

@@ -85,7 +85,7 @@ fun pair_swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
 // result owned. The callback is scaffolding, not part of what this fixture tests; it goes
 // away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where the
 // elements are `Copy` (#335, #328).
-fun find_first<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T> {
+fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
@@ -96,7 +96,7 @@ fun find_first<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T
     Option::None
 }
 
-fun count_where<T>(arr: T[], pred: |&T| -> boolean) -> i64 {
+fun count_where<T>(arr: [T], pred: |&T| -> boolean) -> i64 {
     var cnt := 0;
     for (x in arr) {
         if (pred(&x)) { cnt += 1; }
@@ -104,7 +104,7 @@ fun count_where<T>(arr: T[], pred: |&T| -> boolean) -> i64 {
     cnt
 }
 
-fun map_array<T, U>(arr: T[], f: |&T| -> U) -> U[] {
+fun map_array<T, U>(arr: [T], f: |&T| -> U) -> [U] {
     var out: List<U> := List::new();
     for (x in arr) { out.push(f(&x)); }
     out.as_slice()
@@ -122,14 +122,14 @@ fun safe_div_2(a: i64, b: i64) -> Option<i64> {
 
 // ── Safe array index ──────────────────────────────────────────────────────────
 
-fun safe_get_int(arr: i64[], i: i64) -> Option<i64> {
+fun safe_get_int(arr: [i64], i: i64) -> Option<i64> {
     if (i < 0 || i >= arr.len()) Option::None
     else Option::Some { value = arr[i as u64] }
 }
 
 // ── String lookup in a Pair<String,i64>[] "map" ───────────────────────────────
 
-fun table_get(table: Pair<String, i64>[], key: String) -> Option<i64> {
+fun table_get(table: [Pair<String, i64>], key: String) -> Option<i64> {
     let entry := find_first(
         table,
         [key.clone()] |p: &Pair<String, i64>| -> boolean { (*p).first == key },
@@ -224,17 +224,17 @@ fun main() {
     assert(!option_is_some(chain_zero));
 
     // ── safe_get_int ──────────────────────────────────────────────────────────
-    let arr: i64[] := [10, 20, 30, 40, 50];
+    let arr: [i64] := [10, 20, 30, 40, 50];
     assert(option_or(safe_get_int(arr, 0),  -1) == 10);
-    let arr_4: i64[] := [10, 20, 30, 40, 50];
+    let arr_4: [i64] := [10, 20, 30, 40, 50];
     assert(option_or(safe_get_int(arr_4, 4),  -1) == 50);
-    let arr_5: i64[] := [10, 20, 30, 40, 50];
+    let arr_5: [i64] := [10, 20, 30, 40, 50];
     assert(!option_is_some(safe_get_int(arr_5, 5)));
-    let arr_neg1: i64[] := [10, 20, 30, 40, 50];
+    let arr_neg1: [i64] := [10, 20, 30, 40, 50];
     assert(!option_is_some(safe_get_int(arr_neg1, -1)));
 
     // Chain: get element then double it
-    let arr_2: i64[] := [10, 20, 30, 40, 50];
+    let arr_2: [i64] := [10, 20, 30, 40, 50];
     let doubled_elem := option_map(safe_get_int(arr_2, 2), |x: i64| -> i64 { x * 2 });
     assert(option_or(doubled_elem, -1) == 60);
 
@@ -266,14 +266,14 @@ fun main() {
     assert(bumped.second == 100);
 
     // ── table_get: Pair<String,i64>[] as a lookup table ───────────────────────
-    let table: Pair<String, i64>[] := [
+    let table: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
     ];
 
     let apples  := table_get(table, "apples");
-    let table_again: Pair<String, i64>[] := [
+    let table_again: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
@@ -283,13 +283,13 @@ fun main() {
     assert(!option_is_some(missing));
 
     // Compute total of found items using and_then
-    let table_apples_again: Pair<String, i64>[] := [
+    let table_apples_again: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
     ];
     let apples_for_total := table_get(table_apples_again, "apples");
-    let table_third: Pair<String, i64>[] := [
+    let table_third: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
@@ -301,12 +301,12 @@ fun main() {
     assert(option_or(total, 0) == 10);
 
     // ── find_first and count_where on i64[] ──────────────────────────────────
-    let nums: i64[] := [3, 1, 4, 1, 5, 9, 2, 6];
+    let nums: [i64] := [3, 1, 4, 1, 5, 9, 2, 6];
 
     let first_big := find_first(nums, |x: &i64| -> boolean { *x > 4 }, |x: &i64| -> i64 { *x });
     assert(option_or(first_big, 0) == 5);
 
-    let nums_huge: i64[] := [3, 1, 4, 1, 5, 9, 2, 6];
+    let nums_huge: [i64] := [3, 1, 4, 1, 5, 9, 2, 6];
     let first_huge := find_first(
         nums_huge,
         |x: &i64| -> boolean { *x > 100 },
@@ -314,25 +314,25 @@ fun main() {
     );
     assert(!option_is_some(first_huge));
 
-    let nums_even_count: i64[] := [3, 1, 4, 1, 5, 9, 2, 6];
+    let nums_even_count: [i64] := [3, 1, 4, 1, 5, 9, 2, 6];
     let evens_count := count_where(nums_even_count, |x: &i64| -> boolean { *x % 2 == 0 });
     assert(evens_count == 3);   // 4, 2, 6
 
     // ── map_array<i64, i64> and map_array<i64, boolean> ──────────────────────────
-    let nums_doubled: i64[] := [3, 1, 4, 1, 5, 9, 2, 6];
+    let nums_doubled: [i64] := [3, 1, 4, 1, 5, 9, 2, 6];
     let doubled_arr := map_array(nums_doubled, |x: &i64| -> i64 { *x * 2 });
     assert(doubled_arr.len() == 8);
     assert(doubled_arr[0] == 6);
     assert(doubled_arr[4] == 10);
 
-    let nums_above_mean: i64[] := [3, 1, 4, 1, 5, 9, 2, 6];
-    let above_mean: boolean[] := map_array(nums_above_mean, |x: &i64| -> boolean { *x > 4 });
+    let nums_above_mean: [i64] := [3, 1, 4, 1, 5, 9, 2, 6];
+    let above_mean: [boolean] := map_array(nums_above_mean, |x: &i64| -> boolean { *x > 4 });
     assert(!above_mean[0]);   // 3 <= 4
     assert(above_mean[5]);    // 9 > 4
 
     // ── Composing combinators ─────────────────────────────────────────────────
     // find_first in an array of Pairs: locate entry with value > 5
-    let table_rich: Pair<String, i64>[] := [
+    let table_rich: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
@@ -348,7 +348,7 @@ fun main() {
         },
     );
     assert(option_is_some(rich_entry));
-    let table_rich_again: Pair<String, i64>[] := [
+    let table_rich_again: [Pair<String, i64>] := [
         Pair { first = "apples",  second = 3  },
         Pair { first = "bananas", second = 7  },
         Pair { first = "cherries", second = 12 },
@@ -373,7 +373,7 @@ fun main() {
     assert(sign(0)  ==  0);
 
     // ── id used again at f64 via map_array ──────────────────────────────────
-    let floats: f64[] := [1.0, 2.0, 3.0];
+    let floats: [f64] := [1.0, 2.0, 3.0];
     let same := map_array(floats, |x: &f64| -> f64 { id(*x) });
     assert(same[0] == 1.0);
     assert(same[2] == 3.0);

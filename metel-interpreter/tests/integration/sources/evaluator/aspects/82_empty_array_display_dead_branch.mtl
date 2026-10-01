@@ -14,9 +14,9 @@
 // rather than erroring.
 
 fun main() {
-    let empty: i64[] := [];
+    let empty: [i64] := [];
     assert(empty.to_string() == "[]");
 
-    let nonempty: i64[] := [1, 2, 3];
+    let nonempty: [i64] := [1, 2, 3];
     assert(nonempty.to_string() == "[1, 2, 3]");
 }

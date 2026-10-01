@@ -111,7 +111,7 @@ fun main() {
     // Fixed-size array repeat construction and coercion to slice.
     let zeros: [i32; 4] := [0; 4];
     assert(zeros.len() == 4);
-    let z_slice: i32[] := zeros;
+    let z_slice: [i32] := zeros;
     assert(z_slice[0] == 0i32);
     assert(z_slice[3] == 0i32);
 

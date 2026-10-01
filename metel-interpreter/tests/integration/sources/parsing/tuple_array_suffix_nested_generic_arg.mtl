@@ -1,6 +1,6 @@
 // METEL-191 acceptance: the `(T, U)[]` array suffix must also bind correctly
 // to the tuple when it appears nested inside a generic type argument.
-fun groups() -> List<(String, String)[]> {
+fun groups() -> List<[(String, String)]> {
     return List::new();
 }
 

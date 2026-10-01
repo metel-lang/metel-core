@@ -43,7 +43,7 @@ fun main() {
     let _r: i32 := tmp;
 
     // Array annotation coerces elements.
-    let _s: u8[] := [0, 1, 2, 255];
+    let _s: [u8] := [0, 1, 2, 255];
 
     // Cast is well-typed when From impl exists.
     let _t: u8  := 200 as u8;

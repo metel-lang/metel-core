@@ -12,7 +12,7 @@ fun clamp<T>(v: T, lo: T, hi: T) -> T {
 // so requiring `Copy` keeps the callbacks and the turbofish call sites exactly as they
 // were — the alternative, `f: (&T) -> U`, would put a deref in every closure of a fixture
 // that is about sized numeric types, not references.
-fun map_to_list<T: Copy, U>(src: T[], f: |T| -> U) -> List<U> {
+fun map_to_list<T: Copy, U>(src: [T], f: |T| -> U) -> List<U> {
     var out: List<U> := List::new();
     for (x in src) {
         out.push(f(x));
@@ -73,7 +73,7 @@ fun main() {
     assert(clamp::<f32>(0.7, 0.0, 1.0) == 0.7f32);
 
     // map_to_list: i32[] literal — element type propagated from annotation.
-    let src_i32: i32[] := [1, 2, 3, 4, 5];
+    let src_i32: [i32] := [1, 2, 3, 4, 5];
 
     // i32[] → List<i32> doubling each element.
     let doubled := map_to_list::<i32, i32>(src_i32, |x: i32| -> i32 { x * 2i32 });
@@ -88,7 +88,7 @@ fun main() {
     };
 
     // map_to_list: i32[] → List<i64> widening cast.
-    let src_i32_widened: i32[] := [1, 2, 3, 4, 5];
+    let src_i32_widened: [i32] := [1, 2, 3, 4, 5];
     let widened := map_to_list::<i32, i64>(src_i32_widened, |x: i32| -> i64 { x as i64 });
     assert((&widened).len() == 5);
     match ((&widened).get(2)) {
@@ -97,7 +97,7 @@ fun main() {
     };
 
     // map_to_list: i32[] → List<boolean> via threshold.
-    let src_i32_flags: i32[] := [1, 2, 3, 4, 5];
+    let src_i32_flags: [i32] := [1, 2, 3, 4, 5];
     let flags := map_to_list::<i32, boolean>(src_i32_flags, |x: i32| -> boolean { x > 3i32 });
     assert((&flags).len() == 5);
     match ((&flags).get(3)) {
@@ -162,7 +162,7 @@ fun main() {
     };
 
     // Cross-sized cast inside a loop: accumulate u8 values into i64.
-    let bytes: u8[] := [10, 20, 30, 40, 50];
+    let bytes: [u8] := [10, 20, 30, 40, 50];
     var acc: i64 := 0;
     for (b in bytes) {
         acc += b as i64;
@@ -172,13 +172,13 @@ fun main() {
     // Fixed-size repeat array — element type now propagated from annotation.
     let zeros: [i32; 4] := [0; 4];
     assert(zeros.len() == 4);
-    let z_slice: i32[] := zeros;
+    let z_slice: [i32] := zeros;
     assert(z_slice[0] == 0i32);
     assert(z_slice[3] == 0i32);
 
     // Fixed-size array of i32 coerced to slice, then mapped.
     let fixed: [i32; 3] := [100, 200, 300];
-    let fixed_slice: i32[] := fixed;
+    let fixed_slice: [i32] := fixed;
     let mapped := map_to_list::<i32, i32>(fixed_slice, |x: i32| -> i32 { x / 100i32 });
     assert((&mapped).len() == 3);
     match ((&mapped).get(0)) { Perhaps::Some { value } => assert(value == 1i32), None => assert(false) };

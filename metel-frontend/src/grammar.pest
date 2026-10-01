@@ -322,8 +322,7 @@ type_expr = {
     fun_type
   | mut_reference_type
   | reference_type
-  | sized_array_type  // must come before array_type — both start with "["
-  | array_type        // atom "[]" — must precede the unit/tuple/named atoms it wraps
+  | bracket_array_type  // "[" Type (";" INT)? "]" — RFC-0171
   | unit_type
   | tuple_type
   | record_projection_type
@@ -365,11 +364,14 @@ fun_type   = { fun_type_qualifier* ~ "|" ~ type_list? ~ "|" ~ "->" ~ type_expr }
 fun_type_qualifier = { once_kw | mut_kw }
 reference_type = { "&" ~ type_expr }
 mut_reference_type = { "&" ~ mut_kw ~ type_expr }
-sized_array_type = { "[" ~ type_expr ~ ";" ~ decimal_int ~ "]" }
-array_type = { array_atom ~ "[]" }
-// The element of a postfix `[]` array: a unit, tuple, or named type. Silent so
-// the matched inner rule flattens into `array_type` and the parser is unchanged.
-array_atom = _{ unit_type | tuple_type | record_projection_type | record_type | extends_type | dyn_type | named_type }
+// RFC-0171: merges the old sized_array_type ("[" Type ";" INT "]") and postfix
+// array_type (atom "[]") into one production by making the size suffix
+// optional. The inner slot is the fully general `type_expr` sized_array_type
+// always had — unifying onto its shape (rather than array_type's old
+// atom-restricted one) is what makes `[&T]` / `[|i64| -> T]` parse too, not
+// just `[T; N]`'s equivalents, closing an asymmetry that had no principled
+// reason to exist (RFC-0171 §2).
+bracket_array_type = { "[" ~ type_expr ~ (";" ~ decimal_int)? ~ "]" }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 type_args  = { type_expr ~ ("," ~ type_expr)* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }

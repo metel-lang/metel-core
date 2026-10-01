@@ -14,19 +14,19 @@ aspect Bar {
     fun describe(&self) -> String;
 }
 
-extend<T: Display> T[]: Foo {
+extend<T: Display> [T]: Foo {
     fun describe(&self) -> String {
         return "foo-array";
     }
 }
 
-extend<T: Clone> T[]: Bar { // ERROR[T0013]
+extend<T: Clone> [T]: Bar { // ERROR[T0013]
     fun describe(&self) -> String {
         return "bar-array";
     }
 }
 
 fun main() {
-    let a: i64[] := [1, 2, 3];
+    let a: [i64] := [1, 2, 3];
     println(a.describe());
 }

@@ -17,7 +17,7 @@ let ones:  [i64; 3] := [1, 2, 3];
 let result: i64 := sum3(ones);
 
 // Coercion: [T; N] coerces to T[] when passed as T[] argument.
-fun first(xs: i64[]) -> i64 { xs[0] }
+fun first(xs: [i64]) -> i64 { xs[0] }
 let coerced: i64 := first(zeros);
 
 // For-in over sized array.

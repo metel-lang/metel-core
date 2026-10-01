@@ -6,7 +6,7 @@
 // Ascription is the only inline option; the alternative requires a binding
 // whose only purpose is to carry the type annotation to the call site.
 
-fun first_or_default(items: i64[], fallback: Perhaps<i64>) -> i64 {
+fun first_or_default(items: [i64], fallback: Perhaps<i64>) -> i64 {
     match (fallback) {
         Perhaps::Some { value } => value,
         None => if (items.len() > 0) { items[0] } else { 0 },

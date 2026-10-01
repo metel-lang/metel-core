@@ -28,7 +28,7 @@ extend Tag: Printable {
     fun print(&self) {}
 }
 
-fun print_both(a: extends Printable[], b: extends Printable[]) {
+fun print_both(a: [extends Printable], b: [extends Printable]) {
     for (x in a) {
         x.print()
     }
@@ -37,6 +37,6 @@ fun print_both(a: extends Printable[], b: extends Printable[]) {
     }
 }
 
-fun run(labels: Label[], tags: Tag[]) {
+fun run(labels: [Label], tags: [Tag]) {
     print_both(labels, tags)
 }

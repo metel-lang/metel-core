@@ -2,14 +2,14 @@
 // every annotation position, not only named types (METEL-191).
 
 struct PairTable {
-    rows: (String, i64)[],
+    rows: [(String, i64)],
 }
 
-fun keep(rows: (String, i64)[]) -> (String, i64)[] {
+fun keep(rows: [(String, i64)]) -> [(String, i64)] {
     rows
 }
 
-let rows_for_table: (String, i64)[] := [("alpha", 1), ("beta", 2)];
+let rows_for_table: [(String, i64)] := [("alpha", 1), ("beta", 2)];
 let table := PairTable { rows = keep(rows_for_table) };
 let name: &String := &table.rows[0].0;
 let value: i64 := table.rows[0].1;

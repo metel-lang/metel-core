@@ -80,10 +80,10 @@ extend Rectangle: Describable {
 
 // ── User-defined Iterable ──────────────────────────────────────────────────────
 
-struct AreaList { data: f64[], pos: i64 }
+struct AreaList { data: [f64], pos: i64 }
 
 extend AreaList {
-    fun new(data: f64[]) -> AreaList { AreaList { data = data, pos = 0 } }
+    fun new(data: [f64]) -> AreaList { AreaList { data = data, pos = 0 } }
     fun len(&self) -> i64 { self.data.len() }
 }
 
@@ -203,7 +203,7 @@ fun main() {
     println("done");
 
     // User-defined Iterable: collect all areas into a total
-    let areas: f64[] := [c5.area(), r34.area(), c10.area()];
+    let areas: [f64] := [c5.area(), r34.area(), c10.area()];
     let seq := AreaList::new(areas);
     assert(seq.len() == 3);
     var total_area := 0.0;
@@ -213,7 +213,7 @@ fun main() {
 
     // Empty Iterable: loop body never runs
     var body_ran: boolean  := false;
-    let empty_areas: f64[] := [];
+    let empty_areas: [f64] := [];
     for (_a in AreaList::new(empty_areas)) { body_ran := true; }
     assert(!body_ran);
 

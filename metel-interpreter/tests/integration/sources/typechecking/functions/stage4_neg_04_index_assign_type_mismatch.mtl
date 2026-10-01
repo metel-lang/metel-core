@@ -1,6 +1,6 @@
 // Negative: assigning a value of the wrong type to an array element.
 
-fun bad(arr: i64[]) -> i64[] {
+fun bad(arr: [i64]) -> [i64] {
     arr[0] := true; // ERROR[T0001]
     arr
 }

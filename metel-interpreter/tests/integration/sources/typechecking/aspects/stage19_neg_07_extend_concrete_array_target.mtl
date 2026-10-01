@@ -5,7 +5,7 @@ aspect Area {
 // RFC-0061 grants structural impl targets, but only the generic form is
 // registered. A concrete one has nowhere to key on, so its methods could never
 // be found — rejected rather than accepted-and-unreachable (metel-core#581).
-extend i64[]: Area {
+extend [i64]: Area {
     fun area(&self) -> i64 { return 1; }
 }
 

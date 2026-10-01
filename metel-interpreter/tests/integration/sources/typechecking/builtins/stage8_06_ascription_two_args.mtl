@@ -6,14 +6,14 @@
 // on each is the only way to resolve them without hoisting two separate bindings
 // whose names carry no meaning beyond surviving to the call site.
 
-fun zip_lengths(a: i64[], b: String[]) -> i64 {
+fun zip_lengths(a: [i64], b: [String]) -> i64 {
     a.len() + b.len()
 }
 
 // Ascription form — both element types resolved inline, no extra names.
-let _: i64 := zip_lengths([] : i64[], [] : String[]);
+let _: i64 := zip_lengths([] : [i64], [] : [String]);
 
 // Alternative: hoist two bindings. The names exist only to carry type annotations.
-let empty_ints: i64[] := [];
-let empty_strs: String[] := [];
+let empty_ints: [i64] := [];
+let empty_strs: [String] := [];
 let _: i64 := zip_lengths(empty_ints, empty_strs);

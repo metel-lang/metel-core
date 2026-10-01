@@ -1,4 +1,4 @@
-fun via_param(arr: &i64[]) -> i64 {
+fun via_param(arr: &[i64]) -> i64 {
     arr.len()
 }
 
@@ -7,7 +7,7 @@ fun via_sized(arr: &[i64; 3]) -> i64 {
 }
 
 fun main() {
-    let data: i64[] := [1, 2, 3];
+    let data: [i64] := [1, 2, 3];
     assert(via_param(&data) == 3);
     let fixed: [i64; 3] := [4, 5, 6];
     assert(via_sized(&fixed) == 3);

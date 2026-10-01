@@ -3,11 +3,11 @@ aspect Area {
 }
 
 // The generic form is what RFC-0061 implements, and it dispatches.
-extend<T> T[]: Area {
+extend<T> [T]: Area {
     fun area(&self) -> i64 { return 7; }
 }
 
 fun main() {
-    let a: i64[] := [1, 2];
+    let a: [i64] := [1, 2];
     assert(a.area() == 7);
 }

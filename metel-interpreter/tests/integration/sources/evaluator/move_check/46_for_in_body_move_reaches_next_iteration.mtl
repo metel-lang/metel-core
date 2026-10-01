@@ -1,6 +1,6 @@
 fun main() {
     let s := "hello";
-    let values: i64[] := [1, 2, 3];
+    let values: [i64] := [1, 2, 3];
     for (value in values) {
         let moved := s;
     }

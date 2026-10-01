@@ -15,7 +15,7 @@ fun unwrap_task(r: Result<Task, ValidationError>) -> Task {
     }
 }
 
-fun make_tasks() -> Task[] {
+fun make_tasks() -> [Task] {
     let t1 := unwrap_task(validate_task("Design API",  Priority::High,   Status::Open,       5));
     let t2 := unwrap_task(validate_task("Write tests", Priority::Medium, Status::InProgress, 3));
     let t3 := unwrap_task(validate_task("Deploy",      Priority::High,   Status::Done,       2));
@@ -107,11 +107,11 @@ fun main() {
     // 11. compute_completion_pct: 1 done / 5 total = 20%
     let tasks_for_completion := make_tasks();
     assert(compute_completion_pct(tasks_for_completion) == 20);
-    let empty_tasks: Task[] := [];
+    let empty_tasks: [Task] := [];
     assert(compute_completion_pct(empty_tasks) == 0);
 
     // 12. fold_left directly: product of [1,2,3,4] = 24
-    let small: i64[] := [1, 2, 3, 4];
+    let small: [i64] := [1, 2, 3, 4];
     let product := fold_left(small, 1, |acc: i64, x: &i64| -> i64 { acc * *x });
     assert(product == 24);
 

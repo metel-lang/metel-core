@@ -52,10 +52,10 @@ extend Temperature: Printable {
 
 // ── StringBag Iterable ─────────────────────────────────────────────────────────
 
-struct StringBag { items: String[], pos: i64 }
+struct StringBag { items: [String], pos: i64 }
 
 extend StringBag {
-    fun new(items: String[]) -> StringBag { StringBag { items = items, pos = 0 } }
+    fun new(items: [String]) -> StringBag { StringBag { items = items, pos = 0 } }
     fun len(&self) -> i64 { self.items.len() }
 }
 
@@ -172,7 +172,7 @@ fun main() {
 
     // Empty StringBag
     var empty_ran := false;
-    let empty_strs: String[] := [];
+    let empty_strs: [String] := [];
     for (_label in StringBag::new(empty_strs)) { empty_ran := true; }
     assert(!empty_ran);
 

@@ -3,7 +3,7 @@
 // so that None and bare enum variants can be typed without a local annotation.
 
 // Return None in a Perhaps<i64>-returning function.
-fun find(arr: i64[], target: i64) -> Perhaps<i64> {
+fun find(arr: [i64], target: i64) -> Perhaps<i64> {
     return None;
 }
 
@@ -16,7 +16,7 @@ fun divide(a: f64, b: f64) -> Result<f64, String> {
 }
 
 // Break None in a loop whose result is annotated as Perhaps<i64>.
-fun first_positive(arr: i64[]) -> Perhaps<i64> {
+fun first_positive(arr: [i64]) -> Perhaps<i64> {
     let result: Perhaps<i64> := loop {
         break None;
     };

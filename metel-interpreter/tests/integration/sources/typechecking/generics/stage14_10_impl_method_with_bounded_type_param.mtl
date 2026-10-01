@@ -9,7 +9,7 @@ aspect Comparable {
 }
 
 struct SortedList<T: Comparable> {
-    items: T[],
+    items: [T],
 }
 
 struct Num { value: i64 }

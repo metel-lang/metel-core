@@ -5,15 +5,15 @@
 // -- construct_generic_body had no way to see the outer call's own expected return type,
 // only argument types, so the inner call's type parameter stayed permanently unresolved.
 
-fun make<V>() -> V[] { [] }
+fun make<V>() -> [V] { [] }
 
-fun wrapper<U>() -> U[] {
-    let out: U[] := make();
+fun wrapper<U>() -> [U] {
+    let out: [U] := make();
     out
 }
 
 fun main() {
-    let r: i64[] := wrapper();
+    let r: [i64] := wrapper();
     assert(r.len() == 0);
     println("ok");
 }

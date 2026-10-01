@@ -25,7 +25,7 @@ fun sum_parsed(a: String, b: String) -> Result<i64, String> {
     return Result::Ok { value = x + y };
 }
 
-fun lookup(arr: String[], index: i64) -> Perhaps<String> {
+fun lookup(arr: [String], index: i64) -> Perhaps<String> {
     if (index < 0 || index >= array_len(arr)) {
         return nope;
     }
@@ -64,7 +64,7 @@ fun main() {
     }
 
     // --- Perhaps and lookup ---
-    let items: String[] := ["apple", "banana", "cherry"];
+    let items: [String] := ["apple", "banana", "cherry"];
 
     match (lookup(items, 1)) {
         Perhaps::Some { value } => println(value),                        // banana

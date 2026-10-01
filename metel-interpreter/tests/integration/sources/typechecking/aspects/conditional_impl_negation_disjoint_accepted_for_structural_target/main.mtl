@@ -15,11 +15,11 @@ aspect Serialize3 {
     fun ser(self) -> String;
 }
 
-extend<T: Copy3> T[]: Serialize3 {
+extend<T: Copy3> [T]: Serialize3 {
     fun ser(self) -> String { return "copyable"; }
 }
 
-extend<T: !Copy3> T[]: Serialize3 {
+extend<T: !Copy3> [T]: Serialize3 {
     fun ser(self) -> String { return "not-copyable"; }
 }
 

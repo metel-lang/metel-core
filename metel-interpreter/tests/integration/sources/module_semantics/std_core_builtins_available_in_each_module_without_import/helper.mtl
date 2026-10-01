@@ -1,4 +1,4 @@
-public fun sum(arr: i64[]) -> i64 {         
+public fun sum(arr: [i64]) -> i64 {         
     assert(arr.len() > 0);         
     var total := 0;         
     var i := 0;         

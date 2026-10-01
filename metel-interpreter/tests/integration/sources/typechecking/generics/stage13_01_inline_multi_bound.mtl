@@ -10,7 +10,7 @@ aspect Comparable {
 }
 
 struct SortedList<T: Printable + Comparable> {
-    items: T[],
+    items: [T],
 }
 
 struct Item {

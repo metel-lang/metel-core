@@ -1,7 +1,7 @@
 // Stage 8: type ascription operator `:`.
 
 // Empty array element type resolved via ascription
-let n: i64[] := [] : i64[];
+let n: [i64] := [] : [i64];
 
 // Identity ascription on a literal
 let x: i64 := 1 : i64;
@@ -13,12 +13,12 @@ fun check_var() {
 }
 
 // Ascription in argument position
-fun take_ints(arr: i64[]) -> i64 { arr.len() }
-let _: i64 := take_ints([] : i64[]);
+fun take_ints(arr: [i64]) -> i64 { arr.len() }
+let _: i64 := take_ints([] : [i64]);
 
 // Ascription disambiguates two empty-array arguments
-fun two_arrays(a: i64[], b: f64[]) -> i64 { a.len() }
-let _: i64 := two_arrays([] : i64[], [] : f64[]);
+fun two_arrays(a: [i64], b: [f64]) -> i64 { a.len() }
+let _: i64 := two_arrays([] : [i64], [] : [f64]);
 
 // Ascription on a struct literal
 struct Point { x: i64, y: i64 }
@@ -38,7 +38,7 @@ fun returns_ascribed() -> i64 {
 
 // Ascription resolves the type of an unannotated let binding
 fun check_inferred() {
-    let arr := [] : i64[];
+    let arr := [] : [i64];
     let _: i64 := arr.len();
 }
 

@@ -63,12 +63,12 @@ fun safe_sqrt_2(n: i64) -> MyResult<i64, String> {
 // ── Generic Stack<T> backed by i64 ───────────────────────────────────────────
 
 struct Stack {
-    items: i64[],
+    items: [i64],
     size:  i64,
 }
 
 fun stack_new() -> Stack {
-    let items: i64[] := [];
+    let items: [i64] := [];
     Stack { items = items, size = 0 }
 }
 
@@ -93,7 +93,7 @@ fun stack_empty(s: &Stack) -> boolean {
 // filter/find extraction owned. The callback is scaffolding, not part of what this fixture
 // tests; it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
 // the elements are `Copy` (#335, #328).
-fun filter<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> T[] {
+fun filter<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
@@ -105,19 +105,19 @@ fun filter<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> T[] {
     out.as_slice()
 }
 
-fun map_arr<T, U>(arr: T[], f: |&T| -> U) -> U[] {
+fun map_arr<T, U>(arr: [T], f: |&T| -> U) -> [U] {
     var out: List<U> := List::new();
     for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }
 
-fun fold<T, A>(arr: T[], init: A, f: |A, &T| -> A) -> A {
+fun fold<T, A>(arr: [T], init: A, f: |A, &T| -> A) -> A {
     var acc := init;
     for (x in arr) { acc := f(acc, &x); }
     acc
 }
 
-fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: |A, B| -> C) -> C[] {
+fun zip_with<A: Copy, B: Copy, C>(a: [A], b: [B], f: |A, B| -> C) -> [C] {
     var out: List<C> := List::new();
     let len := if (a.len() < b.len()) a.len() else b.len();
     var i := 0;
@@ -128,21 +128,21 @@ fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: |A, B| -> C) -> C[] {
     out.as_slice()
 }
 
-fun any<T>(arr: T[], pred: |&T| -> boolean) -> boolean {
+fun any<T>(arr: [T], pred: |&T| -> boolean) -> boolean {
     for (x in arr) {
         if (pred(&x)) { return true; }
     }
     false
 }
 
-fun all<T>(arr: T[], pred: |&T| -> boolean) -> boolean {
+fun all<T>(arr: [T], pred: |&T| -> boolean) -> boolean {
     for (x in arr) {
         if (!pred(&x)) { return false; }
     }
     true
 }
 
-fun take<T: Copy>(arr: T[], n: i64) -> T[] {
+fun take<T: Copy>(arr: [T], n: i64) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < n && i < arr.len()) {
@@ -152,7 +152,7 @@ fun take<T: Copy>(arr: T[], n: i64) -> T[] {
     out.as_slice()
 }
 
-fun drop<T: Copy>(arr: T[], n: i64) -> T[] {
+fun drop<T: Copy>(arr: [T], n: i64) -> [T] {
     var out: List<T> := List::new();
     var i := n;
     while (i < arr.len()) {
@@ -167,14 +167,14 @@ fun drop<T: Copy>(arr: T[], n: i64) -> T[] {
 fun min_int(a: i64, b: i64) -> i64 { if (a < b) a else b }
 fun max_int(a: i64, b: i64) -> i64 { if (a > b) a else b }
 
-fun array_min(arr: i64[]) -> i64 {
+fun array_min(arr: [i64]) -> i64 {
     var m := arr[0];
     var i := 1;
     while (i < arr.len()) { m := min_int(m, arr[i as u64]); i += 1; }
     m
 }
 
-fun array_max(arr: i64[]) -> i64 {
+fun array_max(arr: [i64]) -> i64 {
     var m := arr[0];
     var i := 1;
     while (i < arr.len()) { m := max_int(m, arr[i as u64]); i += 1; }
@@ -183,7 +183,7 @@ fun array_max(arr: i64[]) -> i64 {
 
 // ── Recursive: binary search ──────────────────────────────────────────────────
 
-fun bsearch(arr: &i64[], target: i64, lo: i64, hi: i64) -> i64 {
+fun bsearch(arr: &[i64], target: i64, lo: i64, hi: i64) -> i64 {
     if (lo > hi) { return -1; }
     let mid := (lo + hi) / 2;
     if (arr[mid as u64] == target) { return mid; }
@@ -193,14 +193,14 @@ fun bsearch(arr: &i64[], target: i64, lo: i64, hi: i64) -> i64 {
 
 // ── Recursive: sum of array ───────────────────────────────────────────────────
 
-fun rsum(arr: &i64[], i: i64) -> i64 {
+fun rsum(arr: &[i64], i: i64) -> i64 {
     if (i >= (*arr).len()) { return 0; }
     arr[i as u64] + rsum(arr, i + 1)
 }
 
 // ── Concat two int arrays ─────────────────────────────────────────────────────
 
-fun concat_int(a: i64[], b: i64[]) -> i64[] {
+fun concat_int(a: [i64], b: [i64]) -> [i64] {
     var out: List<i64> := List::new();
     for (x in a) { out.push(x); }
     for (x in b) { out.push(x); }
@@ -209,7 +209,7 @@ fun concat_int(a: i64[], b: i64[]) -> i64[] {
 
 // ── Perhaps<T> combinators ────────────────────────────────────────────────────
 
-fun find_first<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> Perhaps<T> {
+fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Perhaps<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
@@ -319,7 +319,7 @@ fun main() {
     assert(!result_unwrap_or(neg, true));
 
     // ── filter ────────────────────────────────────────────────────────────────
-    let nums: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let evens := filter(
         nums,
         |x: &i64| -> boolean { *x % 2 == 0 },
@@ -328,7 +328,7 @@ fun main() {
     assert(evens.len() == 5);
     assert(evens[0] == 2);
 
-    let nums_big: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_big: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let big := filter(
         nums_big,
         |x: &i64| -> boolean { *x > 7 },
@@ -337,7 +337,7 @@ fun main() {
     assert(big.len() == 3);
     assert(big[0] == 8);
 
-    let strs: String[] := ["apple", "banana", "cherry", "date"];
+    let strs: [String] := ["apple", "banana", "cherry", "date"];
     let long_words := filter(
         strs,
         |s: &String| -> boolean { (*s).len() > 5 },
@@ -346,128 +346,128 @@ fun main() {
     assert(long_words.len() == 2);
 
     // ── map_arr ───────────────────────────────────────────────────────────────
-    let nums_squares: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_squares: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let squares := map_arr(nums_squares, |x: &i64| -> i64 { *x * *x });
     assert(squares.len() == 10);
     assert(squares[0] == 1);
     assert(squares[9] == 100);
 
-    let nums_is_even: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let is_even: boolean[] := map_arr(nums_is_even, |x: &i64| -> boolean { *x % 2 == 0 });
+    let nums_is_even: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let is_even: [boolean] := map_arr(nums_is_even, |x: &i64| -> boolean { *x % 2 == 0 });
     assert(!is_even[0]);
     assert(is_even[1]);
 
     // ── fold ──────────────────────────────────────────────────────────────────
-    let nums_sum: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_sum: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let sum := fold(nums_sum, 0, |acc: i64, x: &i64| -> i64 { acc + *x });
     assert(sum == 55);
 
-    let product_small: i64[] := [1, 2, 3, 4, 5];
+    let product_small: [i64] := [1, 2, 3, 4, 5];
     let prod := fold(product_small, 1, |acc: i64, x: &i64| -> i64 { acc * *x });
     assert(prod == 120);
 
-    let nums_max: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_max: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let maximum := fold(nums_max, 1, |acc: i64, x: &i64| -> i64 { max_int(acc, *x) });
     assert(maximum == 10);
 
     // fold over boolean[]
-    let flags: boolean[] := [true, true, false, true];
+    let flags: [boolean] := [true, true, false, true];
     let all_set := fold(flags, true, |acc: boolean, b: &boolean| -> boolean { acc && *b });
     assert(!all_set);
 
-    let flags_any: boolean[] := [true, true, false, true];
+    let flags_any: [boolean] := [true, true, false, true];
     let any_set := fold(flags_any, false, |acc: boolean, b: &boolean| -> boolean { acc || *b });
     assert(any_set);
 
     // fold to build a string
-    let words: String[] := ["hello", " ", "world"];
+    let words: [String] := ["hello", " ", "world"];
     let joined := fold(words, "", |acc: String, s: &String| -> String { acc + *s });
     assert(joined == "hello world");
 
     // ── zip_with ──────────────────────────────────────────────────────────────
-    let a: i64[] := [1, 2, 3, 4];
-    let b: i64[] := [10, 20, 30, 40];
+    let a: [i64] := [1, 2, 3, 4];
+    let b: [i64] := [10, 20, 30, 40];
     let dot := zip_with(a, b, |x: i64, y: i64| -> i64 { x * y });
     assert(dot.len() == 4);
     assert(dot[0] == 10);
     assert(dot[3] == 160);
 
     // zip shorter array — result truncated to shorter length
-    let a_partial: i64[] := [1, 2, 3, 4];
-    let c: i64[] := [100, 200];
+    let a_partial: [i64] := [1, 2, 3, 4];
+    let c: [i64] := [100, 200];
     let partial := zip_with(a_partial, c, |x: i64, y: i64| -> i64 { x + y });
     assert(partial.len() == 2);
     assert(partial[1] == 202);
 
     // zip producing boolean[]: check which b[i] equals a[i]*10
-    let a_exact: i64[] := [1, 2, 3, 4];
-    let b_exact: i64[] := [10, 20, 30, 40];
-    let exact: boolean[] := zip_with(a_exact, b_exact, |x: i64, y: i64| -> boolean { y == x * 10 });
+    let a_exact: [i64] := [1, 2, 3, 4];
+    let b_exact: [i64] := [10, 20, 30, 40];
+    let exact: [boolean] := zip_with(a_exact, b_exact, |x: i64, y: i64| -> boolean { y == x * 10 });
     assert(exact[0]);   // 10 == 10
     assert(exact[1]);   // 20 == 20
     assert(exact[2]);   // 30 == 30
     assert(exact[3]);   // 40 == 40
 
     // ── any / all ─────────────────────────────────────────────────────────────
-    let nums_any_9: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_any_9: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(any(nums_any_9, |x: &i64| -> boolean { *x > 9 }));
-    let nums_any_100: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_any_100: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(!any(nums_any_100, |x: &i64| -> boolean { *x > 100 }));
-    let nums_all_pos: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_all_pos: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(all(nums_all_pos, |x: &i64| -> boolean { *x > 0 }));
-    let nums_all_gt5: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_all_gt5: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(!all(nums_all_gt5, |x: &i64| -> boolean { *x > 5 }));
 
     // ── take / drop ───────────────────────────────────────────────────────────
-    let nums_first3: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_first3: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first3 := take(nums_first3, 3);
     assert(first3.len() == 3);
     assert(first3[2] == 3);
 
-    let nums_rest: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_rest: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let rest := drop(nums_rest, 7);
     assert(rest.len() == 3);
     assert(rest[0] == 8);
 
-    let nums_take_all: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_take_all: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let take_all := take(nums_take_all, 100);
     assert(take_all.len() == 10);
 
     // ── array_min / array_max ─────────────────────────────────────────────────
-    let data: i64[] := [5, 3, 8, 1, 9, 2, 7];
+    let data: [i64] := [5, 3, 8, 1, 9, 2, 7];
     assert(array_min(data) == 1);
-    let data_max: i64[] := [5, 3, 8, 1, 9, 2, 7];
+    let data_max: [i64] := [5, 3, 8, 1, 9, 2, 7];
     assert(array_max(data_max) == 9);
 
     // ── binary search ─────────────────────────────────────────────────────────
-    let sorted: i64[] := [10, 20, 30, 40, 50, 60, 70];
+    let sorted: [i64] := [10, 20, 30, 40, 50, 60, 70];
     assert(bsearch(&sorted, 10, 0, 6) == 0);
     assert(bsearch(&sorted, 70, 0, 6) == 6);
     assert(bsearch(&sorted, 40, 0, 6) == 3);
     assert(bsearch(&sorted, 99, 0, 6) == -1);
 
     // ── recursive sum ─────────────────────────────────────────────────────────
-    let data_sum: i64[] := [5, 3, 8, 1, 9, 2, 7];
+    let data_sum: [i64] := [5, 3, 8, 1, 9, 2, 7];
     assert(rsum(&data_sum, 0) == 35);
     assert(rsum(&data_sum, 3) == 19);   // 1+9+2+7
 
     // ── concat_int ────────────────────────────────────────────────────────────
-    let a1: i64[] := [1, 2, 3];
-    let a2: i64[] := [4, 5, 6];
+    let a1: [i64] := [1, 2, 3];
+    let a2: [i64] := [4, 5, 6];
     let merged := concat_int(a1, a2);
     assert(merged.len() == 6);
     assert(merged[0] == 1);
     assert(merged[5] == 6);
 
     // ── find_first (Perhaps<T>) ───────────────────────────────────────────────
-    let nums_first_big: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_first_big: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first_big := find_first(
         nums_first_big,
         |x: &i64| -> boolean { *x > 6 },
         |x: &i64| -> i64 { *x },
     );
     assert(perhaps_is_some(first_big));
-    let nums_first_big_again: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_first_big_again: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first_big_again := find_first(
         nums_first_big_again,
         |x: &i64| -> boolean { *x > 6 },
@@ -475,7 +475,7 @@ fun main() {
     );
     assert(perhaps_or(first_big_again, 0) == 7);
 
-    let nums_none_found: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_none_found: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let none_found := find_first(
         nums_none_found,
         |x: &i64| -> boolean { *x > 100 },
@@ -484,14 +484,14 @@ fun main() {
     assert(!perhaps_is_some(none_found));
 
     // find in string array
-    let strs_first_long: String[] := ["apple", "banana", "cherry", "date"];
+    let strs_first_long: [String] := ["apple", "banana", "cherry", "date"];
     let first_long := find_first(
         strs_first_long,
         |s: &String| -> boolean { (*s).len() >= 6 },
         |s: &String| -> String { (*s).substring(0, (*s).len()) },
     );
     assert(perhaps_is_some(first_long));
-    let strs_first_long_again: String[] := ["apple", "banana", "cherry", "date"];
+    let strs_first_long_again: [String] := ["apple", "banana", "cherry", "date"];
     let first_long_again := find_first(
         strs_first_long_again,
         |s: &String| -> boolean { (*s).len() >= 6 },
@@ -514,7 +514,7 @@ fun main() {
     // compose two closures
     let double  := |x: i64| -> i64 { x * 2 };
     let inc     := |x: i64| -> i64 { x + 1 };
-    let nums2: i64[] := [1, 2, 3];
+    let nums2: [i64] := [1, 2, 3];
     let result_d := map_arr(nums2, |x: &i64| -> i64 { double(*x) });
     let result_i := map_arr(result_d, |x: &i64| -> i64 { inc(*x) });
     assert(result_i[0] == 3);   // (1*2)+1

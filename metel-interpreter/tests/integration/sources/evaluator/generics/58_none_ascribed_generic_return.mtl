@@ -1,4 +1,4 @@
-fun maybe_head<T: Copy>(items: T[]) {
+fun maybe_head<T: Copy>(items: [T]) {
     if (items.len() == 0) {
         return None : Perhaps<T>;
     }
@@ -7,7 +7,7 @@ fun maybe_head<T: Copy>(items: T[]) {
 
 fun main() {
     let present := maybe_head([1, 2, 3]);
-    let empty := maybe_head([] : i64[]);
+    let empty := maybe_head([] : [i64]);
 
     match (present) {
         Perhaps::Some { value } => assert(value == 1),

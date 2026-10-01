@@ -1,6 +1,6 @@
 // A dynamic array has no statically known length and cannot satisfy [T; N].
 fun main() {
-    let dynamic: i64[] := [1, 2, 3];
+    let dynamic: [i64] := [1, 2, 3];
     let fixed: [i64; 3] := dynamic;  // ERROR[T0001]
     println(fixed[0].to_string());
 }

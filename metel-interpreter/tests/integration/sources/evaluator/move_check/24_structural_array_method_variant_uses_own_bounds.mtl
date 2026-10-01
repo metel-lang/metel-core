@@ -8,7 +8,7 @@ aspect CopyTake {
     fun take_twice(self) -> i64;
 }
 
-extend<T: !Copy> T[]: NonCopyTake {
+extend<T: !Copy> [T]: NonCopyTake {
     fun take_twice(self) -> i64 {
         let first := self[0];
         let second := self[0];
@@ -16,7 +16,7 @@ extend<T: !Copy> T[]: NonCopyTake {
     }
 }
 
-extend<T: Copy> T[]: CopyTake {
+extend<T: Copy> [T]: CopyTake {
     fun take_twice(self) -> i64 {
         let first := self[0];
         let second := self[0];

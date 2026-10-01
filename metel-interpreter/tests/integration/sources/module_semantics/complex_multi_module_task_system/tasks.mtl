@@ -12,11 +12,11 @@ public fun validate_task(title: String, priority: Priority, status: Status, effo
     Result::Ok { value = Task { title = title, priority = priority, status = status, effort = effort } }
 }
 
-public fun total_effort(tasks: Task[]) -> i64 {
+public fun total_effort(tasks: [Task]) -> i64 {
     fold_left(tasks, 0, |acc: i64, t: &Task| -> i64 { acc + (*t).effort })
 }
 
-public fun open_task_count(tasks: Task[]) -> i64 {
+public fun open_task_count(tasks: [Task]) -> i64 {
     var count := 0;
     for (t in tasks) {
         match (t.status) {
@@ -68,11 +68,11 @@ public fun is_done_ref(t: &Task) -> boolean {
     }
 }
 
-public fun task_titles(tasks: Task[]) -> String[] {
+public fun task_titles(tasks: [Task]) -> [String] {
     map_array(tasks, |t: &Task| -> String { (*t).title.substring(0, (*t).title.len()) })
 }
 
-public fun find_by_title(tasks: Task[], title: String) -> Perhaps<Task> {
+public fun find_by_title(tasks: [Task], title: String) -> Perhaps<Task> {
     find_first(
         tasks,
         [&title] |t: &Task| -> boolean { (*t).title == title },
@@ -80,7 +80,7 @@ public fun find_by_title(tasks: Task[], title: String) -> Perhaps<Task> {
     )
 }
 
-public fun compute_completion_pct(tasks: Task[]) -> i64 {
+public fun compute_completion_pct(tasks: [Task]) -> i64 {
     let n := tasks.len();
     if (n == 0) { return 0; }
     var done := 0;

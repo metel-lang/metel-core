@@ -68,7 +68,7 @@ fun main() {
     assert(px.b == 0u8);
 
     // ── Array element type propagation ───────────────────────────────────────
-    let arr: i32[] := [1, 2, 3];
+    let arr: [i32] := [1, 2, 3];
     assert(arr[0] == 1i32);
     assert(arr[1] == 2i32);
     assert(arr[2] == 3i32);

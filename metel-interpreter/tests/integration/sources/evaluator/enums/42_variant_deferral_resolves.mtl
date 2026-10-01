@@ -27,8 +27,8 @@ fun main() {
     // An empty array literal is deferred too, and is *genuinely* polymorphic -- the
     // #285 check is scoped to bare variants precisely so this keeps working.
     let mk := || { [] };
-    let ints: i64[] := mk();
-    let strs: String[] := mk();
+    let ints: [i64] := mk();
+    let strs: [String] := mk();
     assert(ints.len() == 0);
     assert(strs.len() == 0);
 }

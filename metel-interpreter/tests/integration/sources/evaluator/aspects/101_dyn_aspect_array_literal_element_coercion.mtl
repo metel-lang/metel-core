@@ -27,13 +27,13 @@ extend Pebble: Display {
 }
 
 fun main() {
-    let arr: dyn Display[] := [Rock { }];
+    let arr: [dyn Display] := [Rock { }];
     assert(arr[0].to_string() == "rock");
 
     let sized: [dyn Display; 1] := [Rock { }];
     assert(sized[0].to_string() == "rock");
 
-    let hetero: dyn Display[] := [Rock { }, Pebble { }];
+    let hetero: [dyn Display] := [Rock { }, Pebble { }];
     assert(hetero[0].to_string() == "rock");
     assert(hetero[1].to_string() == "pebble");
 
@@ -41,9 +41,9 @@ fun main() {
     assert(hetero_sized[0].to_string() == "rock");
     assert(hetero_sized[1].to_string() == "pebble");
 
-    var hetero_mut: dyn Display[] := [Rock { }, Pebble { }];
+    var hetero_mut: [dyn Display] := [Rock { }, Pebble { }];
     assert(hetero_mut[0].to_string() == "rock");
 
-    let empty: dyn Display[] := [];
+    let empty: [dyn Display] := [];
     assert(empty.len() == 0);
 }

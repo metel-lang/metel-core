@@ -1,7 +1,7 @@
 // Param types from the callee signature flow into argument construction,
 // so bare empty arrays resolve without requiring ascription.
 
-fun zip_lengths(a: i64[], b: String[]) -> i64 {
+fun zip_lengths(a: [i64], b: [String]) -> i64 {
     a.len() + b.len()
 }
 

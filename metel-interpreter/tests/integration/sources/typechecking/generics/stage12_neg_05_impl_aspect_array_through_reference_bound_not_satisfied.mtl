@@ -9,12 +9,12 @@ struct Plain { x: i64 }
 
 // Plain does not implement Printable.
 
-fun in_reference(xs: &extends Printable[]) {
+fun in_reference(xs: &[extends Printable]) {
     for (item in *xs) {
         item.print()
     }
 }
 
-fun bad(xs: Plain[]) {
+fun bad(xs: [Plain]) {
     in_reference(&xs) // ERROR[T0012]
 }

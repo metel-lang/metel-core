@@ -25,13 +25,13 @@ extend Label: Printable {
     fun print(&self) {}
 }
 
-fun in_tuple(p: (extends Printable[], i64)) {
+fun in_tuple(p: ([extends Printable], i64)) {
     for (item in p.0) {
         item.print()
     }
 }
 
-fun in_reference(xs: &extends Printable[]) {
+fun in_reference(xs: &[extends Printable]) {
     for (item in *xs) {
         item.print()
     }
@@ -39,7 +39,7 @@ fun in_reference(xs: &extends Printable[]) {
 
 fun in_generic_arg(xs: List<extends Printable>) {}
 
-fun run(labels: Label[], list: List<Label>) {
+fun run(labels: [Label], list: List<Label>) {
     in_tuple((labels, 1));
     in_reference(&labels);
     in_generic_arg(list)

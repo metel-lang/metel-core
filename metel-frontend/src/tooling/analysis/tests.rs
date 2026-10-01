@@ -413,7 +413,7 @@ mod member_ids_on_typed_ir {
     fn for_in_loop_binding_carries_a_local_id() {
         use crate::data::typed_ast::TypedStmt;
         let analysis = analyze(
-            "fun sum(xs: i64[]) -> i64 {\n\
+            "fun sum(xs: [i64]) -> i64 {\n\
              \tvar acc: i64 := 0;\n\
              \tfor (x in xs) { acc := acc + x; }\n\
              \tacc\n\

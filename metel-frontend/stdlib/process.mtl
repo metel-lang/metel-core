@@ -18,8 +18,8 @@ public struct ProcessOutput {
 
 // The process command-line arguments (the full argv, including the interpreter
 // and script path for the first cut).
-native(@std.process.args) public fun args() -> String[];
+native(@std.process.args) public fun args() -> [String];
 
 // Run `command` with `args` to completion and capture its output. The command
 // is executed directly, not through a shell.
-native(@std.process.run) public fun run(command: String, args: String[]) -> Result<ProcessOutput, OsError>;
+native(@std.process.run) public fun run(command: String, args: [String]) -> Result<ProcessOutput, OsError>;

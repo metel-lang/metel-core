@@ -9,12 +9,12 @@ struct Plain { x: i64 }
 
 // Plain does not implement Printable.
 
-fun in_tuple(p: (extends Printable[], i64)) {
+fun in_tuple(p: ([extends Printable], i64)) {
     for (item in p.0) {
         item.print()
     }
 }
 
-fun bad(xs: Plain[]) {
+fun bad(xs: [Plain]) {
     in_tuple((xs, 1)) // ERROR[T0012]
 }

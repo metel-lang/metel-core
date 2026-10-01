@@ -29,7 +29,7 @@ fun main() {
     assert("ab".repeat(3) == "ababab");
     assert("ab".repeat(0) == "");
     assert(String::join(["a", "b","c"], "-") == "a-b-c");
-    assert(String::join([] : String[], ",") == "");
+    assert(String::join([] : [String], ",") == "");
 
     // ── Chars & slicing ──────────────────────────────────────────────────────
     // 'é' is one Unicode scalar, so chars()/len() count it once.

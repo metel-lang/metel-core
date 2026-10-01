@@ -1,4 +1,4 @@
-fun first<T>(items: T[]) -> T {
+fun first<T>(items: [T]) -> T {
     for (item in items) {
         return item;
     }

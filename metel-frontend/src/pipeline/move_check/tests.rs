@@ -772,7 +772,7 @@ let ys := [xs[0]];
 fn borrowed_array_for_in_cannot_move_a_noncopy_element() {
     assert_has_violation(
         r#"
-fun first<T>(items: T[]) -> T {
+fun first<T>(items: [T]) -> T {
 for (item in items) {
     return item;
 }
@@ -789,7 +789,7 @@ fun main() { }
 fn borrowed_array_for_in_allows_copy_elements() {
     assert_no_violations(
         r#"
-fun first<T: Copy>(items: T[]) -> T {
+fun first<T: Copy>(items: [T]) -> T {
 for (item in items) {
     return item;
 }
@@ -797,7 +797,7 @@ panic("empty")
 }
 
 fun main() {
-let values: i64[] := [1, 2, 3];
+let values: [i64] := [1, 2, 3];
 assert(first(values) == 1);
 }
 "#,

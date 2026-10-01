@@ -9,11 +9,11 @@ aspect Marker {
     fun mark(self) -> String;
 }
 
-extend<T> T[]: Marker {
+extend<T> [T]: Marker {
     fun mark(self) -> String { return "blanket"; }
 }
 
-extend<T> T[]: !Marker;
+extend<T> [T]: !Marker;
 
 fun needs_marker<U: Marker>(x: U) {}
 

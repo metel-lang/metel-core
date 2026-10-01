@@ -18,7 +18,7 @@ native(@std.fs.append_string) public fun append_string(path: String, contents: S
 native(@std.fs.exists) public fun exists(path: String) -> boolean;
 
 // The entry names (not full paths) directly within directory `path`.
-native(@std.fs.read_dir) public fun read_dir(path: String) -> Result<String[], OsError>;
+native(@std.fs.read_dir) public fun read_dir(path: String) -> Result<[String], OsError>;
 
 // Create a single directory; errors if the parent does not exist.
 native(@std.fs.create_dir) public fun create_dir(path: String) -> Result<(), OsError>;

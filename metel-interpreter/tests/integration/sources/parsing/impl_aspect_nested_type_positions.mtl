@@ -23,25 +23,25 @@ struct Label {
 fun bare(x: extends Printable) {}
 
 // Postfix `[]` — the form the grammar change is about.
-fun array(xs: extends Printable[]) {}
+fun array(xs: [extends Printable]) {}
 
 // Return position.
 fun ret_bare() -> extends Printable {}
-fun ret_array() -> extends Printable[] {}
+fun ret_array() -> [extends Printable] {}
 
 // Nested inside the other type constructors the lowering walks.
-fun in_tuple(p: (extends Printable[], i64)) {}
-fun in_reference(xs: &extends Printable[]) {}
-fun in_mut_reference(xs: &var extends Printable[]) {}
+fun in_tuple(p: ([extends Printable], i64)) {}
+fun in_reference(xs: &[extends Printable]) {}
+fun in_mut_reference(xs: &var [extends Printable]) {}
 fun in_generic_arg(xs: List<extends Printable>) {}
-fun in_generic_arg_array(xs: List<extends Printable[]>) {}
+fun in_generic_arg_array(xs: List<[extends Printable]>) {}
 fun in_sized_array(xs: [extends Printable; 3]) {}
-fun in_fun_type(f: |extends Printable[]| -> extends Printable) {}
+fun in_fun_type(f: |[extends Printable]| -> extends Printable) {}
 
 // Several occurrences in one signature.
-fun several(a: extends Printable[], b: extends Printable, c: (extends Printable[], extends Printable)) {}
+fun several(a: [extends Printable], b: extends Printable, c: ([extends Printable], extends Printable)) {}
 
 // Let annotation.
-fun in_let_annotation(xs: Label[]) {
-    let ys: extends Printable[] := xs;
+fun in_let_annotation(xs: [Label]) {
+    let ys: [extends Printable] := xs;
 }

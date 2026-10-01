@@ -12,12 +12,12 @@ struct Plain { x: i64 }
 
 // Plain does not implement Printable.
 
-fun print_all(items: extends Printable[]) {
+fun print_all(items: [extends Printable]) {
     for (item in items) {
         item.print()
     }
 }
 
-fun bad(xs: Plain[]) {
+fun bad(xs: [Plain]) {
     print_all(xs) // ERROR[T0012]
 }

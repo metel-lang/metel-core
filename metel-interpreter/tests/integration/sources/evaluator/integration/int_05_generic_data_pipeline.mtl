@@ -64,7 +64,7 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 // filtered output owned. The callback is scaffolding, not part of what this fixture tests;
 // it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
 // the elements are `Copy` (#335, #328).
-fun filter_array<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> T[] {
+fun filter_array<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
@@ -76,13 +76,13 @@ fun filter_array<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> T[] {
     out.as_slice()
 }
 
-fun map_array<T, U>(arr: T[], f: |&T| -> U) -> U[] {
+fun map_array<T, U>(arr: [T], f: |&T| -> U) -> [U] {
     var out: List<U> := List::new();
     for (x in arr) { out.push(f(&x)); }
     out.as_slice()
 }
 
-fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: |A, B| -> C) -> C[] {
+fun zip_with<A: Copy, B: Copy, C>(a: [A], b: [B], f: |A, B| -> C) -> [C] {
     var out: List<C> := List::new();
     let len := if (a.len() < b.len()) a.len() else b.len();
     var i := 0;
@@ -93,21 +93,21 @@ fun zip_with<A: Copy, B: Copy, C>(a: A[], b: B[], f: |A, B| -> C) -> C[] {
     out.as_slice()
 }
 
-fun any<T>(arr: T[], pred: |&T| -> boolean) -> boolean {
+fun any<T>(arr: [T], pred: |&T| -> boolean) -> boolean {
     for (x in arr) {
         if (pred(&x)) { return true; }
     }
     false
 }
 
-fun all<T>(arr: T[], pred: |&T| -> boolean) -> boolean {
+fun all<T>(arr: [T], pred: |&T| -> boolean) -> boolean {
     for (x in arr) {
         if (!pred(&x)) { return false; }
     }
     true
 }
 
-fun take<T: Copy>(arr: T[], n: i64) -> T[] {
+fun take<T: Copy>(arr: [T], n: i64) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < n && i < arr.len()) {
@@ -117,7 +117,7 @@ fun take<T: Copy>(arr: T[], n: i64) -> T[] {
     out.as_slice()
 }
 
-fun drop<T: Copy>(arr: T[], n: i64) -> T[] {
+fun drop<T: Copy>(arr: [T], n: i64) -> [T] {
     var out: List<T> := List::new();
     var i := n;
     while (i < arr.len()) {
@@ -217,7 +217,7 @@ fun main() {
     assert(!toggled.value);
 
     // ── filter_array ──────────────────────────────────────────────────────────
-    let nums: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let evens := filter_array(
         nums,
         |x: &i64| -> boolean { *x % 2 == 0 },
@@ -227,7 +227,7 @@ fun main() {
     assert(evens[0] == 2);
     assert(evens[4] == 10);
 
-    let nums_big: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_big: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let big := filter_array(
         nums_big,
         |x: &i64| -> boolean { *x > 7 },
@@ -236,35 +236,35 @@ fun main() {
     assert(big.len() == 3);
 
     // ── map_array ─────────────────────────────────────────────────────────────
-    let nums_squares: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_squares: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let squares := map_array(nums_squares, |x: &i64| -> i64 { *x * *x });
     assert(squares.len() == 10);
     assert(squares[0] == 1);
     assert(squares[9] == 100);
 
-    let nums_even_flags: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let is_even: boolean[] := map_array(nums_even_flags, |x: &i64| -> boolean { *x % 2 == 0 });
+    let nums_even_flags: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let is_even: [boolean] := map_array(nums_even_flags, |x: &i64| -> boolean { *x % 2 == 0 });
     assert(!is_even[0]);
     assert(is_even[1]);
 
     // ── zip_with ─────────────────────────────────────────────────────────────
-    let a: i64[] := [1, 2, 3, 4];
-    let b: i64[] := [10, 20, 30, 40];
+    let a: [i64] := [1, 2, 3, 4];
+    let b: [i64] := [10, 20, 30, 40];
     let sums := zip_with(a, b, |x: i64, y: i64| -> i64 { x + y });
     assert(sums.len() == 4);
     assert(sums[0] == 11);
     assert(sums[3] == 44);
 
     // zip shorter arrays
-    let a_partial: i64[] := [1, 2, 3, 4];
-    let c: i64[] := [100, 200];
+    let a_partial: [i64] := [1, 2, 3, 4];
+    let c: [i64] := [100, 200];
     let partial := zip_with(a_partial, c, |x: i64, y: i64| -> i64 { x * y });
     assert(partial.len() == 2);
     assert(partial[1] == 400);
 
     // zip with boolean→String
-    let flags: boolean[] := [true, false, true];
-    let a_labels: i64[] := [1, 2, 3, 4];
+    let flags: [boolean] := [true, false, true];
+    let a_labels: [i64] := [1, 2, 3, 4];
     let labels := zip_with(flags, a_labels, |b: boolean, n: i64| -> String {
         if (b) "yes" else "no"
     });
@@ -272,33 +272,33 @@ fun main() {
     assert(labels[1] == "no");
 
     // ── any / all ─────────────────────────────────────────────────────────────
-    let nums_any_9: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_any_9: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(any(nums_any_9, |x: &i64| -> boolean { *x > 9 }));
-    let nums_any_100: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_any_100: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(!any(nums_any_100, |x: &i64| -> boolean { *x > 100 }));
-    let nums_all_pos: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_all_pos: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(all(nums_all_pos, |x: &i64| -> boolean { *x > 0 }));
-    let nums_all_gt5: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_all_gt5: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     assert(!all(nums_all_gt5, |x: &i64| -> boolean { *x > 5 }));
 
     // ── take / drop ───────────────────────────────────────────────────────────
-    let nums_first3: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_first3: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first3 := take(nums_first3, 3);
     assert(first3.len() == 3);
     assert(first3[2] == 3);
 
-    let nums_rest: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_rest: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let rest := drop(nums_rest, 7);
     assert(rest.len() == 3);
     assert(rest[0] == 8);
 
     // take more than available
-    let nums_take_all: i64[] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    let nums_take_all: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let take_all := take(nums_take_all, 100);
     assert(take_all.len() == 10);
 
     // ── Student pipeline ──────────────────────────────────────────────────────
-    let students: Student[] := [
+    let students: [Student] := [
         Student { name = "Alice",   grade = 92 },
         Student { name = "Bob",     grade = 55 },
         Student { name = "Charlie", grade = 78 },
@@ -313,7 +313,7 @@ fun main() {
     );
     assert(passing.len() == 3);
 
-    let students_letters: Student[] := [
+    let students_letters: [Student] := [
         Student { name = "Alice",   grade = 92 },
         Student { name = "Bob",     grade = 55 },
         Student { name = "Charlie", grade = 78 },
@@ -334,7 +334,7 @@ fun main() {
     );
     assert(a_grades.len() == 1);
 
-    let students_any: Student[] := [
+    let students_any: [Student] := [
         Student { name = "Alice",   grade = 92 },
         Student { name = "Bob",     grade = 55 },
         Student { name = "Charlie", grade = 78 },
@@ -342,7 +342,7 @@ fun main() {
         Student { name = "Eve",     grade = 45 },
     ];
     assert(any(students_any, |s: &Student| -> boolean { (*s).grade >= 90 }));
-    let students_all: Student[] := [
+    let students_all: [Student] := [
         Student { name = "Alice",   grade = 92 },
         Student { name = "Bob",     grade = 55 },
         Student { name = "Charlie", grade = 78 },

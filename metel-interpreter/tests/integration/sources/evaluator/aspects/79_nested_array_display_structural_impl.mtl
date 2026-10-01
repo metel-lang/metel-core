@@ -6,6 +6,6 @@
 // `Named`/primitive one.
 
 fun main() {
-    let grid: [i64[]; 2] := [[1, 2], [3, 4]];
+    let grid: [[i64]; 2] := [[1, 2], [3, 4]];
     assert(grid.to_string() == "[[1, 2], [3, 4]]");
 }
