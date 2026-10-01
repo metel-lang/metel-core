@@ -1,0 +1,9 @@
+// RFC-0121 item 2 (metel-core#1310): the spliced row variable must at least
+// exist as a declared generic in scope -- `foo` declares no generics at
+// all, so `R` is undefined, exactly as an ordinary unknown type name is.
+
+struct Session { token: i64 }
+
+fun foo(s: Session<..R>) -> i64 { 0 }
+
+fun main() {}

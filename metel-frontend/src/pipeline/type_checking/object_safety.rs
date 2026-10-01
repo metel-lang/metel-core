@@ -166,8 +166,12 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         }
         // A record projection or a bare unit type can't mention `Self` or an
         // associated type -- `RecordProjection`'s path names a struct, and unit
-        // carries no type at all.
-        TypeExpr::RecordProjection { .. } | TypeExpr::Unit => None,
+        // carries no type at all. Same for a `Session<..R>` row splice
+        // (RFC-0121 item 2, metel-core#1310): it names a row-kinded
+        // generic, never `Self` or an associated type -- unlike
+        // `OpenRecord`/`OpenRecordProjection` below, it *can* appear in an
+        // aspect method's own parameter/return type.
+        TypeExpr::RecordProjection { .. } | TypeExpr::Unit | TypeExpr::RowArg(_) => None,
         // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
         // this function only ever walks an aspect method's declared
         // signature (`aspect_method`'s own, unchanged, `param`/`type_expr`).

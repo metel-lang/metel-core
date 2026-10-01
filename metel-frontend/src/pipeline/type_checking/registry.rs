@@ -1130,6 +1130,12 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
+        // *can* appear in a structural array-impl method's own parameter
+        // type, parsed before `projections::check` gets a chance to reject
+        // it. A row splice carries no `Self` reference to substitute.
+        TypeExpr::RowArg(_) => te.clone(),
     }
 }
 

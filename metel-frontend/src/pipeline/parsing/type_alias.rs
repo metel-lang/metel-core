@@ -1050,9 +1050,16 @@ fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
         // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
         // own field labels only -- no nested `TypeExpr` of its own, exactly
         // like `RecordProjection`.
+        //
+        // RFC-0121 item 2 (metel-core#1310): `Session<..R>`'s row splice is
+        // likewise a leaf -- no nested `TypeExpr` to expose for
+        // substitution. This runs during type-alias resolution (parsing),
+        // well before `projections::check` gets a chance to reject a
+        // `RowArg` -- a leaf, not `unreachable!()`.
         TypeExpr::Unit
         | TypeExpr::RecordProjection { .. }
-        | TypeExpr::OpenRecordProjection { .. } => {
+        | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::RowArg(_) => {
             vec![]
         }
         // RFC-0121: a `fun_decl` parameter's own type can reference a type

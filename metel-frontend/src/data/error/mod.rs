@@ -51,6 +51,7 @@ pub enum TypeErrorCode {
     T0029, // Mutating closure called through shared reference (RFC-0153)
     T0030, // Borrow into enclosing closure environment (RFC-0050)
     T0031, // Invalid program entry point (RFC-0167)
+    T0032, // Row-polymorphic generic argument not yet implemented beyond parsing (RFC-0121)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

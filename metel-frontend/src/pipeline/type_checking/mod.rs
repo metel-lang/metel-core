@@ -1047,6 +1047,17 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear as an impl block's target type")
         }
+        // RFC-0121 item 2 (metel-core#1310): unlike `OpenRecord`/
+        // `OpenRecordProjection`, a `RowArg` isn't excluded by grammar --
+        // but it can only ever appear *nested* inside a `Named`'s own
+        // args (`type_args`), never as a bare top-level type. Any target
+        // whose top level is `Named` -- regardless of what's in its args --
+        // already returned early above via `impl_target_head`, so this
+        // match (which only ever sees the shapes `impl_target_head`
+        // rejected) can never actually see one.
+        TypeExpr::RowArg(_) => {
+            unreachable!("a RowArg can only appear nested inside a Named's own args")
+        }
     };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is
     // undefined. T0001 is what `coherence.rs` already uses for the structurally

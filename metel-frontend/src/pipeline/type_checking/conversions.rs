@@ -379,6 +379,19 @@ fn type_expr_to_infer_in_context(
                  type_expr_to_infer; it is grammar-restricted to fun_decl_param"
             )
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>`. Unlike `OpenRecord`/`OpenRecordProjection`, this
+        // variant is reachable in *any* type-argument position, not just
+        // `fun_decl_param` -- `projections::check` is relied on to reject
+        // every occurrence before inference runs (it walks every
+        // type-bearing annotation program-wide), but this function is
+        // otherwise infallible by signature, so a placeholder rather than a
+        // panic is the safe fallback if that invariant is ever wrong.
+        TypeExpr::RowArg(_) => InferType::Named(
+            "<row-arg>".to_string(),
+            vec![],
+            crate::data::types::NominalId::NONE,
+        ),
     }
 }
 

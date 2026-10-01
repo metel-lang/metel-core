@@ -403,7 +403,11 @@ mut_reference_type = { "&" ~ mut_kw ~ type_expr }
 // reason to exist (RFC-0171 §2).
 bracket_array_type = { "[" ~ type_expr ~ (";" ~ decimal_int)? ~ "]" }
 named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
-type_args  = { type_expr ~ ("," ~ type_expr)* }
+// RFC-0121: a generic-argument slot may carry a row splice (`Session<..R>`,
+// or anonymous `Session<..>`) instead of an ordinary type -- representation
+// only for now (metel-core#1310): the row variable is validated but every
+// real use of the resulting type is rejected (LIMIT-TYPES-003).
+type_args  = { (row_tail | type_expr) ~ ("," ~ (row_tail | type_expr))* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }
 
 // ── Terminals ─────────────────────────────────────────────────────────────────

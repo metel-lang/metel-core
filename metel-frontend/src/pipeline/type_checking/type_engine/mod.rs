@@ -2020,6 +2020,19 @@ impl fmt::Display for GenericBound {
                 TypeExpr::OpenRecordProjection { .. } => {
                     unreachable!("OpenRecordProjection cannot appear in a bound's type argument")
                 }
+                // RFC-0121 item 2 (metel-core#1310), representation-only
+                // slice: `Session<..R>` -- unlike `OpenRecord`/
+                // `OpenRecordProjection`, a row splice *can* appear in a
+                // bound's own type argument (`Aspect<..R>`). Writing the
+                // sugar back out literally is safe and informative, not a
+                // guess at semantics that don't exist yet.
+                TypeExpr::RowArg(tail) => {
+                    f.write_str("..")?;
+                    if let Some(var) = &tail.var {
+                        f.write_str(var)?;
+                    }
+                    Ok(())
+                }
             }
         }
 
