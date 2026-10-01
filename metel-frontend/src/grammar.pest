@@ -51,6 +51,7 @@ import_item = { ident ~ ("as" ~ ident)? }
 decl = {
     fun_decl
   | struct_decl
+  | record_decl
   | enum_decl
   | type_alias     // RFC-0160: `type Name := T;` at module or block scope. `type … := …`
   | impl_block     //   inside aspect/extend is `assoc_type_def` — a different position.
@@ -82,6 +83,11 @@ native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }
 struct_field  = { pub_kw? ~ ident ~ ":" ~ type_expr }
+
+// RFC-0120: identical grammar to `struct_decl` (reuses `struct_fields`) -- the two
+// kinds differ only in whether the declared row is structurally visible, a
+// semantic distinction the type checker enforces, not the grammar.
+record_decl = { pub_kw? ~ "record" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 
 enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ enum_variants ~ "}" }
 enum_variants = { (enum_variant ~ ",")* ~ enum_variant? }

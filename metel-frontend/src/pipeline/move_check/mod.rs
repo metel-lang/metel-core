@@ -2121,6 +2121,7 @@ fn type_ctx_with_symbolic_row_fields(type_ctx: &TypeCtx, generic_env: &GenericMo
             field_entries,
             Vec::new(),
             Visibility::Public,
+            false,
         );
     }
     enriched

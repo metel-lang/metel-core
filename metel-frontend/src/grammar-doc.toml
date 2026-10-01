@@ -147,6 +147,11 @@ mode = "named"
 name = "StructField"
 section = "Declarations"
 [[rule]]
+pest = "record_decl"
+mode = "named"
+name = "RecordDeclaration"
+section = "Declarations"
+[[rule]]
 pest = "enum_decl"
 mode = "named"
 name = "EnumDeclaration"

@@ -1,0 +1,34 @@
+// RFC-0120 sec2/sec-declarations-records-legality-3: `struct` -> `record` changes
+// only row-visibility, nothing about whole-value use. Construction, field access,
+// and an ordinary (non-row-bounded) nominal-type parameter all typecheck and
+// evaluate identically regardless of which keyword declared the type.
+
+struct StructPoint {
+    x: f64,
+    y: f64,
+}
+
+record RecordPoint {
+    public x: f64,
+    public y: f64,
+}
+
+extend StructPoint {
+    fun magnitude(self) -> f64 { self.x * self.x + self.y * self.y }
+}
+
+extend RecordPoint {
+    fun magnitude(self) -> f64 { self.x * self.x + self.y * self.y }
+}
+
+fun whole_value_struct(p: StructPoint) -> f64 { p.magnitude() }
+fun whole_value_record(p: RecordPoint) -> f64 { p.magnitude() }
+
+fun main() {
+    let sp := StructPoint { x = 3.0, y = 4.0 };
+    let rp := RecordPoint { x = 3.0, y = 4.0 };
+    assert(whole_value_struct(sp) == 25.0);
+    assert(whole_value_record(rp) == 25.0);
+    assert(sp.magnitude() == rp.magnitude());
+    println("ok");
+}

@@ -8,7 +8,8 @@ use crate::data::ast::{
     ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath,
     ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot,
     Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, Span, Stmt,
-    StructDecl, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
+    StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
+    WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -226,7 +227,16 @@ fn parse_single_decl(
         Rule::let_decl => Ok(Decl::Let(parse_let_decl(inner, filename)?)),
         Rule::let_mut_decl => Ok(Decl::Mut(parse_mut_decl(inner, filename)?)),
         Rule::fun_decl => Ok(Decl::Fun(parse_fun_decl(inner, filename)?)),
-        Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(inner, filename)?)),
+        Rule::struct_decl => Ok(Decl::Struct(parse_struct_decl(
+            inner,
+            filename,
+            StructKind::Struct,
+        )?)),
+        Rule::record_decl => Ok(Decl::Struct(parse_struct_decl(
+            inner,
+            filename,
+            StructKind::Record,
+        )?)),
         Rule::enum_decl => Ok(Decl::Enum(parse_enum_decl(inner, filename)?)),
         Rule::aspect_decl => Ok(Decl::Aspect(parse_aspect_decl(inner, filename)?)),
         Rule::type_alias => Ok(Decl::TypeAlias(parse_type_alias(inner, filename)?)),
@@ -403,6 +413,7 @@ fn empty_block(span: &Span) -> Block {
 fn parse_struct_decl(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
+    kind: StructKind,
 ) -> Result<StructDecl, MetelError> {
     let span = Span::of(&pair, filename);
     let mut inner = pair.into_inner();
@@ -430,8 +441,26 @@ fn parse_struct_decl(
             _ => {}
         }
     }
+    // RFC-0120 §5: a `record`'s declared row is its public interface -- a
+    // private field would make a row bound either a privacy oracle or
+    // unsatisfiable by the caller, so every field must be `pub`.
+    if kind == StructKind::Record
+        && let Some(private_field) = fields.iter().find(|f| f.visibility == Visibility::Private)
+    {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            format!(
+                "field `{}` of `record {name}` must be `pub` -- every field of a \
+                 record is public (declare this as a `struct` instead if `{}` \
+                 should stay private)",
+                private_field.name, private_field.name
+            ),
+            &private_field.span,
+        ));
+    }
     Ok(StructDecl {
         visibility,
+        kind,
         name,
         generics,
         where_clause,

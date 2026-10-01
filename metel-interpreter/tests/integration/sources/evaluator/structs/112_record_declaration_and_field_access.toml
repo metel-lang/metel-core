@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.records.legality-1", "spec.declarations.records.legality-4"]

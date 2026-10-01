@@ -2062,6 +2062,9 @@ pub type ArrayMethodSchemeVariant = (TypeScheme, Vec<TypeVar>, Option<String>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum VisibleTypeKind {
     Struct,
+    /// RFC-0120: a `struct` whose declaration keyword was `record` -- its row is
+    /// structurally visible (row bounds; row-conditional impls, RFC-0121).
+    Record,
     Enum,
 }
 
@@ -2142,6 +2145,11 @@ pub struct TypeDefinitionRegistry {
     /// [`resolve_type_position_id`](Self::resolve_type_position_id), the same
     /// shadowing-aware lookup `impl_aspect_env` already uses.
     struct_env: HashMap<SymbolId, Vec<FieldEntry>>,
+    /// RFC-0120: struct `SymbolId`s declared `record` rather than `struct` --
+    /// their row is structurally visible to row bounds and (RFC-0121, not yet
+    /// implemented) row-conditional impl resolution. A plain `struct`'s id is
+    /// simply absent here, at any row width (RFC-0137 §3's eligibility rule).
+    record_structs: HashSet<SymbolId>,
     /// struct `SymbolId` → declaring module path.
     struct_decl_modules: HashMap<SymbolId, Vec<String>>,
     /// struct/enum `SymbolId` → its declared short name, for the reverse
@@ -2552,11 +2560,12 @@ impl TypeDefinitionRegistry {
         current_module: &[String],
         type_name: &str,
     ) -> Option<VisibleTypeKind> {
-        if self
-            .resolve_struct_id_from_projection(current_module, type_name)
-            .is_some()
-        {
-            return Some(VisibleTypeKind::Struct);
+        if let Some(id) = self.resolve_struct_id_from_projection(current_module, type_name) {
+            return Some(if self.record_structs.contains(&id) {
+                VisibleTypeKind::Record
+            } else {
+                VisibleTypeKind::Struct
+            });
         }
         if self.resolve_enum_id(current_module, type_name).is_some() {
             return Some(VisibleTypeKind::Enum);
@@ -2582,6 +2591,7 @@ impl TypeDefinitionRegistry {
     pub fn new() -> Self {
         Self {
             struct_env: HashMap::new(),
+            record_structs: HashSet::new(),
             struct_decl_modules: HashMap::new(),
             type_decl_names: HashMap::new(),
             type_decl_ids: HashMap::new(),
@@ -2747,8 +2757,12 @@ impl TypeDefinitionRegistry {
         fields: Vec<FieldEntry>,
         declaring_module: Vec<String>,
         visibility: Visibility,
+        is_record: bool,
     ) {
         self.struct_env.insert(owner, fields);
+        if is_record {
+            self.record_structs.insert(owner);
+        }
         self.struct_decl_modules.insert(owner, declaring_module);
         self.struct_visibility.insert(owner, visibility);
         self.type_decl_ids.insert(name.clone(), owner);
@@ -2768,9 +2782,17 @@ impl TypeDefinitionRegistry {
         fields: Vec<FieldEntry>,
         declaring_module: Vec<String>,
         visibility: Visibility,
+        is_record: bool,
     ) {
         let owner = self.fresh_local_type_id();
-        self.register_struct_fields(owner, name.clone(), fields, declaring_module, visibility);
+        self.register_struct_fields(
+            owner,
+            name.clone(),
+            fields,
+            declaring_module,
+            visibility,
+            is_record,
+        );
         self.local_type_decl_ids.insert(name, owner);
     }
 
@@ -4490,12 +4512,14 @@ impl InferContext {
         name: String,
         fields: Vec<crate::pipeline::type_checking::type_engine::FieldEntry>,
         visibility: Visibility,
+        is_record: bool,
     ) {
         self.registry.register_local_struct_fields(
             name,
             fields,
             self.current_module_path.clone(),
             visibility,
+            is_record,
         );
     }
 
@@ -5557,6 +5581,7 @@ mod registry_identity_tests {
             vec![field("retries")],
             vec!["alpha".to_string()],
             Visibility::Public,
+            false,
         );
         reg.register_struct_fields(
             beta,
@@ -5564,6 +5589,7 @@ mod registry_identity_tests {
             vec![field("timeout")],
             vec!["beta".to_string()],
             Visibility::Public,
+            false,
         );
 
         let alpha_fields = reg.struct_fields_by_id(alpha).expect("alpha Config");
@@ -5589,6 +5615,7 @@ mod registry_identity_tests {
             vec![field("retries")],
             vec!["alpha".to_string()],
             Visibility::Public,
+            false,
         );
 
         let mut reg = TypeDefinitionRegistry::new();
@@ -5598,6 +5625,7 @@ mod registry_identity_tests {
             vec![field("timeout")],
             vec!["beta".to_string()],
             Visibility::Public,
+            false,
         );
         reg.merge_from(&base);
 
@@ -5621,6 +5649,7 @@ mod registry_identity_tests {
             vec![field("x")],
             vec!["m".to_string()],
             Visibility::Private,
+            false,
         );
         // Reachable by bare name inside the scope, via the strict resolver.
         let fields = reg

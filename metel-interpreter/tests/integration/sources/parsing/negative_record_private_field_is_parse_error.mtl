@@ -1,0 +1,11 @@
+// RFC-0120 §5 (metel-core#1300): every field of a `record` must be `public` --
+// a record's declared row is its public interface, so a private field would
+// make a row bound either a privacy oracle or unsatisfiable by the caller.
+// A `struct` has no such restriction; this is record-only.
+
+record Handle {
+    public fd: i64,
+    name: String,
+}
+
+fun main() {}

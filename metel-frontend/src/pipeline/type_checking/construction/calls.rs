@@ -977,6 +977,53 @@ pub(super) fn row_bound_error_prefix(bound: &GenericBound) -> String {
     }
 }
 
+/// The structural field list a row bound checks against, for any value that
+/// carries one -- an anonymous record (`Type::Record`, fields already
+/// concrete), a narrowed struct/record residual (`Type::Residual`, fields
+/// already concrete, RFC-0137), or a whole named record (`Type::Named`,
+/// fields resolved from the registry's declared field templates with the
+/// type's own generic arguments substituted in, the same way
+/// `try_generic_method_scheme` resolves a generic receiver's method scheme
+/// above). `None` for any other shape; callers only reach this after
+/// `check_record_kind_requirement` has already rejected anything ineligible,
+/// so `None` here just means "no row bound to check," never "unsoundly
+/// skipped."
+fn structural_fields_for_row_check(
+    concrete: &Type,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    span: &Span,
+) -> Option<Vec<(String, Type)>> {
+    match concrete {
+        Type::Record(fields) | Type::Residual { fields, .. } => Some(fields.clone()),
+        Type::Named(name, args, ..) => {
+            let (id, _, _) = registry.projection_struct_fields(current_module, name)?;
+            // `struct_type_params_by_id` has no entry at all for a non-generic
+            // struct/record (never registered, not registered-as-empty) --
+            // that's zero type params, not a resolution failure.
+            let type_params: &[TypeVar] = registry
+                .struct_type_params_by_id(id)
+                .map_or(&[][..], Vec::as_slice);
+            let field_templates = registry.struct_fields_by_id(id)?;
+            let mut subst = Substitution::new();
+            for (&tv, concrete_arg) in type_params.iter().zip(args.iter()) {
+                subst.bind(tv, type_to_infer(concrete_arg));
+            }
+            let mut fields: Vec<(String, Type)> = field_templates
+                .iter()
+                .filter_map(|f| {
+                    infer_type_to_type(&subst.apply(&f.ty), span)
+                        .ok()
+                        .map(|ty| (f.name.clone(), ty))
+                })
+                .collect();
+            fields.sort_by(|a, b| a.0.cmp(&b.0));
+            Some(fields)
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn check_record_kind_requirement(
     concrete: &Type,
     bounds: &[GenericBound],
@@ -1001,25 +1048,39 @@ pub(super) fn check_record_kind_requirement(
     if !record_kind {
         return Ok(());
     }
-    match concrete {
-        Type::Record(_) => Ok(()),
-        Type::Named(name, ..) => {
-            let message = match registry.visible_type_kind(current_module, name) {
-                Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Struct) => {
-                    format!(
-                        "`{name}` is a struct, but a struct never satisfies a row bound; conversion to a record is not available in this release"
-                    )
-                }
-                _ => format!(
-                    "`{name}` is not a record, and only records satisfy a `record` type parameter"
+    // RFC-0120 §3's eligibility rule (restated from RFC-0137 §3): visibility to
+    // structural matching is scoped to the brand, fixed at declaration and
+    // inherited unchanged by every narrowing -- a `Residual`'s own row content
+    // is irrelevant to whether it is eligible, only its brand's declared kind
+    // is. So `Named` and `Residual` are checked identically, by brand name.
+    let brand = match concrete {
+        Type::Record(_) => return Ok(()),
+        Type::Named(name, ..) | Type::Residual { brand: name, .. } => name.as_str(),
+        other => {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{other}` is not a record, and only records satisfy a `record` type parameter"
                 ),
-            };
-            Err(MetelError::type_error(TypeErrorCode::T0012, message, span))
+                span,
+            ));
         }
-        other => Err(MetelError::type_error(
+    };
+    match registry.visible_type_kind(current_module, brand) {
+        Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Record) => Ok(()),
+        Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Struct) => {
+            Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{brand}` is a struct, but a struct never satisfies a row bound; declare it as a `record` instead"
+                ),
+                span,
+            ))
+        }
+        _ => Err(MetelError::type_error(
             TypeErrorCode::T0012,
             format!(
-                "`{other}` is not a record, and only records satisfy a `record` type parameter"
+                "`{brand}` is not a record, and only records satisfy a `record` type parameter"
             ),
             span,
         )),
@@ -1155,11 +1216,13 @@ pub(super) fn check_type_satisfies_bounds(
         registry,
         current_module,
     )?;
-    if let Type::Record(record_fields) = concrete {
+    if let Some(record_fields) =
+        structural_fields_for_row_check(concrete, registry, current_module, span)
+    {
         for bound in bounds {
             if let GenericBound::Row(row) = bound {
                 check_positive_row_bound(
-                    record_fields,
+                    &record_fields,
                     row,
                     span,
                     registry,
@@ -1286,11 +1349,13 @@ pub(super) fn check_type_does_not_satisfy_bound(
         registry,
         current_module,
     )?;
-    if let Type::Record(record_fields) = concrete {
+    if let Some(record_fields) =
+        structural_fields_for_row_check(concrete, registry, current_module, span)
+    {
         for bound in neg_bounds {
             if let GenericBound::Row(row) = bound {
                 check_negative_row_bound(
-                    record_fields,
+                    &record_fields,
                     row,
                     span,
                     registry,

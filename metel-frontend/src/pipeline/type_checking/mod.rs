@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
-use crate::data::ast::{Decl, Program, Visibility};
+use crate::data::ast::{Decl, Program, StructKind, Visibility};
 use crate::data::error::MetelError;
 use crate::data::error::TypeErrorCode;
 use crate::data::typed_ast::{TypedDecl, TypedModule, TypedModuleGraph};
@@ -315,14 +315,22 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
 }
 
 /// Warn about field visibility that cannot have any cross-module effect because
-/// the enclosing struct is private (RFC-0032 D3).
+/// the enclosing struct is private (RFC-0032 D3). Does not apply to a `record`
+/// (RFC-0120 §5): every field there is mandatorily `public` regardless of the
+/// record's own declared visibility -- that's a structural-row-visibility fact,
+/// not a cross-module-access annotation, so it's never inert the way a
+/// module-private `struct`'s public field is.
 fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
     loaded
         .program
         .decls
         .iter()
         .filter_map(|decl| match decl {
-            Decl::Struct(sd) if sd.visibility == Visibility::Private => Some(sd),
+            Decl::Struct(sd)
+                if sd.visibility == Visibility::Private && sd.kind == StructKind::Struct =>
+            {
+                Some(sd)
+            }
             _ => None,
         })
         .flat_map(|sd| {
