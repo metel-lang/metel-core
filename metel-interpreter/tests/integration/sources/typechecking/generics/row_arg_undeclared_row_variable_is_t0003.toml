@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "unknown type `R`"
+
+[options]
+error = ["T0003"]

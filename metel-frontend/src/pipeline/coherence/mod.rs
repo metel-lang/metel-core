@@ -133,10 +133,18 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         // either — both stay opaque until issue #242 does that resolution for real.
         // `dyn Aspect` (RFC-0008) is existential, never a concrete impl target, so
         // it stays opaque here for the same reason.
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` stays opaque for the same reason as the others
+        // here. Unlike `OpenRecord`/`OpenRecordProjection`, it's reachable
+        // in *any* type-argument position, including an impl target's or
+        // bound's own (`impl<row R> Foo<..R>: Aspect`, parsed before
+        // `projections::check` gets a chance to reject it) -- opaque
+        // rather than panicking on ordinary (if not-yet-implemented) input.
         TypeExpr::ImplAspect { .. }
         | TypeExpr::Projection { .. }
         | TypeExpr::RecordProjection { .. }
-        | TypeExpr::DynAspect { .. } => CanonicalType::Opaque,
+        | TypeExpr::DynAspect { .. }
+        | TypeExpr::RowArg(_) => CanonicalType::Opaque,
         // RFC-0121: `{ x: f64, ..R }` is grammar-restricted to a `fun_decl`
         // parameter's own type (`fun_decl_param`) -- never an impl's target
         // type or a bound's type argument, both of which is all this function

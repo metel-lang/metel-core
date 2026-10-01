@@ -162,8 +162,14 @@ fn lower_impl_aspect_param_type(
         // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
         // own field labels only -- no `TypeExpr` of its own to lower `impl
         // Aspect` sugar inside of, exactly like `RecordProjection`.
+        //
+        // RFC-0121 item 2 (metel-core#1310): `Session<..R>`'s row splice is
+        // likewise a leaf here -- no `impl Aspect` sugar can hide inside a
+        // bare row splice. This runs before `projections::check` gets a
+        // chance to reject a `RowArg`, so a leaf, not `unreachable!()`.
         TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::RowArg(_)
         | TypeExpr::Unit => type_expr.clone(),
     }
 }
@@ -650,9 +656,14 @@ fn lower_projections_in_type(
         // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
         // own field labels only -- no `T::AssocType`-shaped `Named` of its
         // own to lower.
+        // RFC-0121 item 2 (metel-core#1310): `Session<..R>`'s row splice is
+        // likewise a leaf -- no `T::AssocType`-shaped `Named` can hide
+        // inside it. This runs before `projections::check` gets a chance
+        // to reject a `RowArg`, so a leaf, not `unreachable!()`.
         TypeExpr::Projection { .. }
         | TypeExpr::RecordProjection { .. }
-        | TypeExpr::OpenRecordProjection { .. } => te.clone(),
+        | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::RowArg(_) => te.clone(),
         TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
             bound: Box::new(go(bound)),
             span: span.clone(),

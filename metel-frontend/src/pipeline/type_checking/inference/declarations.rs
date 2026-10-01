@@ -431,7 +431,15 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
                     .is_some_and(|r| type_expr_contains_impl_aspect(r))
         }
         TypeExpr::DynAspect { bound, .. } => type_expr_contains_impl_aspect(bound),
-        TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => false,
+        // RFC-0121 item 2 (metel-core#1310): a `Session<..R>` row splice
+        // contains no `ImplAspect` of its own either, same as the others
+        // here -- unlike `OpenRecord`/`OpenRecordProjection`, it *can*
+        // appear in a return-type annotation, parsed before
+        // `projections::check` gets a chance to reject it.
+        TypeExpr::Unit
+        | TypeExpr::Projection { .. }
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::RowArg(_) => false,
         // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
         // every call site here checks a *return* type instead.
         TypeExpr::OpenRecord(..) => {
@@ -535,6 +543,12 @@ pub(super) fn rewrite_impl_aspect_returns(
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear in a return-type annotation")
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
+        // *can* appear in a return-type annotation. A row splice has no
+        // `ImplAspect` nested inside it to rewrite, so it passes through
+        // unchanged, like `RecordProjection`/`Unit` above.
+        TypeExpr::RowArg(_) => te.clone(),
     }
 }
 
@@ -1509,6 +1523,12 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
+        // *can* appear in a method's own parameter type (ordinary `param`,
+        // not `fun_decl_param`). A row splice carries no `Self` reference
+        // to substitute, so it passes through unchanged.
+        TypeExpr::RowArg(_) => te.clone(),
     }
 }
 

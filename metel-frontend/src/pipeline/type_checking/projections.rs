@@ -554,6 +554,33 @@ impl Cx<'_> {
             TypeExpr::OpenRecordProjection {
                 path, fields, span, ..
             } => self.projection(path, fields, span, field_of, self_target),
+            // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+            // `Session<..R>` / `Session<..>`. Unlike `OpenRecord`/
+            // `OpenRecordProjection`, this variant is reachable in *any*
+            // type position (it's slotted into an ordinary `Named`'s args,
+            // which this function already recurses into generically) -- so
+            // this is the one place that can reject it with a real
+            // diagnostic rather than `unreachable!()`, since every other
+            // `TypeExpr`-consuming pass runs unconditionally and would
+            // otherwise have to cope with it reaching them. The row
+            // variable gets the same existence check an ordinary named
+            // type gets; real row-polymorphic semantics (what a row
+            // argument means once substituted into a nominal type) are not
+            // designed yet, so every occurrence is rejected regardless.
+            TypeExpr::RowArg(tail) => {
+                if let Some(name) = &tail.var
+                    && !generics.contains(name)
+                {
+                    return Err(Self::unknown_type(name, span));
+                }
+                Err(MetelError::type_error(
+                    TypeErrorCode::T0032,
+                    "a row splice in generic-argument position (`..R`) is not yet \
+                     implemented beyond parsing (RFC-0121 item 2, metel-core#1310)"
+                        .to_string(),
+                    &tail.span,
+                ))
+            }
         }
     }
 

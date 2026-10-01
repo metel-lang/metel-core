@@ -737,8 +737,25 @@ fn parse_extend_aspect(
                 for tp in inner_pairs {
                     if tp.as_rule() == Rule::type_args {
                         for arg in tp.into_inner() {
-                            if arg.as_rule() == Rule::type_expr {
-                                aspect_type_args.push(parse_type_expr(arg, filename)?);
+                            match arg.as_rule() {
+                                Rule::type_expr => {
+                                    aspect_type_args.push(parse_type_expr(arg, filename)?);
+                                }
+                                // RFC-0121 item 2 (metel-core#1310): a row
+                                // splice is grammar-legal here too (`type_args`
+                                // is shared), but an aspect's own type argument
+                                // list has no row-polymorphic meaning designed
+                                // yet -- reject explicitly rather than silently
+                                // dropping the argument.
+                                Rule::row_tail => {
+                                    return Err(MetelError::parse(
+                                        ParseErrorCode::P0001,
+                                        "a row splice (`..R`) is not supported in an aspect's \
+                                         own type argument list",
+                                        &Span::of(&arg, filename),
+                                    ));
+                                }
+                                _ => {}
                             }
                         }
                     }
@@ -2346,8 +2363,21 @@ fn parse_type_args_pair(
     filename: &str,
 ) -> Result<Vec<TypeExpr>, MetelError> {
     pair.into_inner()
-        .filter(|p| p.as_rule() == Rule::type_expr)
-        .map(|p| parse_type_expr(p, filename))
+        .filter_map(|p| match p.as_rule() {
+            Rule::type_expr => Some(parse_type_expr(p, filename)),
+            // RFC-0121 item 2 (metel-core#1310): a row splice is
+            // grammar-legal here too (`type_args` is shared), but an
+            // explicit turbofish call's type arguments have no
+            // row-polymorphic meaning designed yet -- reject explicitly
+            // rather than silently dropping the argument.
+            Rule::row_tail => Some(Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                "a row splice (`..R`) is not supported in an explicit call's \
+                 type argument list",
+                &Span::of(&p, filename),
+            ))),
+            _ => None,
+        })
         .collect()
 }
 
@@ -3002,11 +3032,27 @@ fn parse_type_expr(
             let mut args = vec![];
             for p in inner {
                 if p.as_rule() == Rule::type_args {
-                    args = p
-                        .into_inner()
-                        .filter(|q| q.as_rule() == Rule::type_expr)
-                        .map(|p| parse_type_expr(p, filename))
-                        .collect::<Result<_, _>>()?;
+                    for arg in p.into_inner() {
+                        match arg.as_rule() {
+                            Rule::type_expr => args.push(parse_type_expr(arg, filename)?),
+                            // RFC-0121 item 2 (metel-core#1310), representation
+                            // only: `Session<..R>` / `Session<..>` -- a row
+                            // splice slotted directly into this `Named`'s
+                            // existing args list.
+                            Rule::row_tail => {
+                                let tail_span = Span::of(&arg, filename);
+                                let var = arg
+                                    .into_inner()
+                                    .find(|q| q.as_rule() == Rule::ident)
+                                    .map(|q| q.as_str().to_string());
+                                args.push(TypeExpr::RowArg(RowTail {
+                                    var,
+                                    span: tail_span,
+                                }));
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
             Ok(TypeExpr::Named(name, args))

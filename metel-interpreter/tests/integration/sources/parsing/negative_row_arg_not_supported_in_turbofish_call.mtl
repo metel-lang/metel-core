@@ -1,0 +1,11 @@
+// RFC-0121 item 2 (metel-core#1310): `type_args` is a shared grammar
+// production, so a row splice is grammar-legal in an explicit turbofish
+// call's type argument list too -- rejected explicitly at parse time
+// rather than silently dropped (it has no row-polymorphic meaning designed
+// for this position at all, unlike generic-argument position itself).
+
+fun foo<row R>() -> i64 { 0 }
+
+fun main() {
+    let _ := foo::<..R>();
+}

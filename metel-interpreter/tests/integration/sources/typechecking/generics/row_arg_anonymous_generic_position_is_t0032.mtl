@@ -1,0 +1,10 @@
+// RFC-0121 item 2 (metel-core#1310): the anonymous form (`Session<..>`)
+// needs no declared row variable at all, exactly as the anonymous `..` tail
+// already works at the other two use sites (sec1/sec2) -- it still hits the
+// same "not yet implemented beyond parsing" rejection.
+
+struct Session { token: i64 }
+
+fun foo(s: Session<..>) -> i64 { 0 }
+
+fun main() {}

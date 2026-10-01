@@ -450,6 +450,13 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear in an impl block's target type")
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
+        // *can* appear in an impl block's target type (`impl<row R>
+        // Session<..R>: Aspect`), parsed before `projections::check` gets a
+        // chance to reject it. Mirrors the `Named` case above: the spliced
+        // row variable "mentions" a param exactly when it names one.
+        TypeExpr::RowArg(tail) => tail.var.as_deref().is_some_and(|v| params.contains(v)),
     }
 }
 
@@ -1257,6 +1264,16 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
+        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
+        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
+        // *can* appear in a method's own parameter type (ordinary `param`,
+        // not `fun_decl_param`), parsed before `projections::check` gets a
+        // chance to reject it -- a safe placeholder, not a panic.
+        TypeExpr::RowArg(_) => InferType::Named(
+            "<row-arg>".to_string(),
+            vec![],
+            crate::data::types::NominalId::NONE,
+        ),
     }
 }
 

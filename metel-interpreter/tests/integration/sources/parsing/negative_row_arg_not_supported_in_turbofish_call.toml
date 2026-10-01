@@ -1,0 +1,7 @@
+[options]
+error = ["P0001"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "not supported in an explicit call's type argument list"

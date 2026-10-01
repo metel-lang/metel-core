@@ -1,0 +1,16 @@
+// RFC-0121 item 2 (metel-core#1310): `type_args` is shared, so a row splice
+// is grammar-legal in an `extend` block's own aspect-bound type argument
+// list too -- rejected explicitly at parse time rather than silently
+// dropped.
+
+aspect Bar<T> {
+    fun bar(self) -> i64;
+}
+
+struct Foo { x: i64 }
+
+extend<row R> Foo: Bar<..R> {
+    fun bar(self) -> i64 { self.x }
+}
+
+fun main() {}
