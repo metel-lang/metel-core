@@ -468,7 +468,7 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
                 .iter()
                 .map(|a| crate::data::ast::MatchArm {
                     pattern: a.pattern.clone(),
-                    guard: a.guard.as_ref().map(&go),
+                    guard: a.guard.as_ref().map(go),
                     body: lower_projections_in_block(&a.body, generics),
                     span: a.span.clone(),
                 })

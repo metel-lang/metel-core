@@ -200,12 +200,12 @@ fn populate_schemes_from_embedded_core(
                     .params
                     .iter()
                     .map(|p| {
-                        p.type_ann.as_ref().map(&te).expect(
+                        p.type_ann.as_ref().map(te).expect(
                             "native declarations are fully annotated (enforced by native_fun_ty)",
                         )
                     })
                     .collect();
-                let ret = fun.return_type.as_ref().map_or_else(InferType::unit, &te);
+                let ret = fun.return_type.as_ref().map_or_else(InferType::unit, te);
                 let fun_ty = InferType::fun(params, ret);
                 let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
                 let neg_bounds =
