@@ -18,18 +18,18 @@ extend B: Eq {
     }
 }
 
-fun mk_empty() -> B[] {
+fun mk_empty() -> [B] {
     return [];
 }
 
-fun through_bound<T: Eq>(xs: T[]) -> boolean {
+fun through_bound<T: Eq>(xs: [T]) -> boolean {
     return xs.eq(&xs);
 }
 
 fun main() {
     // Both operands empty -- the failing case.
-    let a: B[] := [];
-    let b: B[] := [];
+    let a: [B] := [];
+    let b: [B] := [];
     assert(a.eq(&b));
 
     // Same value on both sides, still empty.
@@ -88,7 +88,7 @@ fun render<T: Show>(x: &T) -> String {
     return x.show();
 }
 
-extend<T: Show> T[]: Show {
+extend<T: Show> [T]: Show {
     fun show(&self) -> String {
         var out := "";
         for (e in self) {
@@ -99,7 +99,7 @@ extend<T: Show> T[]: Show {
 }
 
 fun no_argument_generic_method_on_empty_receiver() {
-    let empty: B[] := [];
+    let empty: [B] := [];
     assert(empty.show() == "");
 
     let filled := [B { v = 1 }, B { v = 2 }];

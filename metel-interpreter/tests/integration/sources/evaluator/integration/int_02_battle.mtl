@@ -177,14 +177,14 @@ fun format_round(round: i64, f1: &Fighter, f2: &Fighter) -> String {
 }
 
 // Sum of HP across all fighters in the party.
-fun total_party_hp(party: Fighter[]) -> i64 {
+fun total_party_hp(party: [Fighter]) -> i64 {
     var total := 0;
     for (f in party) { total += f.hp; }
     total
 }
 
 // Index of the fighter with highest attack.  Returns None for an empty party.
-fun best_attacker_idx(party: Fighter[]) -> Perhaps<i64> {
+fun best_attacker_idx(party: [Fighter]) -> Perhaps<i64> {
     let n := party.len();
     if (n == 0) { return None; }
     var best := 0;
@@ -419,7 +419,7 @@ fun main() {
     };
 
     // 18. Array of fighters: total HP and best attacker index.
-    let party: Fighter[] := [
+    let party: [Fighter] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },
@@ -427,7 +427,7 @@ fun main() {
     let total_hp := total_party_hp(party);
     assert(total_hp == 240);
 
-    let party_for_best: Fighter[] := [
+    let party_for_best: [Fighter] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },
@@ -438,12 +438,12 @@ fun main() {
         None => assert(false, "expected Some"),
     };
     // Empty party returns None.
-    let empty_party: Fighter[] := [];
+    let empty_party: [Fighter] := [];
     let no_best := best_attacker_idx(empty_party);
     match (no_best) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
 
     // 19. Count alive fighters in party via for-in (all have hp > 0).
-    let party_for_alive: Fighter[] := [
+    let party_for_alive: [Fighter] := [
         Fighter { name = "A", hp = 80,  max_hp = 80,  attack = 15, defense = 8 },
         Fighter { name = "B", hp = 60,  max_hp = 60,  attack = 20, defense = 3 },
         Fighter { name = "C", hp = 100, max_hp = 100, attack = 10, defense = 12 },

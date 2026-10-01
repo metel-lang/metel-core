@@ -5,19 +5,19 @@
 // inference, unifying T and A.
 
 // sum() appears first and generates array constraints.
-fun sum(arr: i64[]) -> i64 {
+fun sum(arr: [i64]) -> i64 {
     let result: i64 := 0;
     result
 }
 
 // fold_left has two independent type params.  The call site below instantiates
 // T=i64 and A=String — distinct types — which would fail if T and A collapse.
-fun fold_left<T, A>(arr: T[], init: A, f: |A, T| -> A) -> A {
+fun fold_left<T, A>(arr: [T], init: A, f: |A, T| -> A) -> A {
     init
 }
 
 fun use_both() -> String {
-    let nums: i64[] := [1, 2, 3];
+    let nums: [i64] := [1, 2, 3];
     let _s := sum(nums);
     fold_left(nums, "acc", |acc: String, _x: i64| -> String { acc })
 }

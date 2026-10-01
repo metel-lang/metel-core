@@ -1,4 +1,4 @@
-extend<T> T[] {
+extend<T> [T] {
     fun take_first_twice(self) -> T {
         let first := self[0];
         self[0]

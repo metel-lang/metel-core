@@ -2,25 +2,25 @@
 // type, not only to a named type. `(String, String)[]` previously failed with
 // P0001 because the parser consumed the tuple and left the `[]` dangling.
 struct Env {
-    vars: (String, String)[],
+    vars: [(String, String)],
 }
 
-fun vars() -> (String, String)[] {
+fun vars() -> [(String, String)] {
     return [];
 }
 
-fun takes(pairs: (String, String)[]) -> i64 {
+fun takes(pairs: [(String, String)]) -> i64 {
     return 0;
 }
 
 fun annotates() {
-    let xs: (i64, boolean)[] := [];
+    let xs: [(i64, boolean)] := [];
 }
 
 fun main() {
     let env := Env { vars = [("a", "b")] };
     assert(env.vars[0].0 == "a");
-    let empty: (String, String)[] := vars();
+    let empty: [(String, String)] := vars();
     assert(empty.len() == 0);
     assert(takes(env.vars) == 0);
     annotates();

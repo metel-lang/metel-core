@@ -10,7 +10,7 @@ aspect Comparable {
 }
 
 struct SortedCache<T: Printable> where T: Comparable {
-    items: T[],
+    items: [T],
 }
 
 struct Entry {

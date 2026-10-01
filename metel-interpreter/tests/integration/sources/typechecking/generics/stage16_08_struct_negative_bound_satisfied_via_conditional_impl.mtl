@@ -1,6 +1,6 @@
 // Test that a negative bound (!Drop) correctly holds when the conditional impl's condition ISN'T met
 aspect Drop { fun drop(self); }
-struct Arena<T: !Drop> { items: T[] }
+struct Arena<T: !Drop> { items: [T] }
 struct Pair<A, B> { first: A, second: B }
 // Pair implements Drop only when BOTH A and B implement Drop
 extend<A: Drop, B: Drop> Pair<A, B>: Drop { fun drop(self) {} }

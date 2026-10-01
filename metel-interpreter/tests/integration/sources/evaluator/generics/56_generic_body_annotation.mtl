@@ -6,7 +6,7 @@
 // retained values owned. The callback is scaffolding, not part of what this fixture tests;
 // it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
 // the elements are `Copy` (#335, #328).
-fun collect_matching<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> List<T> {
+fun collect_matching<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> List<T> {
     var result: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
@@ -18,7 +18,7 @@ fun collect_matching<T>(arr: T[], pred: |&T| -> boolean, clone: |&T| -> T) -> Li
     result
 }
 
-fun map_to<T, U>(arr: T[], f: |&T| -> U) -> List<U> {
+fun map_to<T, U>(arr: [T], f: |&T| -> U) -> List<U> {
     var out: List<U> := List::new();
     for (x in arr) { out.push(f(&x)); }
     out
@@ -31,7 +31,7 @@ fun wrap_pair<A, B>(a: A, b: B) -> List<A> {
 }
 
 fun main() {
-    let nums_for_evens: i64[] := [1, 2, 3, 4, 5, 6];
+    let nums_for_evens: [i64] := [1, 2, 3, 4, 5, 6];
     let evens := collect_matching(
         nums_for_evens,
         |x: &i64| -> boolean { *x % 2 == 0 },
@@ -41,7 +41,7 @@ fun main() {
     let evens_arr := (&evens).as_slice();
     assert(evens_arr[0] == 2);
 
-    let strs: String[] := ["a", "bb", "ccc", "dddd"];
+    let strs: [String] := ["a", "bb", "ccc", "dddd"];
     let long := collect_matching(
         strs,
         |s: &String| -> boolean { (*s).len() > 2 },
@@ -49,14 +49,14 @@ fun main() {
     );
     assert(long.len() == 2);
 
-    let nums_for_squares: i64[] := [1, 2, 3, 4, 5, 6];
+    let nums_for_squares: [i64] := [1, 2, 3, 4, 5, 6];
     let squares := map_to(nums_for_squares, |x: &i64| -> i64 { *x * *x });
     assert((&squares).len() == 6);
     let squares_arr := (&squares).as_slice();
     assert(squares_arr[0] == 1);
     assert(squares_arr[5] == 36);
 
-    let nums_for_bools: i64[] := [1, 2, 3, 4, 5, 6];
+    let nums_for_bools: [i64] := [1, 2, 3, 4, 5, 6];
     let bools := map_to(nums_for_bools, |x: &i64| -> boolean { *x > 3 });
     assert((&bools).len() == 6);
     let bools_arr := (&bools).as_slice();

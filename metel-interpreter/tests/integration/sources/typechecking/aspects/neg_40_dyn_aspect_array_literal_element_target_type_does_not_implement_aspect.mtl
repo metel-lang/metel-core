@@ -1,5 +1,5 @@
 struct Rock { }
 
 fun main() {
-    let arr: dyn Display[] := [Rock { }];
+    let arr: [dyn Display] := [Rock { }];
 }

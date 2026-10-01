@@ -9,10 +9,10 @@ struct Item { name: String }
 
 extend Item: Printable { fun print(self) {} }
 
-fun print_first(items: extends Printable[]) {
+fun print_first(items: [extends Printable]) {
     // items has type _T0[] where _T0: Printable
 }
 
-fun run(items: Item[]) {
+fun run(items: [Item]) {
     print_first(items)
 }

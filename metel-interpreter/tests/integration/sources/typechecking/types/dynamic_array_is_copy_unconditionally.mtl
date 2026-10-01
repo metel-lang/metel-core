@@ -8,6 +8,6 @@ struct Plain {
 fun needs_copy<T: Copy>(x: T) {}
 
 fun main() {
-    let items: Plain[] := [];
+    let items: [Plain] := [];
     needs_copy(items);
 }

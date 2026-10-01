@@ -6,5 +6,5 @@ extend Rock: Display {
 }
 
 fun main() {
-    let arr: dyn Display[] := [Rock { }, Pebble { }];
+    let arr: [dyn Display] := [Rock { }, Pebble { }];
 }

@@ -52,7 +52,7 @@ fun main() {
     assert(sl[0] == 10);
     assert(sl[2] == 99);
     // List::from copies an existing T[] array
-    let src: i64[] := [1, 2, 3, 4, 5];
+    let src: [i64] := [1, 2, 3, 4, 5];
     let lst2 := List::from(src);
     assert(lst2.len() == 5);
     // Building a list with a loop then converting to T[]
@@ -119,7 +119,7 @@ fun main() {
         None => assert(false),
     };
     // List::from on empty array
-    let empty_src: i64[] := [];
+    let empty_src: [i64] := [];
     let lst_from_empty := List::from(empty_src);
     assert(lst_from_empty.len() == 0);
     // as_slice on empty list produces empty array

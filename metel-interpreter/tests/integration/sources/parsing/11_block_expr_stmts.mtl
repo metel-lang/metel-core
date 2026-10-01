@@ -18,7 +18,7 @@ fun color_name(c: Color) -> String {
 }
 
 // loop as a block tail — the function body returns the loop result directly
-fun first_positive(arr: i64[]) -> i64 {
+fun first_positive(arr: [i64]) -> i64 {
     var i := 0;
     loop {
         if (arr[i] > 0) {

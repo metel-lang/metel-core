@@ -18,12 +18,12 @@ extend Label: Printable {
     fun print(&self) {}
 }
 
-fun print_all(items: extends Printable[]) {
+fun print_all(items: [extends Printable]) {
     for (item in items) {
         item.print()
     }
 }
 
-fun run(labels: Label[]) {
+fun run(labels: [Label]) {
     print_all(labels)
 }

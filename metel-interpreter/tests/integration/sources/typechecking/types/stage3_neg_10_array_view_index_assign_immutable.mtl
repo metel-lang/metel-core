@@ -4,7 +4,7 @@
 // annotation could ever fix it.
 
 fun main() {
-    var values: i64[] := [1, 2];
+    var values: [i64] := [1, 2];
     values[0] := 9; // ERROR[T0023]
     println(values[0]);
 }

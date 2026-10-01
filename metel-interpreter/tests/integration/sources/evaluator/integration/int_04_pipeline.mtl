@@ -63,10 +63,10 @@ extend Number: Summarizable {
 
 // ── Iterable over a fixed array of ints ────────────────────────────────────────
 
-struct NumberList { data: i64[], pos: i64 }
+struct NumberList { data: [i64], pos: i64 }
 
 extend NumberList {
-    fun new(data: i64[]) -> NumberList { NumberList { data = data, pos = 0 } }
+    fun new(data: [i64]) -> NumberList { NumberList { data = data, pos = 0 } }
     fun len(&self) -> i64 { self.data.len() }
 }
 
@@ -138,7 +138,7 @@ fun main() {
 
     // Empty NumberList: loop body never runs
     var ran := false;
-    let empty_ints: i64[] := [];
+    let empty_ints: [i64] := [];
     for (_x in NumberList::new(empty_ints)) { ran := true; }
     assert(!ran);
 

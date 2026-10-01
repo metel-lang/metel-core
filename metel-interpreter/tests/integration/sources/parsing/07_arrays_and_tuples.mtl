@@ -3,7 +3,7 @@
 //         array_push, array_len, for-in, tuple literals, tuple type syntax,
 //         positional access (.0 .1), tuple destructuring in match.
 
-fun sum(arr: i64[]) -> i64 {
+fun sum(arr: [i64]) -> i64 {
     var total := 0;
     for (n in arr) {
         total += n;
@@ -11,8 +11,8 @@ fun sum(arr: i64[]) -> i64 {
     return total;
 }
 
-fun reverse(arr: i64[]) -> i64[] {
-    var result: i64[]  := [];
+fun reverse(arr: [i64]) -> [i64] {
+    var result: [i64]  := [];
     var i := array_len(arr) - 1;
     while (i >= 0) {
         array_push(result, arr[i]);
@@ -21,8 +21,8 @@ fun reverse(arr: i64[]) -> i64[] {
     return result;
 }
 
-fun zip_sum(a: i64[], b: i64[]) -> i64[] {
-    var result: i64[]  := [];
+fun zip_sum(a: [i64], b: [i64]) -> [i64] {
+    var result: [i64]  := [];
     var i := 0;
     let len := array_len(a);
     while (i < len) {
@@ -32,7 +32,7 @@ fun zip_sum(a: i64[], b: i64[]) -> i64[] {
     return result;
 }
 
-fun min_max(arr: i64[]) -> (i64, i64) {
+fun min_max(arr: [i64]) -> (i64, i64) {
     var lo := arr[0];
     var hi := arr[0];
     for (n in arr) {
@@ -44,7 +44,7 @@ fun min_max(arr: i64[]) -> (i64, i64) {
 
 fun main() {
     // --- array literal and T[] type ---
-    let nums: i64[] := [5, 3, 8, 1, 9, 2];
+    let nums: [i64] := [5, 3, 8, 1, 9, 2];
     println(int_to_string(array_len(nums)));   // 6
     println(int_to_string(nums[0]));           // 5
     println(int_to_string(nums[4]));           // 9
@@ -55,7 +55,7 @@ fun main() {
     println(int_to_string(array_len(words)));  // 3
 
     // --- array_push ---
-    var growing: i64[]  := [];
+    var growing: [i64]  := [];
     array_push(growing, 10);
     array_push(growing, 20);
     array_push(growing, 30);
@@ -72,8 +72,8 @@ fun main() {
     println("");
 
     // --- zip_sum ---
-    let a: i64[] := [1, 2, 3];
-    let b: i64[] := [4, 5, 6];
+    let a: [i64] := [1, 2, 3];
+    let b: [i64] := [4, 5, 6];
     let zipped := zip_sum(a, b);
     for (n in zipped) {
         print(int_to_string(n) + " ");          // 5 7 9

@@ -461,7 +461,7 @@ fn array_extend_method_self_param_carries_a_local_id() {
     let source = "aspect Show {\n\
                        \tfun show(&self) -> i64;\n\
                        }\n\
-                       extend<T> T[]: Show {\n\
+                       extend<T> [T]: Show {\n\
                        \tfun show(&self) -> i64 {\n\
                        \t\tvar n := 0;\n\
                        \t\tfor (item in self) {\n\
@@ -522,7 +522,7 @@ fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
                        \t\tn\n\
                        \t}\n\
                        }\n\
-                       extend<T> T[]: Show {\n\
+                       extend<T> [T]: Show {\n\
                        \tfun show(&self) -> i64 {\n\
                        \t\tvar n := 2;\n\
                        \t\tn\n\
@@ -565,7 +565,7 @@ fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
             }
             _ => None,
         })
-        .expect("the structural `extend<T> T[]` impl's `show` method")
+        .expect("the structural `extend<T> [T]` impl's `show` method")
         .param_ids[0]
         .expect("structural self param should carry a real LocalId");
 

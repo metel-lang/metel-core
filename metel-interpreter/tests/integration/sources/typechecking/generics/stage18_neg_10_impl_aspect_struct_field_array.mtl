@@ -2,7 +2,7 @@
 aspect P { fun p(&self); }
 
 struct Holder {
-    values: extends P[], // ERROR[T0022]
+    values: [extends P], // ERROR[T0022]
 }
 
 fun main() {}

@@ -49,7 +49,7 @@ extend Person {
     fun rename(&var self, new_name: String) { self.name := new_name; }
 }
 
-fun greet_all<T: Greet>(people: T[]) {
+fun greet_all<T: Greet>(people: [T]) {
     for (p in people) { println(p.greet()); }
 }
 

@@ -1,4 +1,4 @@
-fun find(arr: i64[], target: i64) -> Perhaps<i64> {
+fun find(arr: [i64], target: i64) -> Perhaps<i64> {
     var i := 0;
     while (i < arr.len()) {
         if (arr[i as u64] == target) {

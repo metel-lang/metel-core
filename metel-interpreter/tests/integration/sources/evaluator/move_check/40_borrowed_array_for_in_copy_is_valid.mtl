@@ -1,4 +1,4 @@
-fun first<T: Copy>(items: T[]) -> T {
+fun first<T: Copy>(items: [T]) -> T {
     for (item in items) {
         return item;
     }
@@ -6,6 +6,6 @@ fun first<T: Copy>(items: T[]) -> T {
 }
 
 fun main() {
-    let values: i64[] := [1, 2, 3];
+    let values: [i64] := [1, 2, 3];
     assert(first(values) == 1);
 }

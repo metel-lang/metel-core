@@ -3,15 +3,15 @@
 // fields (METEL-191).
 
 struct PairTable {
-    rows: (String, i64)[],
+    rows: [(String, i64)],
 }
 
-fun keep(rows: (String, i64)[]) -> (String, i64)[] {
+fun keep(rows: [(String, i64)]) -> [(String, i64)] {
     return rows;
 }
 
 fun main() {
-    let rows: (String, i64)[] := [("alpha", 1), ("beta", 2)];
+    let rows: [(String, i64)] := [("alpha", 1), ("beta", 2)];
     let echoed := keep(rows);
     let table := PairTable { rows = echoed };
 

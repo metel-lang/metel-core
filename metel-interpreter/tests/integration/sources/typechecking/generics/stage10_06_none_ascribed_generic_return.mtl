@@ -1,6 +1,6 @@
 // Positive: ascribed `None` in a generic function body constrains the inferred return type.
 
-fun maybe_head<T: Copy>(items: T[]) {
+fun maybe_head<T: Copy>(items: [T]) {
     if (items.len() == 0) {
         return None : Perhaps<T>;
     }
@@ -9,5 +9,5 @@ fun maybe_head<T: Copy>(items: T[]) {
 
 fun main() {
     let a: Perhaps<i64> := maybe_head([1, 2, 3]);
-    let b: Perhaps<i64> := maybe_head([] : i64[]);
+    let b: Perhaps<i64> := maybe_head([] : [i64]);
 }

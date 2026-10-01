@@ -1,7 +1,7 @@
 // List::from owns a copy, rather than an alias, of its source array.
 
 fun main() {
-    let source: i64[] := [1, 2];
+    let source: [i64] := [1, 2];
     var list := List::from(source);
     list.push(3);
 

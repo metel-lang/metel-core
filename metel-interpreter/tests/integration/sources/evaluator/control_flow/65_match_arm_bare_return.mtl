@@ -15,7 +15,7 @@ fun sign(n: i64) -> i64 {
     }
 }
 
-fun first_err(xs: i64[]) -> Perhaps<i64> {
+fun first_err(xs: [i64]) -> Perhaps<i64> {
     let a := match (xs[0]) {
         0 => return None,
         n => n,
@@ -23,7 +23,7 @@ fun first_err(xs: i64[]) -> Perhaps<i64> {
     Perhaps::Some { value = a }
 }
 
-fun find_nonzero(arr: i64[]) -> i64 {
+fun find_nonzero(arr: [i64]) -> i64 {
     var i := 0;
     loop {
         if (i >= arr.len()) { break -1; }

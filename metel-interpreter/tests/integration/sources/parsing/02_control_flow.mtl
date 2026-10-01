@@ -54,7 +54,7 @@ fun main() {
     println(int_to_string(c_sum));        // 15
 
     // --- for-in over array ---
-    let nums: i64[] := [10, 20, 30];
+    let nums: [i64] := [10, 20, 30];
     var for_in_sum := 0;
     for (n in nums) {
         for_in_sum += n;

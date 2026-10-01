@@ -1,14 +1,14 @@
 // Positive: type parameters inside nested type positions (arrays, tuples, functions).
 
 // T inside an array (using T[] postfix syntax).
-fun array_first<T: Copy>(arr: T[]) -> T { arr[0] }
+fun array_first<T: Copy>(arr: [T]) -> T { arr[0] }
 
 // T inside a tuple param.
 fun fst<A, B>(pair: (A, B)) -> A { pair.0 }
 fun snd<A, B>(pair: (A, B)) -> B { pair.1 }
 
 // T as both array element and return.
-fun wrap_in_pair<T: Copy>(arr: T[]) -> (T, T) { (arr[0], arr[1]) }
+fun wrap_in_pair<T: Copy>(arr: [T]) -> (T, T) { (arr[0], arr[1]) }
 
 fun use_nested() -> boolean {
     let arr := [10, 20, 30];

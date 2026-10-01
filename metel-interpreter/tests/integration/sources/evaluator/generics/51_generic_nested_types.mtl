@@ -1,10 +1,10 @@
 // Generic functions operating on arrays and tuples as type parameter positions.
 
 // First element of an array (using T[] postfix syntax).
-fun array_first<T: Copy>(arr: T[]) -> T { arr[0] }
+fun array_first<T: Copy>(arr: [T]) -> T { arr[0] }
 
 // Second element of an array.
-fun array_second<T: Copy>(arr: T[]) -> T { arr[1] }
+fun array_second<T: Copy>(arr: [T]) -> T { arr[1] }
 
 // First and second of a tuple.
 fun fst<A, B>(pair: (A, B)) -> A { pair.0 }

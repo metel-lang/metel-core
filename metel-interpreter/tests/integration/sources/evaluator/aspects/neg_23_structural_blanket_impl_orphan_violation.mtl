@@ -6,7 +6,7 @@
 // nominal target, confirming issue #233's ImplBlock generalization didn't bypass
 // the existing coherence pass (issue #238) for the new structural-target shape.
 
-extend<T: Display> T[]: Display {
+extend<T: Display> [T]: Display {
     fun to_string(&self) -> String {
         return "array";
     }

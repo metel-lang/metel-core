@@ -46,7 +46,7 @@ fun add_parsed(a: String, b: String) -> Result<i64, MathError> {
 
 // ── Perhaps helpers ───────────────────────────────────────────────────────────
 
-fun find_in(arr: i64[], target: i64) -> Perhaps<i64> {
+fun find_in(arr: [i64], target: i64) -> Perhaps<i64> {
     var i := 0;
     while (i < arr.len()) {
         if (arr[i as u64] == target) { return Perhaps::Some { value = i }; }
