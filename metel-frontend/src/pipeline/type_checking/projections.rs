@@ -545,6 +545,15 @@ impl Cx<'_> {
                 Ok(())
             }
             TypeExpr::Unit => Ok(()),
+            // RFC-0121 installment 2: `Handle.{ fd, ..R }` needs its own
+            // brand checked exactly like a closed `RecordProjection`'s; the
+            // tail's row-variable name is checked against the enclosing
+            // `fun_decl`'s declared `row` params separately, in
+            // `infer_fun_decl`, which has that generic-param context and
+            // this pass does not.
+            TypeExpr::OpenRecordProjection {
+                path, fields, span, ..
+            } => self.projection(path, fields, span, field_of, self_target),
         }
     }
 

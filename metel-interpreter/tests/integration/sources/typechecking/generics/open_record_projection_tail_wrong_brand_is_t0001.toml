@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "expected `Handle` (or a residual of it), found `Other`"
+
+[options]
+error = ["T0001"]

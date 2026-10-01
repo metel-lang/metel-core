@@ -663,6 +663,11 @@ mode = "named"
 name = "RecordProjectionType"
 section = "Types"
 [[rule]]
+pest = "open_record_projection_type"
+mode = "named"
+name = "OpenRecordProjectionType"
+section = "Types"
+[[rule]]
 pest = "fun_type"
 mode = "named"
 name = "FunType"

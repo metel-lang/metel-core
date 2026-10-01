@@ -174,5 +174,9 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         TypeExpr::OpenRecord(..) => {
             unreachable!("OpenRecord cannot appear in an aspect method's signature")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("OpenRecordProjection cannot appear in an aspect method's signature")
+        }
     }
 }

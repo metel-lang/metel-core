@@ -159,7 +159,12 @@ fn lower_impl_aspect_param_type(
             bound: Box::new(lower_impl_aspect_param_type(bound, counter, extra_generics)),
             span: span.clone(),
         },
-        TypeExpr::RecordProjection { .. } | TypeExpr::Unit => type_expr.clone(),
+        // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
+        // own field labels only -- no `TypeExpr` of its own to lower `impl
+        // Aspect` sugar inside of, exactly like `RecordProjection`.
+        TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::Unit => type_expr.clone(),
     }
 }
 
@@ -642,7 +647,12 @@ fn lower_projections_in_type(
             span: span.clone(),
         },
         // Already a projection (e.g. re-run on already-lowered input) — nothing to do.
-        TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => te.clone(),
+        // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
+        // own field labels only -- no `T::AssocType`-shaped `Named` of its
+        // own to lower.
+        TypeExpr::Projection { .. }
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. } => te.clone(),
         TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
             bound: Box::new(go(bound)),
             span: span.clone(),

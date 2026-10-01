@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::data::ast::{
     AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, BoundHead, Decl, Expr, ForInit,
-    FunDecl, GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program, Span,
-    Stmt, TypeExpr, UnaryOp, Visibility,
+    FunDecl, GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program,
+    RowTail, Span, Stmt, TypeExpr, UnaryOp, Visibility,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
@@ -446,6 +446,10 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::OpenRecord(..) => {
             unreachable!("OpenRecord cannot appear in an impl block's target type")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("OpenRecordProjection cannot appear in an impl block's target type")
+        }
     }
 }
 
@@ -746,8 +750,12 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 // (deterministically) in `infer_fun_decl`, same as any other
                 // signature error during hoisting; this pass just skips
                 // registering it on failure rather than erroring here.
-                let (open_record_param_vars, open_record_bounds, _open_record_record_kinds) =
-                    collect_open_record_param_vars(fun, ctx).unwrap_or_default();
+                let (
+                    open_record_param_vars,
+                    open_record_bounds,
+                    _open_record_record_kinds,
+                    _open_record_projection_tail_constraints,
+                ) = collect_open_record_param_vars(fun, ctx).unwrap_or_default();
                 let mut type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
                 type_var_bounds.extend(open_record_bounds);
                 let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
@@ -803,13 +811,17 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     .map(|(i, p)| {
                         if let Some(&tv) = open_record_param_vars.get(&i) {
                             InferType::Var(tv)
-                        } else if matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))) {
+                        } else if matches!(
+                            p.type_ann,
+                            Some(TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. })
+                        ) {
                             // `collect_open_record_param_vars` above failed (a
                             // malformed row variable reference) and its error
                             // was swallowed for this provisional pass -- never
                             // fall through to `te_to_infer` on the untouched
-                            // `OpenRecord` annotation, which has no general
-                            // lowering and panics. The real error surfaces
+                            // `OpenRecord`/`OpenRecordProjection` annotation,
+                            // neither of which has a general lowering and
+                            // both of which panic. The real error surfaces
                             // (deterministically) when `infer_fun_decl` runs.
                             ctx.fresh_var()
                         } else if let Some(ann) = &p.type_ann {
@@ -996,64 +1008,102 @@ pub(super) fn collect_fun_type_var_record_kinds(
 /// `infer_fun_decl`'s real inference pass and `hoist_fun_decls`'s provisional
 /// forward-reference pre-registration, both of which build `param_types` from
 /// `fun.params` directly and must agree on this desugaring.
+///
+/// The fourth element is RFC-0121 installment 2's parallel desugaring for
+/// `Handle.{ fd, ..R }` (`TypeExpr::OpenRecordProjection`): also keyed by the
+/// fresh per-parameter `TypeVar`, but merged by the caller into
+/// `ctx.register_fun_projection_tail_constraints` instead -- deliberately
+/// *not* folded into `bounds`/`record_kinds` above, since this mechanism is
+/// RFC-0117/0137's existing residual-projection narrowing (already
+/// `struct`-compatible) rather than a `record`-kind-eligible row bound; see
+/// `check_projection_tail_constraint`.
 pub(super) type OpenRecordParamVars = (
     HashMap<usize, TypeVar>,
     HashMap<TypeVar, Vec<GenericBound>>,
     HashMap<TypeVar, bool>,
+    HashMap<TypeVar, (String, RowConstraint)>,
 );
 
 pub(super) fn collect_open_record_param_vars(
     fun: &FunDecl,
     ctx: &mut InferContext,
 ) -> Result<OpenRecordParamVars, MetelError> {
+    fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelError> {
+        let Some(name) = &tail.var else {
+            return Ok(());
+        };
+        match generics.iter().find(|g| &g.name == name) {
+            None => Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "undefined row variable `{name}` -- declare it as a generic \
+                     parameter (`<row {name}>`)"
+                ),
+                &tail.span,
+            )),
+            Some(gp) if !gp.is_row => Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                     not `<{name}>`"
+                ),
+                &tail.span,
+            )),
+            Some(_) => Ok(()),
+        }
+    }
+
     let mut param_vars = HashMap::new();
     let mut bounds = HashMap::new();
     let mut record_kinds = HashMap::new();
+    let mut projection_tail_constraints = HashMap::new();
     for (i, param) in fun.params.iter().enumerate() {
-        let Some(TypeExpr::OpenRecord(fields, tail)) = &param.type_ann else {
-            continue;
-        };
-        if let Some(name) = &tail.var {
-            match fun.generics.iter().find(|g| &g.name == name) {
-                None => {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "undefined row variable `{name}` -- declare it as a generic \
-                             parameter (`<row {name}>`)"
-                        ),
-                        &tail.span,
-                    ));
-                }
-                Some(gp) if !gp.is_row => {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0012,
-                        format!(
-                            "`{name}` is not a row parameter; declare it `<row {name}>`, \
-                             not `<{name}>`"
-                        ),
-                        &tail.span,
-                    ));
-                }
-                Some(_) => {}
+        match &param.type_ann {
+            Some(TypeExpr::OpenRecord(fields, tail)) => {
+                check_row_var(tail, &fun.generics)?;
+                let tv = ctx.fresh_type_var_raw();
+                let row = RowConstraint {
+                    fields: fields
+                        .iter()
+                        .map(|(label, ty)| RowConstraintField {
+                            label: label.clone(),
+                            ty: Some(ty.clone()),
+                        })
+                        .collect(),
+                    open: true,
+                };
+                bounds.insert(tv, vec![GenericBound::Row(row)]);
+                record_kinds.insert(tv, true);
+                param_vars.insert(i, tv);
             }
+            Some(TypeExpr::OpenRecordProjection {
+                path, fields, tail, ..
+            }) => {
+                check_row_var(tail, &fun.generics)?;
+                let tv = ctx.fresh_type_var_raw();
+                let row = RowConstraint {
+                    fields: fields
+                        .iter()
+                        .map(|label| RowConstraintField {
+                            label: label.clone(),
+                            ty: None,
+                        })
+                        .collect(),
+                    open: true,
+                };
+                let brand = path.last().cloned().unwrap_or_default();
+                projection_tail_constraints.insert(tv, (brand, row));
+                param_vars.insert(i, tv);
+            }
+            _ => {}
         }
-        let tv = ctx.fresh_type_var_raw();
-        let row = RowConstraint {
-            fields: fields
-                .iter()
-                .map(|(label, ty)| RowConstraintField {
-                    label: label.clone(),
-                    ty: Some(ty.clone()),
-                })
-                .collect(),
-            open: true,
-        };
-        bounds.insert(tv, vec![GenericBound::Row(row)]);
-        record_kinds.insert(tv, true);
-        param_vars.insert(i, tv);
     }
-    Ok((param_vars, bounds, record_kinds))
+    Ok((
+        param_vars,
+        bounds,
+        record_kinds,
+        projection_tail_constraints,
+    ))
 }
 
 /// Collect equality constraints (`Aspect<AssocType = ConcreteType>`, RFC-0082 §4)
@@ -1202,6 +1252,10 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         // contain one.
         TypeExpr::OpenRecord(..) => {
             unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
     }
 }

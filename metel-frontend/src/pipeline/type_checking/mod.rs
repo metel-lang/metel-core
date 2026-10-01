@@ -1043,6 +1043,10 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::OpenRecord(..) => {
             unreachable!("OpenRecord cannot appear as an impl block's target type")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("OpenRecordProjection cannot appear as an impl block's target type")
+        }
     };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is
     // undefined. T0001 is what `coherence.rs` already uses for the structurally

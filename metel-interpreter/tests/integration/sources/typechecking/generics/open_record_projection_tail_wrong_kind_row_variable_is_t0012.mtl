@@ -1,0 +1,9 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec2: `..R` needs `R` declared
+// `row R`, not a plain type parameter -- exactly the same binder-kind
+// distinction sec1's generic open-row-tailed record parameter already draws.
+
+struct Handle { fd: i64 }
+
+fun get_fd<R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {}

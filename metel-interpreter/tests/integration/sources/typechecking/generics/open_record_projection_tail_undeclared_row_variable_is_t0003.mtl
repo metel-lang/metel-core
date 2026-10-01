@@ -1,0 +1,10 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec2: `..R`'s row variable must name
+// a declared `row` parameter, exactly as sec1's generic open-row-tailed
+// record parameter already requires -- `get_fd` declares no generics at all,
+// so `R` is undefined.
+
+struct Handle { fd: i64 }
+
+fun get_fd(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {}

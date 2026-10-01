@@ -122,7 +122,7 @@ param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ type_expr)?) 
 // native function, since neither has a body a row-kinded parameter's structural
 // check could run against the same way a free function's call sites do.
 fun_decl_param_list = { fun_decl_param ~ ("," ~ fun_decl_param)* ~ ","? }
-fun_decl_param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ (open_record_type | type_expr))?) }
+fun_decl_param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ (open_record_type | open_record_projection_type | type_expr))?) }
 
 generic_params   = { "<" ~ generic_param ~ ("," ~ generic_param)* ~ ">" }
 generic_param    = { (record_kw | row_kw)? ~ ident ~ (":" ~ bound_list)? }
@@ -375,13 +375,17 @@ record_type_field = { ident ~ ":" ~ type_expr }
 // today only in a `fun_decl` parameter's own type (`fun_decl_param` above, not
 // `param`) -- not a `type_expr` alternative, so it cannot appear in a struct
 // field, a let annotation, a return type, or any other ordinary type position
-// (LIMIT-TYPES-001; generic-argument position `Session<..R>` and a struct's own
-// residual-projection tail `Handle.{ ..R }` are tracked separately, not yet
-// implemented either).
+// (LIMIT-TYPES-001; generic-argument position `Session<..R>` is tracked
+// separately, not yet implemented).
 open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
                     | "{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }
 record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
+// RFC-0121 installment 2: a struct's own residual-projection tail
+// (`Handle.{ fd, ..R }` / `Handle.{ .. }`) -- same `fun_decl_param`-only
+// restriction as `open_record_type` above, and the same reason.
+open_record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ "," ~ row_tail ~ ","? ~ "}"
+                              | type_path ~ ".{" ~ row_tail ~ ","? ~ "}" }
 // RFC-0154: pipe-delimited parameter list. `->` and the return type stay mandatory in a
 // written function type (unlike the closure literal above). `fun_type` is `type_expr`'s
 // first alternative and now unambiguous — nothing else in `type_expr` starts with `|`

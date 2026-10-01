@@ -1362,6 +1362,10 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::OpenRecord(..) => {
             unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
+        }
     }
 }
 

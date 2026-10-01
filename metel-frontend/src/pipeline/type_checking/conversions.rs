@@ -370,6 +370,15 @@ fn type_expr_to_infer_in_context(
                  type_expr_to_infer; it is grammar-restricted to fun_decl_param"
             )
         }
+        // RFC-0121 installment 2: `infer_fun_decl` intercepts `Handle.{ fd,
+        // ..R }` the same way, before it ever reaches this general
+        // conversion -- see `check_projection_tail_constraint`.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!(
+                "OpenRecordProjection must be intercepted in infer_fun_decl before reaching \
+                 type_expr_to_infer; it is grammar-restricted to fun_decl_param"
+            )
+        }
     }
 }
 

@@ -1,0 +1,14 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec2: the anonymous `..` tail works
+// for a struct's residual-projection tail exactly as it does for sec1's
+// generic open-row-tailed record parameter -- no declared `row` parameter
+// needed at all.
+
+struct Handle { fd: i64, flags: i64 }
+
+fun get_fd(h: Handle.{ fd, .. }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 7, flags = 0 };
+    assert(get_fd(h) == 7);
+    println("ok");
+}

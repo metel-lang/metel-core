@@ -1,0 +1,14 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec2: `Handle.{ fd, ..R }` checks the
+// argument's *current* row structurally (reusing RFC-0118/0120's existing
+// positive row-bound checking unchanged) -- a residual that has already
+// narrowed away `fd` is rejected at compile time.
+
+struct Handle { fd: i64, flags: i64 }
+
+fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 1, flags = 0 };
+    let r := h.{ flags };
+    let _ := get_fd(r);
+}
