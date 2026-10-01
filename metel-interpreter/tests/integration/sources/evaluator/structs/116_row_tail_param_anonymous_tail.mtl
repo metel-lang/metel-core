@@ -1,0 +1,12 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec1: the anonymous `..` tail needs no
+// declared `row` parameter at all -- it is the same mechanism as `..R` with the
+// remainder left unnamed, exactly as RFC-0118's anonymous open row bound (`{ .. }`)
+// already works for a declared generic parameter.
+
+fun get_x(p: { x: f64, .. }) -> f64 { p.x }
+
+fun main() {
+    let r := { x = 3.0, y = 4.0, z = 5 };
+    assert(get_x(r) == 3.0);
+    println("ok");
+}

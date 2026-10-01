@@ -222,6 +222,16 @@ mode = "named"
 name = "Param"
 section = "Parameters"
 [[rule]]
+pest = "fun_decl_param_list"
+mode = "named"
+name = "FunDeclParamList"
+section = "Parameters"
+[[rule]]
+pest = "fun_decl_param"
+mode = "named"
+name = "FunDeclParam"
+section = "Parameters"
+[[rule]]
 pest = "generic_params"
 mode = "named"
 name = "GenericParams"
@@ -638,6 +648,16 @@ mode = "named"
 name = "RecordTypeField"
 section = "Types"
 [[rule]]
+pest = "open_record_type"
+mode = "named"
+name = "OpenRecordType"
+section = "Types"
+[[rule]]
+pest = "row_tail"
+mode = "named"
+name = "RowTail"
+section = "Types"
+[[rule]]
 pest = "record_projection_type"
 mode = "named"
 name = "RecordProjectionType"
@@ -783,6 +803,10 @@ values = ["super"]
 pest = "record_kw"
 mode = "literal"
 values = ["record"]
+[[rule]]
+pest = "row_kw"
+mode = "literal"
+values = ["row"]
 [[rule]]
 pest = "ident"
 mode = "terminal"

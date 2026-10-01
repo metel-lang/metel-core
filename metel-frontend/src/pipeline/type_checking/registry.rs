@@ -124,6 +124,10 @@ pub(super) fn synth_generics_for_impl(
                 .iter()
                 .find(|g| &g.name == n)
                 .is_some_and(|g| g.is_record),
+            is_row: ib_generics
+                .iter()
+                .find(|g| &g.name == n)
+                .is_some_and(|g| g.is_row),
             bounds: ib_generics
                 .iter()
                 .find(|g| &g.name == n)
@@ -1114,6 +1118,14 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
             bound: Box::new(substitute_structural_self(bound.as_ref(), replacement)),
             span: span.clone(),
         },
+        // RFC-0121: grammar-legal on a method's parameter too, but
+        // `parse_fun_decl` itself rejects it there at parse time
+        // (LIMIT-TYPES-001) -- a structural array-impl method's own type
+        // expressions, the only thing this function processes, can
+        // therefore never actually contain one.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        }
     }
 }
 

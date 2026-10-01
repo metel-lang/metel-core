@@ -137,6 +137,13 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         | TypeExpr::Projection { .. }
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::DynAspect { .. } => CanonicalType::Opaque,
+        // RFC-0121: `{ x: f64, ..R }` is grammar-restricted to a `fun_decl`
+        // parameter's own type (`fun_decl_param`) -- never an impl's target
+        // type or a bound's type argument, both of which is all this function
+        // ever canonicalizes.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear as an impl target type or bound argument")
+        }
     }
 }
 

@@ -8,8 +8,8 @@ use crate::data::ast::{
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
 use crate::pipeline::type_checking::type_engine::{
-    AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext, InferType, Substitution,
-    TypeScheme, TypeVar, VariantInfo, free_vars, generalize,
+    AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext, InferType, RowConstraint,
+    RowConstraintField, Substitution, TypeScheme, TypeVar, VariantInfo, free_vars, generalize,
 };
 
 use super::FunGeneralization;
@@ -441,6 +441,11 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::Projection { base, .. } => go(base),
         TypeExpr::DynAspect { bound, .. } => go(bound),
         TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
+        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
+        // this function only ever walks an impl block's target type.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear in an impl block's target type")
+        }
     }
 }
 
@@ -733,7 +738,18 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 ctx.bind_poly(&fun.name, TypeScheme::mono(fresh));
             } else {
                 let generic_map = fun_generic_map(fun, ctx);
-                let type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+                // RFC-0121 installment 1: provisional forward-reference
+                // registration must desugar an open-row-tailed parameter
+                // (`{ x: f64, ..R }`) exactly as `infer_fun_decl`'s own real
+                // pass does -- see `collect_open_record_param_vars`'s doc
+                // comment. A malformed row variable reference surfaces again
+                // (deterministically) in `infer_fun_decl`, same as any other
+                // signature error during hoisting; this pass just skips
+                // registering it on failure rather than erroring here.
+                let (open_record_param_vars, open_record_bounds, _open_record_record_kinds) =
+                    collect_open_record_param_vars(fun, ctx).unwrap_or_default();
+                let mut type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
+                type_var_bounds.extend(open_record_bounds);
                 let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
                 if !type_var_bounds.is_empty() {
                     ctx.register_fun_bounds(fun.name.clone(), type_var_bounds.clone());
@@ -783,8 +799,20 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                 let param_types: Vec<InferType> = fun
                     .params
                     .iter()
-                    .map(|p| {
-                        if let Some(ann) = &p.type_ann {
+                    .enumerate()
+                    .map(|(i, p)| {
+                        if let Some(&tv) = open_record_param_vars.get(&i) {
+                            InferType::Var(tv)
+                        } else if matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))) {
+                            // `collect_open_record_param_vars` above failed (a
+                            // malformed row variable reference) and its error
+                            // was swallowed for this provisional pass -- never
+                            // fall through to `te_to_infer` on the untouched
+                            // `OpenRecord` annotation, which has no general
+                            // lowering and panics. The real error surfaces
+                            // (deterministically) when `infer_fun_decl` runs.
+                            ctx.fresh_var()
+                        } else if let Some(ann) = &p.type_ann {
                             te_to_infer(ann, ctx)
                         } else {
                             ctx.fresh_var()
@@ -948,6 +976,86 @@ pub(super) fn collect_fun_type_var_record_kinds(
     map
 }
 
+/// RFC-0121 installment 1: a `fun_decl` parameter typed `{ x: f64, ..R }` is
+/// desugared to an anonymous, record-kinded type parameter with a positive
+/// open row bound covering the named fields -- reusing RFC-0118/0120's
+/// existing structural row-bound checking (`check_fun_call_bounds` /
+/// `check_type_satisfies_bounds`, `construction/calls.rs`) entirely
+/// unchanged, rather than teaching unification a new row-shaped `InferType`.
+/// The row variable's own name (`R`, if named; `..` alone needs none) is
+/// validated against the function's declared `row`-kinded generic params,
+/// but carries no value of its own yet -- `R` is not usable in a `where`
+/// equation or elsewhere in the signature until a later installment.
+///
+/// Returns, per open-record parameter (keyed by its index into `fun.params`),
+/// the fresh `TypeVar` standing in for that parameter's whole type, plus the
+/// bound/record-kind entries the caller must merge into the function's own
+/// bound tables *before* registering them (`ctx.register_fun_bounds`/
+/// `register_fun_record_kinds`), so every call site checks them exactly as
+/// it would a declared `<record T: { x: f64, .. }>` parameter. Shared between
+/// `infer_fun_decl`'s real inference pass and `hoist_fun_decls`'s provisional
+/// forward-reference pre-registration, both of which build `param_types` from
+/// `fun.params` directly and must agree on this desugaring.
+pub(super) type OpenRecordParamVars = (
+    HashMap<usize, TypeVar>,
+    HashMap<TypeVar, Vec<GenericBound>>,
+    HashMap<TypeVar, bool>,
+);
+
+pub(super) fn collect_open_record_param_vars(
+    fun: &FunDecl,
+    ctx: &mut InferContext,
+) -> Result<OpenRecordParamVars, MetelError> {
+    let mut param_vars = HashMap::new();
+    let mut bounds = HashMap::new();
+    let mut record_kinds = HashMap::new();
+    for (i, param) in fun.params.iter().enumerate() {
+        let Some(TypeExpr::OpenRecord(fields, tail)) = &param.type_ann else {
+            continue;
+        };
+        if let Some(name) = &tail.var {
+            match fun.generics.iter().find(|g| &g.name == name) {
+                None => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "undefined row variable `{name}` -- declare it as a generic \
+                             parameter (`<row {name}>`)"
+                        ),
+                        &tail.span,
+                    ));
+                }
+                Some(gp) if !gp.is_row => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                             not `<{name}>`"
+                        ),
+                        &tail.span,
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+        let tv = ctx.fresh_type_var_raw();
+        let row = RowConstraint {
+            fields: fields
+                .iter()
+                .map(|(label, ty)| RowConstraintField {
+                    label: label.clone(),
+                    ty: Some(ty.clone()),
+                })
+                .collect(),
+            open: true,
+        };
+        bounds.insert(tv, vec![GenericBound::Row(row)]);
+        record_kinds.insert(tv, true);
+        param_vars.insert(i, tv);
+    }
+    Ok((param_vars, bounds, record_kinds))
+}
+
 /// Collect equality constraints (`Aspect<AssocType = ConcreteType>`, RFC-0082 §4)
 /// per generic type variable. Mirrors `collect_fun_type_var_bounds`'s shape, but
 /// reads `Bound.assoc_bindings` instead of just the bound's aspect name. Each
@@ -1086,6 +1194,14 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
                 aspect: aspect.clone(),
                 type_args: args.iter().map(go).collect(),
             }
+        }
+        // RFC-0121: grammar-legal on a method's parameter too (`fun_decl_param`,
+        // via `extend_impl_braced`'s reuse of `fun_decl`), but `parse_fun_decl`
+        // itself rejects it there at parse time (LIMIT-TYPES-001) -- a method's
+        // `FunDecl.params` this function processes can therefore never actually
+        // contain one.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
         }
     }
 }

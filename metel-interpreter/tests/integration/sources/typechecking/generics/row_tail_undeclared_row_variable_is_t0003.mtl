@@ -1,0 +1,8 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec1: "A bare identifier in any of
+// these type positions is a type variable, never a row" -- but `..R`'s row
+// variable must still name a declared `row` parameter. `get_x` declares no
+// generics at all, so `R` is undefined.
+
+fun get_x(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {}

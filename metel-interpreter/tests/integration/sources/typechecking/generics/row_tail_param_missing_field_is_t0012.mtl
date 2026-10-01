@@ -1,0 +1,11 @@
+// RFC-0121 (Open Rows, metel-core#1301): the named fields in an open-row-tailed
+// parameter are a positive row bound, checked structurally (RFC-0118/0120)
+// against the argument's current row -- a record missing a required field is
+// rejected at compile time, not a runtime field-access crash.
+
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let r := { y = 4.0 };
+    let _ := get_x(r);
+}

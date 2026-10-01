@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "struct never satisfies a row bound"
+
+[options]
+error = ["T0012"]

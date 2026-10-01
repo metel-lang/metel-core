@@ -1,0 +1,8 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec1: `..R` needs `R` declared `row R`,
+// not a plain (or `record`-kinded) type parameter -- the binder's own kind
+// marker, same distinction RFC-0118/0120 already draw between a plain `T` and
+// a `record T`.
+
+fun get_x<R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {}

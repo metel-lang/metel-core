@@ -71,7 +71,7 @@ type_alias = { pub_kw? ~ "type" ~ ident ~ generic_params? ~ ":=" ~ type_expr ~ "
 let_decl     = { "let" ~ !mut_kw ~ ident ~ (":" ~ type_expr)? ~ ":=" ~ expr ~ ";" }
 let_mut_decl = { ("let" ~ mut_kw | mut_kw) ~ ident ~ (":" ~ type_expr)? ~ ":=" ~ expr ~ ";" }
 
-fun_decl    = { native_attr? ~ pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ (block | ";") }
+fun_decl    = { native_attr? ~ pub_kw? ~ "fun" ~ ident ~ generic_params? ~ "(" ~ fun_decl_param_list? ~ ")" ~ ("->" ~ type_expr)? ~ where_clause? ~ (block | ";") }
 // Stdlib-only host-binding attribute: `native(@std.core.print) fun print(...);`
 // The stdlib-only restriction is enforced after parsing (name resolution), not here.
 native_attr = { "native" ~ "(" ~ "@" ~ native_path ~ ")" }
@@ -114,8 +114,18 @@ assoc_type_decl = { "type" ~ ident ~ (":" ~ bound_list)? ~ ";" }
 param_list = { param ~ ("," ~ param)* ~ ","? }
 param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ type_expr)?) }
 
+// RFC-0121: a `fun_decl`'s own param list additionally accepts an open-row-tailed
+// record type (`{ x: f64, ..R }`), distinct from `param_list`/`param` above (shared
+// by `aspect_method` and `closure_expr`, which don't accept this syntax yet --
+// LIMIT-TYPES-001). `parse_fun_decl` separately rejects it when parsing a method
+// (inside an `extend` block, which reuses this same `fun_decl` production) or a
+// native function, since neither has a body a row-kinded parameter's structural
+// check could run against the same way a free function's call sites do.
+fun_decl_param_list = { fun_decl_param ~ ("," ~ fun_decl_param)* ~ ","? }
+fun_decl_param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ (open_record_type | type_expr))?) }
+
 generic_params   = { "<" ~ generic_param ~ ("," ~ generic_param)* ~ ">" }
-generic_param    = { record_kw? ~ ident ~ (":" ~ bound_list)? }
+generic_param    = { (record_kw | row_kw)? ~ ident ~ (":" ~ bound_list)? }
 // A bound is always an aspect name (+ optional generics/assoc-bindings), never a
 // full `type_expr` — so `bound_head` starts from `type_path`, not `type_expr`, and
 // never risks `type_expr`'s own `never_type = { "!" }` alternative swallowing a
@@ -361,6 +371,16 @@ unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
 record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { ident ~ ":" ~ type_expr }
+// RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`), legal
+// today only in a `fun_decl` parameter's own type (`fun_decl_param` above, not
+// `param`) -- not a `type_expr` alternative, so it cannot appear in a struct
+// field, a let annotation, a return type, or any other ordinary type position
+// (LIMIT-TYPES-001; generic-argument position `Session<..R>` and a struct's own
+// residual-projection tail `Handle.{ ..R }` are tracked separately, not yet
+// implemented either).
+open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
+                    | "{" ~ row_tail ~ ","? ~ "}" }
+row_tail          = { ".." ~ ident? }
 record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 // RFC-0154: pipe-delimited parameter list. `->` and the return type stay mandatory in a
 // written function type (unlike the closure literal above). `fun_type` is `type_expr`'s
@@ -423,6 +443,7 @@ std_kw   = @{ "std" ~ !(ASCII_ALPHANUMERIC | "_") }
 self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
 super_kw = @{ "super" ~ !(ASCII_ALPHANUMERIC | "_") }
 record_kw = @{ "record" ~ !(ASCII_ALPHANUMERIC | "_") }
+row_kw    = @{ "row" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // arch-implements: ["arch.parsing.requirement-5"]
 ident = @{
@@ -435,7 +456,7 @@ keyword = @{
      "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
      "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "pub" |
      "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
-     "true" | "var" | "record" |
+     "true" | "var" | "record" | "row" |
      "where" | "while")
     ~ !(ASCII_ALPHANUMERIC | "_")
 }

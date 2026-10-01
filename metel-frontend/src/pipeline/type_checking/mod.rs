@@ -1038,6 +1038,11 @@ pub(crate) fn reject_unregisterable_impl_target(
         // impl target either.
         TypeExpr::DynAspect { .. } => "a `dyn Aspect` type",
         TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
+        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
+        // never an impl block's target type.
+        TypeExpr::OpenRecord(..) => {
+            unreachable!("OpenRecord cannot appear as an impl block's target type")
+        }
     };
     // T0001, not T0003 — T0003 is "undefined name", and nothing here is
     // undefined. T0001 is what `coherence.rs` already uses for the structurally
