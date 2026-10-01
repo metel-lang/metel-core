@@ -331,21 +331,22 @@ fn reject_open_record_param_outside_free_fun(
     if !is_method && !is_native {
         return Ok(());
     }
-    let Some(open_record_param) = params
-        .iter()
-        .find(|p| matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))))
-    else {
+    let Some(open_record_param) = params.iter().find(|p| {
+        matches!(
+            p.type_ann,
+            Some(TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. })
+        )
+    }) else {
         return Ok(());
     };
     let row_var = open_record_param
         .type_ann
         .as_ref()
-        .and_then(|t| {
-            if let TypeExpr::OpenRecord(_, tail) = t {
+        .and_then(|t| match t {
+            TypeExpr::OpenRecord(_, tail) | TypeExpr::OpenRecordProjection { tail, .. } => {
                 tail.var.as_deref()
-            } else {
-                None
             }
+            _ => None,
         })
         .unwrap_or("");
     let kind = if is_method {
@@ -3020,6 +3021,46 @@ fn parse_type_expr(
             let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
             sort_record_labels(&mut fields, filename, &span, "record projection")?;
             Ok(TypeExpr::RecordProjection { path, fields, span })
+        }
+        // RFC-0121 installment 2: `Handle.{ fd, ..R }` / `Handle.{ .. }` --
+        // reached only from a `fun_decl` parameter's type
+        // (`open_record_projection_type`, not `record_projection_type`).
+        Rule::open_record_projection_type => {
+            let span = Span::of(&pair, filename);
+            let mut inner = pair.into_inner();
+            let path_pair = inner.next().ok_or_else(|| {
+                MetelError::internal("open_record_projection_type: expected path")
+            })?;
+            let path = collect_path_components(path_pair)?;
+            let mut fields = vec![];
+            let mut tail = None;
+            for p in inner {
+                match p.as_rule() {
+                    Rule::ident => fields.push(p.as_str().to_string()),
+                    Rule::row_tail => {
+                        let tail_span = Span::of(&p, filename);
+                        let var = p
+                            .into_inner()
+                            .find(|q| q.as_rule() == Rule::ident)
+                            .map(|q| q.as_str().to_string());
+                        tail = Some(RowTail {
+                            var,
+                            span: tail_span,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            sort_record_labels(&mut fields, filename, &span, "record projection")?;
+            let tail = tail.ok_or_else(|| {
+                MetelError::internal("open_record_projection_type: expected a row tail")
+            })?;
+            Ok(TypeExpr::OpenRecordProjection {
+                path,
+                fields,
+                tail,
+                span,
+            })
         }
         // RFC-0130: `extends Aspect` (renamed from `impl Aspect`). The AST node
         // keeps the internal name `ImplAspect`.

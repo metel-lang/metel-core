@@ -437,6 +437,10 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         TypeExpr::OpenRecord(..) => {
             unreachable!("OpenRecord cannot appear in a return-type annotation")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("OpenRecordProjection cannot appear in a return-type annotation")
+        }
     }
 }
 
@@ -527,6 +531,10 @@ pub(super) fn rewrite_impl_aspect_returns(
         TypeExpr::OpenRecord(..) => {
             unreachable!("OpenRecord cannot appear in a return-type annotation")
         }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("OpenRecordProjection cannot appear in a return-type annotation")
+        }
     }
 }
 
@@ -587,8 +595,12 @@ pub(super) fn infer_fun_decl(
     // fold its bound/record-kind entries in *before* registration below, so
     // every call site checks it exactly as it would a declared
     // `<record T: { x: f64, .. }>` parameter.
-    let (open_record_param_vars, open_record_bounds, open_record_record_kinds) =
-        collect_open_record_param_vars(fun, ctx)?;
+    let (
+        open_record_param_vars,
+        open_record_bounds,
+        open_record_record_kinds,
+        open_record_projection_tail_constraints,
+    ) = collect_open_record_param_vars(fun, ctx)?;
 
     // Collect merged bounds (inline + where clause) per TypeVar, register for call-site checking.
     let mut type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
@@ -600,6 +612,12 @@ pub(super) fn infer_fun_decl(
     type_var_record_kinds.extend(open_record_record_kinds);
     if !type_var_record_kinds.is_empty() {
         ctx.register_fun_record_kinds(fun.name.clone(), type_var_record_kinds.clone());
+    }
+    if !open_record_projection_tail_constraints.is_empty() {
+        ctx.register_fun_projection_tail_constraints(
+            fun.name.clone(),
+            open_record_projection_tail_constraints.clone(),
+        );
     }
     let neg_type_var_bounds = collect_negative_fun_type_var_bounds(fun, &generic_map);
     if !neg_type_var_bounds.is_empty() {
@@ -725,6 +743,8 @@ pub(super) fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
+    let saved_projection_tail_constraints =
+        ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
     let saved_row_field_vars = ctx.swap_row_field_vars();
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
@@ -733,6 +753,7 @@ pub(super) fn infer_fun_decl(
 
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
+    ctx.swap_projection_tail_constraints(saved_projection_tail_constraints);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
     // Capture the projection log recorded during this function's body BEFORE restoring.
@@ -1483,6 +1504,10 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
         // therefore never actually contain one.
         TypeExpr::OpenRecord(..) => {
             unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        }
+        // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+        TypeExpr::OpenRecordProjection { .. } => {
+            unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
     }
 }

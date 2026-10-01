@@ -1047,7 +1047,14 @@ fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
             }
             v
         }
-        TypeExpr::Unit | TypeExpr::RecordProjection { .. } => vec![],
+        // RFC-0121 installment 2: `Handle.{ fd, ..R }` names a struct and its
+        // own field labels only -- no nested `TypeExpr` of its own, exactly
+        // like `RecordProjection`.
+        TypeExpr::Unit
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. } => {
+            vec![]
+        }
         // RFC-0121: a `fun_decl` parameter's own type can reference a type
         // alias in a named field (`{ x: MyAlias, ..R }`) exactly as a closed
         // `Record` can -- expose each field's type for substitution; the

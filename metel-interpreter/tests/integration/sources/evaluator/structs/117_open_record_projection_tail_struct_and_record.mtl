@@ -1,0 +1,23 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec2 / metel-core#1306 item 1: a
+// struct's own residual-projection tail (`Handle.{ fd, ..R }`) is RFC-0117/
+// 0137's existing narrowing mechanism with an added open tail, not a row
+// bound (RFC-0118/0120) -- so unlike sec1's generic open-row-tailed record
+// parameter, eligibility is NOT scoped to the `record` brand: a plain
+// `struct` argument satisfies it too, as long as its brand matches exactly
+// and its current row has at least the named field(s).
+
+struct Handle { fd: i64, flags: i64 }
+record Box { public fd: i64, public label: String }
+
+fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun get_box_fd<row R>(b: Box.{ fd, ..R }) -> i64 { b.fd }
+
+fun main() {
+    let h := Handle { fd = 7, flags = 0 };
+    assert(get_fd(h) == 7);
+
+    let b := Box { fd = 9, label = "x".to_string() };
+    assert(get_box_fd(b) == 9);
+
+    println("ok");
+}

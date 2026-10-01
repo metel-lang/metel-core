@@ -2016,6 +2016,10 @@ impl fmt::Display for GenericBound {
                 TypeExpr::OpenRecord(..) => {
                     unreachable!("OpenRecord cannot appear in a bound's type argument")
                 }
+                // RFC-0121 installment 2: same restriction as `OpenRecord` above.
+                TypeExpr::OpenRecordProjection { .. } => {
+                    unreachable!("OpenRecordProjection cannot appear in a bound's type argument")
+                }
             }
         }
 
@@ -2236,6 +2240,15 @@ pub struct TypeDefinitionRegistry {
     neg_fun_bounds: HashMap<String, HashMap<TypeVar, Vec<GenericBound>>>,
     /// Record-kinded flags per generic function/type var.
     fun_record_kinds: HashMap<String, HashMap<TypeVar, bool>>,
+    /// RFC-0121 installment 2: a `fun_decl` parameter's open-row-tailed
+    /// residual-projection type (`Handle.{ fd, ..R }`) per generic
+    /// function/type var -- `(expected brand, required fields, open)`. Unlike
+    /// `fun_record_kinds`, this is *not* gated on `visible_type_kind` being
+    /// `Record`: a residual-projection tail is RFC-0117/0137's existing
+    /// narrowing mechanism (works on a plain `struct` too), not RFC-0120's
+    /// row-bound-satisfaction mechanism (`record`-kind only) -- see
+    /// `check_projection_tail_constraint`.
+    fun_projection_tail_constraints: HashMap<String, HashMap<TypeVar, (String, RowConstraint)>>,
     /// RFC-0082 §4: associated-type equality constraints per generic function.
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
@@ -2616,6 +2629,7 @@ impl TypeDefinitionRegistry {
             fun_bounds: HashMap::new(),
             neg_fun_bounds: HashMap::new(),
             fun_record_kinds: HashMap::new(),
+            fun_projection_tail_constraints: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
             next_local_type_id: u32::MAX,
@@ -3587,6 +3601,25 @@ impl TypeDefinitionRegistry {
         self.fun_record_kinds.get(name)
     }
 
+    pub fn register_fun_projection_tail_constraints(
+        &mut self,
+        name: String,
+        constraints: HashMap<TypeVar, (String, RowConstraint)>,
+    ) {
+        if !constraints.is_empty() {
+            self.fun_projection_tail_constraints
+                .insert(name, constraints);
+        }
+    }
+
+    #[must_use]
+    pub fn fun_projection_tail_constraints_for(
+        &self,
+        name: &str,
+    ) -> Option<&HashMap<TypeVar, (String, RowConstraint)>> {
+        self.fun_projection_tail_constraints.get(name)
+    }
+
     pub fn register_neg_fun_bounds(
         &mut self,
         name: String,
@@ -4351,6 +4384,13 @@ pub struct InferContext {
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    /// RFC-0121 installment 2: `TypeVar` → (expected brand, row) for the current
+    /// generic function's `Handle.{ fd, ..R }`-typed parameters. A deliberately
+    /// separate, parallel table to `current_type_param_bounds` above -- see
+    /// `fun_projection_tail_constraints`'s own doc comment for why this
+    /// mechanism never folds into the ordinary bounds table. Swapped in/out
+    /// alongside it (entry/exit of each function body).
+    current_projection_tail_constraints: HashMap<TypeVar, (String, RowConstraint)>,
     /// Memo + accumulator for symbolic associated-type projections minted while inferring
     /// the CURRENT function/method body. Key: (`base_tv`, `aspect_name`, `assoc_name`) so the
     /// same projection requested twice gets the same placeholder. Reset (swapped, like
@@ -4459,6 +4499,7 @@ impl InferContext {
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
+            current_projection_tail_constraints: HashMap::new(),
             current_assoc_projections: HashMap::new(),
             recorded_assoc_projections: Vec::new(),
             current_row_field_vars: HashMap::new(),
@@ -4681,6 +4722,41 @@ impl InferContext {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 
+    /// RFC-0121 installment 2: install a new projection-tail-constraints map
+    /// for the duration of a generic function body, mirroring
+    /// `swap_type_param_bounds` -- see `current_projection_tail_constraints`'s
+    /// own doc comment for why this is a separate table.
+    pub fn swap_projection_tail_constraints(
+        &mut self,
+        constraints: HashMap<TypeVar, (String, RowConstraint)>,
+    ) -> HashMap<TypeVar, (String, RowConstraint)> {
+        std::mem::replace(&mut self.current_projection_tail_constraints, constraints)
+    }
+
+    /// RFC-0121 installment 2: the `Handle.{ fd, ..R }` constraint for a
+    /// parameter `TypeVar`, if any -- the brand `..R`'s projection names, plus
+    /// its field labels. Mirrors `bounds_for_type_var`'s representative
+    /// resolution (post-unification, `tv` may no longer be the active
+    /// representative) but not its cross-candidate merging, since a
+    /// parameter desugars to at most one projection-tail constraint, never
+    /// several to merge.
+    #[must_use]
+    pub fn projection_tail_constraint_for_type_var(
+        &self,
+        tv: TypeVar,
+    ) -> Option<(String, RowConstraint)> {
+        if let Some(found) = self.current_projection_tail_constraints.get(&tv) {
+            return Some(found.clone());
+        }
+        let resolved = match self.cached_subst.apply(&InferType::Var(tv)) {
+            InferType::Var(v) => v,
+            _ => tv,
+        };
+        self.current_projection_tail_constraints
+            .get(&resolved)
+            .cloned()
+    }
+
     #[must_use]
     pub fn type_params(&self) -> &HashMap<String, TypeVar> {
         &self.current_type_params
@@ -4878,6 +4954,15 @@ impl InferContext {
         record_kinds: HashMap<TypeVar, bool>,
     ) {
         self.registry.register_fun_record_kinds(name, record_kinds);
+    }
+
+    pub fn register_fun_projection_tail_constraints(
+        &mut self,
+        name: String,
+        constraints: HashMap<TypeVar, (String, RowConstraint)>,
+    ) {
+        self.registry
+            .register_fun_projection_tail_constraints(name, constraints);
     }
 
     pub fn register_neg_fun_bounds(

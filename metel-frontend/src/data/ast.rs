@@ -1038,6 +1038,17 @@ pub enum TypeExpr {
         fields: Vec<String>,
         span: Span,
     },
+    /// RFC-0121 installment 2: `Handle.{ fd, ..R }` or `Handle.{ .. }` -- a
+    /// struct's own residual-projection tail. Grammar-restricted exactly like
+    /// `OpenRecord`: a `fun_decl` parameter's own type only, never a struct
+    /// field, a let annotation, a return type, a closure parameter, or an
+    /// aspect/`extend` method's parameter.
+    OpenRecordProjection {
+        path: Vec<String>,
+        fields: Vec<String>,
+        tail: RowTail,
+        span: Span,
+    },
     /// `dyn Aspect` (RFC-0008) — an unsized existential type: the concrete type is
     /// erased, dispatch happens through a vtable. Unlike `ImplAspect`, this is a real
     /// type (not per-call-site generic sugar), so it is not positionally restricted

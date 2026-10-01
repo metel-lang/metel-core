@@ -578,6 +578,7 @@ pub(super) fn check_fun_call_bounds(
 ) -> Result<(), MetelError> {
     let bounds_map = registry.fun_bounds_for(fun_name);
     let record_kinds = registry.fun_record_kinds_for(fun_name);
+    let projection_tail_constraints = registry.fun_projection_tail_constraints_for(fun_name);
     let generic_types_by_name: HashMap<String, Type> = HashMap::new();
     for (tv, concrete) in var_to_type {
         let bounds = bounds_map
@@ -587,6 +588,18 @@ pub(super) fn check_fun_call_bounds(
             .and_then(|map| map.get(tv))
             .copied()
             .unwrap_or(false);
+        if let Some((expected_brand, row)) = projection_tail_constraints.and_then(|map| map.get(tv))
+        {
+            check_projection_tail_constraint(
+                concrete,
+                expected_brand,
+                row,
+                span,
+                registry,
+                current_module,
+                &generic_types_by_name,
+            )?;
+        }
         if bounds.is_empty() && !record_kind {
             continue;
         }
@@ -1149,6 +1162,57 @@ pub(super) fn check_positive_row_bound(
         }
     }
     Ok(())
+}
+
+/// RFC-0121 installment 2: `Handle.{ fd, ..R }` as a `fun_decl` parameter's
+/// type. Unlike a row bound (RFC-0118/0120, `record`-kind only), this is
+/// RFC-0117/0137's existing residual-projection/narrowing mechanism with an
+/// open tail: it accepts a plain `struct`'s residual too, as long as the
+/// concrete argument's own brand matches the one named in the projection
+/// (`Handle`) and its *current* row has at least the named fields.
+pub(super) fn check_projection_tail_constraint(
+    concrete: &Type,
+    expected_brand: &str,
+    row: &RowConstraint,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
+) -> Result<(), MetelError> {
+    let actual_brand = match concrete {
+        Type::Named(name, ..) => name.as_str(),
+        Type::Residual { brand, .. } => brand.as_str(),
+        other => {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0001,
+                format!("expected `{expected_brand}` (or a residual of it), found `{other}`"),
+                span,
+            ));
+        }
+    };
+    if actual_brand != expected_brand {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!("expected `{expected_brand}` (or a residual of it), found `{actual_brand}`"),
+            span,
+        ));
+    }
+    let Some(fields) = structural_fields_for_row_check(concrete, registry, current_module, span)
+    else {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!("cannot resolve `{expected_brand}`'s current fields"),
+            span,
+        ));
+    };
+    check_positive_row_bound(
+        &fields,
+        row,
+        span,
+        registry,
+        current_module,
+        generic_types_by_name,
+    )
 }
 
 pub(super) fn check_negative_row_bound(

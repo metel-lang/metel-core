@@ -342,6 +342,30 @@ pub(super) fn resolve_row_bound_field(
     field: &str,
     span: &Span,
 ) -> Option<Result<InferType, MetelError>> {
+    // RFC-0121 installment 2: `Handle.{ fd, ..R }` desugars into its own
+    // parallel side-table (`fun_projection_tail_constraints`), never into the
+    // ordinary bounds table `bounds_for_type_var` below reads -- see that
+    // table's own doc comment for why. Check it first and independently, so
+    // field access on a `Handle.{ fd, ..R }`-typed parameter works the same
+    // way an ordinary row-bounded generic parameter's does.
+    if let Some((brand, row)) = ctx.projection_tail_constraint_for_type_var(tv) {
+        return Some(if row.fields.iter().any(|f| f.label == *field) {
+            Ok(InferType::Var(ctx.fresh_row_field_var(tv, field)))
+        } else {
+            Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "no field `{field}` on `{brand}.{{ {} }}`",
+                    row.fields
+                        .iter()
+                        .map(|f| f.label.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                span,
+            ))
+        });
+    }
     let bounds = ctx.bounds_for_type_var(tv)?;
     for bound in &bounds {
         if let GenericBound::Row(row) = bound
