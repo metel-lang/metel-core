@@ -1367,7 +1367,12 @@ fn infer_block(
                         id: None,
                     })
                     .collect();
-                ctx.register_struct_fields(sd.name.clone(), fields, sd.visibility.clone());
+                ctx.register_struct_fields(
+                    sd.name.clone(),
+                    fields,
+                    sd.visibility.clone(),
+                    sd.kind == crate::data::ast::StructKind::Record,
+                );
             }
             Decl::Enum(ed) => {
                 let variants = ed

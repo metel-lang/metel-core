@@ -1,7 +1,9 @@
 // Regression (metel-core#857, RFC-0137 slice 1): a genuine (non-full-width) branded
-// residual never satisfies a row bound either -- eligibility for structural
-// matching is scoped to the brand alone (RFC-0137 sec3), and a struct's brand is
-// never visible to matching regardless of how narrow its current row is.
+// residual of a plain `struct` never satisfies a row bound either -- eligibility
+// for structural matching is scoped to the brand alone (RFC-0137 sec3), and a
+// `struct`'s brand is never visible to matching regardless of how narrow its
+// current row is. A `record`'s residual is eligible (RFC-0120 sec3/sec-declarations-
+// records-legality-2) -- that is tested separately, not a contradiction of this one.
 
 struct Handle { fd: i64, name: String, extra: i64 }
 

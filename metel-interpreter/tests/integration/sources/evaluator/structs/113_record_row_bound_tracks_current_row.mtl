@@ -1,0 +1,20 @@
+// RFC-0120 (metel-core#1300) sec-declarations-records-legality-2: a record's row
+// bound satisfaction is checked against its *current* row, not just its full
+// declared one -- the row narrows exactly as it does for a plain struct
+// (RFC-0137), and a residual of a record's brand stays eligible.
+
+record Handle {
+    public fd: i64,
+    public name: String,
+}
+
+fun needs_fd<record T: { fd: i64, .. }>(t: T) -> i64 {
+    t.fd
+}
+
+fun main() {
+    let h := Handle { fd = 3, name = "x" };
+    let taken := h.name;          // h : Handle.{ fd } from here on -- a residual
+    assert(needs_fd(h) == 3);     // the narrowed residual still satisfies the bound
+    println(taken);
+}

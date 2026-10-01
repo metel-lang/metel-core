@@ -1,0 +1,37 @@
+// RFC-0120 (metel-core#1300): `record X { ... }` is legal everywhere
+// `struct X { ... }` is -- identical declaration grammar (generics, zero-field
+// forms), construction syntax (shorthand field init included), and field
+// access. Every field of a record must be `public` (checked separately,
+// 113_record_private_field_is_parse_error).
+
+record Handle {
+    public fd: i64,
+    public name: String,
+}
+
+record Empty {}
+
+record Pair<A, B> {
+    public first: A,
+    public second: B,
+}
+
+fun main() {
+    let h := Handle { fd = 3, name = "x" };
+    assert(h.fd == 3);
+    assert(h.name == "x");
+
+    let e := Empty;
+    let e2 := Empty {};
+
+    let fd := 5;
+    let name := "shorthand".to_string();
+    let h2 := Handle { fd, name };       // shorthand field init
+    assert(h2.fd == 5);
+
+    let p := Pair { first = 1, second = true };
+    assert(p.first == 1);
+    assert(p.second);
+
+    println(h.name);
+}

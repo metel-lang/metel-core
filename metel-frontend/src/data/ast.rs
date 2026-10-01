@@ -327,10 +327,22 @@ pub struct NativeBinding {
     pub span: Span,
 }
 
+/// RFC-0120: a `struct` and a `record` share this one AST node and every pipeline
+/// stage downstream of parsing -- they differ only in whether the declared row is
+/// structurally visible (row bounds, row-conditional impls), which the type
+/// checker enforces by consulting the registry's record-kind flag, not by a
+/// second `Decl` variant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StructKind {
+    Struct,
+    Record,
+}
+
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     #[allow(dead_code)]
     pub visibility: Visibility,
+    pub kind: StructKind,
     pub name: String,
     pub generics: Vec<GenericParam>,
     pub where_clause: Option<WhereClause>,

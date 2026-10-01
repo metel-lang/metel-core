@@ -6,7 +6,8 @@ use super::conversions::{
     type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 use crate::data::ast::{
-    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, TypeExpr, WhereClause,
+    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, StructKind, TypeExpr,
+    WhereClause,
 };
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::ModuleScope;
@@ -391,6 +392,7 @@ fn register_program_decls(
                     fields,
                     current_module_path.to_vec(),
                     sd.visibility.clone(),
+                    sd.kind == StructKind::Record,
                 );
             }
             Decl::Struct(sd) => {
@@ -426,6 +428,7 @@ fn register_program_decls(
                     fields,
                     current_module_path.to_vec(),
                     sd.visibility.clone(),
+                    sd.kind == StructKind::Record,
                 );
                 registry.register_struct_type_params(sym, type_params);
                 registry.register_struct_generic_names(

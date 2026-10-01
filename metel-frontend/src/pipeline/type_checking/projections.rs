@@ -1065,9 +1065,10 @@ impl Cx<'_> {
                 Some(VisibleTypeKind::Enum) => format!(
                     "`{target}` is an enum; only structs have a row to project (an enum is a sum, not a product)"
                 ),
-                // A struct the registry knows but cannot project here: either declared
-                // later than this use, or not visible from this module.
-                Some(VisibleTypeKind::Struct) => format!(
+                // A struct (or RFC-0120 record -- projection works identically) the
+                // registry knows but cannot project here: either declared later than
+                // this use, or not visible from this module.
+                Some(VisibleTypeKind::Struct | VisibleTypeKind::Record) => format!(
                     "`{target}` is not available at this point — a projection cannot refer to a struct declared later in the same module"
                 ),
                 None => format!("unknown type `{target}`"),
