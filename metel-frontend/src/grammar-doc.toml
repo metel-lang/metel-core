@@ -658,18 +658,10 @@ mode = "named"
 name = "MutReferenceType"
 section = "Types"
 [[rule]]
-pest = "sized_array_type"
+pest = "bracket_array_type"
 mode = "named"
-name = "SizedArrayType"
+name = "BracketArrayType"
 section = "Types"
-[[rule]]
-pest = "array_type"
-mode = "named"
-name = "ArrayType"
-section = "Types"
-[[rule]]
-pest = "array_atom"
-mode = "inline"
 [[rule]]
 pest = "named_type"
 mode = "named"
