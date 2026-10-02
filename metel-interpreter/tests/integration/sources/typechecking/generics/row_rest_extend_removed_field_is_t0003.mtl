@@ -1,0 +1,15 @@
+// RFC-0121 §2 (metel-core#1310): the RFC's own typestate example. `authenticate`
+// removes `token` from the row, so the field is gone from the result.
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R, row Rest> Session<..R> where R = { token: String, ..Rest } {
+    fun authenticate(self) -> Session<..Rest> { panic("unimplemented") }
+}
+
+fun main() {
+    let s: Session<{ token: String, extra: i64 }> :=
+        Session { id = 1, data = { token = "t", extra = 2 } };
+    let r := s.authenticate();
+    println(r.data.token);
+}

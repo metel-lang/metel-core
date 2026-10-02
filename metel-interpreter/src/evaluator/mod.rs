@@ -1369,17 +1369,11 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
         }
-        // RFC-0121 item 2 (metel-core#1310), representation-only slice:
-        // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, a
-        // `RowArg` isn't grammar-excluded from a method's parameter type.
-        // But this function only ever runs during evaluation, which only
-        // happens once typechecking has already succeeded -- and
-        // `projections::check` rejects every `RowArg` anywhere in the
-        // program before that can happen, so a program that reached
-        // evaluation at all cannot contain one.
-        TypeExpr::RowArg(_) => {
-            unreachable!("projections::check rejects every RowArg before evaluation can run")
-        }
+        // RFC-0121 item 2 (metel-core#1310): `Session<..R>` is legal in any
+        // type-argument position now that a row-kinded parameter takes a real
+        // record argument -- including a method's own parameter or return type
+        // and an `extend` target. Spell the splice back out for the dispatch key.
+        TypeExpr::RowArg(tail) => format!("..{}", tail.var.as_deref().unwrap_or("")),
     }
 }
 

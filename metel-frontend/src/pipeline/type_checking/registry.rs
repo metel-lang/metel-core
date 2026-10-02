@@ -851,11 +851,76 @@ fn register_generic_impl_method_schemes(
         .struct_generic_names_for(current_module_path, target_name)
         .cloned()
         .unwrap_or_default();
-    let type_gen_map: HashMap<String, TypeVar> = generic_names
+    let mut type_gen_map: HashMap<String, TypeVar> = generic_names
         .iter()
         .cloned()
         .zip(type_params.iter().copied())
         .collect();
+    // RFC-0121 item 2: an `extend<row R, row Rest> Session<..R>` block names its own
+    // row generics. A row splice in the target (`..R`) is the struct's param at that
+    // position, whatever the impl calls it; a row generic the target doesn't splice
+    // (`Rest`) is an extra quantified var, pinned later by its decomposition equation.
+    let mut impl_extra_row_vars: Vec<(String, TypeVar)> = Vec::new();
+    if let crate::data::ast::TypeExpr::Named(_, target_args) = &ib.target_type {
+        for (arg, &tv) in target_args.iter().zip(type_params.iter()) {
+            if let crate::data::ast::TypeExpr::RowArg(tail) = arg
+                && let Some(name) = tail.var.as_deref()
+                && ib.generics.iter().any(|g| g.is_row && g.name == name)
+            {
+                type_gen_map.insert(name.to_string(), tv);
+            }
+        }
+    }
+    for g in ib.generics.iter().filter(|g| g.is_row) {
+        if !type_gen_map.contains_key(&g.name) {
+            let tv = type_var_gen.fresh();
+            type_gen_map.insert(g.name.clone(), tv);
+            impl_extra_row_vars.push((g.name.clone(), tv));
+        }
+    }
+    // The impl's `where R = { labels.., ..Rest }` equations: a Row bound on `R`
+    // and a remainder for `Rest`, exactly as for a free function.
+    let mut impl_row_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
+    let mut impl_row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = HashMap::new();
+    for eq in ib
+        .where_clause
+        .iter()
+        .flat_map(|wc| wc.row_equations.iter())
+    {
+        let Some(&r_tv) = type_gen_map.get(eq.var.as_str()) else {
+            continue;
+        };
+        impl_row_bounds
+            .entry(r_tv)
+            .or_default()
+            .push(GenericBound::Row(
+                crate::pipeline::type_checking::type_engine::RowConstraint {
+                    fields: eq
+                        .fields
+                        .iter()
+                        .map(|(label, ty)| {
+                            crate::pipeline::type_checking::type_engine::RowConstraintField {
+                                label: label.clone(),
+                                ty: Some(ty.clone()),
+                            }
+                        })
+                        .collect(),
+                    open: true,
+                },
+            ));
+        if let Some(&rest_tv) = eq
+            .tail
+            .var
+            .as_deref()
+            .and_then(|name| type_gen_map.get(name))
+            && rest_tv != r_tv
+        {
+            impl_row_remainders.insert(
+                rest_tv,
+                (r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()),
+            );
+        }
+    }
     // RFC-0036: compute impl-level bounds from the impl block's generics + where clause.
     let synth = synth_generics_for_impl(&generic_names, &ib.generics);
     let impl_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
@@ -896,6 +961,10 @@ fn register_generic_impl_method_schemes(
         let mut gen_map = type_gen_map.clone();
         let mut quantified = type_params.clone();
         let mut param_names = generic_names.clone();
+        for (name, tv) in &impl_extra_row_vars {
+            quantified.push(*tv);
+            param_names.push(name.clone());
+        }
         for g in &method.generics {
             let tv = type_var_gen.fresh();
             gen_map.insert(g.name.clone(), tv);
@@ -912,6 +981,12 @@ fn register_generic_impl_method_schemes(
         let open_rows = desugar_method_open_row_params(method, type_var_gen);
         open_rows.quantify(&mut quantified, &mut param_names);
         let mut method_by_var = open_rows.merged_bounds(&by_var);
+        for (tv, bounds) in &impl_row_bounds {
+            method_by_var
+                .entry(*tv)
+                .or_default()
+                .extend(bounds.iter().cloned());
+        }
         for (tv, bounds) in super::inference::collect_fun_type_var_bounds(method, &gen_map) {
             method_by_var.entry(tv).or_default().extend(bounds);
         }
@@ -923,6 +998,11 @@ fn register_generic_impl_method_schemes(
         let mut method_record_kinds =
             super::inference::collect_fun_type_var_record_kinds(method, &gen_map);
         method_record_kinds.extend(open_rows.record_kinds.iter().map(|(tv, k)| (*tv, *k)));
+        // RFC-0121 §2: the impl's `where R = { .. }` bounds `R`, and a row bound
+        // is only checkable on a record-kinded param (`check_record_kind_requirement`).
+        for r_tv in impl_row_bounds.keys() {
+            method_record_kinds.insert(*r_tv, true);
+        }
         let mut param_types = vec![self_ty.clone()];
         for (i, p) in method
             .params
@@ -962,7 +1042,8 @@ fn register_generic_impl_method_schemes(
         .with_bounds(&method_by_var)
         .with_neg_bounds(&method_by_neg_var)
         .with_record_kinds(&method_record_kinds)
-        .with_open_row_params(&open_rows.vars);
+        .with_open_row_params(&open_rows.vars)
+        .with_row_remainders(&impl_row_remainders);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();

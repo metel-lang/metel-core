@@ -754,6 +754,20 @@ pub(super) fn try_generic_method_scheme(
             subst = subst.compose(&s);
         }
     }
+    // RFC-0121 §2: derive an impl's `Rest` from the receiver's `R`. This path
+    // instantiates the scheme in place (no renaming), so the map is the identity.
+    if !scheme.row_remainders.is_empty() {
+        let identity: HashMap<TypeVar, TypeVar> =
+            scheme.quantified_vars.iter().map(|&v| (v, v)).collect();
+        backfill_row_remainders(
+            scheme,
+            &identity,
+            &mut subst,
+            span,
+            ctx.registry,
+            ctx.current_module,
+        )?;
+    }
     let mut var_to_type: HashMap<TypeVar, Type> = HashMap::new();
     for &tv in &scheme.quantified_vars {
         if let Ok(t) = infer_type_to_type(&subst.apply(&InferType::Var(tv)), span) {

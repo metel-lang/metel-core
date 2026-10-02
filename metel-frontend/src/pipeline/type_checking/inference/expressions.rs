@@ -871,8 +871,19 @@ pub(super) fn infer_expr(
                     for (&tv, arg) in struct_tvars.iter().zip(recv_type_args.iter()) {
                         if let Some(&fresh) = renaming.get(&tv) {
                             pin.bind(fresh, arg.clone());
+                            // RFC-0121 §2: a pending `Rest` derivation watches the fresh
+                            // `R` var, which the local pin alone never binds in the
+                            // solver -- bind it there too, so the derivation can fire.
+                            if !scheme.row_remainders.is_empty() {
+                                ctx.add_constraint(
+                                    InferType::Var(fresh),
+                                    arg.clone(),
+                                    span.clone(),
+                                );
+                            }
                         }
                     }
+                    ctx.stamp_row_remainders(span);
                     pin.apply(&instance)
                 } else {
                     return Err(MetelError::type_error(

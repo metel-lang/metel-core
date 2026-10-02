@@ -495,25 +495,33 @@ pub(super) fn construct_impl_decl(
     // whose written argument is exactly `Perhaps`'s own declared generic
     // parameter, in the same position -- not a real generic re-declaration on
     // the `extend` itself, which `ib.generics` alone would miss)?
-    let target_instantiation_args = match &ib.target_type {
-        TypeExpr::Named(target_type_name, args) if !args.is_empty() => {
-            let struct_generic_names = ctx
-                .registry
-                .struct_generic_names_for(ctx.current_module, target_type_name)
-                .cloned()
-                .unwrap_or_default();
-            let covers_every_instantiation = args.len() == struct_generic_names.len()
+    let target_instantiation_args =
+        match &ib.target_type {
+            TypeExpr::Named(target_type_name, args) if !args.is_empty() => {
+                let struct_generic_names = ctx
+                    .registry
+                    .struct_generic_names_for(ctx.current_module, target_type_name)
+                    .cloned()
+                    .unwrap_or_default();
+                let covers_every_instantiation = args.len() == struct_generic_names.len()
                 && args.iter().zip(struct_generic_names.iter()).all(|(arg, gname)| {
                     matches!(arg, TypeExpr::Named(n, inner) if inner.is_empty() && n == gname)
+                        // RFC-0121 item 2: `extend<row R> Session<..R>` splices the impl's
+                        // own row generic, which any instantiation's row binds -- the
+                        // same "every instantiation" as writing the param's own name.
+                        || matches!(arg, TypeExpr::RowArg(tail)
+                            if tail.var.as_deref().is_some_and(|v| {
+                                ib.generics.iter().any(|g| g.name == v)
+                            }))
                 });
-            if covers_every_instantiation {
-                None
-            } else {
-                Some(args.clone())
+                if covers_every_instantiation {
+                    None
+                } else {
+                    Some(args.clone())
+                }
             }
-        }
-        _ => None,
-    };
+            _ => None,
+        };
 
     Ok(TypedDecl::Impl(TypedImplBlock {
         polarity: ib.polarity,

@@ -1116,6 +1116,78 @@ pub(super) fn infer_impl_method(
         struct_tvars_ordered.push(tv);
     }
 
+    // RFC-0121 item 2: an `extend<row R, row Rest> Session<..R>` block names its own
+    // row generics. A row splice in the target (`..R`) is the struct's param at that
+    // position, whatever the impl calls it; a row generic the target doesn't splice
+    // (`Rest`) is an extra var, pinned at a call by its decomposition equation.
+    // The equation also bounds `R`, exactly as it does on a free function.
+    let mut impl_row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = HashMap::new();
+    // The same Row bounds, kept apart: `struct_bounds` is moved into the context for
+    // the body, but the scheme built afterwards needs them too.
+    let mut impl_row_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
+    if ib.generics.iter().any(|g| g.is_row) {
+        if let (TypeExpr::Named(_, target_args), Some(names)) = (
+            &ib.target_type,
+            ctx.struct_generic_names_for(target_name).cloned(),
+        ) {
+            for (arg, struct_name) in target_args.iter().zip(names.iter()) {
+                if let TypeExpr::RowArg(tail) = arg
+                    && let Some(name) = tail.var.as_deref()
+                    && ib.generics.iter().any(|g| g.is_row && g.name == name)
+                    && let Some(&tv) = generic_map.get(struct_name)
+                {
+                    generic_map.insert(name.to_string(), tv);
+                }
+            }
+        }
+        for g in ib.generics.iter().filter(|g| g.is_row) {
+            if !generic_map.contains_key(&g.name) {
+                let tv = ctx.fresh_type_var_raw();
+                generic_map.insert(g.name.clone(), tv);
+            }
+        }
+        for eq in ib
+            .where_clause
+            .iter()
+            .flat_map(|wc| wc.row_equations.iter())
+        {
+            let Some(&r_tv) = generic_map.get(eq.var.as_str()) else {
+                continue;
+            };
+            let row_bound =
+                GenericBound::Row(crate::pipeline::type_checking::type_engine::RowConstraint {
+                    fields: eq
+                        .fields
+                        .iter()
+                        .map(|(label, ty)| {
+                            crate::pipeline::type_checking::type_engine::RowConstraintField {
+                                label: label.clone(),
+                                ty: Some(ty.clone()),
+                            }
+                        })
+                        .collect(),
+                    open: true,
+                });
+            struct_bounds
+                .entry(r_tv)
+                .or_default()
+                .push(row_bound.clone());
+            impl_row_bounds.entry(r_tv).or_default().push(row_bound);
+            if let Some(&rest_tv) = eq
+                .tail
+                .var
+                .as_deref()
+                .and_then(|name| generic_map.get(name))
+                && rest_tv != r_tv
+            {
+                impl_row_remainders.insert(
+                    rest_tv,
+                    (r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()),
+                );
+            }
+        }
+    }
+
     // RFC-0036 §2.2: compute impl-level bounds (from the impl block's own
     // where clause / inline bounds) and merge them into `struct_bounds` so that
     // method dispatch and type annotations inside the body can see impl-level
@@ -1428,6 +1500,15 @@ pub(super) fn infer_impl_method(
                 .or_default()
                 .extend(bounds.clone());
         }
+        // RFC-0121 §2: the impl's `where R = { .. }` row bound.
+        for (tv, bounds) in &impl_row_bounds {
+            if let InferType::Var(resolved_tv) = partial_subst.apply(&InferType::Var(*tv)) {
+                by_var
+                    .entry(resolved_tv)
+                    .or_default()
+                    .extend(bounds.iter().cloned());
+            }
+        }
         for (tv, bounds) in &method_own_neg_bounds {
             let resolved_tv = match partial_subst.apply(&InferType::Var(*tv)) {
                 InferType::Var(v) => v,
@@ -1453,6 +1534,13 @@ pub(super) fn infer_impl_method(
                 record_kinds_by_var.insert(resolved_tv, true);
             }
         }
+        // RFC-0121 §2: same as the registry-built scheme -- an impl equation's `R` is
+        // row-bounded, so it must be record-kinded for the bound to be checked.
+        for (r_tv, _) in impl_row_remainders.values() {
+            if let InferType::Var(r) = partial_subst.apply(&InferType::Var(*r_tv)) {
+                record_kinds_by_var.insert(r, true);
+            }
+        }
         let open_row_vars: std::collections::HashSet<TypeVar> = open_param_vars
             .values()
             .map(|tv| match partial_subst.apply(&InferType::Var(*tv)) {
@@ -1465,6 +1553,21 @@ pub(super) fn infer_impl_method(
             .with_neg_bounds(&by_neg_var)
             .with_record_kinds(&record_kinds_by_var)
             .with_open_row_params(&open_row_vars);
+        // RFC-0121 §2: remap the impl's `Rest` derivations through the solved
+        // substitution; a `Rest` the body unified with `R` is no longer separate.
+        let row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = impl_row_remainders
+            .iter()
+            .filter_map(|(rest_tv, (r_tv, labels))| {
+                let (InferType::Var(rest), InferType::Var(r)) = (
+                    partial_subst.apply(&InferType::Var(*rest_tv)),
+                    partial_subst.apply(&InferType::Var(*r_tv)),
+                ) else {
+                    return None;
+                };
+                (rest != r).then(|| (rest, (r, labels.clone())))
+            })
+            .collect();
+        scheme = scheme.with_row_remainders(&row_remainders);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {

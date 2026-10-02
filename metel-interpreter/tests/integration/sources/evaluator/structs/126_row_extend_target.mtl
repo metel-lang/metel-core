@@ -1,0 +1,39 @@
+// RFC-0121 item 2 (metel-core#1310): an `extend` block may splice its own row
+// generic into the target (`Session<..R>`), whatever the impl calls it, and its
+// methods dispatch for every instantiation. With a `where R = { .., ..Rest }`
+// equation the method's result row is derived from the receiver's. The
+// derivation case is guarded -- its body is `panic` -- so it is type-checked,
+// not run.
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R> Session<..R> {
+    fun ident(self) -> i64 { self.id }
+}
+
+// The impl names its row generic `Q`, not the struct's own `R`.
+extend<row Q> Session<..Q> {
+    fun doubled(self) -> i64 { self.id * 2 }
+}
+
+extend<row R, row Rest> Session<..R> where R = { token: String, ..Rest } {
+    fun authenticate(self) -> Session<..Rest> { panic("unimplemented") }
+}
+
+fun main() {
+    let s: Session<{ token: String, extra: i64 }> :=
+        Session { id = 7, data = { token = "t", extra = 2 } };
+    assert(s.ident() == 7);
+    assert(s.doubled() == 14);
+
+    let bare: Session<{ extra: i64 }> := Session { id = 3, data = { extra = 1 } };
+    assert(bare.ident() == 3);
+
+    if (false) {
+        let r := s.authenticate();
+        assert(r.data.extra == 2);
+        let annotated: Session<{ extra: i64 }> := s.authenticate();
+        assert(annotated.id == 7);
+    }
+    println("ok");
+}
