@@ -1,0 +1,6 @@
+// RFC-0121 (metel-core#1324): a tail-only `{ ..Q }` in a struct field whose row
+// variable `Q` is not declared must report T0003, not panic in the type converter.
+
+record Wrap<row R> { public data: { ..Q } }
+
+fun main() {}

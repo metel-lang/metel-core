@@ -361,9 +361,7 @@ fn type_expr_to_infer_in_context(
         // registering the named fields as a positive, open row bound (reusing
         // RFC-0118/0120's existing structural row-bound checking) -- before
         // the parameter's annotation ever reaches this general conversion.
-        // This function is otherwise infallible by signature, so a stray
-        // `OpenRecord` elsewhere (which the grammar cannot produce) panics
-        // here rather than silently lowering to something wrong.
+        // A nested open record that reaches this function is handled below.
         // RFC-0121 item 2: a tail-only open record (`{ ..R }`) outside a
         // `fun_decl` parameter's top level -- e.g. a struct field's type -- is
         // exactly the row variable `R` (a row with no fixed fields).
@@ -381,12 +379,17 @@ fn type_expr_to_infer_in_context(
                     .expect("guarded"),
             )
         }
-        TypeExpr::OpenRecord(..) => {
-            unreachable!(
-                "OpenRecord must be intercepted in infer_fun_decl before reaching \
-                 type_expr_to_infer; it is grammar-restricted to fun_decl_param"
-            )
-        }
+        // Anything else reaching here is a nested open record the registry converts
+        // before `projections::check` runs -- a struct field's `{ x: T, ..R }` (row
+        // extension, not implemented), or a tail naming an undeclared row variable.
+        // `projections::check` rejects both (T0032 / T0003), but this function is
+        // infallible by signature and runs first when the registry is built, so it
+        // lowers to a placeholder that equals no declared type, not a panic.
+        TypeExpr::OpenRecord(..) => InferType::Named(
+            "<open-row>".to_string(),
+            vec![],
+            crate::data::types::NominalId::NONE,
+        ),
         // RFC-0121 installment 2: `infer_fun_decl` intercepts `Handle.{ fd,
         // ..R }` the same way, before it ever reaches this general
         // conversion -- see `check_projection_tail_constraint`.
