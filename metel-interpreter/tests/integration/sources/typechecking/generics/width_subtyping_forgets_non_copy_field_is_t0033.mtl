@@ -1,0 +1,10 @@
+// RFC-0121 §4 (width subtyping, concrete case): an open-row-tailed parameter
+// takes its argument by value, so the call forgets every field the tail
+// doesn't name. `label` isn't `Copy`, so nothing would own it afterwards.
+
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let r := { x = 1.0, label = "gone".to_string() };
+    let _ := get_x(r);
+}

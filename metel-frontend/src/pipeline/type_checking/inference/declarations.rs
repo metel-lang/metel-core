@@ -627,6 +627,13 @@ pub(super) fn infer_fun_decl(
     if !type_var_record_kinds.is_empty() {
         ctx.register_fun_record_kinds(fun.name.clone(), type_var_record_kinds.clone());
     }
+    // RFC-0121 §4: every open-row-tailed parameter is taken by value (never
+    // under `&`, by grammar), so each needs the width-subtyping `Copy` check
+    // at its call sites.
+    ctx.register_fun_open_row_params(
+        fun.name.clone(),
+        open_record_param_vars.values().copied().collect(),
+    );
     if !open_record_projection_tail_constraints.is_empty() {
         ctx.register_fun_projection_tail_constraints(
             fun.name.clone(),

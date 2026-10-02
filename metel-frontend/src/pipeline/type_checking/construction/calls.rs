@@ -579,6 +579,7 @@ pub(super) fn check_fun_call_bounds(
     let bounds_map = registry.fun_bounds_for(fun_name);
     let record_kinds = registry.fun_record_kinds_for(fun_name);
     let projection_tail_constraints = registry.fun_projection_tail_constraints_for(fun_name);
+    let open_row_params = registry.fun_open_row_params_for(fun_name);
     let generic_types_by_name: HashMap<String, Type> = HashMap::new();
     for (tv, concrete) in var_to_type {
         let bounds = bounds_map
@@ -588,6 +589,7 @@ pub(super) fn check_fun_call_bounds(
             .and_then(|map| map.get(tv))
             .copied()
             .unwrap_or(false);
+        let is_open_row_param = open_row_params.is_some_and(|vars| vars.contains(tv));
         if let Some((expected_brand, row)) = projection_tail_constraints.and_then(|map| map.get(tv))
         {
             check_projection_tail_constraint(
@@ -599,6 +601,9 @@ pub(super) fn check_fun_call_bounds(
                 current_module,
                 &generic_types_by_name,
             )?;
+            if is_open_row_param {
+                check_width_subtyping(concrete, row, span, registry, current_module)?;
+            }
         }
         if bounds.is_empty() && !record_kind {
             continue;
@@ -613,6 +618,62 @@ pub(super) fn check_fun_call_bounds(
             current_module,
             &generic_types_by_name,
         )?;
+        if is_open_row_param {
+            for bound in bounds {
+                if let GenericBound::Row(row) = bound {
+                    check_width_subtyping(concrete, row, span, registry, current_module)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// RFC-0121 §4, width subtyping, concrete case: an open-row-tailed parameter
+/// (`{ x, ..R }` / `Handle.{ fd, ..R }`) takes its argument *by value*, so the
+/// call narrows it to the named fields and silently forgets the rest. Sound
+/// only when every forgotten field is `Copy` -- a non-`Copy` field would have
+/// no owner left to drop it (or to discharge a linear field's use-once
+/// obligation). Borrow position carries no such restriction, but an
+/// open-row-tailed parameter's type is grammar-restricted to the top level of
+/// a `fun_decl_param` (never under `&`), so only the by-value case is
+/// reachable and this runs unconditionally for those parameters.
+///
+/// The abstract case -- the remainder is itself an unconstrained row inside a
+/// generic body -- has no fields to walk and needs RFC-0123's `all R: Copy`
+/// (metel-core#1302); an argument whose fields aren't structurally known is
+/// skipped here, not rejected.
+fn check_width_subtyping(
+    concrete: &Type,
+    row: &RowConstraint,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let Some(record_fields) =
+        structural_fields_for_row_check(concrete, registry, current_module, span)
+    else {
+        return Ok(());
+    };
+    for (label, ty) in &record_fields {
+        if row.fields.iter().any(|required| &required.label == label) {
+            continue;
+        }
+        let is_copy = matches!(
+            ty,
+            Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
+        ) || registry.type_satisfies_aspect(current_module, ty, "Copy");
+        if !is_copy {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0033,
+                format!(
+                    "passing `{concrete}` by value to an open row parameter forgets field \
+                     `{label}` of type `{ty}`, which is not `Copy` -- no owner would be left \
+                     for it (RFC-0121 §4)"
+                ),
+                span,
+            ));
+        }
     }
     Ok(())
 }

@@ -1,0 +1,21 @@
+// RFC-0121 §4 (width subtyping, concrete case): only fields a call *forgets*
+// must be `Copy`. A non-`Copy` field the parameter names -- directly in the
+// tail, or through a `where R = { .. }` decomposition -- is kept visible and
+// owned, so passing a record that carries it by value is fine.
+
+fun take_name<row R>(p: { name: String, ..R }) -> String { p.name }
+
+fun take_both<row R, row Rest>(p: { name: String, ..R }) -> String
+where R = { note: String, ..Rest }
+{
+    p.name + p.note
+}
+
+fun main() {
+    let r := { name = "a".to_string(), count = 1 };
+    assert(take_name(r) == "a");
+
+    let s := { name = "a".to_string(), note = "b".to_string(), count = 2 };
+    assert(take_both(s) == "ab");
+    println("ok");
+}

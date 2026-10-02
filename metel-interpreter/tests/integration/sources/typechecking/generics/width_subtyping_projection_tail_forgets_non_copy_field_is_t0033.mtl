@@ -1,0 +1,12 @@
+// RFC-0121 §4: the residual-projection tail form (`Handle.{ fd, ..R }`) is
+// the same by-value narrowing over a nominal brand, so the same rule applies
+// -- `name` isn't `Copy` and the call would forget it.
+
+struct Handle { fd: i64, name: String }
+
+fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 1, name = "gone".to_string() };
+    let _ := get_fd(h);
+}
