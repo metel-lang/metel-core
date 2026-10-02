@@ -289,6 +289,11 @@ pest = "where_constraint"
 mode = "named"
 name = "WhereConstraint"
 section = "Parameters"
+[[rule]]
+pest = "row_equation"
+mode = "named"
+name = "RowEquation"
+section = "Parameters"
 
 # ── Statements ─────────────────────────────────────────────────────────────
 

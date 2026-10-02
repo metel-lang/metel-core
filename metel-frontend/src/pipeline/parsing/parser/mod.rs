@@ -7,9 +7,9 @@ use crate::data::ast::{
     Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
     ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath,
     ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot,
-    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowTail, Span,
-    Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
-    WhereConstraint, WhileStmt,
+    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation,
+    RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility,
+    WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -2833,6 +2833,53 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
     }
 }
 
+/// Shared by `open_record_type`'s own parsing and `row_equation`'s right-hand
+/// side (RFC-0121 §2's row decomposition) -- both productions share the exact
+/// same inner shape: a sequence of `record_type_field`s followed by one
+/// `row_tail`.
+fn parse_open_record_fields_and_tail(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<(Vec<(String, TypeExpr)>, RowTail), MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut fields = vec![];
+    let mut tail = None;
+    for inner_pair in pair.into_inner() {
+        match inner_pair.as_rule() {
+            Rule::record_type_field => {
+                let mut inner = inner_pair.into_inner();
+                let name = inner
+                    .next()
+                    .ok_or_else(|| MetelError::internal("open_record_type: expected field name"))?
+                    .as_str()
+                    .to_string();
+                let ty = parse_type_expr(
+                    inner.next().ok_or_else(|| {
+                        MetelError::internal("open_record_type: expected field type")
+                    })?,
+                    filename,
+                )?;
+                fields.push((name, ty));
+            }
+            Rule::row_tail => {
+                let tail_span = Span::of(&inner_pair, filename);
+                let var = inner_pair
+                    .into_inner()
+                    .find(|p| p.as_rule() == Rule::ident)
+                    .map(|p| p.as_str().to_string());
+                tail = Some(RowTail {
+                    var,
+                    span: tail_span,
+                });
+            }
+            _ => {}
+        }
+    }
+    sort_type_record_fields(&mut fields, filename, &span)?;
+    let tail = tail.ok_or_else(|| MetelError::internal("open_record_type: expected a row tail"))?;
+    Ok((fields, tail))
+}
+
 #[allow(clippy::only_used_in_recursion)]
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
@@ -2891,45 +2938,7 @@ fn parse_type_expr(
         // `open_record_type | type_expr` alternative, not `param`'s plain
         // `type_expr`) -- see `TypeExpr::OpenRecord`'s doc comment.
         Rule::open_record_type => {
-            let span = Span::of(&pair, filename);
-            let mut fields = vec![];
-            let mut tail = None;
-            for inner_pair in pair.into_inner() {
-                match inner_pair.as_rule() {
-                    Rule::record_type_field => {
-                        let mut inner = inner_pair.into_inner();
-                        let name = inner
-                            .next()
-                            .ok_or_else(|| {
-                                MetelError::internal("open_record_type: expected field name")
-                            })?
-                            .as_str()
-                            .to_string();
-                        let ty = parse_type_expr(
-                            inner.next().ok_or_else(|| {
-                                MetelError::internal("open_record_type: expected field type")
-                            })?,
-                            filename,
-                        )?;
-                        fields.push((name, ty));
-                    }
-                    Rule::row_tail => {
-                        let tail_span = Span::of(&inner_pair, filename);
-                        let var = inner_pair
-                            .into_inner()
-                            .find(|p| p.as_rule() == Rule::ident)
-                            .map(|p| p.as_str().to_string());
-                        tail = Some(RowTail {
-                            var,
-                            span: tail_span,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            sort_type_record_fields(&mut fields, filename, &span)?;
-            let tail =
-                tail.ok_or_else(|| MetelError::internal("open_record_type: expected a row tail"))?;
+            let (fields, tail) = parse_open_record_fields_and_tail(pair, filename)?;
             Ok(TypeExpr::OpenRecord(fields, tail))
         }
         Rule::reference_type => {
@@ -3462,34 +3471,73 @@ fn parse_where_clause(
     filename: &str,
 ) -> Result<WhereClause, MetelError> {
     let mut constraints = vec![];
+    let mut row_equations = vec![];
     for p in pair.into_inner() {
-        if p.as_rule() == Rule::where_constraint {
-            let mut it = p.into_inner();
-            let mut is_record = false;
-            let first = it
-                .next()
-                .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?;
-            let name_pair = if first.as_rule() == Rule::record_kw {
-                is_record = true;
-                it.next()
-                    .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?
-            } else {
-                first
-            };
-            let name = name_pair.as_str().to_string();
-            let bounds = it
-                .next()
-                .map(|bl| parse_bound_list(bl, filename))
-                .transpose()?
-                .unwrap_or_default();
-            constraints.push(WhereConstraint {
-                name,
-                is_record,
-                bounds,
-            });
+        if p.as_rule() != Rule::where_constraint {
+            continue;
         }
+        let mut it = p.into_inner();
+        let first = it
+            .next()
+            .ok_or_else(|| MetelError::internal("where_constraint: expected a constraint"))?;
+        if first.as_rule() == Rule::row_equation {
+            let span = Span::of(&first, filename);
+            let mut inner = first.into_inner();
+            let var = inner
+                .next()
+                .ok_or_else(|| MetelError::internal("row_equation: expected row variable"))?
+                .as_str()
+                .to_string();
+            let rhs = inner
+                .next()
+                .ok_or_else(|| MetelError::internal("row_equation: expected right-hand side"))?;
+            let (fields, tail) = if rhs.as_rule() == Rule::open_record_type {
+                parse_open_record_fields_and_tail(rhs, filename)?
+            } else {
+                // RFC-0121 §2: a decomposition with no tail at all is
+                // pointless -- identical to an ordinary bound -- so the
+                // grammar accepts a bare `type_expr` here (matching the
+                // RFC's own literal production) only to give this a clear
+                // rejection rather than a silent parse failure.
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    "a row equation's right-hand side must be an open record \
+                     type with a `..Rest` tail (e.g. `R = { token: Token, ..Rest }`)",
+                    &Span::of(&rhs, filename),
+                ));
+            };
+            row_equations.push(RowEquation {
+                var,
+                fields,
+                tail,
+                span,
+            });
+            continue;
+        }
+        let mut is_record = false;
+        let name_pair = if first.as_rule() == Rule::record_kw {
+            is_record = true;
+            it.next()
+                .ok_or_else(|| MetelError::internal("where_constraint: expected param name"))?
+        } else {
+            first
+        };
+        let name = name_pair.as_str().to_string();
+        let bounds = it
+            .next()
+            .map(|bl| parse_bound_list(bl, filename))
+            .transpose()?
+            .unwrap_or_default();
+        constraints.push(WhereConstraint {
+            name,
+            is_record,
+            bounds,
+        });
     }
-    Ok(WhereClause { constraints })
+    Ok(WhereClause {
+        constraints,
+        row_equations,
+    })
 }
 
 fn parse_generic_params(

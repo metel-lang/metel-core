@@ -728,6 +728,16 @@ impl Cx<'_> {
                     self.bound(bound, span, generics, false, None, local_types)?;
                 }
             }
+            // RFC-0121 §2's row decomposition (`where R = { extra: i64,
+            // ..Rest }`): the equation's own named fields need the same
+            // "unknown type" check an `OpenRecord` parameter's literal
+            // fields already get (its own `ty_at` arm, elsewhere in this
+            // file) -- the tail itself carries no `TypeExpr` to check.
+            for equation in &where_clause.row_equations {
+                for (_, ty) in &equation.fields {
+                    self.ty_at(ty, span, None, generics, false, None, false, local_types)?;
+                }
+            }
         }
         Ok(())
     }

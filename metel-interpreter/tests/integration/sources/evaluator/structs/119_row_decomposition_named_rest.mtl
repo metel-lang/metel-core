@@ -1,0 +1,20 @@
+// RFC-0121 (Open Rows, metel-core#1301) sec3 / metel-core#1306 item 3: row
+// decomposition (`where R = { extra: i64, ..Rest }`) names a row variable's
+// current row by equation rather than bound -- the equation's own named
+// fields become additional requirements folded into the tail's own literal
+// fields before the row-bound check (RFC-0118/0120's existing structural
+// checking, reused unchanged). `Rest` itself is validated as a declared
+// `row`-kinded generic but carries no further value yet, mirroring sec1's
+// own treatment of a bare row variable.
+
+fun split<row R, row Rest>(p: { token: i64, ..R }) -> i64
+where R = { extra: i64, ..Rest }
+{
+    p.token + p.extra
+}
+
+fun main() {
+    let r := { token = 1, extra = 2, other = 3 };
+    assert(split(r) == 3);
+    println("ok");
+}
