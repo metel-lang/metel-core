@@ -1,7 +1,7 @@
 [expect]
 status = "typecheck_error"
 code = "T0032"
-contains = "not yet implemented beyond parsing"
+contains = "anonymous row"
 
 [options]
 error = ["T0032"]

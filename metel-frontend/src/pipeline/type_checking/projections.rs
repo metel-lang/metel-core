@@ -371,44 +371,44 @@ impl Cx<'_> {
                 // RFC-0121 item 2: a `row`-kinded parameter's argument must be
                 // a record type or a spliced row variable, never an ordinary
                 // type (and a `row` argument can't stand in for an ordinary one).
-                if let Some(kinds) = self
+                // Types with no `row` parameters have no registered kinds:
+                // every parameter is then ordinary.
+                let kinds = self
                     .registry
                     .type_param_row_kinds_for(self.current_module, name)
-                {
-                    for (i, a) in args.iter().enumerate() {
-                        let wants_row = kinds.get(i).copied().unwrap_or(false);
-                        // A record type is a valid argument for either kind
-                        // (`Box<{ x: i64 }>`); only the `..R` splice is
-                        // row-only.
-                        let fits = if wants_row {
-                            matches!(
-                                a,
-                                TypeExpr::RowArg(_)
-                                    | TypeExpr::Record(_)
-                                    | TypeExpr::OpenRecord(..)
-                            )
-                        } else {
-                            !matches!(a, TypeExpr::RowArg(_))
-                        };
-                        if !fits {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0012,
-                                if wants_row {
-                                    format!(
-                                        "generic parameter {} of `{name}` is `row`-kinded; \
-                                         its argument must be a record type or `..R`",
-                                        i + 1
-                                    )
-                                } else {
-                                    format!(
-                                        "generic parameter {} of `{name}` is an ordinary \
-                                         type; a row argument (`..R`/`{{ .. }}`) is not allowed",
-                                        i + 1
-                                    )
-                                },
-                                span,
-                            ));
-                        }
+                    .cloned()
+                    .unwrap_or_default();
+                for (i, a) in args.iter().enumerate() {
+                    let wants_row = kinds.get(i).copied().unwrap_or(false);
+                    // A record type is a valid argument for either kind
+                    // (`Box<{ x: i64 }>`); only the `..R` splice is
+                    // row-only.
+                    let fits = if wants_row {
+                        matches!(
+                            a,
+                            TypeExpr::RowArg(_) | TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
+                        )
+                    } else {
+                        !matches!(a, TypeExpr::RowArg(_))
+                    };
+                    if !fits {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            if wants_row {
+                                format!(
+                                    "generic parameter {} of `{name}` is `row`-kinded; \
+                                     its argument must be a record type or `..R`",
+                                    i + 1
+                                )
+                            } else {
+                                format!(
+                                    "generic parameter {} of `{name}` is an ordinary \
+                                     type; a row argument (`..R`/`{{ .. }}`) is not allowed",
+                                    i + 1
+                                )
+                            },
+                            span,
+                        ));
                     }
                 }
                 for a in args {

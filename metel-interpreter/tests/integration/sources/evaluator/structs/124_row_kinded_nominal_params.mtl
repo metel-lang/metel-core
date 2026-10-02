@@ -1,0 +1,29 @@
+// RFC-0121 item 2 (metel-core#1310): a `row`-kinded generic parameter on a
+// nominal type takes a closed record type as its argument; `Builder<..R>`
+// splices the row variable, and a `where R = { .. }` equation bounds it.
+
+record Builder<row R> { public name: String, public data: { ..R } }
+
+struct Tagged<T, row R> { public v: T, public extra: { ..R } }
+
+fun describe<row R>(b: Builder<..R>) -> String { b.name }
+
+fun auth_of<row R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
+    b.data.auth
+}
+
+fun get<T, row R>(t: Tagged<T, ..R>) -> T { t.v }
+
+fun main() {
+    let b := Builder { name = "req", data = { auth = "tok", retries = 3 } };
+    assert(describe(b) == "req");
+    assert(auth_of(b) == "tok");
+
+    let c: Builder<{ auth: String }> := Builder { name = "c", data = { auth = "t2" } };
+    assert(auth_of(c) == "t2");
+
+    let t: Tagged<{ x: i64 }, { note: String }> :=
+        Tagged { v = { x = 1 }, extra = { note = "n" } };
+    assert(get(t).x == 1);
+    println("ok");
+}

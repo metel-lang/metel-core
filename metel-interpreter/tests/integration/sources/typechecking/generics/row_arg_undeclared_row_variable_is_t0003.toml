@@ -1,7 +1,7 @@
 [expect]
 status = "typecheck_error"
 code = "T0003"
-contains = "unknown type `R`"
+contains = "undefined row variable `R`"
 
 [options]
 error = ["T0003"]

@@ -1,9 +1,8 @@
-// RFC-0121 item 2 (metel-core#1310): the spliced row variable must at least
-// exist as a declared generic in scope -- `foo` declares no generics at
-// all, so `R` is undefined, exactly as an ordinary unknown type name is.
+// RFC-0121 item 2 (metel-core#1310): the spliced row variable must be a
+// declared generic in scope -- `foo` declares none, so `R` is undefined.
 
-struct Session { token: i64 }
+record Builder<row R> { public data: { ..R } }
 
-fun foo(s: Session<..R>) -> i64 { 0 }
+fun foo(b: Builder<..R>) -> i64 { 0 }
 
 fun main() {}
