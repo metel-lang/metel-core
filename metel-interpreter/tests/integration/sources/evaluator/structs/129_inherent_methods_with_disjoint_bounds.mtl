@@ -1,0 +1,34 @@
+// metel-core#1322: two inherent `extend` blocks of one generic type may reuse a method
+// name when their bounds are disjoint, and a call dispatches to the block whose bound
+// the receiver actually satisfies -- not to whichever block was declared last.
+
+aspect Tag { fun tag(self) -> i64; }
+
+struct Box<T> { public v: T }
+
+extend i64: Tag { fun tag(self) -> i64 { 7 } }
+
+extend<T: Tag> Box<T> {
+    fun kind(self) -> i64 { 1 }
+}
+
+extend<T: !Tag> Box<T> {
+    fun kind(self) -> i64 { 2 }
+}
+
+// Different instantiations reuse a name too, and must keep dispatching by type argument.
+struct W<T> { public v: T }
+
+extend W<i64> { fun which(self) -> i64 { 10 } }
+extend W<String> { fun which(self) -> i64 { 20 } }
+
+fun main() {
+    let tagged := Box { v = 1 };
+    let plain := Box { v = "s" };
+    assert(tagged.kind() == 1);
+    assert(plain.kind() == 2);
+
+    assert(W { v = 1 }.which() == 10);
+    assert(W { v = "s" }.which() == 20);
+    println("ok");
+}

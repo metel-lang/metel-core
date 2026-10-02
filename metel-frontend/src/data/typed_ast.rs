@@ -435,6 +435,12 @@ pub enum TypedExpr {
         args: Vec<TypedExpr>,
         ty: Type,
         dispatch: MethodDispatch,
+        /// The declaration span of the impl method the type checker chose when more than
+        /// one registered impl could provide it (metel-core#1322) -- e.g. two inherent
+        /// blocks distinguished only by their bounds (`T: Tag` / `T: !Tag`). Runtime
+        /// dispatch prefers the method declared there. `None` when there was no choice to
+        /// record, in which case dispatch is by name and type arguments as before.
+        impl_site: Option<Span>,
         span: Span,
     },
     FieldAccess {

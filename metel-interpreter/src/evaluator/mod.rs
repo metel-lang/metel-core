@@ -435,6 +435,9 @@ pub struct RuntimeAspectImpl {
 pub struct ReceiverTypeArgs {
     pub names: Vec<String>,
     pub tys: Vec<crate::data::types::Type>,
+    /// The declaration span of the impl method the type checker chose for this call, when
+    /// it had a choice (`TypedExpr::MethodCall::impl_site`, metel-core#1322).
+    pub prefer: Option<Span>,
 }
 
 /// Do all of an impl's row guards hold for the receiver's type arguments? An argument
@@ -488,6 +491,10 @@ pub struct RuntimeMethod {
     #[allow(dead_code)] // stored for future diagnostics/reflection and System F transition work
     pub signature: RuntimeSignature,
     pub body: RuntimeCallable,
+    /// Where the method was declared, when it comes from a source `extend` block
+    /// (metel-core#1322): lets dispatch honour which impl's method the type checker chose
+    /// when several can provide one name. `None` for native and builtin methods.
+    pub decl_span: Option<Span>,
 }
 
 // limit: ["LIMIT-EVALUATION-003"]
@@ -636,9 +643,14 @@ impl RuntimeRegistry {
         let entry = self.type_entry_mut(type_id, type_name);
         let method_name = method_name.into();
         let guards_key = format!("{row_guards:?}");
+        // An impl already defining this method is not merged into: two blocks with the
+        // same key that both define it can only be disjoint (overlapping ones are T0034),
+        // so replacing the earlier definition would drop a method dispatch may still
+        // need (metel-core#1322).
         if let Some(inherent_impl) = entry.inherent_impls.iter_mut().find(|inherent_impl| {
             inherent_impl.target_type_args == target_type_args
                 && format!("{:?}", inherent_impl.row_guards) == guards_key
+                && !inherent_impl.methods.contains_key(&method_name)
         }) {
             inherent_impl.methods.insert(method_name, value);
             return;
@@ -674,6 +686,7 @@ impl RuntimeRegistry {
                 && aspect_impl.type_args == type_args
                 && aspect_impl.target_type_args == target_type_args
                 && format!("{:?}", aspect_impl.row_guards) == guards_key
+                && !aspect_impl.methods.contains_key(&method_name)
         }) {
             // Update aspect_id if we now have one (a later registration may have the id).
             if aspect_impl.aspect_id.is_none() {
@@ -725,25 +738,39 @@ impl RuntimeRegistry {
                 .cloned()
                 .filter(|m| m.receiver.is_some())
         };
-        aspect_impls
-            .iter()
-            .rev()
-            .filter(|ai| {
-                ai.aspect_id == Some(aspect_id)
-                    && ai.target_type_args.as_deref() == Some(receiver.names.as_slice())
-            })
-            .find_map(method_of)
-            .or_else(|| {
+        // See `get_inherent_method`: the preference only breaks ties within a matching tier.
+        let pick = |tier: Vec<&RuntimeAspectImpl>| {
+            receiver
+                .prefer
+                .as_ref()
+                .and_then(|prefer| {
+                    tier.iter()
+                        .filter_map(|ai| method_of(ai))
+                        .find(|m| m.decl_span.as_ref() == Some(prefer))
+                })
+                .or_else(|| tier.iter().rev().find_map(|ai| method_of(ai)))
+        };
+        pick(
+            aspect_impls
+                .iter()
+                .filter(|ai| {
+                    ai.aspect_id == Some(aspect_id)
+                        && ai.target_type_args.as_deref() == Some(receiver.names.as_slice())
+                })
+                .collect(),
+        )
+        .or_else(|| {
+            pick(
                 aspect_impls
                     .iter()
-                    .rev()
                     .filter(|ai| {
                         ai.aspect_id == Some(aspect_id)
                             && ai.target_type_args.is_none()
                             && row_guards_hold(&ai.row_guards, receiver)
                     })
-                    .find_map(method_of)
-            })
+                    .collect(),
+            )
+        })
     }
 
     pub fn register_pattern_method(
@@ -876,20 +903,37 @@ impl RuntimeRegistry {
                 .cloned()
                 .filter(|method| method.receiver.is_some())
         };
-        inherent_impls
-            .iter()
-            .rev()
-            .filter(|ii| ii.target_type_args.as_deref() == Some(receiver.names.as_slice()))
-            .find_map(method_of)
-            .or_else(|| {
+        // Within a tier of impls that already match the receiver, prefer the method the
+        // type checker chose (metel-core#1322); otherwise the last registered. The
+        // preference never crosses tiers: the checker does not tell `extend W<i64>` from
+        // `extend W<String>` apart, so it must not override exact-instantiation matching.
+        let pick = |tier: Vec<&RuntimeInherentImpl>| {
+            receiver
+                .prefer
+                .as_ref()
+                .and_then(|prefer| {
+                    tier.iter()
+                        .filter_map(|ii| method_of(ii))
+                        .find(|m| m.decl_span.as_ref() == Some(prefer))
+                })
+                .or_else(|| tier.iter().rev().find_map(|ii| method_of(ii)))
+        };
+        pick(
+            inherent_impls
+                .iter()
+                .filter(|ii| ii.target_type_args.as_deref() == Some(receiver.names.as_slice()))
+                .collect(),
+        )
+        .or_else(|| {
+            pick(
                 inherent_impls
                     .iter()
-                    .rev()
                     .filter(|ii| {
                         ii.target_type_args.is_none() && row_guards_hold(&ii.row_guards, receiver)
                     })
-                    .find_map(method_of)
-            })
+                    .collect(),
+            )
+        })
     }
 
     #[must_use]
@@ -1481,6 +1525,7 @@ fn runtime_method_from_decl(
         receiver,
         signature,
         body,
+        decl_span: Some(method.span.clone()),
     }
 }
 
@@ -3158,6 +3203,7 @@ fn eval_method_call_expr(
     method: &str,
     args: &[TypedExpr],
     dispatch: &MethodDispatch,
+    impl_site: Option<&Span>,
     expected_ret: &crate::data::types::Type,
     span: &Span,
     env: &mut Environment,
@@ -3189,8 +3235,12 @@ fn eval_method_call_expr(
             crate::data::types::Type::Named(_, args, ..) => ReceiverTypeArgs {
                 names: args.iter().map(ToString::to_string).collect(),
                 tys: args.clone(),
+                prefer: impl_site.cloned(),
             },
-            _ => ReceiverTypeArgs::default(),
+            _ => ReceiverTypeArgs {
+                prefer: impl_site.cloned(),
+                ..ReceiverTypeArgs::default()
+            },
         };
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());
@@ -4147,8 +4197,19 @@ pub fn eval_expr(
             args,
             ty,
             dispatch,
+            impl_site,
             span,
-        } => eval_method_call_expr(receiver, method, args, dispatch, ty, span, env, runtime),
+        } => eval_method_call_expr(
+            receiver,
+            method,
+            args,
+            dispatch,
+            impl_site.as_ref(),
+            ty,
+            span,
+            env,
+            runtime,
+        ),
 
         TypedExpr::Call {
             callee,
@@ -4524,6 +4585,7 @@ mod architecture_evidence_tests {
                 label: label.to_string(),
                 fun: zero,
             },
+            decl_span: None,
         }
     }
 

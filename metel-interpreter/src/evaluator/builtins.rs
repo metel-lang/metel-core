@@ -1034,6 +1034,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                         })
                         .collect();
                     let runtime_method = RuntimeMethod {
+                        decl_span: None,
                         label: format!("{target_name}::{}", method.name),
                         receiver,
                         signature: RuntimeSignature {
@@ -1096,6 +1097,7 @@ pub(super) fn register_builtins(runtime: &mut RuntimeRegistry) {
         body: RuntimeCallable,
     ) -> RuntimeMethod {
         RuntimeMethod {
+            decl_span: None,
             label: label.to_string(),
             receiver,
             signature: RuntimeSignature {

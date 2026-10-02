@@ -827,9 +827,9 @@ pub(super) fn resolve_generic_method_call(
     method: &str,
     span: &Span,
     ctx: &mut ConstructCtx,
-) -> Result<(Type, Vec<TypedExpr>, Option<String>), MetelError> {
+) -> Result<(Type, Vec<TypedExpr>, Option<String>, usize), MetelError> {
     let mut last_err = None;
-    for (scheme, struct_tvars, aspect_name) in candidates {
+    for (index, (scheme, struct_tvars, aspect_name)) in candidates.iter().enumerate() {
         match try_generic_method_scheme(
             scheme,
             struct_tvars,
@@ -840,7 +840,9 @@ pub(super) fn resolve_generic_method_call(
             span,
             ctx,
         ) {
-            Ok((ty, typed_args)) => return Ok((ty, typed_args, aspect_name.clone())),
+            // The winner's index into `candidates`, so a caller can say *which* impl's
+            // method it chose (metel-core#1322), not only which aspect it belongs to.
+            Ok((ty, typed_args)) => return Ok((ty, typed_args, aspect_name.clone(), index)),
             Err(e) => last_err = Some(e),
         }
     }

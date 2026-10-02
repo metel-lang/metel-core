@@ -23,6 +23,7 @@ pub(super) fn builtin_pattern_method_expr(
             method: method.to_string(),
             args,
             ty: Type::I64,
+            impl_site: None,
             dispatch: crate::data::typed_ast::MethodDispatch::Dynamic,
             span: span.clone(),
         }));

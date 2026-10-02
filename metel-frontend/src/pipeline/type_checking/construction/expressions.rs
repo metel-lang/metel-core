@@ -1306,7 +1306,7 @@ pub(super) fn construct_expr(
                     ));
                 }
                 let receiver_type_args = [elem.as_ref().clone()];
-                let (method_fun_ty, typed_args, winning_aspect) = resolve_generic_method_call(
+                let (method_fun_ty, typed_args, winning_aspect, _) = resolve_generic_method_call(
                     &candidates,
                     &receiver_type_args,
                     explicit_method_tys.as_deref(),
@@ -1338,6 +1338,7 @@ pub(super) fn construct_expr(
                     method: method.clone(),
                     args: typed_args,
                     ty: ret_ty,
+                    impl_site: None,
                     dispatch,
                     span: span.clone(),
                 });
@@ -1361,6 +1362,7 @@ pub(super) fn construct_expr(
                     method: method.clone(),
                     args: typed_args,
                     ty: Type::Never,
+                    impl_site: None,
                     dispatch: crate::data::typed_ast::MethodDispatch::Dynamic,
                     span: span.clone(),
                 });
@@ -1454,6 +1456,7 @@ pub(super) fn construct_expr(
                     method: method.clone(),
                     args: typed_args,
                     ty: ret_ty,
+                    impl_site: None,
                     dispatch: MethodDispatch::Dynamic,
                     span: span.clone(),
                 });
@@ -1475,48 +1478,62 @@ pub(super) fn construct_expr(
             // Resolve the method's function type and construct the arguments.
             // Two cases: a concrete method already in method_env (fast path), or a
             // polymorphic scheme on a generic struct/enum (slow path).
-            let (method_fun_ty, typed_args, dispatch): (Type, Vec<TypedExpr>, MethodDispatch) =
-                if let Some(ty) = ctx
-                    .concrete_method_with_id(&struct_name, struct_id, method.as_str())
-                    .cloned()
-                {
-                    if explicit_method_tys.is_some() {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0004,
-                            format!("method `{method}` on `{struct_name}` has no type parameters"),
-                            span,
-                        ));
-                    }
-                    let typed_args = construct_method_args(&ty, args, ctx)?;
-                    (ty, typed_args, MethodDispatch::Dynamic)
-                } else {
-                    // Slow path: method on a generic struct/enum — look up the polymorphic
-                    // scheme(s) and instantiate against the receiver's concrete type
-                    // arguments. More than one candidate can be registered here (issue
-                    // #272: different aspects providing the same method name for the
-                    // same generic target) -- try each and use the one whose bounds the
-                    // receiver's concrete type args actually satisfy.
-                    let candidates = ctx
-                        .registry
-                        .method_scheme_variants_for(ctx.current_module, &struct_name, method)
-                        .to_vec();
-                    if candidates.is_empty() {
-                        return Err(MetelError::internal(format!(
-                            "no method `{method}` on `{struct_name}`"
-                        )));
-                    }
-                    let (ty, typed_args, winning_aspect) = resolve_generic_method_call(
-                        &candidates,
-                        &receiver_type_args,
-                        explicit_method_tys.as_deref(),
-                        args,
-                        method,
+            let (method_fun_ty, typed_args, dispatch, impl_site): (
+                Type,
+                Vec<TypedExpr>,
+                MethodDispatch,
+                Option<Span>,
+            ) = if let Some(ty) = ctx
+                .concrete_method_with_id(&struct_name, struct_id, method.as_str())
+                .cloned()
+            {
+                if explicit_method_tys.is_some() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0004,
+                        format!("method `{method}` on `{struct_name}` has no type parameters"),
                         span,
-                        ctx,
-                    )?;
-                    let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
-                    (ty, typed_args, dispatch)
-                };
+                    ));
+                }
+                let typed_args = construct_method_args(&ty, args, ctx)?;
+                (ty, typed_args, MethodDispatch::Dynamic, None)
+            } else {
+                // Slow path: method on a generic struct/enum — look up the polymorphic
+                // scheme(s) and instantiate against the receiver's concrete type
+                // arguments. More than one candidate can be registered here (issue
+                // #272: different aspects providing the same method name for the
+                // same generic target) -- try each and use the one whose bounds the
+                // receiver's concrete type args actually satisfy.
+                let candidates = ctx
+                    .registry
+                    .method_scheme_variants_for(ctx.current_module, &struct_name, method)
+                    .to_vec();
+                if candidates.is_empty() {
+                    return Err(MetelError::internal(format!(
+                        "no method `{method}` on `{struct_name}`"
+                    )));
+                }
+                let (ty, typed_args, winning_aspect, winning_index) = resolve_generic_method_call(
+                    &candidates,
+                    &receiver_type_args,
+                    explicit_method_tys.as_deref(),
+                    args,
+                    method,
+                    span,
+                    ctx,
+                )?;
+                let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
+                // Several variants can provide one method name (inherent blocks told
+                // apart only by their bounds): record which one the type checker chose.
+                let impl_site = (candidates.len() > 1)
+                    .then(|| {
+                        ctx.registry
+                            .method_variant_spans_for(ctx.current_module, &struct_name, method)
+                            .get(winning_index)
+                            .cloned()
+                    })
+                    .flatten();
+                (ty, typed_args, dispatch, impl_site)
+            };
             let ret_ty = match method_fun_ty {
                 Type::Fun(_, ret, ..) => *ret,
                 _ => return Err(MetelError::internal("method type is not a function")),
@@ -1526,6 +1543,7 @@ pub(super) fn construct_expr(
                 method: method.clone(),
                 args: typed_args,
                 ty: ret_ty,
+                impl_site,
                 dispatch,
                 span: span.clone(),
             })

@@ -2291,6 +2291,10 @@ pub struct TypeDefinitionRegistry {
     /// Keyed by `SymbolId` for the same reason as `method_scheme_env` above
     /// (metel-core#1124).
     method_scheme_variants: HashMap<SymbolId, HashMap<String, Vec<MethodSchemeVariant>>>,
+    /// The declaration span of each variant in `method_scheme_variants`, in the same order
+    /// (metel-core#1322): lets a call that picked a variant say *which* impl's method it
+    /// chose, so dispatch can follow the type checker's decision.
+    method_variant_spans: HashMap<SymbolId, HashMap<String, Vec<Span>>>,
     /// Method schemes for structural array targets (`impl<T> Aspect for T[]`). The
     /// pinned vars correspond to the receiver array's element type positions.
     array_method_scheme_env: HashMap<String, (TypeScheme, Vec<TypeVar>)>,
@@ -2714,6 +2718,7 @@ impl TypeDefinitionRegistry {
             struct_generic_names: HashMap::new(),
             method_scheme_env: HashMap::new(),
             method_scheme_variants: HashMap::new(),
+            method_variant_spans: HashMap::new(),
             array_method_scheme_env: HashMap::new(),
             array_method_scheme_variants: HashMap::new(),
             generic_method_schemes_by_span: HashMap::new(),
@@ -3047,7 +3052,13 @@ impl TypeDefinitionRegistry {
         method_span: Span,
     ) {
         self.generic_method_schemes_by_span
-            .insert(method_span, scheme.clone());
+            .insert(method_span.clone(), scheme.clone());
+        self.method_variant_spans
+            .entry(owner)
+            .or_default()
+            .entry(method_name.clone())
+            .or_default()
+            .push(method_span);
         self.method_scheme_variants
             .entry(owner)
             .or_default()
@@ -3127,6 +3138,23 @@ impl TypeDefinitionRegistry {
             return &[];
         };
         self.method_scheme_variants
+            .get(&owner)
+            .and_then(|m| m.get(method_name))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// The declaration spans of `method_scheme_variants_for`'s variants, index for index.
+    #[must_use]
+    pub fn method_variant_spans_for(
+        &self,
+        current_module: &[String],
+        type_name: &str,
+        method_name: &str,
+    ) -> &[Span] {
+        let Some(owner) = self.resolve_type_key_broad(current_module, type_name) else {
+            return &[];
+        };
+        self.method_variant_spans
             .get(&owner)
             .and_then(|m| m.get(method_name))
             .map_or(&[], Vec::as_slice)
@@ -4374,6 +4402,16 @@ impl TypeDefinitionRegistry {
                     .entry(method_name.clone())
                     .or_default()
                     .extend(variants.iter().cloned());
+            }
+        }
+        for (k, v) in &other.method_variant_spans {
+            // Kept in lockstep with `method_scheme_variants` just above.
+            let entry = self.method_variant_spans.entry(*k).or_default();
+            for (method_name, spans) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_default()
+                    .extend(spans.iter().cloned());
             }
         }
         for (method_name, scheme) in &other.array_method_scheme_env {
