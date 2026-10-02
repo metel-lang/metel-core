@@ -1,0 +1,15 @@
+// RFC-0121 §2 (metel-core#1306 item 7): the equation requires `extra`, which `Handle`
+// does not have, so no `Handle` can be passed. This used to be accepted: the equation
+// was silently ignored on a residual-projection tail.
+
+struct Handle { public fd: i64, public other: i64 }
+
+fun use_it<row R, row Rest>(h: Handle.{ fd, ..R }) -> i64
+where R = { extra: i64, ..Rest } {
+    h.fd
+}
+
+fun main() {
+    let h := Handle { fd = 1, other = 2 };
+    println(use_it(h));
+}

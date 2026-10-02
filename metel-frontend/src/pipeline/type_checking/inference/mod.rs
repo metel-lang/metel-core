@@ -1059,6 +1059,54 @@ pub(super) fn collect_open_record_param_vars(
     collect_open_record_param_vars_with(fun, || ctx.fresh_type_var_raw())
 }
 
+fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelError> {
+    let Some(name) = &tail.var else {
+        return Ok(());
+    };
+    match generics.iter().find(|g| &g.name == name) {
+        None => Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!(
+                "undefined row variable `{name}` -- declare it as a generic \
+                 parameter (`<row {name}>`)"
+            ),
+            &tail.span,
+        )),
+        Some(gp) if !gp.is_row => Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                 not `<{name}>`"
+            ),
+            &tail.span,
+        )),
+        Some(_) => Ok(()),
+    }
+}
+
+// RFC-0121 §2's row decomposition (`where R = { extra: i64, ..Rest }`):
+// when an open-row-tailed parameter's tail names a row variable that has
+// a decomposition equation in scope, the equation's own named fields are
+// additional requirements on that variable's row -- fold them into the
+// tail's own literal fields before building the row bound. `Rest` (the
+// equation's own tail) is validated the same way `R` itself is above,
+// but carries no further value, mirroring `R`'s own "validated, no
+// value elsewhere" treatment from installment 1.
+fn resolve_decomposed_fields(
+    tail: &RowTail,
+    where_clause: Option<&WhereClause>,
+    generics: &[GenericParam],
+) -> Result<Vec<(String, TypeExpr)>, MetelError> {
+    let (Some(name), Some(where_clause)) = (&tail.var, where_clause) else {
+        return Ok(vec![]);
+    };
+    let Some(equation) = where_clause.row_equation_for(name) else {
+        return Ok(vec![]);
+    };
+    check_row_var(&equation.tail, generics)?;
+    Ok(equation.fields.clone())
+}
+
 /// `collect_open_record_param_vars` over an arbitrary fresh-`TypeVar` source, so
 /// the registry's method-scheme builders (which run before any `InferContext`
 /// exists and only hold the `TypeVarGenerator`) desugar open-row parameters
@@ -1067,54 +1115,6 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
     fun: &FunDecl,
     mut fresh_type_var: impl FnMut() -> TypeVar,
 ) -> Result<OpenRecordParamVars, MetelError> {
-    fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelError> {
-        let Some(name) = &tail.var else {
-            return Ok(());
-        };
-        match generics.iter().find(|g| &g.name == name) {
-            None => Err(MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!(
-                    "undefined row variable `{name}` -- declare it as a generic \
-                     parameter (`<row {name}>`)"
-                ),
-                &tail.span,
-            )),
-            Some(gp) if !gp.is_row => Err(MetelError::type_error(
-                TypeErrorCode::T0012,
-                format!(
-                    "`{name}` is not a row parameter; declare it `<row {name}>`, \
-                     not `<{name}>`"
-                ),
-                &tail.span,
-            )),
-            Some(_) => Ok(()),
-        }
-    }
-
-    // RFC-0121 §2's row decomposition (`where R = { extra: i64, ..Rest }`):
-    // when an open-row-tailed parameter's tail names a row variable that has
-    // a decomposition equation in scope, the equation's own named fields are
-    // additional requirements on that variable's row -- fold them into the
-    // tail's own literal fields before building the row bound. `Rest` (the
-    // equation's own tail) is validated the same way `R` itself is above,
-    // but carries no further value, mirroring `R`'s own "validated, no
-    // value elsewhere" treatment from installment 1.
-    fn resolve_decomposed_fields(
-        tail: &RowTail,
-        where_clause: Option<&WhereClause>,
-        generics: &[GenericParam],
-    ) -> Result<Vec<(String, TypeExpr)>, MetelError> {
-        let (Some(name), Some(where_clause)) = (&tail.var, where_clause) else {
-            return Ok(vec![]);
-        };
-        let Some(equation) = where_clause.row_equation_for(name) else {
-            return Ok(vec![]);
-        };
-        check_row_var(&equation.tail, generics)?;
-        Ok(equation.fields.clone())
-    }
-
     let mut param_vars = HashMap::new();
     let mut bounds = HashMap::new();
     let mut record_kinds = HashMap::new();
@@ -1146,6 +1146,12 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                 path, fields, tail, ..
             }) => {
                 check_row_var(tail, &fun.generics)?;
+                // A `where R = { label: T, .. }` equation on this tail names fields the
+                // residual must also carry, exactly as for a record tail above: fold
+                // them in so they are required at the call and count as kept by the
+                // width-subtyping check.
+                let decomposed =
+                    resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
                 let tv = fresh_type_var();
                 let row = RowConstraint {
                     fields: fields
@@ -1154,6 +1160,14 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                             label: label.clone(),
                             ty: None,
                         })
+                        .chain(
+                            decomposed
+                                .into_iter()
+                                .map(|(label, ty)| RowConstraintField {
+                                    label,
+                                    ty: Some(ty),
+                                }),
+                        )
                         .collect(),
                     open: true,
                 };
