@@ -1,0 +1,31 @@
+// metel-core#1322: two impls of one aspect for one generic type, with disjoint bounds
+// (`T: Tag` / `T: !Tag`), are not a conflict, and a call -- direct or through a generic
+// `D: Describe` bound -- dispatches to the impl the receiver's type argument selects,
+// not to whichever impl was declared last.
+
+aspect Tag { fun tag(self) -> i64; }
+aspect Describe { fun describe(self) -> i64; }
+
+struct Box<T> { public v: T }
+
+extend i64: Tag { fun tag(self) -> i64 { 7 } }
+
+extend<T: Tag> Box<T>: Describe {
+    fun describe(self) -> i64 { 1 }
+}
+
+extend<T: !Tag> Box<T>: Describe {
+    fun describe(self) -> i64 { 2 }
+}
+
+fun show<D: Describe>(d: D) -> i64 { d.describe() }
+
+fun main() {
+    let tagged := Box { v = 1 };
+    let plain := Box { v = "s" };
+    assert(tagged.describe() == 1);
+    assert(plain.describe() == 2);
+    assert(show(tagged) == 1);
+    assert(show(plain) == 2);
+    println("ok");
+}
