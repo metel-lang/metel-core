@@ -1,0 +1,26 @@
+// RFC-0123 sec1 / metel-core#1302: `where all R: Aspect` on an impl whose target is
+// `{ ..R }` -- the impl applies to a record only when every field's type satisfies the
+// aspect. It holds for anonymous and nominal records alike and through an aspect bound.
+
+aspect Label { fun label(&self) -> String; }
+aspect Mark { fun mark(&self) -> i64; }
+
+extend i64: Mark { fun mark(&self) -> i64 { 1 } }
+extend f64: Mark { fun mark(&self) -> i64 { 2 } }
+
+extend<row R> { ..R }: Label where all R: Mark {
+    fun label(&self) -> String { "all marked".to_string() }
+}
+
+record Pair { public a: i64, public b: f64 }
+
+fun show<T: Label>(x: &T) -> String { x.label() }
+
+fun main() {
+    assert({ a = 1, b = 2.0 }.label() == "all marked");
+    assert({ a = 1 }.label() == "all marked");
+    let p := Pair { a = 1, b = 2.0 };
+    assert(p.label() == "all marked");
+    assert(show(&p) == "all marked");
+    println("ok");
+}

@@ -268,8 +268,14 @@ fn expand_generic_impl_defaults(
             let Decl::Impl(mut ib) = decl else {
                 return decl;
             };
+            // A record target (RFC-0121 §3) has no nominal type to pre-register a
+            // default against either, so it takes the same expansion.
             let generic_target = !ib.generics.is_empty()
-                || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty());
+                || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty())
+                || matches!(
+                    &ib.target_type,
+                    TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
+                );
             let Some(aspect) = ib
                 .aspect_name
                 .clone()

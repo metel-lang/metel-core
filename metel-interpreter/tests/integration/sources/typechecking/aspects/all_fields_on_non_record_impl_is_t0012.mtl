@@ -1,0 +1,12 @@
+// RFC-0123 sec1 / metel-core#1302: `where all R: ..` on an `extend` must name the row
+// tail of a record target; on any other impl it would be silently ignored, so it is
+// rejected.
+
+aspect Label { fun label(&self) -> String; }
+
+extend<T> [T]: Label where all T: Label {
+    fun label(&self) -> String { "x".to_string() }
+}
+
+fun main() {
+}

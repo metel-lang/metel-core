@@ -781,9 +781,50 @@ pub(super) fn construct_default_aspect_method(
 /// that generic's row bounds: inline (`row R: { .. }` / `!{ .. }`), in a `where`
 /// constraint, and a `where R = { .. }` decomposition equation (which also bounds `R`).
 fn row_guards_for_impl(ib: &crate::data::ast::ImplBlock) -> Vec<crate::data::typed_ast::RowGuard> {
-    use crate::data::ast::Polarity;
-    use crate::pipeline::type_checking::type_engine::GenericBound;
-
+    // An impl whose target is itself a record type (RFC-0121 §3): the receiver is the
+    // row, so the one guard sits at position 0 -- a closed target is an exact row, a
+    // row-tailed one carries its named fields plus whatever its tail variable's bounds
+    // require.
+    match &ib.target_type {
+        TypeExpr::Record(fields) => {
+            return vec![crate::data::typed_ast::RowGuard {
+                position: 0,
+                present: fields
+                    .iter()
+                    .map(|(label, ty)| (label.clone(), Some(ty.clone())))
+                    .collect(),
+                absent: vec![],
+                exact: true,
+            }];
+        }
+        TypeExpr::OpenRecord(fields, tail) => {
+            let mut guard = tail
+                .var
+                .as_deref()
+                .filter(|name| ib.generics.iter().any(|g| g.name == *name))
+                .map_or_else(
+                    || crate::data::typed_ast::RowGuard {
+                        position: 0,
+                        present: vec![],
+                        absent: vec![],
+                        exact: false,
+                    },
+                    |name| row_guard_for_generic(ib, name, 0),
+                );
+            guard.present.splice(
+                0..0,
+                fields
+                    .iter()
+                    .map(|(label, ty)| (label.clone(), Some(ty.clone()))),
+            );
+            return if guard.present.is_empty() && guard.absent.is_empty() {
+                vec![]
+            } else {
+                vec![guard]
+            };
+        }
+        _ => {}
+    }
     let TypeExpr::Named(_, args) = &ib.target_type else {
         return vec![];
     };
@@ -800,46 +841,60 @@ fn row_guards_for_impl(ib: &crate::data::ast::ImplBlock) -> Vec<crate::data::typ
         if !ib.generics.iter().any(|g| g.name == name) {
             continue;
         }
-        let mut guard = crate::data::typed_ast::RowGuard {
-            position,
-            present: vec![],
-            absent: vec![],
-            exact: false,
-        };
-        let inline = ib
-            .generics
-            .iter()
-            .filter(|g| g.name == name)
-            .flat_map(|g| g.bounds.iter());
-        let in_where = ib
-            .where_clause
-            .iter()
-            .filter_map(|wc| wc.constraint_for(name))
-            .flat_map(|c| c.bounds.iter());
-        for bound in inline.chain(in_where) {
-            let Some(GenericBound::Row(row)) = GenericBound::from_ast(bound) else {
-                continue;
-            };
-            let fields = row.fields.into_iter().map(|f| (f.label, f.ty));
-            if bound.polarity == Polarity::Positive {
-                guard.exact |= !row.open;
-                guard.present.extend(fields);
-            } else {
-                guard.absent.extend(fields);
-            }
-        }
-        if let Some(eq) = ib
-            .where_clause
-            .as_ref()
-            .and_then(|wc| wc.row_equation_for(name))
-        {
-            guard
-                .present
-                .extend(eq.fields.iter().map(|(l, t)| (l.clone(), Some(t.clone()))));
-        }
+        let guard = row_guard_for_generic(ib, name, position);
         if !guard.present.is_empty() || !guard.absent.is_empty() {
             guards.push(guard);
         }
     }
     guards
+}
+
+/// The guard for one impl generic at target position `position`: its inline row
+/// bounds, its `where` bounds, and a `where R = { .. }` decomposition equation.
+fn row_guard_for_generic(
+    ib: &crate::data::ast::ImplBlock,
+    name: &str,
+    position: usize,
+) -> crate::data::typed_ast::RowGuard {
+    use crate::data::ast::Polarity;
+    use crate::pipeline::type_checking::type_engine::GenericBound;
+
+    let mut guard = crate::data::typed_ast::RowGuard {
+        position,
+        present: vec![],
+        absent: vec![],
+        exact: false,
+    };
+    let inline = ib
+        .generics
+        .iter()
+        .filter(|g| g.name == name)
+        .flat_map(|g| g.bounds.iter());
+    let in_where = ib
+        .where_clause
+        .iter()
+        .filter_map(|wc| wc.constraint_for(name))
+        .flat_map(|c| c.bounds.iter());
+    for bound in inline.chain(in_where) {
+        let Some(GenericBound::Row(row)) = GenericBound::from_ast(bound) else {
+            continue;
+        };
+        let fields = row.fields.into_iter().map(|f| (f.label, f.ty));
+        if bound.polarity == Polarity::Positive {
+            guard.exact |= !row.open;
+            guard.present.extend(fields);
+        } else {
+            guard.absent.extend(fields);
+        }
+    }
+    if let Some(eq) = ib
+        .where_clause
+        .as_ref()
+        .and_then(|wc| wc.row_equation_for(name))
+    {
+        guard
+            .present
+            .extend(eq.fields.iter().map(|(l, t)| (l.clone(), Some(t.clone()))));
+    }
+    guard
 }

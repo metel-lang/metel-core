@@ -12,8 +12,8 @@ use crate::data::ast::{
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::ModuleScope;
 use crate::pipeline::type_checking::type_engine::{
-    EnumInfo, FieldEntry, GenericBound, InferContext, InferType, TypeDefinitionRegistry,
-    TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
+    EnumInfo, FieldEntry, GenericBound, InferContext, InferType, RowConstraint, RowConstraintField,
+    TypeDefinitionRegistry, TypeScheme, TypeVar, TypeVarGenerator, VariantInfo,
 };
 
 /// Collect merged aspect-name bounds per type param from inline bounds + where clause.
@@ -182,6 +182,95 @@ fn bare_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Option<&str> {
         .iter()
         .find(|gp| gp.name == *name)
         .map(|gp| gp.name.as_str())
+}
+
+/// The row condition an `extend` on a record target imposes on its receiver
+/// (RFC-0121 §3, `spec.types.generics.row-conditional-impls`): a closed record target
+/// (`extend { x: f64, y: f64 }: A`) matches exactly that row, a row-tailed one
+/// (`extend<row R: { x: f64, .. }> { ..R }: A`) every row carrying its named fields plus
+/// whatever the tail variable's own bound, `where` bound or `where R = { .. }`
+/// decomposition requires. `None` for any other target.
+pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowConstraint> {
+    match &ib.target_type {
+        TypeExpr::Record(fields) => Some(RowConstraint {
+            fields: fields
+                .iter()
+                .map(|(label, ty)| RowConstraintField {
+                    label: label.clone(),
+                    ty: Some(ty.clone()),
+                })
+                .collect(),
+            open: false,
+        }),
+        TypeExpr::OpenRecord(fields, tail) => {
+            let mut row_fields: Vec<RowConstraintField> = fields
+                .iter()
+                .map(|(label, ty)| RowConstraintField {
+                    label: label.clone(),
+                    ty: Some(ty.clone()),
+                })
+                .collect();
+            if let Some(var) = tail.var.as_deref() {
+                let from_bounds = |bounds: &[crate::data::ast::Bound]| -> Vec<RowConstraintField> {
+                    bounds
+                        .iter()
+                        .filter(|b| b.polarity == Polarity::Positive)
+                        .filter_map(GenericBound::from_ast)
+                        .filter_map(|b| match b {
+                            GenericBound::Row(row) => Some(row.fields),
+                            _ => None,
+                        })
+                        .flatten()
+                        .collect()
+                };
+                for gp in ib.generics.iter().filter(|gp| gp.name == var) {
+                    row_fields.extend(from_bounds(&gp.bounds));
+                }
+                if let Some(wc) = &ib.where_clause {
+                    for constraint in wc.constraints.iter().filter(|c| c.name == var) {
+                        row_fields.extend(from_bounds(&constraint.bounds));
+                    }
+                    if let Some(equation) = wc.row_equation_for(var) {
+                        row_fields.extend(equation.fields.iter().map(|(label, ty)| {
+                            RowConstraintField {
+                                label: label.clone(),
+                                ty: Some(ty.clone()),
+                            }
+                        }));
+                    }
+                }
+            }
+            Some(RowConstraint {
+                fields: row_fields,
+                open: true,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// RFC-0123 `where all R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
+/// field of the receiver beyond the target's own named ones satisfies each aspect.
+pub(crate) fn record_target_all_fields(ib: &crate::data::ast::ImplBlock) -> Vec<GenericBound> {
+    let TypeExpr::OpenRecord(fields, tail) = &ib.target_type else {
+        return vec![];
+    };
+    let (Some(var), Some(wc)) = (tail.var.as_deref(), &ib.where_clause) else {
+        return vec![];
+    };
+    wc.field_wise
+        .iter()
+        .filter(|c| c.var == var)
+        .map(|c| GenericBound::AllFields {
+            aspects: c
+                .bounds
+                .iter()
+                .filter(|b| b.polarity == Polarity::Positive)
+                .filter_map(|b| b.aspect_name().map(str::to_string))
+                .collect(),
+            except: fields.iter().map(|(label, _)| label.clone()).collect(),
+        })
+        .collect()
 }
 
 pub(super) fn array_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Option<&str> {
@@ -576,6 +665,10 @@ fn register_program_decls(
                 _ => None,
             };
             let is_array_generic_target = array_target_generic_name(ib).is_some();
+            if let Some(row) = record_target_row(ib) {
+                register_record_target_impl(ib, &row, type_var_gen, registry);
+                continue;
+            }
             if nominal_target_name.is_none() && !is_array_generic_target {
                 continue;
             }
@@ -1275,6 +1368,105 @@ fn register_array_impl_method_schemes(
             method.span.clone(),
         );
         registry.register_array_method_receiver(method.name.clone(), receiver);
+    }
+}
+
+/// Register the method schemes of an `extend` on a record target. The receiver is one
+/// quantified var carrying the impl's row condition as its bound and marked
+/// record-kinded, so a call site matches a receiver through the ordinary bound check
+/// and several impls of one aspect (disjoint rows) are separate candidates. Method
+/// bodies are not inferred here: like every structural target, they are checked per
+/// call against the concrete receiver (`impl_defers_method_bodies`).
+fn register_record_impl_method_schemes(
+    ib: &crate::data::ast::ImplBlock,
+    row: &RowConstraint,
+    type_var_gen: &mut TypeVarGenerator,
+    registry: &mut TypeDefinitionRegistry,
+) {
+    let self_tv = type_var_gen.fresh();
+    let mut type_gen_map = HashMap::new();
+    type_gen_map.insert("Self".to_string(), self_tv);
+    if let TypeExpr::OpenRecord(_, tail) = &ib.target_type
+        && let Some(var) = tail.var.as_deref()
+    {
+        type_gen_map.insert(var.to_string(), self_tv);
+    }
+    let mut self_bounds = vec![GenericBound::Row(row.clone())];
+    self_bounds.extend(record_target_all_fields(ib));
+    let by_var: HashMap<TypeVar, Vec<GenericBound>> =
+        std::iter::once((self_tv, self_bounds)).collect();
+    let record_kinds: HashMap<TypeVar, bool> = std::iter::once((self_tv, true)).collect();
+    let receiver_ty = InferType::Var(self_tv);
+    for method in &ib.methods {
+        let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) else {
+            continue;
+        };
+        let mut gen_map = type_gen_map.clone();
+        let mut quantified = vec![self_tv];
+        let mut param_names = vec!["Self".to_string()];
+        for g in &method.generics {
+            let tv = type_var_gen.fresh();
+            gen_map.insert(g.name.clone(), tv);
+            quantified.push(tv);
+            param_names.push(g.name.clone());
+        }
+        let mut param_types = vec![receiver_ty.clone()];
+        for p in method.params.iter().filter(|p| p.receiver.is_none()) {
+            let ann = p
+                .type_ann
+                .as_ref()
+                .expect("declarations on structural record impls are fully annotated");
+            param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
+        }
+        let ret_ty = method
+            .return_type
+            .as_ref()
+            .map_or_else(InferType::unit, |ann| {
+                type_expr_to_infer_with_generics(ann, &gen_map)
+            });
+        let scheme = TypeScheme {
+            quantified_vars: quantified,
+            param_names,
+            bounds: vec![],
+            neg_bounds: vec![],
+            record_kinds: vec![],
+            assoc_projections: vec![],
+            assoc_eq_constraints: vec![],
+            opaque_returns: vec![],
+            open_row_params: vec![],
+            row_remainders: vec![],
+            ty: InferType::fun(param_types, ret_ty),
+        }
+        .with_bounds(&by_var)
+        .with_record_kinds(&record_kinds);
+        registry.register_record_method_scheme_variant(
+            method.name.clone(),
+            scheme,
+            vec![self_tv],
+            ib.aspect_name.clone(),
+            method.span.clone(),
+        );
+        registry.register_record_method_receiver(method.name.clone(), receiver);
+    }
+}
+
+/// Register an `extend` on a record target: its methods as candidates, and (for a
+/// positive impl) the row condition as a blanket impl so `T: Aspect` bounds hold for
+/// exactly the records the condition accepts.
+fn register_record_target_impl(
+    ib: &crate::data::ast::ImplBlock,
+    row: &RowConstraint,
+    type_var_gen: &mut TypeVarGenerator,
+    registry: &mut TypeDefinitionRegistry,
+) {
+    if ib.polarity != Polarity::Positive {
+        return;
+    }
+    register_record_impl_method_schemes(ib, row, type_var_gen, registry);
+    if let Some(aspect_name) = &ib.aspect_name {
+        let mut pos = vec![GenericBound::Row(row.clone())];
+        pos.extend(record_target_all_fields(ib));
+        registry.register_bare_impl_bounds(aspect_name, vec![pos], vec![vec![]]);
     }
 }
 

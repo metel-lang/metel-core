@@ -1,0 +1,14 @@
+// RFC-0121 sec3: two impls of one aspect on the same closed row overlap.
+
+aspect Describe { fun describe(&self) -> String; }
+
+extend { w: i64 }: Describe {
+    fun describe(&self) -> String { "a".to_string() }
+}
+
+extend { w: i64 }: Describe {
+    fun describe(&self) -> String { "b".to_string() }
+}
+
+fun main() {
+}

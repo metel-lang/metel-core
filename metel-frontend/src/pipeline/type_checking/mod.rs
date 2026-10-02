@@ -981,6 +981,91 @@ pub(crate) fn impl_defers_method_bodies(ib: &crate::data::ast::ImplBlock) -> boo
     !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
 }
 
+/// RFC-0123: a `where all R: ..` on an `extend` must name the row tail of a record
+/// target (`extend<row R> { ..R }: A where all R: B`), the only impl shape with a row to
+/// walk; anywhere else it would be silently ignored.
+fn check_impl_field_wise_constraints(
+    ib: &crate::data::ast::ImplBlock,
+) -> Result<(), crate::data::error::MetelError> {
+    let Some(wc) = &ib.where_clause else {
+        return Ok(());
+    };
+    let tail = match &ib.target_type {
+        crate::data::ast::TypeExpr::OpenRecord(_, tail) => tail.var.as_deref(),
+        _ => None,
+    };
+    for constraint in &wc.field_wise {
+        if tail != Some(constraint.var.as_str()) {
+            return Err(crate::data::error::MetelError::type_error(
+                crate::data::error::TypeErrorCode::T0012,
+                format!(
+                    "`all {}` on an `extend` must name the row tail of its record target \
+                     (`extend<row {}> {{ ..{} }}: Aspect`); field-wise constraints on other \
+                     impl targets are not implemented yet (metel-core#1302)",
+                    constraint.var, constraint.var, constraint.var
+                ),
+                &constraint.span,
+            ));
+        }
+        if constraint.bounds.iter().any(|b| {
+            b.polarity != crate::data::ast::Polarity::Positive || b.aspect_name().is_none()
+        }) {
+            return Err(crate::data::error::MetelError::type_error(
+                crate::data::error::TypeErrorCode::T0012,
+                format!(
+                    "`all {}` takes aspect bounds only -- a row bound or a negative bound \
+                     does not apply field by field (RFC-0123 §1)",
+                    constraint.var
+                ),
+                &constraint.span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Whether a record target's written field types name one of the impl's own (non-`row`)
+/// type parameters.
+fn record_target_mentions_type_param(ib: &crate::data::ast::ImplBlock) -> bool {
+    use crate::data::ast::TypeExpr;
+    fn mentions(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> bool {
+        match ty {
+            TypeExpr::Named(name, args) => {
+                params.contains(name.as_str()) || args.iter().any(|a| mentions(a, params))
+            }
+            TypeExpr::Tuple(items) => items.iter().any(|t| mentions(t, params)),
+            TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
+                fields.iter().any(|(_, t)| mentions(t, params))
+            }
+            TypeExpr::Array(inner)
+            | TypeExpr::SizedArray(inner, _)
+            | TypeExpr::Reference(inner)
+            | TypeExpr::MutReference(inner) => mentions(inner, params),
+            TypeExpr::Fun {
+                params: ps,
+                return_type,
+                ..
+            } => {
+                ps.iter().any(|t| mentions(t, params))
+                    || return_type.as_deref().is_some_and(|t| mentions(t, params))
+            }
+            _ => false,
+        }
+    }
+    let params: std::collections::HashSet<&str> = ib
+        .generics
+        .iter()
+        .filter(|g| !g.is_row)
+        .map(|g| g.name.as_str())
+        .collect();
+    match &ib.target_type {
+        TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
+            fields.iter().any(|(_, t)| mentions(t, &params))
+        }
+        _ => false,
+    }
+}
+
 /// Reject an `extend` on a structural target that has nowhere to register
 /// (metel-core#581, metel-core#239).
 ///
@@ -1004,6 +1089,7 @@ pub(crate) fn reject_unregisterable_impl_target(
     ib: &crate::data::ast::ImplBlock,
 ) -> Result<(), crate::data::error::MetelError> {
     use crate::data::ast::TypeExpr;
+    check_impl_field_wise_constraints(ib)?;
     if impl_target_head(&ib.target_type).is_some() {
         return Ok(());
     }
@@ -1016,6 +1102,29 @@ pub(crate) fn reject_unregisterable_impl_target(
     // this function rejects — found by adversarial review of the first cut,
     // which checked only "is an array with generics" and not this.
     if registry::array_target_generic_name(ib).is_some() {
+        return Ok(());
+    }
+    // A record target, closed or row-tailed (RFC-0121 §3): registered through
+    // `registry::record_target_row`. A row tail must name one of the impl's own `row`
+    // generics (or be the anonymous `..`).
+    if let TypeExpr::OpenRecord(_, tail) = &ib.target_type
+        && let Some(var) = tail.var.as_deref()
+        && !ib.generics.iter().any(|g| g.is_row && g.name == var)
+    {
+        return Err(crate::data::error::MetelError::type_error(
+            crate::data::error::TypeErrorCode::T0003,
+            format!(
+                "undefined row variable `{var}` -- declare it as a generic parameter \
+                 (`extend<row {var}> {{ ..{var} }}: Aspect`)"
+            ),
+            &tail.span,
+        ));
+    }
+    // Its field types must be written out: one that names an impl type parameter
+    // (`extend<T> { w: T }: A`) is a row condition no receiver's field type can equal,
+    // so the impl would be accepted and never apply -- the failure mode this function
+    // exists to refuse.
+    if registry::record_target_row(ib).is_some() && !record_target_mentions_type_param(ib) {
         return Ok(());
     }
     let fix = match &ib.target_type {
@@ -1033,7 +1142,9 @@ pub(crate) fn reject_unregisterable_impl_target(
             "an array type whose element is not one of the impl's own type parameters"
         }
         TypeExpr::Tuple(_) => "a tuple type",
-        TypeExpr::Record(_) => "an anonymous record type",
+        TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
+            "an anonymous record type whose field types name the impl's own type parameters"
+        }
         TypeExpr::Fun { .. } => "a function type",
         TypeExpr::SizedArray(_, _) => "a fixed-size array type",
         TypeExpr::Reference(_) | TypeExpr::MutReference(_) => "a reference type",
@@ -1048,11 +1159,6 @@ pub(crate) fn reject_unregisterable_impl_target(
         // impl target either.
         TypeExpr::DynAspect { .. } => "a `dyn Aspect` type",
         TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
-        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
-        // never an impl block's target type.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear as an impl block's target type")
-        }
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear as an impl block's target type")

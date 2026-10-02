@@ -1,0 +1,22 @@
+// RFC-0121 sec3: an impl on a record target inherits the aspect's default methods
+// (`spec.declarations.aspects.default-methods.dynamics-1`), for a closed row and a
+// row-tailed one alike, each running its own impl's required method.
+
+aspect Area {
+    fun area(&self) -> i64;
+    fun double(&self) -> i64 { self.area() * 2 }
+}
+
+extend { n: i64 }: Area {
+    fun area(&self) -> i64 { self.n }
+}
+
+extend<row R: { w: i64, .. }> { ..R }: Area {
+    fun area(&self) -> i64 { self.w }
+}
+
+fun main() {
+    assert({ n = 4 }.double() == 8);
+    assert({ w = 5, z = 1 }.double() == 10);
+    println("ok");
+}

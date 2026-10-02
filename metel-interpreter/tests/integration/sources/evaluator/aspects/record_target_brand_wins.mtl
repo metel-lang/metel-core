@@ -1,0 +1,32 @@
+// RFC-0121 sec3 / `spec.types.generics.row-conditional-impls.legality-2`: when a
+// nominal record has its own (brand-keyed) impl of an aspect and its row also satisfies
+// a record-target impl of the same aspect, the brand-keyed impl is selected -- also
+// through an aspect bound.
+
+aspect Describe { fun describe(&self) -> String; }
+
+record Tagged { public w: i64 }
+record Plain { public w: i64, public z: i64 }
+
+extend Tagged: Describe {
+    fun describe(&self) -> String { "brand".to_string() }
+}
+
+extend<row R: { w: i64, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { "row".to_string() }
+}
+
+fun show<T: Describe>(x: &T) -> String { x.describe() }
+
+fun main() {
+    let tagged := Tagged { w = 1 };
+    let plain := Plain { w = 1, z = 2 };
+    let anon := { w = 1 };
+    assert(tagged.describe() == "brand");
+    assert(plain.describe() == "row");
+    assert(anon.describe() == "row");
+    assert(show(&tagged) == "brand");
+    assert(show(&plain) == "row");
+    assert(show(&anon) == "row");
+    println("ok");
+}

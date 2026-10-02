@@ -522,6 +522,12 @@ pub struct RuntimeRegistry {
     /// instead of falling back to `pattern_methods`' plain last-registration-
     /// wins entry.
     pattern_aspect_methods: HashMap<RuntimeTypePattern, Vec<RuntimeAspectImpl>>,
+    /// Aspect impls whose target is a record type (`extend { x: f64 }: A`,
+    /// `extend<row R: { x, .. }> { ..R }: A`; RFC-0121 §3). One entry per `extend`
+    /// block, each carrying the row guard its receiver must satisfy -- unlike
+    /// `pattern_aspect_methods`, two impls of one aspect with disjoint rows must stay
+    /// separate candidates, picked by the receiver's own row.
+    record_aspect_impls: Vec<RuntimeAspectImpl>,
     /// Callables dispatched by stable `SymbolId` rather than by name — overloaded
     /// free-function definitions (METEL-180) and ordinary top-level functions
     /// (METEL-187), whose surface name cannot always identify a single definition.
@@ -819,6 +825,59 @@ impl RuntimeRegistry {
         });
     }
 
+    /// Register one `extend` on a record target (see `record_aspect_impls`).
+    pub fn register_record_aspect_impl(
+        &mut self,
+        aspect_name: impl Into<String>,
+        aspect_id: Option<SymbolId>,
+        row_guards: &[RowGuard],
+        methods: HashMap<String, RuntimeMethod>,
+    ) {
+        self.record_aspect_impls.push(RuntimeAspectImpl {
+            aspect_name: aspect_name.into(),
+            aspect_id,
+            type_args: Vec::new(),
+            target_type_args: None,
+            row_guards: row_guards.to_vec(),
+            methods,
+        });
+    }
+
+    /// The method `method_name` of the record-target impl whose row guard the receiver
+    /// satisfies. `aspect_id` narrows to one aspect when the type checker already chose
+    /// it; the receiver's `prefer` (the declaration the checker picked) breaks a tie
+    /// between several matching impls, else the last registered wins.
+    #[must_use]
+    pub fn get_record_aspect_method(
+        &self,
+        aspect_id: Option<SymbolId>,
+        method_name: &str,
+        receiver: &ReceiverTypeArgs,
+    ) -> Option<RuntimeMethod> {
+        let matching: Vec<RuntimeMethod> = self
+            .record_aspect_impls
+            .iter()
+            .filter(|ai| aspect_id.is_none() || ai.aspect_id == aspect_id)
+            .filter(|ai| row_guards_hold(&ai.row_guards, receiver))
+            .filter_map(|ai| {
+                ai.methods
+                    .get(method_name)
+                    .cloned()
+                    .filter(|m| m.receiver.is_some())
+            })
+            .collect();
+        receiver
+            .prefer
+            .as_ref()
+            .and_then(|prefer| {
+                matching
+                    .iter()
+                    .find(|m| m.decl_span.as_ref() == Some(prefer))
+                    .cloned()
+            })
+            .or_else(|| matching.last().cloned())
+    }
+
     /// Look up a pattern-dispatched method belonging to a specific aspect impl,
     /// by the aspect's stable `SymbolId` -- the structural-target counterpart
     /// to `get_aspect_method_by_id`.
@@ -977,6 +1036,11 @@ impl RuntimeRegistry {
                         .cloned()
                         .filter(|method| method.receiver.is_some())
                 })
+            })
+            .or_else(|| {
+                matches!(value, Value::Record { .. })
+                    .then(|| self.get_record_aspect_method(None, method_name, receiver))
+                    .flatten()
             })
     }
 
@@ -1491,6 +1555,33 @@ fn runtime_signature(
         params: params.into_iter().map(|ty| runtime_type_ref(&ty)).collect(),
         ret: ret.map(|ty| runtime_type_ref(&ty)),
     }
+}
+
+/// The callable for a method of an impl on a structural target: a native binds to its
+/// host implementation, a typed body runs as written, and a deferred (`Generic`) body is
+/// checked per call against the concrete receiver, so it carries the type context.
+fn structural_method_callable(
+    method: &crate::data::typed_ast::TypedFunDecl,
+    env: &Environment,
+) -> RuntimeCallable {
+    let (body, type_ctx) = match &method.body {
+        FunBody::Native(key) => return crate::evaluator::builtins::native_host_impl(*key),
+        FunBody::Typed(b) => (ClosureBody::Typed(b.clone()), None),
+        FunBody::Generic(b) => (ClosureBody::Untyped(b.clone()), env.type_ctx.clone()),
+    };
+    RuntimeCallable::Closure(Rc::new(ClosureValue {
+        name: Some(method.name.clone()),
+        captures: vec![],
+        capture_ids: vec![],
+        params: method.params.clone(),
+        param_ids: method.param_ids.clone(),
+        body,
+        captured: env.clone(),
+        call_mutation: crate::data::types::CallMutation::Reading,
+        in_call: Cell::new(false),
+        type_ctx,
+        fun_type: None,
+    }))
 }
 
 fn runtime_method_from_decl(
@@ -2342,6 +2433,32 @@ fn run_passes(
                             );
                         }
                     }
+                }
+                crate::data::ast::TypeExpr::Record(_)
+                | crate::data::ast::TypeExpr::OpenRecord(..) => {
+                    // RFC-0121 §3: an impl on a record target. Bodies are deferred
+                    // (`FunBody::Generic`) and checked per call against the receiver.
+                    let (Some(aspect_name), crate::data::ast::Polarity::Positive) =
+                        (&impl_block.aspect_name, impl_block.polarity)
+                    else {
+                        continue;
+                    };
+                    let mut methods = HashMap::new();
+                    for method in &impl_block.methods {
+                        let body_callable = structural_method_callable(method, env);
+                        let runtime_method = runtime_method_from_decl(
+                            format!("{{record}}::{}", method.name),
+                            method,
+                            body_callable,
+                        );
+                        methods.insert(method.name.clone(), runtime_method);
+                    }
+                    runtime.register_record_aspect_impl(
+                        aspect_name,
+                        impl_block.aspect_id,
+                        &impl_block.row_guards,
+                        methods,
+                    );
                 }
                 crate::data::ast::TypeExpr::Array(_) => {
                     for method in &impl_block.methods {
@@ -3237,6 +3354,14 @@ fn eval_method_call_expr(
                 tys: args.clone(),
                 prefer: impl_site.cloned(),
             },
+            // A record receiver *is* the row its impl's guard checks (RFC-0121 §3): the
+            // record type sits at position 0, as a nominal target's row argument would.
+            record_ty @ (crate::data::types::Type::Record(_)
+            | crate::data::types::Type::Residual { .. }) => ReceiverTypeArgs {
+                names: vec![],
+                tys: vec![record_ty.clone()],
+                prefer: impl_site.cloned(),
+            },
             _ => ReceiverTypeArgs {
                 prefer: impl_site.cloned(),
                 ..ReceiverTypeArgs::default()
@@ -3259,12 +3384,51 @@ fn eval_method_call_expr(
                 })
             })
             .or_else(|| {
+                matches!(recv_type_view, Value::Record { .. })
+                    .then(|| {
+                        runtime.get_record_aspect_method(
+                            Some(*aspect_id),
+                            method,
+                            &receiver_target_type_args,
+                        )
+                    })
+                    .flatten()
+            })
+            .or_else(|| {
                 runtime.get_method_for_value(&recv_type_view, method, &receiver_target_type_args)
             }),
         MethodDispatch::Inherent | MethodDispatch::Dynamic => {
             runtime.get_method_for_value(&recv_type_view, method, &receiver_target_type_args)
         }
     }
+    .or_else(|| {
+        // A nominal record with no brand-keyed method of this name: a record-target
+        // impl applies when its row guard holds for the value's own fields (RFC-0121 §3).
+        let Value::Struct { fields, .. } = &recv_type_view else {
+            return None;
+        };
+        let registry = crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry::new();
+        let mut row: Vec<(String, crate::data::types::Type)> = fields
+            .iter()
+            .map(|(label, value)| {
+                (
+                    label.clone(),
+                    type_of::value_to_type(value, &registry, span),
+                )
+            })
+            .collect();
+        row.sort_by(|a, b| a.0.cmp(&b.0));
+        let receiver = ReceiverTypeArgs {
+            names: vec![],
+            tys: vec![crate::data::types::Type::Record(row)],
+            prefer: impl_site.cloned(),
+        };
+        let aspect_id = match dispatch {
+            MethodDispatch::Aspect { aspect_id } => Some(*aspect_id),
+            _ => None,
+        };
+        runtime.get_record_aspect_method(aspect_id, method, &receiver)
+    })
     .ok_or_else(|| {
         MetelError::internal_with_code(
             InternalErrorCode::I0006,

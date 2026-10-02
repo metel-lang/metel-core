@@ -218,6 +218,7 @@ pub fn allocate_module(
                 let target: &str = match &impl_block.target_type {
                     TypeExpr::Named(target, _) => target,
                     TypeExpr::Array(_) => "[]Array",
+                    TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => "{}Record",
                     _ => continue,
                 };
                 for method in &impl_block.methods {

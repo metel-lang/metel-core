@@ -44,6 +44,29 @@ pub(super) enum ReceiverBinding {
 /// Extract the named-type key for a receiver's runtime type, peeling pointer
 /// layers (a `&self` / `&mut self` receiver arrives as a pointer to the value).
 /// Used to look up a generic method's scheme in the registry's method env.
+/// The registered scheme of method `name` on a receiver of runtime type
+/// `receiver_type`: an array impl's, a record-target impl's whose row condition the
+/// receiver satisfies (RFC-0121 §3), or the nominal type's own -- falling back, for a
+/// nominal record, to a record-target impl.
+fn method_scheme_for_receiver<'a>(
+    type_ctx: &'a crate::pipeline::type_checking::type_engine::TypeCtx,
+    name: &str,
+    receiver_type: &crate::data::types::Type,
+) -> Option<&'a crate::pipeline::type_checking::type_engine::TypeScheme> {
+    use crate::data::types::Type;
+    let registry = &type_ctx.registry;
+    let module = &type_ctx.current_module;
+    match receiver_type {
+        Type::Array(_) => registry.array_method_scheme_for(name).map(|(s, _)| s),
+        Type::Record(_) | Type::Residual { .. } => {
+            registry.record_method_scheme_for_receiver(module, name, receiver_type)
+        }
+        _ => receiver_type_name(receiver_type)
+            .and_then(|tn| registry.method_scheme_for(module, tn, name).map(|(s, _)| s))
+            .or_else(|| registry.record_method_scheme_for_receiver(module, name, receiver_type)),
+    }
+}
+
 fn receiver_type_name(ty: &crate::data::types::Type) -> Option<&str> {
     use crate::data::types::Type;
     match ty {
@@ -251,18 +274,8 @@ pub(super) fn call_method_function(
                         .as_deref()
                         .zip(closure.type_ctx.as_ref())
                         .and_then(|(name, type_ctx)| {
-                            let method_scheme = match &receiver_type {
-                                crate::data::types::Type::Array(_) => type_ctx
-                                    .registry
-                                    .array_method_scheme_for(name)
-                                    .map(|(s, _)| s),
-                                _ => receiver_type_name(&receiver_type).and_then(|tn| {
-                                    type_ctx
-                                        .registry
-                                        .method_scheme_for(&type_ctx.current_module, tn, name)
-                                        .map(|(s, _)| s)
-                                }),
-                            };
+                            let method_scheme =
+                                method_scheme_for_receiver(type_ctx, name, &receiver_type);
                             method_scheme
                                 .or_else(|| type_ctx.scheme_env.get(name))
                                 .map(|scheme| (scheme, type_ctx))

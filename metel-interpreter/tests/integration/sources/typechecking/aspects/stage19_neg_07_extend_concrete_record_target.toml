@@ -1,8 +1,0 @@
-[options]
-error = ["T0001"]
-spec = ["spec.declarations.structural-aspect-bounds.legality-2"]
-
-[expect]
-status = "typecheck_error"
-code = "T0001"
-contains = "could never be found"

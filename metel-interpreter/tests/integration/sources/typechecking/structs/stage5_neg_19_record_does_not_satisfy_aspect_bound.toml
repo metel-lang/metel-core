@@ -5,4 +5,4 @@ spec = ["spec.types.anonymous-records.legality-1"]
 [expect]
 status = "typecheck_error"
 code = "T0012"
-contains = "anything impl-based needs a nominal type"
+contains = "an aspect only through an `extend` on a record target"

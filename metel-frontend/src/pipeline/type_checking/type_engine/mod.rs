@@ -2378,6 +2378,12 @@ pub struct TypeDefinitionRegistry {
     method_receiver_env: HashMap<SymbolId, HashMap<String, ReceiverKind>>,
     array_method_env: HashMap<String, InferType>,
     array_method_receiver_env: HashMap<String, ReceiverKind>,
+    /// Variant list for impls whose target is a record type (`extend { x: f64 }: A`,
+    /// `extend<row R: { x, .. }> { ..R }: A`): every candidate for a method name, each
+    /// scheme's first quantified var standing for the receiver and carrying the impl's
+    /// row condition as its bound, so a receiver is matched by the ordinary bound check.
+    record_method_scheme_variants: HashMap<String, Vec<ArrayMethodSchemeVariant>>,
+    record_method_receiver_env: HashMap<String, ReceiverKind>,
     /// enum `SymbolId` → its variants and type params (metel-core#1061). Like
     /// `struct_env`, keyed by the declaration id so two modules' same-named
     /// enums stay distinct; a spelling reaches it through `resolve_type_key`.
@@ -2747,6 +2753,8 @@ impl TypeDefinitionRegistry {
             method_receiver_env: HashMap::new(),
             array_method_env: HashMap::new(),
             array_method_receiver_env: HashMap::new(),
+            record_method_scheme_variants: HashMap::new(),
+            record_method_receiver_env: HashMap::new(),
             enum_env: HashMap::new(),
             variant_declaring_enums: HashMap::new(),
             enum_decl_modules: HashMap::new(),
@@ -3329,9 +3337,9 @@ impl TypeDefinitionRegistry {
                         GenericBound::Row(row) => {
                             self.row_condition_holds(current_module, arg, row, false)
                         }
-                        // Only ever built for a function's open-row parameter,
-                        // never for an impl condition.
-                        GenericBound::AllFields { .. } => true,
+                        GenericBound::AllFields { aspects, except } => {
+                            self.all_fields_hold(current_module, arg, aspects, except, assumptions)
+                        }
                     };
                     if !holds {
                         return false;
@@ -3361,6 +3369,29 @@ impl TypeDefinitionRegistry {
             }
         }
         true
+    }
+
+    /// RFC-0123 `where all R: A` as an impl condition: does every field of `arg`'s row
+    /// outside `except` satisfy each aspect? A type with no known row does not.
+    fn all_fields_hold(
+        &self,
+        current_module: &[String],
+        arg: &InferType,
+        aspects: &[String],
+        except: &[String],
+        assumptions: &AspectAssumptions,
+    ) -> bool {
+        let Some(fields) = self.row_condition_fields(current_module, arg) else {
+            return false;
+        };
+        fields
+            .iter()
+            .filter(|(label, _)| !except.contains(label))
+            .all(|(_, field_ty)| {
+                aspects.iter().all(|aspect| {
+                    self.infer_type_satisfies_aspect(current_module, field_ty, aspect, assumptions)
+                })
+            })
     }
 
     /// RFC-0121 item 5 (`spec.types.generics.row-conditional-impls.legality-1`): does a
@@ -4036,6 +4067,87 @@ impl TypeDefinitionRegistry {
         self.array_method_receiver_env.get(method_name)
     }
 
+    pub fn register_record_method_scheme_variant(
+        &mut self,
+        method_name: String,
+        scheme: TypeScheme,
+        receiver_tvars: Vec<TypeVar>,
+        aspect_name: Option<String>,
+        method_span: Span,
+    ) {
+        self.generic_method_schemes_by_span
+            .insert(method_span, scheme.clone());
+        self.record_method_scheme_variants
+            .entry(method_name)
+            .or_default()
+            .push((scheme, receiver_tvars, aspect_name));
+    }
+
+    pub fn register_record_method_receiver(
+        &mut self,
+        method_name: String,
+        receiver_kind: ReceiverKind,
+    ) {
+        self.record_method_receiver_env
+            .insert(method_name, receiver_kind);
+    }
+
+    /// Every candidate scheme for `method_name` on a record-target impl, in
+    /// registration order. A caller picks the one whose row condition the receiver
+    /// satisfies (`resolve_generic_method_call` tries them in turn).
+    #[must_use]
+    pub fn record_method_scheme_variants_for(
+        &self,
+        method_name: &str,
+    ) -> &[ArrayMethodSchemeVariant] {
+        self.record_method_scheme_variants
+            .get(method_name)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    #[must_use]
+    pub fn record_method_receiver_kind(&self, method_name: &str) -> Option<&ReceiverKind> {
+        self.record_method_receiver_env.get(method_name)
+    }
+
+    /// The scheme of the record-target impl method `method_name` whose row condition
+    /// holds for `receiver` (an anonymous record or a nominal record's own row); the
+    /// runtime uses this to type-check a deferred method body against its receiver.
+    #[must_use]
+    pub fn record_method_scheme_for_receiver(
+        &self,
+        current_module: &[String],
+        method_name: &str,
+        receiver: &Type,
+    ) -> Option<&TypeScheme> {
+        self.record_method_variant_for(current_module, method_name, &type_to_infer(receiver))
+            .map(|(scheme, _, _)| scheme)
+    }
+
+    /// The last-registered record-target candidate for `method_name` whose row
+    /// condition holds for `receiver`.
+    #[must_use]
+    pub fn record_method_variant_for(
+        &self,
+        current_module: &[String],
+        method_name: &str,
+        receiver: &InferType,
+    ) -> Option<&ArrayMethodSchemeVariant> {
+        self.record_method_scheme_variants_for(method_name)
+            .iter()
+            .rev()
+            .find(|(scheme, _, _)| {
+                scheme.bounds.first().is_none_or(|bounds| {
+                    bounds.iter().all(|bound| match bound {
+                        GenericBound::Row(row) => {
+                            self.row_condition_holds(current_module, receiver, row, false)
+                        }
+                        _ => true,
+                    })
+                })
+            })
+    }
+
     #[must_use]
     pub fn enum_info(&self, current_module: &[String], name: &str) -> Option<&EnumInfo> {
         self.enum_env
@@ -4437,6 +4549,17 @@ impl TypeDefinitionRegistry {
                 .entry(method_name.clone())
                 .or_default()
                 .extend(variants.iter().cloned());
+        }
+        for (method_name, variants) in &other.record_method_scheme_variants {
+            self.record_method_scheme_variants
+                .entry(method_name.clone())
+                .or_default()
+                .extend(variants.iter().cloned());
+        }
+        for (method_name, receiver) in &other.record_method_receiver_env {
+            self.record_method_receiver_env
+                .entry(method_name.clone())
+                .or_insert_with(|| receiver.clone());
         }
         for (span, scheme) in &other.generic_method_schemes_by_span {
             self.generic_method_schemes_by_span

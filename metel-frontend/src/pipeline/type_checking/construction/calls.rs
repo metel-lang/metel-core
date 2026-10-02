@@ -1502,7 +1502,7 @@ pub(super) fn check_type_satisfies_bounds(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!(
-                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: an anonymous record satisfies only the auto-derived aspects, field-wise; anything impl-based needs a nominal type — declare a `struct` and implement `{aspect}` there"
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: an anonymous record satisfies the auto-derived aspects field-wise, and an aspect only through an `extend` on a record target whose row it has (`extend<row R: {{ .. }}> {{ ..R }}: {aspect}`); otherwise declare a `struct` and implement `{aspect}` there"
                         ),
                         span,
                     ));

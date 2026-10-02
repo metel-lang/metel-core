@@ -1,0 +1,15 @@
+// RFC-0123 sec1 / metel-core#1302: `String` has no `Mark` impl, so the record
+// `{ a, s }` does not satisfy `all R: Mark` and the impl does not apply to it.
+
+aspect Label { fun label(&self) -> String; }
+aspect Mark { fun mark(&self) -> i64; }
+
+extend i64: Mark { fun mark(&self) -> i64 { 1 } }
+
+extend<row R> { ..R }: Label where all R: Mark {
+    fun label(&self) -> String { "all marked".to_string() }
+}
+
+fun main() {
+    let _ := { a = 1, s = "x".to_string() }.label();
+}

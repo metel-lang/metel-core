@@ -2,10 +2,10 @@ aspect Area {
     fun area(&self) -> i64;
 }
 
-// The generic form is what makes an array impl work, but for a tuple or record
-// it typechecks and then has no effect in either the call or the bound position
-// (metel-core#239). Rejected rather than accepted-and-inert, on the same grounds
-// as the concrete form in metel-core#581.
+// A record target is a row condition on its receiver (RFC-0121 sec3), and the
+// field types it writes must be spelled out: `T` here is the impl's own type
+// parameter, which no receiver's field type can equal, so the impl would typecheck
+// and then never apply (metel-core#239). Rejected rather than accepted-and-inert.
 extend<T> { w: T }: Area {
     fun area(&self) -> i64 { return 1; }
 }

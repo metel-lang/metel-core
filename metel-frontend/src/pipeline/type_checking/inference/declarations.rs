@@ -152,7 +152,7 @@ pub(super) fn infer_decl(
         Decl::Impl(ib) => {
             if matches!(
                 &ib.target_type,
-                TypeExpr::Record(_) | TypeExpr::RecordProjection { .. }
+                TypeExpr::Record(_) | TypeExpr::OpenRecord(..) | TypeExpr::RecordProjection { .. }
             ) {
                 if ib.aspect_name.is_none() {
                     return Err(MetelError::type_error(
@@ -384,12 +384,16 @@ pub(super) fn infer_decl(
                     }
                 }
             }
-            for method in &ib.methods {
+            // A record target's bodies are checked per call against the concrete
+            // receiver, like every structural target's (`impl_defers_method_bodies`);
+            // there is no single receiver type to infer them against here.
+            let record_target = super::super::registry::record_target_row(ib).is_some();
+            for method in ib.methods.iter().filter(|_| !record_target) {
                 infer_impl_method(method, ib, &target_name, ctx, fun_generalizations)?;
             }
             // `inherited_defaults` is only ever populated inside the `Some(aspect_name)`
             // branch above, so this is always `Some` when the loop body runs.
-            if let Some(aspect_name) = ib.aspect_name.as_deref() {
+            if let Some(aspect_name) = ib.aspect_name.as_deref().filter(|_| !record_target) {
                 for method in &inherited_defaults {
                     infer_default_aspect_method(
                         method,

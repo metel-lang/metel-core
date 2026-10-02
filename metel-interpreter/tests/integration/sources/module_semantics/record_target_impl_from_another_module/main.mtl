@@ -1,0 +1,5 @@
+import lib::Describe;
+fun main() {
+    println({ w = 1, extra = 2 }.describe());
+    println({ n = 5 }.describe());
+}

@@ -1,0 +1,20 @@
+// RFC-0121 sec3 / `spec.types.generics.row-conditional-impls.legality-3`: two impls of
+// one aspect on row-tailed targets coexist when their row conditions contradict (a
+// label required by one and forbidden by the other), and each receiver runs the impl
+// whose condition it satisfies.
+
+aspect Describe { fun describe(&self) -> String; }
+
+extend<row R: { w: i64, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { "has w".to_string() }
+}
+
+extend<row R: !{ w }> { ..R }: Describe {
+    fun describe(&self) -> String { "no w".to_string() }
+}
+
+fun main() {
+    assert({ w = 1, h = 2 }.describe() == "has w");
+    assert({ h = 2 }.describe() == "no w");
+    println("ok");
+}

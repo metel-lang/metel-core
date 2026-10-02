@@ -1,0 +1,25 @@
+// RFC-0121 sec3 / metel-core#1306 item 8: `extend { x: T, .. }: Aspect` -- an impl whose
+// target is one concrete record row. It applies to an anonymous record with exactly
+// those fields (and types), takes arguments, mutates through `&var self`, and satisfies
+// an aspect bound.
+
+aspect Scale {
+    fun scaled(&self, k: i64) -> i64;
+    fun bump(&var self);
+}
+
+extend { n: i64 }: Scale {
+    fun scaled(&self, k: i64) -> i64 { self.n * k }
+    fun bump(&var self) { self.n := self.n + 1; }
+}
+
+fun twice<T: Scale>(x: &T) -> i64 { x.scaled(2) }
+
+fun main() {
+    var r := { n = 4 };
+    assert(r.scaled(3) == 12);
+    r.bump();
+    assert(r.scaled(3) == 15);
+    assert(twice(&r) == 10);
+    println("ok");
+}

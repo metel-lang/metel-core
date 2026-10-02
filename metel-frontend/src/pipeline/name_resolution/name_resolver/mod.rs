@@ -313,6 +313,11 @@ fn impl_target_name(target: &TypeExpr) -> Option<&str> {
         // ever collide with this one; `identity/allocate.rs`'s `Decl::Impl`
         // arm must keep computing this exact same string.
         TypeExpr::Array(_) => Some("[]Array"),
+        // An impl on a record target (`extend<row R> { ..R }: Aspect`, RFC-0121 §3):
+        // the same synthetic-owner treatment, for the same reason. `{}` cannot appear
+        // in an identifier either, and `identity/allocate.rs` must compute this exact
+        // string.
+        TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => Some("{}Record"),
         _ => None,
     }
 }

@@ -1,0 +1,12 @@
+// RFC-0121 sec3: a method call on a record whose row no record-target impl accepts.
+
+aspect Area { fun area(&self) -> i64; }
+
+extend<row R: { w: i64, .. }> { ..R }: Area {
+    fun area(&self) -> i64 { self.w }
+}
+
+fun main() {
+    let t := { h = 3 };
+    let _ := t.area();
+}

@@ -98,7 +98,10 @@ enum_variant  = { ident ~ ("{" ~ struct_fields ~ "}")? }
 
 // `bang?` (not a raw `"!"?`) so polarity is structurally detectable in Rust code.
 impl_block          = { extend_impl_block }
-extend_impl_block   = { "extend" ~ generic_params? ~ type_expr ~ (extend_impl_bodyless | extend_impl_braced) }
+// RFC-0121 §3: the target may also be a row-tailed record type (`{ ..R }`), the
+// structural form row-conditional impls are written against. `open_record_type`
+// is tried first so a closed `{ x: f64 }` still falls through to `type_expr`.
+extend_impl_block   = { "extend" ~ generic_params? ~ (open_record_type | type_expr) ~ (extend_impl_bodyless | extend_impl_braced) }
 extend_impl_bodyless = { ":" ~ extend_aspect_list ~ where_clause? ~ ";" }
 extend_impl_braced   = { (":" ~ extend_aspect)? ~ where_clause? ~ "{" ~ (assoc_type_def | fun_decl)* ~ "}" }
 extend_aspect_list   = { extend_aspect ~ ("," ~ extend_aspect)* }

@@ -1,0 +1,14 @@
+// RFC-0121 sec3: a record-target impl satisfies an aspect bound only for the records
+// whose row meets its condition. `{ h }` has no `w`.
+
+aspect Area { fun area(&self) -> i64; }
+
+extend<row R: { w: i64, .. }> { ..R }: Area {
+    fun area(&self) -> i64 { self.w }
+}
+
+fun total<T: Area>(x: T) -> i64 { x.area() }
+
+fun main() {
+    let _ := total({ h = 3 });
+}

@@ -1,0 +1,7 @@
+[options]
+error = ["T0015"]
+
+[expect]
+status = "typecheck_error"
+code = "T0015"
+contains = "conflicting implementation"

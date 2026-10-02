@@ -1,0 +1,11 @@
+// RFC-0121 sec3: the tail of a record target names one of the impl's own `row`
+// generics.
+
+aspect Area { fun area(&self) -> i64; }
+
+extend { ..R }: Area {
+    fun area(&self) -> i64 { 1 }
+}
+
+fun main() {
+}

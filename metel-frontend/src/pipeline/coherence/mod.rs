@@ -19,7 +19,9 @@ use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
-use crate::pipeline::type_checking::type_engine::{GenericBound, RowConstraint};
+use crate::pipeline::type_checking::type_engine::{
+    GenericBound, RowConstraint, RowConstraintField,
+};
 
 /// Resolve a bare type- or aspect-position name to its declaring `SymbolId`,
 /// from the perspective of `current_module`. Mirrors the precedence used by
@@ -76,6 +78,9 @@ enum CanonicalType {
     Unit,
     Tuple(Vec<CanonicalType>),
     Record(Vec<(String, CanonicalType)>),
+    /// `{ x: T, ..R }` as an impl target (RFC-0121 §3): the named fields; the tail is
+    /// the impl's own row variable, so it contributes nothing to the comparison.
+    OpenRecord(Vec<(String, CanonicalType)>),
     Array(Box<CanonicalType>),
     SizedArray(Box<CanonicalType>, u64),
     Reference(Box<CanonicalType>),
@@ -145,13 +150,16 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::DynAspect { .. }
         | TypeExpr::RowArg(_) => CanonicalType::Opaque,
-        // RFC-0121: `{ x: f64, ..R }` is grammar-restricted to a `fun_decl`
-        // parameter's own type (`fun_decl_param`) -- never an impl's target
-        // type or a bound's type argument, both of which is all this function
-        // ever canonicalizes.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear as an impl target type or bound argument")
-        }
+        // RFC-0121 §3: `{ x: f64, ..R }` as an impl's target type (the structural
+        // form row-conditional impls are written against). A bound's type argument
+        // cannot be one -- the grammar only admits it as a `fun_decl` parameter's
+        // type or an `extend` target.
+        TypeExpr::OpenRecord(fields, _tail) => CanonicalType::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), go(ty)))
+                .collect(),
+        ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above --
         // grammar-restricted to a `fun_decl` parameter's own type.
         TypeExpr::OpenRecordProjection { .. } => {
@@ -310,6 +318,20 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
                 .collect();
             (items.len(), map)
         }
+        // `extend<row R: { .. }> { ..R }: Aspect`: the whole receiver row is position 0,
+        // so the tail variable's row bound attaches there.
+        TypeExpr::OpenRecord(_, tail) => {
+            let map = tail
+                .var
+                .as_deref()
+                .filter(|n| impl_param_names.contains(n))
+                .map(|n| (n, 0))
+                .into_iter()
+                .collect();
+            (1, map)
+        }
+        // A closed record target is one row at position 0: its own exact row bound.
+        TypeExpr::Record(_) => (1, HashMap::new()),
         TypeExpr::Fun {
             params,
             return_type: ret,
@@ -330,6 +352,18 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
 
     let mut pos_bounds: Vec<Vec<GenericBound>> = vec![vec![]; arg_count];
     let mut neg_bounds: Vec<Vec<GenericBound>> = vec![vec![]; arg_count];
+    if let TypeExpr::Record(fields) = &ib.target_type {
+        pos_bounds[0].push(GenericBound::Row(RowConstraint {
+            fields: fields
+                .iter()
+                .map(|(label, ty)| RowConstraintField {
+                    label: label.clone(),
+                    ty: Some(ty.clone()),
+                })
+                .collect(),
+            open: false,
+        }));
+    }
 
     // From inline bounds: `impl<T: Copy> ...` → pos_bounds for T's target position
     for gp in &ib.generics {
@@ -489,6 +523,20 @@ fn rows_provably_disjoint(
     if contradicts(a_pos, b_neg) || contradicts(b_pos, a_neg) {
         return true;
     }
+    // a closed row names every label it has: it cannot satisfy the other side's
+    // requirement of a label it lacks
+    let lacks_required = |closed: &[GenericBound], required: &[GenericBound]| {
+        row_bounds(closed).filter(|row| !row.open).any(|row| {
+            row_bounds(required).any(|req| {
+                req.fields
+                    .iter()
+                    .any(|want| !row.fields.iter().any(|have| have.label == want.label))
+            })
+        })
+    };
+    if lacks_required(a_pos, b_pos) || lacks_required(b_pos, a_pos) {
+        return true;
+    }
     // required present by both, with provably different types
     row_bounds(a_pos).any(|a| {
         a.fields.iter().any(|fa| {
@@ -579,7 +627,10 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
         (CanonicalType::TypeParam(_), _)
         | (_, CanonicalType::TypeParam(_))
         | (CanonicalType::Unit, CanonicalType::Unit)
-        | (CanonicalType::Opaque, CanonicalType::Opaque) => true,
+        | (CanonicalType::Opaque, CanonicalType::Opaque)
+        // two row-tailed record targets are both open: whether their row bounds rule
+        // the pair out is `provably_disjoint`'s question
+        | (CanonicalType::OpenRecord(_), CanonicalType::OpenRecord(_)) => true,
         (CanonicalType::Resolved(id_a, args_a), CanonicalType::Resolved(id_b, args_b)) => {
             id_a == id_b
                 && args_a.len() == args_b.len()
@@ -602,6 +653,25 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
                     .iter()
                     .zip(ys)
                     .all(|(x, y)| canonical_types_compatible(x, y))
+        }
+        // Record targets (RFC-0121 §3). Two closed rows are compatible only when they
+        // name the same labels; a row-tailed target is open, so it is compatible with
+        // any other record target whose labels carry its own named ones. Whether the
+        // row bounds then rule the pair out is `provably_disjoint`'s question.
+        (CanonicalType::Record(xs), CanonicalType::Record(ys)) => {
+            xs.len() == ys.len()
+                && xs
+                    .iter()
+                    .zip(ys)
+                    .all(|((nx, tx), (ny, ty))| nx == ny && canonical_types_compatible(tx, ty))
+        }
+        (CanonicalType::OpenRecord(open), CanonicalType::Record(closed))
+        | (CanonicalType::Record(closed), CanonicalType::OpenRecord(open)) => {
+            open.iter().all(|(label, ty)| {
+                closed
+                    .iter()
+                    .any(|(l, t)| l == label && canonical_types_compatible(ty, t))
+            })
         }
         (CanonicalType::Array(x), CanonicalType::Array(y)) => canonical_types_compatible(x, y),
         (CanonicalType::SizedArray(x, n1), CanonicalType::SizedArray(y, n2)) => {
@@ -639,7 +709,9 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
 /// it, blanket-ness does.
 fn contains_type_param(ct: &CanonicalType) -> bool {
     match ct {
-        CanonicalType::TypeParam(_) => true,
+        // The row tail of an open record target is the impl's own variable, so such a
+        // target is a blanket too.
+        CanonicalType::TypeParam(_) | CanonicalType::OpenRecord(_) => true,
         CanonicalType::Resolved(_, args) | CanonicalType::Unresolved(_, args) => {
             args.iter().any(contains_type_param)
         }

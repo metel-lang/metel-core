@@ -621,7 +621,9 @@ fn parse_extend_impl_block(
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::generic_params => generics = parse_generic_params(p, filename)?,
-            Rule::type_expr => target_type = Some(parse_type_expr(p, filename)?),
+            Rule::type_expr | Rule::open_record_type => {
+                target_type = Some(parse_type_expr(p, filename)?);
+            }
             Rule::extend_impl_bodyless => {
                 bodyless = true;
                 for inner in p.into_inner() {

@@ -1,0 +1,16 @@
+// RFC-0121 sec3 / `spec.types.generics.row-conditional-impls.legality-3`: two row
+// conditions that no label contradicts can both hold of one record (here `{ w, h }`),
+// so the impls overlap and are rejected exactly as two overlapping ordinary impls are.
+
+aspect Describe { fun describe(&self) -> String; }
+
+extend<row R: { w: i64, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { "a".to_string() }
+}
+
+extend<row R: { h: i64, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { "b".to_string() }
+}
+
+fun main() {
+}

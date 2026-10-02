@@ -1344,6 +1344,28 @@ pub(super) fn construct_expr(
                 });
             }
 
+            // A record receiver dispatches through the impls whose target is a record
+            // type (RFC-0121 §3): each candidate's receiver var carries the impl's row
+            // condition, so `resolve_generic_method_call` keeps the ones this record
+            // satisfies.
+            if matches!(
+                peel_type_references(typed_receiver.ty()),
+                Type::Record(_) | Type::Residual { .. }
+            ) && !ctx
+                .registry
+                .record_method_scheme_variants_for(method)
+                .is_empty()
+            {
+                return construct_record_method_call(
+                    typed_receiver,
+                    method,
+                    args,
+                    explicit_method_tys.as_deref(),
+                    span,
+                    ctx,
+                );
+            }
+
             if matches!(peel_type_references(typed_receiver.ty()), Type::Never) {
                 // Receiver's type is unknowable -- e.g. `construct_generic_body`'s
                 // call-time reconstruction sampling an empty collection's element
@@ -1460,6 +1482,33 @@ pub(super) fn construct_expr(
                     dispatch: MethodDispatch::Dynamic,
                     span: span.clone(),
                 });
+            }
+
+            // RFC-0121 §3 (`spec.types.generics.row-conditional-impls.legality-2`): a
+            // nominal record's own (brand-keyed) impls are checked first; only when
+            // none provides this method does a record-target impl whose row its fields
+            // satisfy apply.
+            if let named @ Type::Named(name, _, id) = peel_type_references(typed_receiver.ty())
+                && ctx
+                    .concrete_method_with_id(name, id.get(), method.as_str())
+                    .is_none()
+                && ctx
+                    .registry
+                    .method_scheme_variants_for(ctx.current_module, name, method)
+                    .is_empty()
+                && ctx
+                    .registry
+                    .record_method_variant_for(ctx.current_module, method, &type_to_infer(named))
+                    .is_some()
+            {
+                return construct_record_method_call(
+                    typed_receiver,
+                    method,
+                    args,
+                    explicit_method_tys.as_deref(),
+                    span,
+                    ctx,
+                );
             }
 
             let (struct_name, receiver_type_args, struct_id) =
@@ -2252,4 +2301,49 @@ pub(super) fn construct_expr(
             Ok(TypedExpr::Continue(span.clone()))
         }
     }
+}
+
+/// Construct a method call whose receiver is a record -- anonymous, or a nominal
+/// record reached through a record-target impl (RFC-0121 §3). Candidates are the
+/// record-target impls' schemes; each one's receiver var carries the impl's row
+/// condition, so `resolve_generic_method_call` keeps those the receiver satisfies.
+fn construct_record_method_call(
+    typed_receiver: TypedExpr,
+    method: &str,
+    args: &[Expr],
+    explicit_method_tys: Option<&[Type]>,
+    span: &Span,
+    ctx: &mut ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    let candidates = ctx
+        .registry
+        .record_method_scheme_variants_for(method)
+        .to_vec();
+    let receiver_type_args = [peel_type_references(typed_receiver.ty()).clone()];
+    let (method_fun_ty, typed_args, winning_aspect, _) = resolve_generic_method_call(
+        &candidates,
+        &receiver_type_args,
+        explicit_method_tys,
+        args,
+        method,
+        span,
+        ctx,
+    )?;
+    // No mutable-access guard here: Pass 1 already checked it, with the
+    // binding-mutability fallback for a bare owned receiver (the same split the
+    // nominal fast path uses).
+    let ret_ty = match method_fun_ty {
+        Type::Fun(_, ret, ..) => *ret,
+        _ => return Err(MetelError::internal("record method type is not a function")),
+    };
+    let dispatch = dispatch_for_resolved_method(ctx, winning_aspect.as_deref());
+    Ok(TypedExpr::MethodCall {
+        receiver: Box::new(typed_receiver),
+        method: method.to_string(),
+        args: typed_args,
+        ty: ret_ty,
+        impl_site: None,
+        dispatch,
+        span: span.clone(),
+    })
 }

@@ -1,0 +1,3 @@
+public aspect Describe { fun describe(&self) -> String; }
+extend<row R: { w: i64, .. }> { ..R }: Describe { fun describe(&self) -> String { "has w".to_string() } }
+extend { n: i64 }: Describe { fun describe(&self) -> String { "just n".to_string() } }

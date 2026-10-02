@@ -443,8 +443,9 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
         // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
         // this function only ever walks an impl block's target type.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear in an impl block's target type")
+        TypeExpr::OpenRecord(fields, tail) => {
+            fields.iter().any(|(_, t)| go(t))
+                || tail.var.as_deref().is_some_and(|v| params.contains(v))
         }
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {

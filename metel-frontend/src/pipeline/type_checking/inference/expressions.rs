@@ -837,6 +837,27 @@ pub(super) fn infer_expr(
                 return Err(MetelError::internal("array method type is not a function"));
             }
 
+            // A record receiver (`{ w = 2, h = 3 }.area()`) dispatches through the
+            // impls whose target is a record type and whose row condition it satisfies.
+            if matches!(
+                &peeled_recv,
+                InferType::Record(_) | InferType::Residual { .. }
+            ) && !ctx
+                .registry()
+                .record_method_scheme_variants_for(method)
+                .is_empty()
+            {
+                return infer_record_method_call(
+                    receiver,
+                    &recv_ty,
+                    &peeled_recv,
+                    method,
+                    &arg_tys,
+                    span,
+                    ctx,
+                );
+            }
+
             // Fast path: concrete named type — look up method as usual.
             if let Some(struct_name) = named_type_name(&recv_ty) {
                 let recv_type_args = match &recv_ty {
@@ -885,6 +906,22 @@ pub(super) fn infer_expr(
                     }
                     ctx.stamp_row_remainders(span);
                     pin.apply(&instance)
+                } else if ctx
+                    .registry()
+                    .record_method_variant_for(ctx.current_module_path(), method, &peeled_recv)
+                    .is_some()
+                {
+                    // Brand-keyed impls first, then a record-target impl whose row this
+                    // nominal record's fields satisfy (RFC-0121 §3, legality-2).
+                    return infer_record_method_call(
+                        receiver,
+                        &recv_ty,
+                        &peeled_recv,
+                        method,
+                        &arg_tys,
+                        span,
+                        ctx,
+                    );
                 } else {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0003,
@@ -1572,4 +1609,72 @@ pub(super) fn infer_expr(
             Ok(InferType::never())
         }
     }
+}
+
+/// Type a method call whose receiver is a record, through the record-target impl
+/// candidates (RFC-0121 §3). The receiver var of the chosen candidate's scheme is
+/// pinned to the receiver's own type; the arguments are constrained against the
+/// remaining parameters and the call has the declared return type.
+fn infer_record_method_call(
+    receiver: &Expr,
+    recv_ty: &InferType,
+    peeled_recv: &InferType,
+    method: &str,
+    arg_tys: &[InferType],
+    span: &crate::data::ast::Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let Some((scheme, receiver_tvars, _)) = ctx
+        .registry()
+        .record_method_variant_for(ctx.current_module_path(), method, peeled_recv)
+        .cloned()
+    else {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no method `{method}` on this record type: no `extend` for it provides one"),
+            span,
+        ));
+    };
+    let (instance, renaming) = ctx.instantiate_with_renaming(&scheme);
+    let mut pin = Substitution::new();
+    for &tv in &receiver_tvars {
+        if let Some(&fresh) = renaming.get(&tv) {
+            pin.bind(fresh, peeled_recv.clone());
+        }
+    }
+    let method_ty = pin.apply(&instance);
+    if matches!(
+        ctx.registry().record_method_receiver_kind(method),
+        Some(crate::data::ast::ReceiverKind::RefMut)
+    ) && !chain_provides_mut_access(recv_ty)
+    {
+        if is_shared_reference_chain(recv_ty) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0006,
+                format!("cannot call `&var self` method `{method}` through a shared reference"),
+                span,
+            ));
+        }
+        if let Expr::Ident(name, recv_span) = receiver {
+            let _ = ctx.lookup_for_write(name, recv_span)?;
+        }
+    }
+    let InferType::Fun(params, ret, ..) = &method_ty else {
+        return Err(MetelError::internal("record method type is not a function"));
+    };
+    if params.len().saturating_sub(1) != arg_tys.len() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0004,
+            format!(
+                "expected {} argument(s), got {}",
+                params.len().saturating_sub(1),
+                arg_tys.len()
+            ),
+            span,
+        ));
+    }
+    for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
+        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+    }
+    Ok(*ret.clone())
 }

@@ -1,0 +1,30 @@
+// RFC-0121 sec3 / metel-core#1306 item 8: `extend<row R> { ..R }: Aspect` and the
+// bounded form `extend<row R: { w: i64, .. }> { ..R }: Aspect` -- impls on every
+// row, or every row of a given shape. They apply to anonymous records and to a
+// nominal `record` whose fields satisfy the row, and satisfy aspect bounds.
+
+aspect Describe { fun describe(&self) -> String; }
+aspect Area { fun area(&self) -> i64; }
+
+extend<row R> { ..R }: Describe {
+    fun describe(&self) -> String { "a record".to_string() }
+}
+
+extend<row R: { w: i64, h: i64, .. }> { ..R }: Area {
+    fun area(&self) -> i64 { self.w * self.h }
+}
+
+record Rect { public w: i64, public h: i64 }
+
+fun total<T: Area>(x: &T) -> i64 { x.area() }
+
+fun main() {
+    assert({ w = 2, h = 3 }.describe() == "a record");
+    assert({ w = 2, h = 3 }.area() == 6);
+    assert({ w = 2, h = 3, label = "x" }.area() == 6);
+    let r := Rect { w = 4, h = 5 };
+    assert(r.area() == 20);
+    assert(r.describe() == "a record");
+    assert(total(&r) == 20);
+    println("ok");
+}
