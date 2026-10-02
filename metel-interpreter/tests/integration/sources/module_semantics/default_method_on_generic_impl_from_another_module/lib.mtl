@@ -1,0 +1,4 @@
+public aspect Describe {
+    fun describe(self) -> i64;
+    fun twice(self) -> i64 { self.describe() * 2 }
+}

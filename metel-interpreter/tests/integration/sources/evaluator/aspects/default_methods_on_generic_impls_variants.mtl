@@ -1,0 +1,59 @@
+// metel-core#1329: more shapes of an aspect default inherited by an impl on a generic
+// type -- a default with generics of its own, a default calling another default, a partial
+// override, `&self` / `&var self` receivers, an impl with a `where` clause, and dispatch
+// through `&dyn`. Each has a non-generic twin that already worked.
+
+aspect Tag { fun tag(self) -> i64; }
+
+aspect Describe {
+    fun describe(self) -> i64;
+    fun twice(self) -> i64 { self.describe() * 2 }
+    fun quad(self) -> i64 { self.twice() * 2 }
+    fun pick<V>(self, x: V) -> V { x }
+}
+
+aspect Counter {
+    fun bump(&var self);
+    fun bump_twice(&var self) { self.bump(); self.bump(); }
+}
+
+aspect Reader {
+    fun read(&self) -> i64;
+    fun read_plus(&self, n: i64) -> i64 { self.read() + n }
+}
+
+struct Box<U> { public v: U }
+struct Cell<U> { public n: i64, public w: U }
+struct Held<U> { public v: U }
+
+// `twice` is overridden, `quad` and `pick` are inherited; `quad` calls the *override*
+extend<U> Box<U>: Describe {
+    fun describe(self) -> i64 { 3 }
+    fun twice(self) -> i64 { 100 }
+}
+
+extend<U> Cell<U>: Counter { fun bump(&var self) { self.n := self.n + 1; } }
+extend<U> Cell<U>: Reader { fun read(&self) -> i64 { self.n } }
+
+extend i64: Tag { fun tag(self) -> i64 { 7 } }
+extend<U> Held<U>: Describe where U: Tag { fun describe(self) -> i64 { self.v.tag() } }
+
+fun main() {
+    let b := Box { v = "s" };
+    assert(b.twice() == 100);
+    assert(b.quad() == 200);
+    // a default with generics of its own is generic per call
+    assert(b.pick(5) == 5);
+    assert(b.pick("x") == "x");
+
+    var c := Cell { n = 0, w = "s" };
+    c.bump_twice();
+    assert(c.n == 2);
+    assert(c.read_plus(10) == 12);
+
+    assert(Held { v = 1 }.twice() == 14);
+
+    let d: &dyn Reader := &c;
+    assert(d.read_plus(1) == 3);
+    println("ok");
+}

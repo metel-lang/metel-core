@@ -201,8 +201,10 @@ pub(in crate::pipeline::type_checking) fn lower_program(
 /// target's parameters for a method written in the block.
 ///
 /// Only an impl that is generic (its own generics, or a target with type arguments) and
-/// whose aspect has no type parameters of its own is expanded; anything else is left to the
-/// existing path unchanged. Each expanded method gets a span of its own (derived from the
+/// whose aspect has neither type parameters nor associated types is expanded; anything
+/// else is left to the existing path unchanged. An associated type is excluded because a
+/// default body names it bare (`Item`, sugar for `Self::Item`), which resolves only in the
+/// aspect's own context, not inside the impl the body is copied into. Each expanded method gets a span of its own (derived from the
 /// impl's), because the registry identifies a generic method body by its declaration span
 /// and every impl inheriting the same default would otherwise share the aspect's.
 fn expand_generic_impl_defaults(
@@ -213,7 +215,8 @@ fn expand_generic_impl_defaults(
     use crate::data::ast::{AspectMethod, Visibility};
     use std::collections::HashMap;
 
-    /// `(aspect has no type parameters, its methods)`, keyed by aspect name.
+    /// `(aspect is expandable: no type parameters and no associated types, its methods)`,
+    /// keyed by aspect name.
     type AspectDefaults = HashMap<String, (bool, Vec<AspectMethod>)>;
 
     fn collect(decls: &[Decl], into: &mut AspectDefaults) {
@@ -221,7 +224,10 @@ fn expand_generic_impl_defaults(
             if let Decl::Aspect(ad) = decl {
                 into.insert(
                     ad.name.clone(),
-                    (ad.generics.is_empty(), ad.methods.clone()),
+                    (
+                        ad.generics.is_empty() && ad.assoc_types.is_empty(),
+                        ad.methods.clone(),
+                    ),
                 );
             }
         }
@@ -239,18 +245,21 @@ fn expand_generic_impl_defaults(
     collect(&crate::stdlib::core_program().decls, &mut known);
 
     let defaults_of = |aspect: &str| -> Option<Vec<AspectMethod>> {
-        let (no_generics, methods) = match known.get(aspect) {
-            Some((no_generics, methods)) => (*no_generics, methods.clone()),
+        let (expandable, methods) = match known.get(aspect) {
+            Some((expandable, methods)) => (*expandable, methods.clone()),
             None => (
                 base_registry
                     .aspect_generics_in(current_module_path, aspect)?
-                    .is_empty(),
+                    .is_empty()
+                    && base_registry
+                        .aspect_assoc_type_decls_in(current_module_path, aspect)
+                        .is_none(),
                 base_registry
                     .aspect_method_defs_in(current_module_path, aspect)?
                     .clone(),
             ),
         };
-        no_generics.then_some(methods)
+        expandable.then_some(methods)
     };
 
     let decls = decls

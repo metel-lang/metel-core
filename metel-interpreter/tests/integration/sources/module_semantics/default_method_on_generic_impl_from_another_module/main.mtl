@@ -1,0 +1,14 @@
+// metel-core#1329: the aspect and its default method are declared in another module; the
+// generic impl (on a type local to this module, so the orphan rule is met) inherits the
+// default through the registry rather than from this module's own declarations.
+import lib::*;
+
+struct Box<U> { public v: U }
+
+extend<U> Box<U>: Describe { fun describe(self) -> i64 { 4 } }
+
+fun main() {
+    assert(Box { v = "s" }.twice() == 8);
+    assert(Box { v = 1 }.twice() == 8);
+    println("ok");
+}
