@@ -1040,6 +1040,7 @@ pub(super) fn infer_impl_method(
     // below to attach to the call-site-checked scheme) must be collected now.
     let method_own_bounds = collect_fun_type_var_bounds(method, &generic_map);
     let method_own_neg_bounds = collect_negative_fun_type_var_bounds(method, &generic_map);
+    let method_own_record_kinds = collect_fun_type_var_record_kinds(method, &generic_map);
 
     // Seed with the target struct/enum's generic params so that type annotations
     // referencing e.g. `T` in `impl SortedList<T>` resolve to TypeVars and
@@ -1390,7 +1391,25 @@ pub(super) fn infer_impl_method(
                 .or_default()
                 .extend(bounds.clone());
         }
-        scheme = scheme.with_bounds(&by_var).with_neg_bounds(&by_neg_var);
+        // A method's own `record T: { x, .. }` parameter needs its record
+        // kind on the scheme too: `check_record_kind_requirement` rejects any
+        // row bound whose parameter isn't record-kinded, so without this a
+        // method's own row bound could never be satisfied at a call site.
+        let mut record_kinds_by_var: std::collections::HashMap<TypeVar, bool> =
+            std::collections::HashMap::new();
+        for (tv, is_record) in &method_own_record_kinds {
+            if *is_record {
+                let resolved_tv = match partial_subst.apply(&InferType::Var(*tv)) {
+                    InferType::Var(v) => v,
+                    _ => *tv,
+                };
+                record_kinds_by_var.insert(resolved_tv, true);
+            }
+        }
+        scheme = scheme
+            .with_bounds(&by_var)
+            .with_neg_bounds(&by_neg_var)
+            .with_record_kinds(&record_kinds_by_var);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {

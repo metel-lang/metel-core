@@ -904,6 +904,8 @@ fn register_generic_impl_method_schemes(
         {
             method_by_neg_var.entry(tv).or_default().extend(bounds);
         }
+        let method_record_kinds =
+            super::inference::collect_fun_type_var_record_kinds(method, &gen_map);
         let mut param_types = vec![self_ty.clone()];
         for p in method.params.iter().filter(|p| p.receiver.is_none()) {
             let ann = p
@@ -930,7 +932,8 @@ fn register_generic_impl_method_schemes(
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
-        .with_neg_bounds(&method_by_neg_var);
+        .with_neg_bounds(&method_by_neg_var)
+        .with_record_kinds(&method_record_kinds);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
