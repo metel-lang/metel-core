@@ -116,6 +116,10 @@ struct FunGeneralization {
     /// is what the construction pass actually reads), and through
     /// `refresh_scheme_for_export` for cross-module calls.
     opaque_returns: HashMap<TypeVar, (String, crate::data::types::Type)>,
+    /// Maps a `where R = { labels.., ..Rest }` equation's `Rest` `TypeVar` to its
+    /// `R` var and the labels the equation removes (RFC-0121 §2). Attached to the
+    /// re-generalized scheme so `Rest` is derived from `R` at each call site.
+    row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -249,6 +253,9 @@ fn refresh_scheme_for_export(
         // Positional like `record_kinds`; dropping it would silently lose
         // RFC-0121's by-value width-subtyping check across modules.
         open_row_params: scheme.open_row_params.clone(),
+        // Positional (var positions, not TypeVars), so the renaming is irrelevant;
+        // dropping it would lose `Rest` derivation across modules.
+        row_remainders: scheme.row_remainders.clone(),
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         // RFC-0037 opaque-return metadata is positional (index-aligned with
@@ -1473,7 +1480,8 @@ fn build_module_scheme_env(
             .with_record_kinds(&fg.record_kinds)
             .with_assoc_projections(&fg.assoc_projections)
             .with_assoc_eq_constraints(&fg.assoc_eq)
-            .with_opaque_returns(&fg.opaque_returns);
+            .with_opaque_returns(&fg.opaque_returns)
+            .with_row_remainders(&fg.row_remainders);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported

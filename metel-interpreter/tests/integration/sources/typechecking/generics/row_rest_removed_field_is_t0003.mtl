@@ -1,0 +1,16 @@
+// RFC-0121 §2 (metel-core#1310): `Rest` is `R` without `token`, so the field the
+// equation removed is gone from the result.
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+fun authenticate<row R, row Rest>(s: Session<..R>) -> Session<..Rest>
+where R = { token: String, ..Rest } {
+    panic("unimplemented")
+}
+
+fun main() {
+    let s: Session<{ token: String, extra: i64 }> :=
+        Session { id = 1, data = { token = "t", extra = 2 } };
+    let r := authenticate(s);
+    println(r.data.token);
+}

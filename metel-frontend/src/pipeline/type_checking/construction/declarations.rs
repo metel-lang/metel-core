@@ -242,6 +242,7 @@ pub(super) fn construct_fun_decl(
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(
                 entry
                     .params

@@ -737,6 +737,7 @@ mod phase_6_type_schemes {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -773,6 +774,7 @@ mod phase_6_type_schemes {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::var(quantified),
         };
         let first = instantiate(&scheme, &mut var_gen);
@@ -805,6 +807,7 @@ mod phase_6_type_schemes {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),
@@ -825,6 +828,7 @@ mod phase_6_type_schemes {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(1))),
@@ -886,6 +890,7 @@ mod phase_7_infer_context {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(vec![v.clone()], Box::new(v)),
         };
         ctx.bind_poly("id", scheme);
@@ -910,6 +915,7 @@ mod phase_7_infer_context {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: v,
         };
         ctx.bind_poly("id", scheme);
@@ -936,6 +942,7 @@ mod phase_7_infer_context {
                 assoc_eq_constraints: vec![],
                 opaque_returns: vec![],
                 open_row_params: vec![],
+                row_remainders: vec![],
                 ty: v,
             },
         );
@@ -1211,6 +1218,7 @@ mod phase_8_known_limitations {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(
                 vec![InferType::var(TypeVar(0))],
                 Box::new(InferType::var(TypeVar(0))),

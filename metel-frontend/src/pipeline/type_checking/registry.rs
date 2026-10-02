@@ -956,6 +956,7 @@ fn register_generic_impl_method_schemes(
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
@@ -1125,6 +1126,7 @@ fn register_array_impl_method_schemes(
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)

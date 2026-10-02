@@ -1666,6 +1666,15 @@ pub(super) fn instantiate_scheme_for_call(
         }
     }
 
+    // RFC-0121 §2 backfill: derive each decomposition equation's `Rest` from `R`.
+    backfill_row_remainders(
+        scheme,
+        &renaming,
+        &mut subst,
+        span,
+        registry,
+        current_module,
+    )?;
     // RFC-0037 backfill: for each opaque-return quantified var, bind its fresh
     // copy to the concrete type recorded at definition time. This lets the
     // `infer_type_to_type` calls below succeed using the known concrete type
@@ -1703,6 +1712,71 @@ pub(super) fn instantiate_scheme_for_call(
         ),
         var_to_concrete,
     ))
+}
+
+/// RFC-0121 §2 (row decomposition): once a call has resolved `R` of a
+/// `where R = { labels.., ..Rest }` equation to a closed record, `Rest` *is* that
+/// record minus `labels`. Unifies the derived record with whatever `Rest` already
+/// is -- unresolved (the usual case) simply binds it, while a conflicting
+/// annotation (`let r: Session<{ other: i64 }> := authenticate(s)`) is rejected.
+///
+/// An `R` whose fields aren't structurally known here (still a type variable, or
+/// not a record) leaves `Rest` alone, same as `check_width_subtyping`'s skip.
+fn backfill_row_remainders(
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    subst: &mut Substitution,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for (i, remainder) in scheme.row_remainders.iter().enumerate() {
+        let Some((r_pos, removed)) = remainder else {
+            continue;
+        };
+        let (Some(&rest_orig), Some(&r_orig)) = (
+            scheme.quantified_vars.get(i),
+            scheme.quantified_vars.get(*r_pos),
+        ) else {
+            continue;
+        };
+        let (Some(&fresh_rest), Some(&fresh_r)) = (renaming.get(&rest_orig), renaming.get(&r_orig))
+        else {
+            continue;
+        };
+        let Ok(r_ty) = infer_type_to_type(&subst.apply(&InferType::Var(fresh_r)), span) else {
+            continue;
+        };
+        let Some(fields) = structural_fields_for_row_check(&r_ty, registry, current_module, span)
+        else {
+            continue;
+        };
+        let mut remaining: Vec<(String, Type)> = fields
+            .into_iter()
+            .filter(|(label, _)| !removed.contains(label))
+            .collect();
+        remaining.sort_by(|a, b| a.0.cmp(&b.0));
+        let derived = type_to_infer(&Type::Record(remaining));
+        let s = type_engine::unify(&subst.apply(&InferType::Var(fresh_rest)), &derived).map_err(
+            |_| {
+                MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    format!(
+                        "row decomposition mismatch: `{r_ty}` minus {} does not match the \
+                         expected remainder (RFC-0121 §2)",
+                        removed
+                            .iter()
+                            .map(|l| format!("`{l}`"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    span,
+                )
+            },
+        )?;
+        *subst = subst.compose(&s);
+    }
+    Ok(())
 }
 
 pub(super) fn instantiate_scheme_with_turbofish(
@@ -1801,6 +1875,15 @@ pub(super) fn instantiate_scheme_with_expected_ret(
             subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
         }
     }
+    // RFC-0121 §2 backfill: derive each decomposition equation's `Rest` from `R`.
+    backfill_row_remainders(
+        scheme,
+        &renaming,
+        &mut subst,
+        span,
+        registry,
+        current_module,
+    )?;
     // RFC-0037 backfill: bind opaque-return vars to their concrete types.
     for (i, opaque) in scheme.opaque_returns.iter().enumerate() {
         if let Some((_aspect, concrete_ty)) = opaque

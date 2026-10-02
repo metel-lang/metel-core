@@ -393,6 +393,7 @@ pub(super) fn infer_expr(
                 // one block, with .display() called on at least two of
                 // them before a third, corrupted the third's inferred type.
                 let (instantiated_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                ctx.stamp_row_remainders(span);
 
                 if let InferType::Fun(params, ret, ..) = instantiated_ty {
                     // Constrain arguments to match the instantiated function type

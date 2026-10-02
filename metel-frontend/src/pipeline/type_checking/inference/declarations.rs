@@ -104,6 +104,7 @@ pub(super) fn infer_decl(
                         assoc_projections: HashMap::new(),
                         assoc_eq: HashMap::new(),
                         opaque_returns: HashMap::new(),
+                        row_remainders: HashMap::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -597,6 +598,7 @@ pub(super) fn infer_fun_decl(
             assoc_projections: HashMap::new(),
             assoc_eq,
             opaque_returns: HashMap::new(),
+            row_remainders: HashMap::new(),
         });
         return Ok(());
     }
@@ -762,7 +764,7 @@ pub(super) fn infer_fun_decl(
     // Build initial name_map from original TypeVars; will be resolved post-solve below.
     let orig_name_map: HashMap<TypeVar, String> =
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
-    let saved_type_params = ctx.swap_type_params(generic_map);
+    let saved_type_params = ctx.swap_type_params(generic_map.clone());
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let saved_projection_tail_constraints =
         ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
@@ -916,7 +918,35 @@ pub(super) fn infer_fun_decl(
     } else {
         scheme.with_opaque_returns(&opaque_map)
     };
-    let scheme = scheme.with_record_kinds(&type_var_record_kinds);
+    // RFC-0121 §2: `where R = { labels.., ..Rest }` makes `Rest` derivable from `R`.
+    // Remapped through `partial_subst` like the maps above. A `Rest` the body has
+    // unified with `R` (generics are not rigid) is no longer a separate var, so
+    // there is nothing left to derive and the entry is dropped.
+    let row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = fun
+        .where_clause
+        .iter()
+        .flat_map(|wc| wc.row_equations.iter())
+        .filter_map(|eq| {
+            let rest_name = eq.tail.var.as_deref()?;
+            let (&r_tv, &rest_tv) = (
+                generic_map.get(eq.var.as_str())?,
+                generic_map.get(rest_name)?,
+            );
+            let (InferType::Var(r), InferType::Var(rest)) = (
+                partial_subst.apply(&InferType::Var(r_tv)),
+                partial_subst.apply(&InferType::Var(rest_tv)),
+            ) else {
+                return None;
+            };
+            (r != rest).then(|| {
+                let labels = eq.fields.iter().map(|(label, _)| label.clone()).collect();
+                (rest, (r, labels))
+            })
+        })
+        .collect();
+    let scheme = scheme
+        .with_record_kinds(&type_var_record_kinds)
+        .with_row_remainders(&row_remainders);
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -994,6 +1024,7 @@ pub(super) fn infer_fun_decl(
         assoc_projections: proj_map,
         assoc_eq,
         opaque_returns: opaque_map,
+        row_remainders,
     });
     Ok(())
 }

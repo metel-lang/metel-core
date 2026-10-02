@@ -1112,6 +1112,18 @@ impl Constraint {
     }
 }
 
+/// A deferred `Rest = R minus removed` derivation (RFC-0121 §2): once `r`
+/// resolves to a closed record, `rest` must equal it without the `removed` labels.
+#[derive(Debug, Clone)]
+struct PendingRowRemainder {
+    r: TypeVar,
+    removed: Vec<String>,
+    rest: TypeVar,
+    /// Where the instantiation happened, for the mismatch diagnostic; stamped by
+    /// the call site via `InferContext::stamp_row_remainders`.
+    span: Option<Span>,
+}
+
 fn is_integer_type(t: &Type) -> bool {
     matches!(
         t,
@@ -1587,6 +1599,13 @@ pub struct TypeScheme {
     /// explicitly declared `record T: { x, .. }` parameter shares that shape but
     /// can be taken by reference, where narrowing needs no `Copy` restriction.
     pub open_row_params: Vec<bool>,
+    /// RFC-0121 §2 (row decomposition): index-aligned with `quantified_vars`.
+    /// `Some((r_pos, removed))` marks the i-th quantified var as the `Rest` of a
+    /// `where R = { removed.., ..Rest }` equation: once a call has resolved the
+    /// `r_pos`-th var (`R`) to a closed record, `Rest` is that record minus the
+    /// `removed` labels. Backfilled at instantiation, like `assoc_projections`.
+    /// Empty when the function has no decomposition equation.
+    pub row_remainders: Vec<Option<(usize, Vec<String>)>>,
     pub ty: InferType,
 }
 
@@ -1604,6 +1623,7 @@ impl TypeScheme {
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
+            row_remainders: vec![],
             ty,
         }
     }
@@ -1652,6 +1672,29 @@ impl TypeScheme {
             .quantified_vars
             .iter()
             .map(|v| vars.contains(v))
+            .collect();
+        self
+    }
+
+    /// Record each `where R = { labels.., ..Rest }` equation on the scheme:
+    /// `by_rest` maps the `Rest` var to its `R` var and the labels the equation
+    /// removes. Vars that are not quantified here are skipped.
+    #[must_use]
+    pub fn with_row_remainders(
+        mut self,
+        by_rest: &std::collections::HashMap<TypeVar, (TypeVar, Vec<String>)>,
+    ) -> Self {
+        if by_rest.is_empty() {
+            return self;
+        }
+        self.row_remainders = self
+            .quantified_vars
+            .iter()
+            .map(|rest| {
+                let (r, labels) = by_rest.get(rest)?;
+                let r_pos = self.quantified_vars.iter().position(|v| v == r)?;
+                Some((r_pos, labels.clone()))
+            })
             .collect();
         self
     }
@@ -1769,6 +1812,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
         open_row_params: vec![],
+        row_remainders: vec![],
         ty,
     }
 }
@@ -4510,6 +4554,9 @@ pub struct InferContext {
     closure_return_types: HashMap<Span, InferType>,
     cached_subst: Rc<Substitution>,
     solved_constraint_count: usize,
+    /// RFC-0121 §2: `Rest` derivations waiting for their `R` to resolve to a closed
+    /// record. Registered at instantiation, retried at the end of every `solve()`.
+    pending_row_remainders: Vec<PendingRowRemainder>,
     solve_stats: SolveStats,
     /// Free-function overload sets for the current module (METEL-180). Names with
     /// a single definition never appear here. Built by `typechecker::overload`.
@@ -4589,6 +4636,7 @@ impl InferContext {
             closure_return_types: HashMap::new(),
             cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
+            pending_row_remainders: Vec::new(),
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
             variant_deferrals: Vec::new(),
@@ -5297,7 +5345,82 @@ impl InferContext {
                 self.tag_declared_var_name(fresh, name.clone());
             }
         }
+        for (i, remainder) in scheme.row_remainders.iter().enumerate() {
+            let Some((r_pos, removed)) = remainder else {
+                continue;
+            };
+            if let (Some(rest), Some(r)) = (
+                scheme.quantified_vars.get(i).and_then(|v| renaming.get(v)),
+                scheme
+                    .quantified_vars
+                    .get(*r_pos)
+                    .and_then(|v| renaming.get(v)),
+            ) {
+                self.pending_row_remainders.push(PendingRowRemainder {
+                    r: *r,
+                    removed: removed.clone(),
+                    rest: *rest,
+                    span: None,
+                });
+            }
+        }
         (instance, renaming)
+    }
+
+    /// Attach `span` to the `Rest` derivations registered since the last stamp, so a
+    /// mismatch is reported at the call that instantiated the scheme.
+    pub fn stamp_row_remainders(&mut self, span: &Span) {
+        for pending in &mut self.pending_row_remainders {
+            if pending.span.is_none() {
+                pending.span = Some(span.clone());
+            }
+        }
+    }
+
+    /// Fire every pending `Rest` derivation whose `R` has resolved to a closed record,
+    /// to a fixpoint (a derivation can resolve the `R` of another).
+    fn resolve_pending_row_remainders(&mut self) -> Result<(), MetelError> {
+        loop {
+            let pending = std::mem::take(&mut self.pending_row_remainders);
+            let mut progressed = false;
+            for p in pending {
+                let subst = Rc::make_mut(&mut self.cached_subst);
+                let InferType::Record(fields) = subst.apply(&InferType::Var(p.r)) else {
+                    self.pending_row_remainders.push(p);
+                    continue;
+                };
+                let remaining: Vec<(String, InferType)> = fields
+                    .into_iter()
+                    .filter(|(label, _)| !p.removed.contains(label))
+                    .collect();
+                let derived = InferType::Record(remaining);
+                let span = p
+                    .span
+                    .clone()
+                    .unwrap_or_else(|| Span::new(0, 0, "<row decomposition>"));
+                let delta =
+                    unify(&subst.apply(&InferType::Var(p.rest)), &derived).map_err(|_| {
+                        MetelError::type_error(
+                            crate::pipeline::type_checking::TypeErrorCode::T0001,
+                            format!(
+                                "row decomposition mismatch: the remainder after removing {} does \
+                             not match the expected row (RFC-0121 §2)",
+                                p.removed
+                                    .iter()
+                                    .map(|l| format!("`{l}`"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
+                            &span,
+                        )
+                    })?;
+                *subst = subst.compose(&delta);
+                progressed = true;
+            }
+            if !progressed {
+                return Ok(());
+            }
+        }
     }
 
     /// Instantiate a scheme when the caller has no need for its renaming map.
@@ -5569,6 +5692,8 @@ impl InferContext {
                 &self.declared_var_names,
             )?;
         }
+
+        self.resolve_pending_row_remainders()?;
 
         self.solve_stats.constraints_processed += (new_count - self.solved_constraint_count) as u64;
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
