@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0034"
+contains = "in this `extend` block"
+
+[options]
+error = ["T0034"]

@@ -759,6 +759,108 @@ fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &Collec
     true
 }
 
+/// An inherent (aspect-less) impl, for the duplicate-method check: the same shape
+/// `CollectedImpl` gives an aspect impl, so `impls_actually_overlap` can decide whether
+/// two blocks can both apply to one receiver, plus each method's name and span.
+struct InherentImpl<'a> {
+    shape: CollectedImpl<'a>,
+    methods: Vec<(&'a str, &'a Span)>,
+}
+
+/// T0034 (metel-core#1322): a method name defined twice where both definitions can apply
+/// to one receiver -- twice in one `extend` block, or in two inherent blocks of one type
+/// whose coverage overlaps. Before this check the later definition silently replaced the
+/// earlier one at dispatch.
+///
+/// Two blocks whose coverage is provably disjoint (`extend W<i64>` / `extend W<String>`,
+/// or row bounds that contradict on a shared label) may reuse a name; that is the same
+/// overlap test T0015 applies to aspect impls, run over inherent impls. `aspect_impls`
+/// is passed through only so a blanket impl's bounds can be evaluated against them.
+fn check_inherent_method_duplicates(
+    graph: &NormalizedModuleGraph,
+    aspect_impls: &[CollectedImpl],
+) -> Result<(), MetelError> {
+    let names = &graph.names;
+    let mut inherent: Vec<InherentImpl> = Vec::new();
+    for module in graph.modules() {
+        for decl in &module.program.decls {
+            let Decl::Impl(ib) = decl else { continue };
+            if ib.aspect_name.is_some() || ib.polarity != Polarity::Positive {
+                continue;
+            }
+            let mut seen: HashMap<&str, &Span> = HashMap::new();
+            for method in &ib.methods {
+                if let Some(first) = seen.insert(method.name.as_str(), &method.span) {
+                    return Err(duplicate_method_error(
+                        &method.name,
+                        &method.span,
+                        first,
+                        "in this `extend` block",
+                    ));
+                }
+            }
+            let canonical_target = canonicalize_impl_target(names, &module.module_path, ib);
+            inherent.push(InherentImpl {
+                shape: CollectedImpl {
+                    module: &module.module_path,
+                    aspect_name: "",
+                    aspect_id: None,
+                    target_local: true,
+                    canonical_key: (vec![], canonical_target),
+                    scoped_bounds: scoped_type_param_bounds(ib),
+                    polarity: ib.polarity,
+                    span: &ib.span,
+                    method_names: vec![],
+                    target_head: String::new(),
+                    is_structural_or_generic: false,
+                },
+                methods: ib
+                    .methods
+                    .iter()
+                    .map(|m| (m.name.as_str(), &m.span))
+                    .collect(),
+            });
+        }
+    }
+    for i in 0..inherent.len() {
+        for j in (i + 1)..inherent.len() {
+            let (a, b) = (&inherent[i], &inherent[j]);
+            let shared = b.methods.iter().find_map(|(name, span_b)| {
+                a.methods
+                    .iter()
+                    .find(|(other, _)| other == name)
+                    .map(|(_, span_a)| (*name, *span_b, *span_a))
+            });
+            let Some((name, span_b, span_a)) = shared else {
+                continue;
+            };
+            if !canonical_types_compatible(&a.shape.canonical_key.1, &b.shape.canonical_key.1)
+                || !impls_actually_overlap(aspect_impls, &a.shape, &b.shape)
+            {
+                continue;
+            }
+            return Err(duplicate_method_error(
+                name,
+                span_b,
+                span_a,
+                "in another `extend` block that can apply to the same type",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn duplicate_method_error(name: &str, span: &Span, first: &Span, where_: &str) -> MetelError {
+    MetelError::type_error(
+        TypeErrorCode::T0034,
+        format!(
+            "duplicate definition of method `{name}`: already defined {where_}, at {}:{}:{}",
+            first.filename, first.line, first.col
+        ),
+        span,
+    )
+}
+
 /// Check the orphan rule (T0014) and overlap detection (T0015) for every
 /// concrete `impl Aspect for Type` block in the program. See RFC-0060 / the
 /// "Aspect Implementation Coherence" section of `declarations.md`.
@@ -918,6 +1020,8 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
             }
         }
     }
+
+    check_inherent_method_duplicates(graph, &impls)?;
 
     // RFC-0071 §4: no type may implement both `Copy` and `Drop` (issue #302).
     //

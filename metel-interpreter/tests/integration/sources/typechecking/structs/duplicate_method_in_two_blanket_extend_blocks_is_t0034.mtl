@@ -1,0 +1,14 @@
+// metel-core#1322: two blanket blocks of one generic type both apply to every
+// instantiation, so a shared method name is a duplicate.
+
+struct Box<T> { public v: T }
+
+extend<T> Box<T> {
+    fun f(self) -> i64 { 1 }
+}
+
+extend<T> Box<T> {
+    fun f(self) -> i64 { 2 }
+}
+
+fun main() {}

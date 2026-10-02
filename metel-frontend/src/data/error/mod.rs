@@ -53,6 +53,7 @@ pub enum TypeErrorCode {
     T0031, // Invalid program entry point (RFC-0167)
     T0032, // Row-polymorphic generic argument not yet implemented beyond parsing (RFC-0121)
     T0033, // By-value width subtyping would forget a non-`Copy` field (RFC-0121 §4)
+    T0034, // Duplicate method definition on overlapping inherent impls (#1322)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
