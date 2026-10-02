@@ -1,0 +1,40 @@
+// metel-core#1329: an aspect's default method is inherited by an impl on a generic type,
+// including when its body calls another method of the aspect. It used to fail to
+// type-check, because the inherited default was checked against a `self` with no type
+// arguments while the impl's methods are schemes over the target's parameters.
+
+aspect Tag { fun tag(self) -> i64; }
+
+aspect Describe {
+    fun describe(self) -> i64;
+    fun twice(self) -> i64 { self.describe() * 2 }
+}
+
+struct Box<T> { public v: T }
+struct Pair<T> { public v: T }
+struct Fixed<T> { public v: T }
+
+// a generic impl
+extend<T> Pair<T>: Describe { fun describe(self) -> i64 { 10 } }
+
+// a target with concrete type arguments
+extend Fixed<i64>: Describe { fun describe(self) -> i64 { 5 } }
+
+// disjoint bounds: each impl inherits the default, and each gets its own
+extend i64: Tag { fun tag(self) -> i64 { 7 } }
+extend<T: Tag> Box<T>: Describe { fun describe(self) -> i64 { 1 } }
+extend<T: !Tag> Box<T>: Describe { fun describe(self) -> i64 { 2 } }
+
+fun doubled<D: Describe>(d: D) -> i64 { d.twice() }
+
+fun main() {
+    assert(Pair { v = 1 }.twice() == 20);
+    assert(Pair { v = "s" }.twice() == 20);
+    assert(Fixed { v = 1 }.twice() == 10);
+    assert(Box { v = 1 }.twice() == 2);
+    assert(Box { v = "s" }.twice() == 4);
+    // through a generic `D: Describe` bound
+    assert(doubled(Box { v = 1 }) == 2);
+    assert(doubled(Pair { v = 1 }) == 20);
+    println("ok");
+}

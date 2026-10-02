@@ -176,9 +176,141 @@ fn lower_impl_aspect_param_type(
 
 /// Lower all `impl Aspect` params in all `FunDecl`s in a `Program`.
 /// Returns a new program with the lowered declarations.
-pub(in crate::pipeline::type_checking) fn lower_impl_aspects_in_program(
+/// Every program-to-program lowering the checker applies before building its registry, in
+/// the order they must run: `impl Aspect` parameters, then `T::AssocType` projections, then
+/// the expansion of inherited aspect defaults into generic impls.
+pub(in crate::pipeline::type_checking) fn lower_program(
     program: Program,
+    base_registry: &super::super::type_engine::TypeDefinitionRegistry,
+    current_module_path: &[String],
 ) -> Program {
+    let program = lower_impl_aspects_in_program(program);
+    let program = lower_projections_in_program(program);
+    expand_generic_impl_defaults(program, base_registry, current_module_path)
+}
+
+/// metel-core#1329: write the inherited default methods of an aspect out into a *generic*
+/// impl, as if the author had typed them, so the ordinary generic-impl machinery (method
+/// schemes over the target's parameters, bounds, call-time reconstruction of the body)
+/// handles them.
+///
+/// Default bodies of an impl on a non-generic type are registered and checked as plain
+/// methods against a `self` of the bare target name. For `extend<T> Box<T>: Aspect` that
+/// `self` has no type arguments, and the registered method is a scheme over `T`, so the two
+/// never unify. Expanding sidesteps that: `infer_impl_method` already binds `Self` and the
+/// target's parameters for a method written in the block.
+///
+/// Only an impl that is generic (its own generics, or a target with type arguments) and
+/// whose aspect has no type parameters of its own is expanded; anything else is left to the
+/// existing path unchanged. Each expanded method gets a span of its own (derived from the
+/// impl's), because the registry identifies a generic method body by its declaration span
+/// and every impl inheriting the same default would otherwise share the aspect's.
+fn expand_generic_impl_defaults(
+    program: Program,
+    base_registry: &super::super::type_engine::TypeDefinitionRegistry,
+    current_module_path: &[String],
+) -> Program {
+    use crate::data::ast::{AspectMethod, Visibility};
+    use std::collections::HashMap;
+
+    /// `(aspect has no type parameters, its methods)`, keyed by aspect name.
+    type AspectDefaults = HashMap<String, (bool, Vec<AspectMethod>)>;
+
+    fn collect(decls: &[Decl], into: &mut AspectDefaults) {
+        for decl in decls {
+            if let Decl::Aspect(ad) = decl {
+                into.insert(
+                    ad.name.clone(),
+                    (ad.generics.is_empty(), ad.methods.clone()),
+                );
+            }
+        }
+    }
+
+    // Aspects declared in this module and in std::core, then whatever the registry already
+    // knows from modules checked before this one.
+    let Program {
+        imports,
+        exports,
+        decls,
+    } = program;
+    let mut known: AspectDefaults = HashMap::new();
+    collect(&decls, &mut known);
+    collect(&crate::stdlib::core_program().decls, &mut known);
+
+    let defaults_of = |aspect: &str| -> Option<Vec<AspectMethod>> {
+        let (no_generics, methods) = match known.get(aspect) {
+            Some((no_generics, methods)) => (*no_generics, methods.clone()),
+            None => (
+                base_registry
+                    .aspect_generics_in(current_module_path, aspect)?
+                    .is_empty(),
+                base_registry
+                    .aspect_method_defs_in(current_module_path, aspect)?
+                    .clone(),
+            ),
+        };
+        no_generics.then_some(methods)
+    };
+
+    let decls = decls
+        .into_iter()
+        .map(|decl| {
+            let Decl::Impl(mut ib) = decl else {
+                return decl;
+            };
+            let generic_target = !ib.generics.is_empty()
+                || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty());
+            let Some(aspect) = ib
+                .aspect_name
+                .clone()
+                .filter(|_| generic_target && ib.polarity == Polarity::Positive)
+            else {
+                return Decl::Impl(ib);
+            };
+            let Some(methods) = defaults_of(&aspect) else {
+                return Decl::Impl(ib);
+            };
+            let provided: std::collections::HashSet<String> =
+                ib.methods.iter().map(|m| m.name.clone()).collect();
+            let mut offset = 0usize;
+            for method in methods {
+                let Some(body) = method.default_body.clone() else {
+                    continue;
+                };
+                if provided.contains(&method.name) {
+                    continue;
+                }
+                offset += 1;
+                ib.methods.push(FunDecl {
+                    visibility: Visibility::Private,
+                    name: method.name,
+                    generics: method.generics,
+                    where_clause: None,
+                    params: method.params,
+                    return_type: method.return_type,
+                    native: None,
+                    body,
+                    span: Span {
+                        start: ib.span.start,
+                        end: ib.span.start + offset,
+                        filename: ib.span.filename.clone(),
+                        line: ib.span.line,
+                        col: ib.span.col,
+                    },
+                });
+            }
+            Decl::Impl(ib)
+        })
+        .collect();
+    Program {
+        imports,
+        exports,
+        decls,
+    }
+}
+
+fn lower_impl_aspects_in_program(program: Program) -> Program {
     let mut counter = 0usize;
     let decls = program
         .decls
@@ -720,9 +852,7 @@ fn lower_projections_in_fun(
 /// `let`/`mut` bindings, closure signatures, cast targets, ascribe annotations,
 /// and generic type arguments in call sites — any `TypeExpr` that could reference
 /// an associated type from a generic param.
-pub(in crate::pipeline::type_checking) fn lower_projections_in_program(
-    program: Program,
-) -> Program {
+fn lower_projections_in_program(program: Program) -> Program {
     let decls = program
         .decls
         .into_iter()

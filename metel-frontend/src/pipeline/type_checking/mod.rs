@@ -1323,11 +1323,10 @@ fn check_impl_with_report(
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
 
-    // Lowering pass: desugar `impl Aspect` params to fresh anonymous type params.
-    let program = inference::lower_impl_aspects_in_program(program.clone());
-    // Lowering pass: recognize `T::AssocType` projections (RFC-0082 SS3) among
-    // known generic parameter names.
-    let program = inference::lower_projections_in_program(program);
+    // Lowering passes, in order: desugar `impl Aspect` params to fresh anonymous type
+    // params; recognize `T::AssocType` projections (RFC-0082 SS3) among known generic
+    // parameter names; write inherited aspect defaults out into generic impls (#1329).
+    let program = inference::lower_program(program.clone(), base_registry, current_module_path);
     let program = &program;
 
     let started = Instant::now();

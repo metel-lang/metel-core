@@ -2690,4 +2690,4 @@ fn infer_type_name(ty: &InferType) -> Option<&str> {
 /// for error messages (the typechecker uses GenericParam.bounds for enforcement).
 mod lowering;
 
-pub(super) use lowering::{lower_impl_aspects_in_program, lower_projections_in_program};
+pub(super) use lowering::lower_program;
