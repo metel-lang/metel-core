@@ -901,6 +901,13 @@ pub(super) fn check_scheme_bounds(
             current_module,
             &generic_types_by_name,
         )?;
+        if scheme.open_row_params.get(index).copied().unwrap_or(false) {
+            for bound in bounds {
+                if let GenericBound::Row(row) = bound {
+                    check_width_subtyping(concrete, row, span, registry, current_module)?;
+                }
+            }
+        }
     }
     Ok(())
 }

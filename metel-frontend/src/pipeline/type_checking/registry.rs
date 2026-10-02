@@ -895,7 +895,9 @@ fn register_generic_impl_method_schemes(
         // method's own bounds in on a per-method copy; sharing the base maps
         // across methods but not mutating them keeps other methods in the
         // same impl block from seeing a bound that isn't theirs.
-        let mut method_by_var = by_var.clone();
+        let open_rows = desugar_method_open_row_params(method, type_var_gen);
+        open_rows.quantify(&mut quantified, &mut param_names);
+        let mut method_by_var = open_rows.merged_bounds(&by_var);
         for (tv, bounds) in super::inference::collect_fun_type_var_bounds(method, &gen_map) {
             method_by_var.entry(tv).or_default().extend(bounds);
         }
@@ -904,8 +906,20 @@ fn register_generic_impl_method_schemes(
         {
             method_by_neg_var.entry(tv).or_default().extend(bounds);
         }
+        let mut method_record_kinds =
+            super::inference::collect_fun_type_var_record_kinds(method, &gen_map);
+        method_record_kinds.extend(open_rows.record_kinds.iter().map(|(tv, k)| (*tv, *k)));
         let mut param_types = vec![self_ty.clone()];
-        for p in method.params.iter().filter(|p| p.receiver.is_none()) {
+        for (i, p) in method
+            .params
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.receiver.is_none())
+        {
+            if let Some(&tv) = open_rows.param_vars.get(&i) {
+                param_types.push(InferType::Var(tv));
+                continue;
+            }
             let ann = p
                 .type_ann
                 .as_ref()
@@ -927,10 +941,13 @@ fn register_generic_impl_method_schemes(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
+            open_row_params: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
-        .with_neg_bounds(&method_by_neg_var);
+        .with_neg_bounds(&method_by_neg_var)
+        .with_record_kinds(&method_record_kinds)
+        .with_open_row_params(&open_rows.vars);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
@@ -949,6 +966,69 @@ fn register_generic_impl_method_schemes(
             method.span.clone(),
         );
         registry.register_method_receiver(owner, method.name.clone(), receiver);
+    }
+}
+
+/// RFC-0121 item 6: desugar an instance method's open-row-tailed parameters for
+/// its registry-built scheme exactly as `infer_impl_method` does for its
+/// inferred one -- a fresh, record-kinded, row-bounded quantified var standing
+/// for the whole parameter (decomposition equations folded in, same code path).
+/// An ill-formed row variable surfaces again, deterministically, from
+/// `infer_impl_method`; here the parameter just gets an unconstrained var so
+/// building the scheme never reaches the (unconvertible) `OpenRecord` node.
+struct MethodOpenRowParams {
+    param_vars: HashMap<usize, TypeVar>,
+    bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    record_kinds: HashMap<TypeVar, bool>,
+    vars: std::collections::HashSet<TypeVar>,
+}
+
+impl MethodOpenRowParams {
+    /// Append this method's open-row vars to its scheme's quantified vars (with
+    /// synthetic names, kept index-aligned with `quantified`).
+    fn quantify(&self, quantified: &mut Vec<TypeVar>, param_names: &mut Vec<String>) {
+        let mut vars: Vec<TypeVar> = self.vars.iter().copied().collect();
+        vars.sort();
+        for tv in vars {
+            quantified.push(tv);
+            param_names.push(format!("_OpenRow{}", tv.0));
+        }
+    }
+
+    /// `base` plus this method's open-row bounds, on a per-method copy.
+    fn merged_bounds(
+        &self,
+        base: &HashMap<TypeVar, Vec<GenericBound>>,
+    ) -> HashMap<TypeVar, Vec<GenericBound>> {
+        let mut merged = base.clone();
+        for (tv, bounds) in &self.bounds {
+            merged
+                .entry(*tv)
+                .or_default()
+                .extend(bounds.iter().cloned());
+        }
+        merged
+    }
+}
+
+fn desugar_method_open_row_params(
+    method: &crate::data::ast::FunDecl,
+    type_var_gen: &mut TypeVarGenerator,
+) -> MethodOpenRowParams {
+    let (mut param_vars, bounds, record_kinds, _tails) =
+        super::inference::collect_open_record_param_vars_with(method, || type_var_gen.fresh())
+            .unwrap_or_default();
+    for (i, p) in method.params.iter().enumerate() {
+        if matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))) && !param_vars.contains_key(&i) {
+            param_vars.insert(i, type_var_gen.fresh());
+        }
+    }
+    let vars = param_vars.values().copied().collect();
+    MethodOpenRowParams {
+        param_vars,
+        bounds,
+        record_kinds,
+        vars,
     }
 }
 
@@ -993,8 +1073,20 @@ fn register_array_impl_method_schemes(
             quantified.push(tv);
             param_names.push(g.name.clone());
         }
+        let open_rows = desugar_method_open_row_params(method, type_var_gen);
+        open_rows.quantify(&mut quantified, &mut param_names);
+        let method_by_var = open_rows.merged_bounds(&by_var);
         let mut param_types = vec![self_ty.clone()];
-        for p in method.params.iter().filter(|p| p.receiver.is_none()) {
+        for (i, p) in method
+            .params
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.receiver.is_none())
+        {
+            if let Some(&tv) = open_rows.param_vars.get(&i) {
+                param_types.push(InferType::Var(tv));
+                continue;
+            }
             let ann = p
                 .type_ann
                 .as_ref()
@@ -1018,10 +1110,13 @@ fn register_array_impl_method_schemes(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
+            open_row_params: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
-        .with_bounds(&by_var)
-        .with_neg_bounds(&by_neg_var);
+        .with_bounds(&method_by_var)
+        .with_neg_bounds(&by_neg_var)
+        .with_record_kinds(&open_rows.record_kinds)
+        .with_open_row_params(&open_rows.vars);
         registry.register_array_method_scheme(
             method.name.clone(),
             scheme.clone(),
@@ -1123,9 +1218,15 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         // (LIMIT-TYPES-001) -- a structural array-impl method's own type
         // expressions, the only thing this function processes, can
         // therefore never actually contain one.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
-        }
+        // RFC-0121 item 6: a method's record-tail parameter can name `Self`
+        // in a field type (`{ x: Self, ..R }`) like a closed record can.
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), substitute_structural_self(ty, replacement)))
+                .collect(),
+            tail.clone(),
+        ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")
@@ -1173,6 +1274,11 @@ fn register_impl_methods<'a>(
         for p in &method.params {
             let pt = if p.name == "self" {
                 self_ty()
+            } else if matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))) {
+                // RFC-0121 item 6: a record-tail parameter has no concrete
+                // type to pre-register; `infer_impl_method` replaces this
+                // provisional entry with the real, row-bounded scheme.
+                InferType::Var(type_var_gen.fresh())
             } else if let Some(ann) = &p.type_ann {
                 type_expr_to_infer_with_self(ann, target_name)
             } else {

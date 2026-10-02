@@ -241,6 +241,7 @@ pub(super) fn construct_fun_decl(
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
+            open_row_params: vec![],
             ty: InferType::fun(
                 entry
                     .params
@@ -568,7 +569,15 @@ pub(super) fn construct_impl_method(
     // (`extend Foo { fun describe<U: Aspect>(...) }`) is just as unresolvable here
     // without call-site type args as an impl-level generic is; missing this case used
     // to eagerly resolve `U` as a literal, nonexistent named type instead of deferring.
+    // RFC-0121 item 6: a record-tail parameter (`{ x, ..R }`) has no concrete
+    // type here either -- it is instantiated per call by the argument's own
+    // row, so such a method defers exactly like a generic one.
+    let has_open_row_param = method
+        .params
+        .iter()
+        .any(|p| matches!(p.type_ann, Some(TypeExpr::OpenRecord(..))));
     let is_generic_target = impl_has_generics
+        || has_open_row_param
         || !method.generics.is_empty()
         || ctx
             .registry

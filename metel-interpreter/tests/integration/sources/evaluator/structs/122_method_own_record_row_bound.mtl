@@ -1,0 +1,19 @@
+// A method's *own* `record T: { x, .. }` generic (RFC-0118/0120 row bound) must
+// be satisfiable at the call site, exactly as a free function's is. The method
+// scheme previously dropped the parameter's record kind, so the bound was
+// rejected with "row bound requires a record-kinded type parameter" even for a
+// valid `record` argument -- the foundation RFC-0121 item 6 (method row tails)
+// builds on.
+
+struct Handle { fd: i64 }
+
+extend Handle {
+    fun add<record T: { x: i64, .. }>(self, t: T) -> i64 { self.fd + t.x }
+}
+
+fun main() {
+    let h := Handle { fd = 1 };
+    let r := { x = 2, y = 3 };
+    assert(h.add(r) == 3);
+    println("ok");
+}

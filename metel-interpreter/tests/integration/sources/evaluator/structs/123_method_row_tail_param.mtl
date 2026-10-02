@@ -1,0 +1,40 @@
+// RFC-0121 (Open Rows, metel-core#1301) item 6: an *instance method* may take
+// an open-row-tailed parameter. It desugars exactly as on a free function
+// (installment 1) -- a fresh, record-kinded, row-bounded type for the whole
+// parameter -- but the bound and kind travel on the method's *scheme*, which is
+// what a method call site checks. Covers each receiver form, an anonymous tail,
+// a generic receiver, and a `where R = { .. }` decomposition (item 3).
+
+struct Handle { fd: i64 }
+
+extend Handle {
+    fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun peek<row R>(&self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun bump<row R>(&var self, t: { x: i64, ..R }) { self.fd := self.fd + t.x; }
+    fun anon(self, t: { x: i64, .. }) -> i64 { self.fd + t.x }
+    fun both<row R, row Rest>(self, t: { x: i64, ..R }) -> i64
+    where R = { z: i64, ..Rest }
+    {
+        self.fd + t.x + t.z
+    }
+}
+
+struct Box<T> { v: T }
+
+extend<T> Box<T> {
+    fun with<row R>(self, t: { x: i64, ..R }) -> i64 { t.x }
+}
+
+fun main() {
+    var h := Handle { fd = 1 };
+    assert(h.add({ x = 2, y = 3 }) == 3);
+    assert(h.peek({ x = 2, y = 3 }) == 3);
+    h.bump({ x = 10, z = 1 });
+    assert(h.fd == 11);
+    assert(h.anon({ x = 1, extra = 9 }) == 12);
+    assert(h.both({ x = 1, z = 2, w = 3 }) == 14);
+
+    let b := Box { v = 1 };
+    assert(b.with({ x = 5, y = 6 }) == 5);
+    println("ok");
+}

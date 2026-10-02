@@ -316,12 +316,18 @@ fn parse_opt_type_then_expr(
     }
 }
 
-/// RFC-0121: an open-row-tailed parameter (`{ x: f64, ..R }`) is grammar-legal
-/// in a method's or a native function's param list too (`fun_decl_param`,
-/// reached from `extend_impl_braced` and `native_attr?` alike), but neither has
-/// the ordinary free-function call sites this installment's structural
-/// resolution (`infer_fun_decl`) checks against -- reject explicitly here
-/// rather than silently mishandling it downstream (LIMIT-TYPES-001).
+/// RFC-0121: an open-row-tailed parameter is grammar-legal in a method's or a
+/// native function's param list too (`fun_decl_param`, reached from
+/// `extend_impl_braced` and `native_attr?` alike). Instance methods support the
+/// record-tail form (`{ x: f64, ..R }`): their row bound and record kind travel
+/// on the method's scheme, checked at the call site by `check_scheme_bounds`.
+/// Everything else is rejected explicitly here rather than silently
+/// mishandled downstream (LIMIT-TYPES-001):
+/// - a native function (no call-site resolution path for its bounds);
+/// - a static method (no receiver): static methods register under a joined,
+///   name-keyed path that carries none of the scheme's bound data;
+/// - the residual-projection form (`Handle.{ fd, ..R }`) on any method: its
+///   constraint lives in a name-keyed side table methods don't have.
 fn reject_open_record_param_outside_free_fun(
     params: &[Param],
     is_method: bool,
@@ -331,12 +337,16 @@ fn reject_open_record_param_outside_free_fun(
     if !is_method && !is_native {
         return Ok(());
     }
-    let Some(open_record_param) = params.iter().find(|p| {
-        matches!(
-            p.type_ann,
-            Some(TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. })
-        )
-    }) else {
+    let has_receiver = params.first().is_some_and(|p| p.receiver.is_some());
+    let unsupported = |t: &TypeExpr| match t {
+        TypeExpr::OpenRecord(..) => is_native || !has_receiver,
+        TypeExpr::OpenRecordProjection { .. } => true,
+        _ => false,
+    };
+    let Some(open_record_param) = params
+        .iter()
+        .find(|p| p.type_ann.as_ref().is_some_and(unsupported))
+    else {
         return Ok(());
     };
     let row_var = open_record_param
@@ -349,16 +359,27 @@ fn reject_open_record_param_outside_free_fun(
             _ => None,
         })
         .unwrap_or("");
-    let kind = if is_method {
-        "a method's"
+    let (kind, hint) = if is_native {
+        (
+            "a native function's",
+            "only a plain free function's or an instance method's parameters support it today",
+        )
+    } else if !has_receiver {
+        (
+            "a static method's",
+            "only a plain free function's or an instance method's parameters support it today",
+        )
     } else {
-        "a native function's"
+        (
+            "a method's",
+            "a method only supports the record-tail form (`{ x, ..R }`), not `Handle.{ fd, ..R }`",
+        )
     };
     Err(MetelError::parse(
         ParseErrorCode::P0001,
         format!(
             "an open row tail (`..{row_var}`) is not yet supported on {kind} parameter \
-             `{}` -- only a plain free function's parameters support it today",
+             `{}` -- {hint}",
             open_record_param.name
         ),
         span,

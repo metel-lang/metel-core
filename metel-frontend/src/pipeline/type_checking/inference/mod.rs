@@ -1035,6 +1035,17 @@ pub(super) fn collect_open_record_param_vars(
     fun: &FunDecl,
     ctx: &mut InferContext,
 ) -> Result<OpenRecordParamVars, MetelError> {
+    collect_open_record_param_vars_with(fun, || ctx.fresh_type_var_raw())
+}
+
+/// `collect_open_record_param_vars` over an arbitrary fresh-`TypeVar` source, so
+/// the registry's method-scheme builders (which run before any `InferContext`
+/// exists and only hold the `TypeVarGenerator`) desugar open-row parameters
+/// identically to the inference pass.
+pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
+    fun: &FunDecl,
+    mut fresh_type_var: impl FnMut() -> TypeVar,
+) -> Result<OpenRecordParamVars, MetelError> {
     fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelError> {
         let Some(name) = &tail.var else {
             return Ok(());
@@ -1093,7 +1104,7 @@ pub(super) fn collect_open_record_param_vars(
                 check_row_var(tail, &fun.generics)?;
                 let decomposed =
                     resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
-                let tv = ctx.fresh_type_var_raw();
+                let tv = fresh_type_var();
                 let row = RowConstraint {
                     fields: fields
                         .iter()
@@ -1114,7 +1125,7 @@ pub(super) fn collect_open_record_param_vars(
                 path, fields, tail, ..
             }) => {
                 check_row_var(tail, &fun.generics)?;
-                let tv = ctx.fresh_type_var_raw();
+                let tv = fresh_type_var();
                 let row = RowConstraint {
                     fields: fields
                         .iter()
@@ -1284,9 +1295,17 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         // itself rejects it there at parse time (LIMIT-TYPES-001) -- a method's
         // `FunDecl.params` this function processes can therefore never actually
         // contain one.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
-        }
+        // RFC-0121 item 6: an instance method may carry a record-tail
+        // parameter. This function only compares an impl method's signature
+        // against an *aspect's* declaration, which can never declare one
+        // (`aspect_method`'s own `param`/`type_expr` has no open-row
+        // production) -- a placeholder that equals no declared type, so the
+        // comparison reports a signature mismatch.
+        TypeExpr::OpenRecord(..) => InferType::Named(
+            "<open-row>".to_string(),
+            vec![],
+            crate::data::types::NominalId::NONE,
+        ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")

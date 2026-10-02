@@ -1,0 +1,13 @@
+// RFC-0121 (Open Rows, metel-core#1301) item 6: an open-row-tailed parameter
+// is supported on an *instance* method (one with a receiver), whose row bound
+// travels on the method's scheme. A static method (no receiver) registers
+// under a joined, name-keyed path that carries none of that bound data, so it
+// is rejected explicitly at parse time rather than silently mishandled.
+
+struct Point { x: f64, y: f64 }
+
+extend Point {
+    fun get_x<row R>(extra: { x: f64, ..R }) -> f64 { extra.x }
+}
+
+fun main() {}
