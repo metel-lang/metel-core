@@ -100,7 +100,11 @@ pub(super) fn collect_type_param_record_kinds(
     generics
         .iter()
         .map(|gp| {
+            // RFC-0121: a `row` parameter's argument is a (closed) record type,
+            // so it is record-kinded like `record T` -- which is also what lets
+            // a record argument satisfy its row bound.
             gp.is_record
+                || gp.is_row
                 || where_clause
                     .and_then(|wc| wc.constraint_for(&gp.name))
                     .is_some_and(|constraint| constraint.is_record)
@@ -439,6 +443,10 @@ fn register_program_decls(
                     sym,
                     sd.generics.iter().map(|g| g.name.clone()).collect(),
                 );
+                let row_kinds: Vec<bool> = sd.generics.iter().map(|g| g.is_row).collect();
+                if row_kinds.iter().any(|flag| *flag) {
+                    registry.register_type_param_row_kinds(sym, row_kinds);
+                }
                 let record_kinds =
                     collect_type_param_record_kinds(&sd.generics, sd.where_clause.as_ref());
                 if record_kinds.iter().any(|flag| *flag) {
@@ -487,6 +495,12 @@ fn register_program_decls(
                         sym,
                         ed.generics.iter().map(|g| g.name.clone()).collect(),
                     );
+                }
+                if let Some(sym) = enum_sym {
+                    let row_kinds: Vec<bool> = ed.generics.iter().map(|g| g.is_row).collect();
+                    if row_kinds.iter().any(|flag| *flag) {
+                        registry.register_type_param_row_kinds(sym, row_kinds);
+                    }
                 }
                 let record_kinds =
                     collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());

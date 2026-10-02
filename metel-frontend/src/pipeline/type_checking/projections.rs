@@ -368,6 +368,49 @@ impl Cx<'_> {
                 if !self.is_type_name(name, generics, self_allowed, local_types) {
                     return Err(Self::unknown_type(name, span));
                 }
+                // RFC-0121 item 2: a `row`-kinded parameter's argument must be
+                // a record type or a spliced row variable, never an ordinary
+                // type (and a `row` argument can't stand in for an ordinary one).
+                if let Some(kinds) = self
+                    .registry
+                    .type_param_row_kinds_for(self.current_module, name)
+                {
+                    for (i, a) in args.iter().enumerate() {
+                        let wants_row = kinds.get(i).copied().unwrap_or(false);
+                        // A record type is a valid argument for either kind
+                        // (`Box<{ x: i64 }>`); only the `..R` splice is
+                        // row-only.
+                        let fits = if wants_row {
+                            matches!(
+                                a,
+                                TypeExpr::RowArg(_)
+                                    | TypeExpr::Record(_)
+                                    | TypeExpr::OpenRecord(..)
+                            )
+                        } else {
+                            !matches!(a, TypeExpr::RowArg(_))
+                        };
+                        if !fits {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                if wants_row {
+                                    format!(
+                                        "generic parameter {} of `{name}` is `row`-kinded; \
+                                         its argument must be a record type or `..R`",
+                                        i + 1
+                                    )
+                                } else {
+                                    format!(
+                                        "generic parameter {} of `{name}` is an ordinary \
+                                         type; a row argument (`..R`/`{{ .. }}`) is not allowed",
+                                        i + 1
+                                    )
+                                },
+                                span,
+                            ));
+                        }
+                    }
+                }
                 for a in args {
                     self.ty_at(
                         a,
@@ -412,26 +455,24 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            // RFC-0121: `{ x: Handle.{ fd }, ..R }` needs its named fields'
-            // projections checked exactly like a closed `Record`'s; the tail
-            // itself carries no `TypeExpr` (its row-variable name is checked
-            // against the enclosing `fun_decl`'s declared `row` params
-            // separately, in `infer_fun_decl`, which has that generic-param
-            // context and this pass does not).
-            TypeExpr::OpenRecord(fields, _tail) => {
-                for (_, t) in fields {
-                    self.ty_at(
-                        t,
+            // RFC-0121: reaching here, an open record is *nested* (a function
+            // parameter's top-level one is handled by `param`). A tail-only
+            // `{ ..R }` -- e.g. a struct field's type -- is the row variable
+            // `R` itself (a row with no fixed fields). One with fixed fields
+            // would be a row *extension*, which needs a row-extending type
+            // representation that doesn't exist yet.
+            TypeExpr::OpenRecord(fields, tail) => {
+                if !fields.is_empty() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0032,
+                        "an open record with fixed fields (`{ x: T, ..R }`) is only \
+                         supported as a function parameter's own type; use a tail-only \
+                         `{ ..R }` (or `..R` as a generic argument) here"
+                            .to_string(),
                         span,
-                        field_of,
-                        generics,
-                        self_allowed,
-                        self_target,
-                        impl_aspect_allowed,
-                        local_types,
-                    )?;
+                    ));
                 }
-                Ok(())
+                Self::row_var_use(tail, generics, span)
             }
             TypeExpr::Array(inner)
             | TypeExpr::SizedArray(inner, _)
@@ -554,33 +595,10 @@ impl Cx<'_> {
             TypeExpr::OpenRecordProjection {
                 path, fields, span, ..
             } => self.projection(path, fields, span, field_of, self_target),
-            // RFC-0121 item 2 (metel-core#1310), representation-only slice:
-            // `Session<..R>` / `Session<..>`. Unlike `OpenRecord`/
-            // `OpenRecordProjection`, this variant is reachable in *any*
-            // type position (it's slotted into an ordinary `Named`'s args,
-            // which this function already recurses into generically) -- so
-            // this is the one place that can reject it with a real
-            // diagnostic rather than `unreachable!()`, since every other
-            // `TypeExpr`-consuming pass runs unconditionally and would
-            // otherwise have to cope with it reaching them. The row
-            // variable gets the same existence check an ordinary named
-            // type gets; real row-polymorphic semantics (what a row
-            // argument means once substituted into a nominal type) are not
-            // designed yet, so every occurrence is rejected regardless.
-            TypeExpr::RowArg(tail) => {
-                if let Some(name) = &tail.var
-                    && !generics.contains(name)
-                {
-                    return Err(Self::unknown_type(name, span));
-                }
-                Err(MetelError::type_error(
-                    TypeErrorCode::T0032,
-                    "a row splice in generic-argument position (`..R`) is not yet \
-                     implemented beyond parsing (RFC-0121 item 2, metel-core#1310)"
-                        .to_string(),
-                    &tail.span,
-                ))
-            }
+            // RFC-0121 item 2: `Session<..R>` -- a row variable as a generic
+            // argument. It must name a declared `row`-kinded generic; once
+            // bound, a row argument is an ordinary closed record type.
+            TypeExpr::RowArg(tail) => Self::row_var_use(tail, generics, span),
         }
     }
 
@@ -697,6 +715,24 @@ impl Cx<'_> {
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         if let Some(ty) = &param.type_ann {
+            // RFC-0121: a function parameter's *top-level* open record
+            // (`{ x: T, ..R }`) is the row-bound parameter form (its row
+            // variable is validated in `infer_fun_decl`) -- only its named
+            // fields are type positions to check here. Nested, an open
+            // record means something else (see `ty_at`).
+            if let TypeExpr::OpenRecord(fields, _tail) = ty {
+                for (_, field_ty) in fields {
+                    self.ty(
+                        field_ty,
+                        &param.span,
+                        generics,
+                        self_allowed,
+                        self_target,
+                        local_types,
+                    )?;
+                }
+                return Ok(());
+            }
             self.ty(
                 ty,
                 &param.span,
@@ -1012,7 +1048,57 @@ impl Cx<'_> {
     fn with_generics(inherited: &HashSet<String>, params: &[GenericParam]) -> HashSet<String> {
         let mut result = inherited.clone();
         result.extend(params.iter().map(|param| param.name.clone()));
+        // RFC-0121: a `row` parameter also gets a `..R` marker entry, so
+        // `row_var_use` can kind-check a spliced row variable without
+        // threading generic kinds through every walker.
+        result.extend(
+            params
+                .iter()
+                .filter(|param| param.is_row)
+                .map(|param| format!("..{}", param.name)),
+        );
         result
+    }
+
+    /// RFC-0121 item 2: a row variable used as a generic argument (`Session<..R>`)
+    /// or as a tail-only open record outside a function parameter's top level
+    /// (`field: { ..R }`). It must name a declared `row`-kinded generic; the
+    /// anonymous form has no variable to substitute and is not implemented yet.
+    fn row_var_use(
+        tail: &crate::data::ast::RowTail,
+        generics: &HashSet<String>,
+        span: &Span,
+    ) -> Result<(), MetelError> {
+        let Some(name) = &tail.var else {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0032,
+                "an anonymous row (`..`) in this position is not yet implemented -- \
+                 name a `row`-kinded generic parameter (`..R`)"
+                    .to_string(),
+                &tail.span,
+            ));
+        };
+        if !generics.contains(name) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "undefined row variable `{name}` -- declare it as a generic \
+                     parameter (`<row {name}>`)"
+                ),
+                span,
+            ));
+        }
+        if !generics.contains(&format!("..{name}")) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                     not `<{name}>`"
+                ),
+                &tail.span,
+            ));
+        }
+        Ok(())
     }
 
     /// Inherent impl blocks on generic nominal types use the declaration's type

@@ -2267,6 +2267,10 @@ pub struct TypeDefinitionRegistry {
     /// Record-kinded flags for generic struct/enum params, keyed by type `SymbolId`
     /// and ordered to match `struct_type_params`.
     type_param_record_kinds: HashMap<SymbolId, Vec<bool>>,
+    /// RFC-0121: which of a nominal type's own generic parameters are
+    /// `row`-kinded (their argument is a record type / spliced row variable,
+    /// never an ordinary type). Absent when none is.
+    type_param_row_kinds: HashMap<SymbolId, Vec<bool>>,
     /// Aspect bounds per generic function. Key: function name.
     /// Value: map from each quantified `TypeVar` to the list of required aspect names.
     fun_bounds: HashMap<String, HashMap<TypeVar, Vec<GenericBound>>>,
@@ -2672,6 +2676,7 @@ impl TypeDefinitionRegistry {
             type_param_bounds: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             type_param_record_kinds: HashMap::new(),
+            type_param_row_kinds: HashMap::new(),
             fun_bounds: HashMap::new(),
             neg_fun_bounds: HashMap::new(),
             fun_record_kinds: HashMap::new(),
@@ -3565,6 +3570,20 @@ impl TypeDefinitionRegistry {
         name: &str,
     ) -> Option<&Vec<Vec<GenericBound>>> {
         self.type_param_bounds
+            .get(&self.resolve_type_key(current_module, name)?)
+    }
+
+    pub fn register_type_param_row_kinds(&mut self, owner: SymbolId, row_kinds: Vec<bool>) {
+        self.type_param_row_kinds.insert(owner, row_kinds);
+    }
+
+    #[must_use]
+    pub fn type_param_row_kinds_for(
+        &self,
+        current_module: &[String],
+        name: &str,
+    ) -> Option<&Vec<bool>> {
+        self.type_param_row_kinds
             .get(&self.resolve_type_key(current_module, name)?)
     }
 

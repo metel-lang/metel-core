@@ -905,6 +905,27 @@ pub(super) fn collect_fun_type_var_bounds(
         }
     }
     if let Some(wc) = &fun.where_clause {
+        // RFC-0121 §2: `where R = { token: Token, ..Rest }` subsumes the bound
+        // `R: { token: Token, .. }` -- the row variable's own type var carries
+        // it, so a `Session<..R>` parameter's row is checked at the call site
+        // and its fields are reachable through the bound in the body.
+        for equation in &wc.row_equations {
+            if let Some(&tv) = generic_map.get(equation.var.as_str()) {
+                map.entry(tv)
+                    .or_default()
+                    .push(GenericBound::Row(RowConstraint {
+                        fields: equation
+                            .fields
+                            .iter()
+                            .map(|(label, ty)| RowConstraintField {
+                                label: label.clone(),
+                                ty: Some(ty.clone()),
+                            })
+                            .collect(),
+                        open: true,
+                    }));
+            }
+        }
         for constraint in &wc.constraints {
             if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
                 let names: Vec<GenericBound> = constraint
@@ -977,7 +998,7 @@ pub(super) fn collect_fun_type_var_record_kinds(
 ) -> HashMap<TypeVar, bool> {
     let mut map: HashMap<TypeVar, bool> = HashMap::new();
     for gp in &fun.generics {
-        if gp.is_record
+        if (gp.is_record || gp.is_row)
             && let Some(&tv) = generic_map.get(&gp.name)
         {
             map.insert(tv, true);
@@ -1315,11 +1336,20 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         // *can* appear in a method's own parameter type (ordinary `param`,
         // not `fun_decl_param`), parsed before `projections::check` gets a
         // chance to reject it -- a safe placeholder, not a panic.
-        TypeExpr::RowArg(_) => InferType::Named(
-            "<row-arg>".to_string(),
-            vec![],
-            crate::data::types::NominalId::NONE,
-        ),
+        TypeExpr::RowArg(tail) => tail
+            .var
+            .as_deref()
+            .and_then(|v| env.generic_vars.get(v))
+            .map_or_else(
+                || {
+                    InferType::Named(
+                        "<row-arg>".to_string(),
+                        vec![],
+                        crate::data::types::NominalId::NONE,
+                    )
+                },
+                |&tv| InferType::Var(tv),
+            ),
     }
 }
 

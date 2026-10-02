@@ -82,7 +82,10 @@ native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }
-struct_field  = { pub_kw? ~ ident ~ ":" ~ type_expr }
+// RFC-0121 item 2: a field's type may be a tail-only open record (`{ ..R }`),
+// i.e. the struct's own `row`-kinded parameter `R` (any fixed-field open
+// record is rejected after parsing, in `projections::check`).
+struct_field  = { pub_kw? ~ ident ~ ":" ~ (open_record_type | type_expr) }
 
 // RFC-0120: identical grammar to `struct_decl` (reuses `struct_fields`) -- the two
 // kinds differ only in whether the declared row is structurally visible, a

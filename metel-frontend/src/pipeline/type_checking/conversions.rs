@@ -364,6 +364,23 @@ fn type_expr_to_infer_in_context(
         // This function is otherwise infallible by signature, so a stray
         // `OpenRecord` elsewhere (which the grammar cannot produce) panics
         // here rather than silently lowering to something wrong.
+        // RFC-0121 item 2: a tail-only open record (`{ ..R }`) outside a
+        // `fun_decl` parameter's top level -- e.g. a struct field's type -- is
+        // exactly the row variable `R` (a row with no fixed fields).
+        TypeExpr::OpenRecord(fields, tail)
+            if fields.is_empty()
+                && tail
+                    .var
+                    .as_deref()
+                    .is_some_and(|v| generics.is_some_and(|g| g.contains_key(v))) =>
+        {
+            InferType::Var(
+                generics
+                    .and_then(|g| g.get(tail.var.as_deref()?))
+                    .copied()
+                    .expect("guarded"),
+            )
+        }
         TypeExpr::OpenRecord(..) => {
             unreachable!(
                 "OpenRecord must be intercepted in infer_fun_decl before reaching \
@@ -387,11 +404,26 @@ fn type_expr_to_infer_in_context(
         // type-bearing annotation program-wide), but this function is
         // otherwise infallible by signature, so a placeholder rather than a
         // panic is the safe fallback if that invariant is ever wrong.
-        TypeExpr::RowArg(_) => InferType::Named(
-            "<row-arg>".to_string(),
-            vec![],
-            crate::data::types::NominalId::NONE,
-        ),
+        // RFC-0121 item 2: a row variable passed as a generic argument
+        // (`Session<..R>`) *is* that row-kinded generic's type var -- a row
+        // argument is an ordinary (closed) record type once bound, so
+        // substitution, unification and field resolution need nothing new.
+        // An anonymous `..` (or a name not in scope) stays a placeholder;
+        // `projections::check` rejects both before inference runs.
+        TypeExpr::RowArg(tail) => tail
+            .var
+            .as_deref()
+            .and_then(|v| generics.and_then(|g| g.get(v)))
+            .map_or_else(
+                || {
+                    InferType::Named(
+                        "<row-arg>".to_string(),
+                        vec![],
+                        crate::data::types::NominalId::NONE,
+                    )
+                },
+                |&tv| InferType::Var(tv),
+            ),
     }
 }
 
