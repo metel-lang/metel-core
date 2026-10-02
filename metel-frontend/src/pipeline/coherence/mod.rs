@@ -19,7 +19,7 @@ use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
-use crate::pipeline::type_checking::type_engine::GenericBound;
+use crate::pipeline::type_checking::type_engine::{GenericBound, RowConstraint};
 
 /// Resolve a bare type- or aspect-position name to its declaring `SymbolId`,
 /// from the perspective of `current_module`. Mirrors the precedence used by
@@ -253,6 +253,14 @@ fn name_at<'a>(
     {
         return Some(n.as_str());
     }
+    // RFC-0121 item 5: a row splice of an impl generic (`Session<..R>`) names that
+    // generic at this target position too, so its row bounds attach here.
+    if let TypeExpr::RowArg(tail) = arg
+        && let Some(n) = tail.var.as_deref()
+        && impl_param_names.contains(n)
+    {
+        return Some(n);
+    }
     None
 }
 
@@ -410,8 +418,88 @@ fn provably_disjoint(
         }) {
             return true;
         }
+        // RFC-0121 §3 (`spec.types.generics.row-conditional-impls.legality-3`): two
+        // row conditions on this parameter are disjoint when some label both mention
+        // is required present by one and absent by the other, or required present
+        // by both with provably different types. Rows are open, so nothing else
+        // can correlate them: any other pair overlaps.
+        if rows_provably_disjoint(a_p, a_n, b_p, b_n) {
+            return true;
+        }
     }
     false
+}
+
+fn row_bounds(bounds: &[GenericBound]) -> impl Iterator<Item = &RowConstraint> {
+    bounds.iter().filter_map(|bound| match bound {
+        GenericBound::Row(row) => Some(row),
+        GenericBound::Aspect(_) => None,
+    })
+}
+
+/// A written field type that is certainly a distinct primitive from `other`: the
+/// only case where "statically non-unifiable" is knowable without resolving
+/// generics. Anything else is treated as possibly unifiable, so the pair overlaps.
+fn distinct_primitive_types(a: &TypeExpr, b: &TypeExpr) -> bool {
+    const PRIMITIVES: &[&str] = &[
+        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "boolean", "String",
+        "Char",
+    ];
+    match (a, b) {
+        (TypeExpr::Named(x, xa), TypeExpr::Named(y, ya)) => {
+            xa.is_empty()
+                && ya.is_empty()
+                && x != y
+                && PRIMITIVES.contains(&x.as_str())
+                && PRIMITIVES.contains(&y.as_str())
+        }
+        _ => false,
+    }
+}
+
+fn rows_provably_disjoint(
+    a_pos: &[GenericBound],
+    a_neg: &[GenericBound],
+    b_pos: &[GenericBound],
+    b_neg: &[GenericBound],
+) -> bool {
+    // present-in-one vs forbidden-in-the-other, in both directions. An untyped
+    // forbidden label (`!{ l }`) rules the label out whatever its type; a typed one
+    // (`!{ l: T }`) only a field of that type, so it contradicts a required type
+    // only when the two are the same primitive.
+    let contradicts = |present: &[GenericBound], forbidden: &[GenericBound]| {
+        row_bounds(present).any(|req| {
+            req.fields.iter().any(|want| {
+                row_bounds(forbidden).any(|forbid| {
+                    forbid.fields.iter().any(|no| {
+                        no.label == want.label
+                            && match (&no.ty, &want.ty) {
+                                (None, _) => true,
+                                (Some(_), None) => false,
+                                (Some(n), Some(w)) => {
+                                    !distinct_primitive_types(n, w)
+                                        && matches!((n, w), (TypeExpr::Named(x, _), TypeExpr::Named(y, _)) if x == y)
+                                }
+                            }
+                    })
+                })
+            })
+        })
+    };
+    if contradicts(a_pos, b_neg) || contradicts(b_pos, a_neg) {
+        return true;
+    }
+    // required present by both, with provably different types
+    row_bounds(a_pos).any(|a| {
+        a.fields.iter().any(|fa| {
+            row_bounds(b_pos).any(|b| {
+                b.fields.iter().any(|fb| {
+                    fa.label == fb.label
+                        && matches!((&fa.ty, &fb.ty), (Some(x), Some(y)) if distinct_primitive_types(x, y))
+                })
+            })
+        })
+    })
 }
 
 /// The declaring `SymbolId` of a type expression's own outermost constructor,

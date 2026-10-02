@@ -212,10 +212,30 @@ pub struct TypedImplBlock {
     /// dispatch tell "one impl per instantiation" apart from "one impl for
     /// every instantiation" without needing registry access of its own.
     pub target_instantiation_args: Option<Vec<TypeExpr>>,
+    /// RFC-0121 item 5: the row conditions of a row-conditional impl
+    /// (`extend<row R: !{ token }> Session<..R>`), one entry per target type-argument
+    /// position that carries a row bound. Empty for an ordinary impl. Lets the
+    /// evaluator's runtime dispatch tell two disjoint conditional impls of the same
+    /// target apart -- both are "blanket" (`target_instantiation_args: None`), so
+    /// without this the last one registered would answer every receiver.
+    pub row_guards: Vec<RowGuard>,
     pub target_type: TypeExpr,
     pub methods: Vec<TypedFunDecl>,
     #[allow(dead_code)] // kept for future error messages
     pub span: Span,
+}
+
+/// A row condition on one type argument of an impl's target (RFC-0121 item 5), in
+/// the form runtime dispatch evaluates against the receiver's concrete type
+/// argument: `present` labels (with an optional required type), `absent` labels
+/// (a forbidden label, optionally only at one type), and `exact` for a closed
+/// bound (`{ x }` with no `..`), which also requires no other label.
+#[derive(Debug, Clone)]
+pub struct RowGuard {
+    pub position: usize,
+    pub present: Vec<(String, Option<TypeExpr>)>,
+    pub absent: Vec<(String, Option<TypeExpr>)>,
+    pub exact: bool,
 }
 
 /// Carried in `TypedDecl` for structural completeness; the evaluator produces no

@@ -48,8 +48,8 @@ pub(super) fn attach_stack(err: MetelError) -> MetelError {
 }
 use crate::data::ast::Block;
 use crate::data::typed_ast::{
-    FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedProgram,
-    TypedStmt,
+    FunBody, MethodDispatch, RowGuard, TypedBlock, TypedDecl, TypedExpr, TypedForInit,
+    TypedProgram, TypedStmt,
 };
 use crate::identity::symbols::SymbolId;
 use crate::identity::{LocalId, VariantId};
@@ -395,6 +395,10 @@ pub struct RuntimeInherentImpl {
     /// `extend` block instead of an aspect one (`extend W<i64> { ... }` vs
     /// `extend W<String> { ... }`).
     target_type_args: Option<Vec<String>>,
+    /// RFC-0121 item 5: the row conditions of a row-conditional impl. Only a blanket
+    /// impl (`target_type_args: None`) carries any; it is selected for a receiver
+    /// only when every guard holds for the receiver's own type arguments.
+    row_guards: Vec<RowGuard>,
     methods: HashMap<String, RuntimeMethod>,
 }
 
@@ -419,7 +423,41 @@ pub struct RuntimeAspectImpl {
     /// same target `type_id`/aspect, so whichever was registered last silently
     /// answered every receiver's method calls.
     target_type_args: Option<Vec<String>>,
+    /// RFC-0121 item 5: see `RuntimeInherentImpl::row_guards`.
+    row_guards: Vec<RowGuard>,
     methods: HashMap<String, RuntimeMethod>,
+}
+
+/// A receiver's own concrete type arguments, as dispatch sees them: their rendered
+/// names (matched exactly against a per-instantiation impl, metel-core#1228) and
+/// their static types (evaluated against a row-conditional impl's guards).
+#[derive(Debug, Clone, Default)]
+pub struct ReceiverTypeArgs {
+    pub names: Vec<String>,
+    pub tys: Vec<crate::data::types::Type>,
+}
+
+/// Do all of an impl's row guards hold for the receiver's type arguments? An argument
+/// that is not a record type cannot be evaluated here, so it does not rule the impl
+/// out -- dispatch then falls back to the last-registered blanket impl, as before.
+fn row_guards_hold(guards: &[RowGuard], receiver: &ReceiverTypeArgs) -> bool {
+    guards.iter().all(|guard| {
+        let Some(crate::data::types::Type::Record(fields)) = receiver.tys.get(guard.position)
+        else {
+            return true;
+        };
+        let has = |(label, ty): &(String, Option<TypeExpr>)| {
+            fields.iter().any(|(actual_label, actual_ty)| {
+                actual_label == label
+                    && ty
+                        .as_ref()
+                        .is_none_or(|expected| runtime_type_key(expected) == actual_ty.to_string())
+            })
+        };
+        guard.present.iter().all(has)
+            && !guard.absent.iter().any(has)
+            && (!guard.exact || fields.len() == guard.present.len())
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -591,16 +629,17 @@ impl RuntimeRegistry {
         type_id: SymbolId,
         type_name: &str,
         target_type_args: Option<Vec<String>>,
+        row_guards: &[RowGuard],
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
         let entry = self.type_entry_mut(type_id, type_name);
         let method_name = method_name.into();
-        if let Some(inherent_impl) = entry
-            .inherent_impls
-            .iter_mut()
-            .find(|inherent_impl| inherent_impl.target_type_args == target_type_args)
-        {
+        let guards_key = format!("{row_guards:?}");
+        if let Some(inherent_impl) = entry.inherent_impls.iter_mut().find(|inherent_impl| {
+            inherent_impl.target_type_args == target_type_args
+                && format!("{:?}", inherent_impl.row_guards) == guards_key
+        }) {
             inherent_impl.methods.insert(method_name, value);
             return;
         }
@@ -608,6 +647,7 @@ impl RuntimeRegistry {
         methods.insert(method_name, value);
         entry.inherent_impls.push(RuntimeInherentImpl {
             target_type_args,
+            row_guards: row_guards.to_vec(),
             methods,
         });
     }
@@ -621,16 +661,19 @@ impl RuntimeRegistry {
         aspect_id: Option<SymbolId>,
         type_args: Vec<String>,
         target_type_args: Option<Vec<String>>,
+        row_guards: &[RowGuard],
         method_name: impl Into<String>,
         value: RuntimeMethod,
     ) {
         let entry = self.type_entry_mut(type_id, type_name);
         let aspect_name = aspect_name.into();
         let method_name = method_name.into();
+        let guards_key = format!("{row_guards:?}");
         if let Some(aspect_impl) = entry.aspect_impls.iter_mut().find(|aspect_impl| {
             aspect_impl.aspect_name == aspect_name
                 && aspect_impl.type_args == type_args
                 && aspect_impl.target_type_args == target_type_args
+                && format!("{:?}", aspect_impl.row_guards) == guards_key
         }) {
             // Update aspect_id if we now have one (a later registration may have the id).
             if aspect_impl.aspect_id.is_none() {
@@ -647,6 +690,7 @@ impl RuntimeRegistry {
             aspect_id,
             type_args,
             target_type_args,
+            row_guards: row_guards.to_vec(),
             methods,
         });
     }
@@ -668,27 +712,37 @@ impl RuntimeRegistry {
         type_id: SymbolId,
         aspect_id: SymbolId,
         method_name: &str,
-        receiver_target_type_args: &[String],
+        receiver: &ReceiverTypeArgs,
     ) -> Option<RuntimeMethod> {
         let aspect_impls = &self.types.get(&type_id)?.aspect_impls;
+        // The method has to come from an impl that actually defines it: several blanket
+        // impls can match one receiver (row-conditional impls each carry different
+        // methods), so selecting an impl first and looking the method up second would
+        // miss one a sibling impl defines.
+        let method_of = |ai: &RuntimeAspectImpl| {
+            ai.methods
+                .get(method_name)
+                .cloned()
+                .filter(|m| m.receiver.is_some())
+        };
         aspect_impls
             .iter()
             .rev()
-            .find(|ai| {
+            .filter(|ai| {
                 ai.aspect_id == Some(aspect_id)
-                    && ai.target_type_args.as_deref() == Some(receiver_target_type_args)
+                    && ai.target_type_args.as_deref() == Some(receiver.names.as_slice())
             })
+            .find_map(method_of)
             .or_else(|| {
                 aspect_impls
                     .iter()
                     .rev()
-                    .find(|ai| ai.aspect_id == Some(aspect_id) && ai.target_type_args.is_none())
-            })
-            .and_then(|ai| {
-                ai.methods
-                    .get(method_name)
-                    .cloned()
-                    .filter(|m| m.receiver.is_some())
+                    .filter(|ai| {
+                        ai.aspect_id == Some(aspect_id)
+                            && ai.target_type_args.is_none()
+                            && row_guards_hold(&ai.row_guards, receiver)
+                    })
+                    .find_map(method_of)
             })
     }
 
@@ -733,6 +787,7 @@ impl RuntimeRegistry {
             aspect_id,
             type_args: Vec::new(),
             target_type_args: None,
+            row_guards: Vec::new(),
             methods,
         });
     }
@@ -811,24 +866,29 @@ impl RuntimeRegistry {
         &self,
         type_id: SymbolId,
         method_name: &str,
-        receiver_target_type_args: &[String],
+        receiver: &ReceiverTypeArgs,
     ) -> Option<RuntimeMethod> {
         let inherent_impls = &self.types.get(&type_id)?.inherent_impls;
+        // See `get_aspect_method_by_id`: the method must come from an impl that defines it.
+        let method_of = |ii: &RuntimeInherentImpl| {
+            ii.methods
+                .get(method_name)
+                .cloned()
+                .filter(|method| method.receiver.is_some())
+        };
         inherent_impls
             .iter()
             .rev()
-            .find(|ii| ii.target_type_args.as_deref() == Some(receiver_target_type_args))
+            .filter(|ii| ii.target_type_args.as_deref() == Some(receiver.names.as_slice()))
+            .find_map(method_of)
             .or_else(|| {
                 inherent_impls
                     .iter()
                     .rev()
-                    .find(|ii| ii.target_type_args.is_none())
-            })
-            .and_then(|ii| {
-                ii.methods
-                    .get(method_name)
-                    .cloned()
-                    .filter(|method| method.receiver.is_some())
+                    .filter(|ii| {
+                        ii.target_type_args.is_none() && row_guards_hold(&ii.row_guards, receiver)
+                    })
+                    .find_map(method_of)
             })
     }
 
@@ -837,9 +897,9 @@ impl RuntimeRegistry {
         &self,
         type_id: SymbolId,
         method_name: &str,
-        receiver_target_type_args: &[String],
+        receiver: &ReceiverTypeArgs,
     ) -> Option<RuntimeMethod> {
-        self.get_inherent_method(type_id, method_name, receiver_target_type_args)
+        self.get_inherent_method(type_id, method_name, receiver)
             .or_else(|| {
                 self.types
                     .get(&type_id)?
@@ -861,12 +921,10 @@ impl RuntimeRegistry {
         &self,
         value: &Value,
         method_name: &str,
-        receiver_target_type_args: &[String],
+        receiver: &ReceiverTypeArgs,
     ) -> Option<RuntimeMethod> {
         self.resolve_value_type_id(value)
-            .and_then(|type_id| {
-                self.get_regular_method(type_id, method_name, receiver_target_type_args)
-            })
+            .and_then(|type_id| self.get_regular_method(type_id, method_name, receiver))
             .or_else(|| {
                 runtime_type_pattern(value).and_then(|pattern| {
                     self.pattern_methods
@@ -2217,6 +2275,7 @@ fn run_passes(
                                 impl_block.aspect_id,
                                 aspect_type_args,
                                 target_type_args.clone(),
+                                &impl_block.row_guards,
                                 &method.name,
                                 runtime_method,
                             );
@@ -2232,6 +2291,7 @@ fn run_passes(
                                 target_id,
                                 type_name,
                                 target_type_args.clone(),
+                                &impl_block.row_guards,
                                 &method.name,
                                 runtime_method,
                             );
@@ -2786,7 +2846,7 @@ fn eval_for_in(
     };
     let next_fn = runtime
         .resolve_value_type_id(&iterable)
-        .and_then(|id| runtime.get_regular_method(id, "next", &[]))
+        .and_then(|id| runtime.get_regular_method(id, "next", &ReceiverTypeArgs::default()))
         .ok_or_else(|| {
             MetelError::internal_with_code(
                 InternalErrorCode::I0008,
@@ -3124,12 +3184,13 @@ fn eval_method_call_expr(
     // can prefer an exact per-instantiation `extend` (`extend W<i64>: Tag`)
     // over a blanket one, instead of picking whichever was registered last
     // regardless of which instantiation actually declared it.
-    let receiver_target_type_args: Vec<String> =
+    let receiver_target_type_args: ReceiverTypeArgs =
         match peel_static_type_references(&static_receiver_ty) {
-            crate::data::types::Type::Named(_, args, ..) => {
-                args.iter().map(ToString::to_string).collect()
-            }
-            _ => Vec::new(),
+            crate::data::types::Type::Named(_, args, ..) => ReceiverTypeArgs {
+                names: args.iter().map(ToString::to_string).collect(),
+                tys: args.clone(),
+            },
+            _ => ReceiverTypeArgs::default(),
         };
 
     let recv_type_view = deref_value(&recv_val, span)?.unwrap_or_else(|| recv_val.clone());

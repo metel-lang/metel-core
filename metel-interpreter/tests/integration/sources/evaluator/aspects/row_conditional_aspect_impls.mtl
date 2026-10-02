@@ -1,0 +1,46 @@
+// RFC-0121 item 5 (metel-core#833): an aspect impl conditional on a row. The impl
+// applies only to a receiver whose row satisfies the condition, two impls of the
+// same aspect whose conditions contradict on a label are disjoint (no T0015), and
+// dispatch picks the one the receiver's own row selects.
+
+aspect Describe { fun describe(self) -> i64; }
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R: { token: String, .. }> Session<..R>: Describe {
+    fun describe(self) -> i64 { 1 }
+}
+
+extend<row R: !{ token }> Session<..R>: Describe {
+    fun describe(self) -> i64 { 2 }
+}
+
+// `a: i64` and `a: String` cannot both hold of one row, so these are disjoint too.
+aspect Tag { fun tag(self) -> i64; }
+
+extend<row R: { a: i64, .. }> Session<..R>: Tag {
+    fun tag(self) -> i64 { 10 }
+}
+
+extend<row R: { a: String, .. }> Session<..R>: Tag {
+    fun tag(self) -> i64 { 20 }
+}
+
+fun show<T: Describe>(t: T) -> i64 { t.describe() }
+
+fun main() {
+    let authed: Session<{ token: String }> :=
+        Session { id = 1, data = { token = "t" } };
+    let anon: Session<{ extra: i64 }> := Session { id = 2, data = { extra = 1 } };
+    assert(authed.describe() == 1);
+    assert(anon.describe() == 2);
+    // a generic bound is satisfied by exactly the matching impl
+    assert(show(authed) == 1);
+    assert(show(anon) == 2);
+
+    let int_a: Session<{ a: i64 }> := Session { id = 3, data = { a = 1 } };
+    let str_a: Session<{ a: String }> := Session { id = 4, data = { a = "x" } };
+    assert(int_a.tag() == 10);
+    assert(str_a.tag() == 20);
+    println("ok");
+}

@@ -1202,8 +1202,10 @@ pub(super) fn infer_impl_method(
     };
     let structural_self_type_expr = array_target_generic_name
         .map(|name| TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![]))));
-    let synth =
-        super::super::registry::synth_generics_for_impl(&generic_names_for_impl, &ib.generics);
+    let synth = super::super::registry::synth_generics_for_impl(
+        &generic_names_for_impl,
+        &super::super::registry::impl_generics_with_row_aliases(ib, &generic_names_for_impl),
+    );
     let impl_bounds: Vec<Vec<GenericBound>> =
         super::super::registry::collect_type_param_bounds(&synth, ib.where_clause.as_ref());
     let impl_neg_bounds: Vec<Vec<GenericBound>> =
@@ -1211,6 +1213,10 @@ pub(super) fn infer_impl_method(
             &synth,
             ib.where_clause.as_ref(),
         );
+    // RFC-0121 item 5: impl-level record kinds, positional like the bounds above,
+    // so a row/record bound on the impl's own generic is checkable at a call.
+    let impl_record_kinds: Vec<bool> =
+        super::super::registry::collect_type_param_record_kinds(&synth, ib.where_clause.as_ref());
 
     // Merge impl-level bounds into struct_bounds (union: keep any existing
     // struct-level bounds and add the impl's).
@@ -1532,6 +1538,11 @@ pub(super) fn infer_impl_method(
                     _ => *tv,
                 };
                 record_kinds_by_var.insert(resolved_tv, true);
+            }
+        }
+        for (i, is_record) in impl_record_kinds.iter().enumerate() {
+            if *is_record && let Some(tv) = struct_tvars_resolved.get(i) {
+                record_kinds_by_var.insert(*tv, true);
             }
         }
         // RFC-0121 §2: same as the registry-built scheme -- an impl equation's `R` is

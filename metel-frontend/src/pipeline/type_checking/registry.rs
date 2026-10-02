@@ -141,6 +141,36 @@ pub(super) fn synth_generics_for_impl(
         .collect()
 }
 
+/// RFC-0121 item 5: an impl's own generics, with each row generic that the target
+/// splices (`extend<row Q: { .. }> Session<..Q>`) renamed to the struct's own
+/// parameter at that position, so `synth_generics_for_impl`'s by-name lookup finds
+/// its bounds whatever the impl calls it. A rename that would collide with another
+/// impl generic is skipped.
+pub(super) fn impl_generics_with_row_aliases(
+    ib: &crate::data::ast::ImplBlock,
+    struct_generic_names: &[String],
+) -> Vec<GenericParam> {
+    let mut generics = ib.generics.clone();
+    let TypeExpr::Named(_, args) = &ib.target_type else {
+        return generics;
+    };
+    for (arg, struct_name) in args.iter().zip(struct_generic_names) {
+        let TypeExpr::RowArg(tail) = arg else {
+            continue;
+        };
+        let Some(written) = tail.var.as_deref() else {
+            continue;
+        };
+        if written == struct_name || generics.iter().any(|g| &g.name == struct_name) {
+            continue;
+        }
+        if let Some(g) = generics.iter_mut().find(|g| g.is_row && g.name == written) {
+            g.name.clone_from(struct_name);
+        }
+    }
+    generics
+}
+
 fn bare_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Option<&str> {
     let TypeExpr::Named(name, args) = &ib.target_type else {
         return None;
@@ -282,7 +312,7 @@ fn populate_schemes_from_embedded_core(
     }
 }
 
-fn type_expr_to_infer_for_registry(
+pub(super) fn type_expr_to_infer_for_registry(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,
     registry: &TypeDefinitionRegistry,
@@ -648,7 +678,10 @@ fn register_program_decls(
                                 .struct_generic_names_for(current_module_path, target_name.as_str())
                                 .cloned()
                                 .unwrap_or_default();
-                            let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                            let synth = synth_generics_for_impl(
+                                &generic_names,
+                                &impl_generics_with_row_aliases(ib, &generic_names),
+                            );
                             let pos_bounds =
                                 collect_type_param_bounds(&synth, ib.where_clause.as_ref());
                             let neg_bounds = collect_negative_type_param_bounds(
@@ -738,7 +771,10 @@ fn register_program_decls(
                             .struct_generic_names_for(current_module_path, target_name.as_str())
                             .cloned()
                             .unwrap_or_default();
-                        let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+                        let synth = synth_generics_for_impl(
+                            &generic_names,
+                            &impl_generics_with_row_aliases(ib, &generic_names),
+                        );
                         let pos_bounds =
                             collect_type_param_bounds(&synth, ib.where_clause.as_ref());
                         let neg_bounds =
@@ -922,9 +958,16 @@ fn register_generic_impl_method_schemes(
         }
     }
     // RFC-0036: compute impl-level bounds from the impl block's generics + where clause.
-    let synth = synth_generics_for_impl(&generic_names, &ib.generics);
+    let synth = synth_generics_for_impl(
+        &generic_names,
+        &impl_generics_with_row_aliases(ib, &generic_names),
+    );
     let impl_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
     let impl_neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+    // RFC-0121 item 5: an impl-level `row R: { .. }` / `record T: { .. }` bound is only
+    // checkable on a record-kinded param (`check_record_kind_requirement`), and that
+    // kind must travel on each method's scheme, not just the method's own generics.
+    let impl_record_kinds = collect_type_param_record_kinds(&synth, ib.where_clause.as_ref());
     let by_var: HashMap<TypeVar, Vec<GenericBound>> = type_params
         .iter()
         .zip(impl_bounds.iter())
@@ -998,6 +1041,11 @@ fn register_generic_impl_method_schemes(
         let mut method_record_kinds =
             super::inference::collect_fun_type_var_record_kinds(method, &gen_map);
         method_record_kinds.extend(open_rows.record_kinds.iter().map(|(tv, k)| (*tv, *k)));
+        for (tv, is_record) in type_params.iter().zip(&impl_record_kinds) {
+            if *is_record {
+                method_record_kinds.insert(*tv, true);
+            }
+        }
         // RFC-0121 §2: the impl's `where R = { .. }` bounds `R`, and a row bound
         // is only checkable on a record-kinded param (`check_record_kind_requirement`).
         for r_tv in impl_row_bounds.keys() {

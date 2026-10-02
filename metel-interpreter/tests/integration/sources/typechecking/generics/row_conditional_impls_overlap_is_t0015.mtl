@@ -1,0 +1,17 @@
+// RFC-0121 item 5 (metel-core#833, legality-3): `{ a, .. }` and `{ b, .. }` mention
+// no shared label, so one row can satisfy both -- they overlap, exactly as two
+// ordinary overlapping impls do.
+
+aspect Describe { fun describe(self) -> i64; }
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R: { a: i64, .. }> Session<..R>: Describe {
+    fun describe(self) -> i64 { 1 }
+}
+
+extend<row R: { b: i64, .. }> Session<..R>: Describe {
+    fun describe(self) -> i64 { 2 }
+}
+
+fun main() {}

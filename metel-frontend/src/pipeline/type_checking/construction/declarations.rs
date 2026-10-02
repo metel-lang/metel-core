@@ -523,6 +523,8 @@ pub(super) fn construct_impl_decl(
             _ => None,
         };
 
+    let row_guards = row_guards_for_impl(ib);
+
     Ok(TypedDecl::Impl(TypedImplBlock {
         polarity: ib.polarity,
         generics: ib.generics.clone(),
@@ -531,6 +533,7 @@ pub(super) fn construct_impl_decl(
         target_type_id: ctx.type_symbol_id(&target_name),
         aspect_type_args: ib.aspect_type_args.clone(),
         target_instantiation_args,
+        row_guards,
         target_type: ib.target_type.clone(),
         methods,
         span: ib.span.clone(),
@@ -770,4 +773,73 @@ pub(super) fn construct_default_aspect_method(
         def_id: None,
         span: method.span.clone(),
     })
+}
+
+/// RFC-0121 item 5: the row conditions an impl places on its target's type arguments,
+/// for runtime dispatch among disjoint row-conditional impls. A target argument that
+/// is an impl generic -- written plainly or as a row splice (`Session<..R>`) -- takes
+/// that generic's row bounds: inline (`row R: { .. }` / `!{ .. }`), in a `where`
+/// constraint, and a `where R = { .. }` decomposition equation (which also bounds `R`).
+fn row_guards_for_impl(ib: &crate::data::ast::ImplBlock) -> Vec<crate::data::typed_ast::RowGuard> {
+    use crate::data::ast::Polarity;
+    use crate::pipeline::type_checking::type_engine::GenericBound;
+
+    let TypeExpr::Named(_, args) = &ib.target_type else {
+        return vec![];
+    };
+    let mut guards = Vec::new();
+    for (position, arg) in args.iter().enumerate() {
+        let name = match arg {
+            TypeExpr::Named(n, inner) if inner.is_empty() => n.as_str(),
+            TypeExpr::RowArg(tail) => match tail.var.as_deref() {
+                Some(v) => v,
+                None => continue,
+            },
+            _ => continue,
+        };
+        if !ib.generics.iter().any(|g| g.name == name) {
+            continue;
+        }
+        let mut guard = crate::data::typed_ast::RowGuard {
+            position,
+            present: vec![],
+            absent: vec![],
+            exact: false,
+        };
+        let inline = ib
+            .generics
+            .iter()
+            .filter(|g| g.name == name)
+            .flat_map(|g| g.bounds.iter());
+        let in_where = ib
+            .where_clause
+            .iter()
+            .filter_map(|wc| wc.constraint_for(name))
+            .flat_map(|c| c.bounds.iter());
+        for bound in inline.chain(in_where) {
+            let Some(GenericBound::Row(row)) = GenericBound::from_ast(bound) else {
+                continue;
+            };
+            let fields = row.fields.into_iter().map(|f| (f.label, f.ty));
+            if bound.polarity == Polarity::Positive {
+                guard.exact |= !row.open;
+                guard.present.extend(fields);
+            } else {
+                guard.absent.extend(fields);
+            }
+        }
+        if let Some(eq) = ib
+            .where_clause
+            .as_ref()
+            .and_then(|wc| wc.row_equation_for(name))
+        {
+            guard
+                .present
+                .extend(eq.fields.iter().map(|(l, t)| (l.clone(), Some(t.clone()))));
+        }
+        if !guard.present.is_empty() || !guard.absent.is_empty() {
+            guards.push(guard);
+        }
+    }
+    guards
 }

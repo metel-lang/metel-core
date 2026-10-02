@@ -1,0 +1,25 @@
+// RFC-0121 item 5 (metel-core#833, legality-2): an impl for one specific
+// instantiation is not in conflict with a row-conditional impl its row also
+// satisfies, and it is the one selected.
+
+aspect Describe { fun describe(self) -> i64; }
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend Session<{ token: String }>: Describe {
+    fun describe(self) -> i64 { 1 }
+}
+
+extend<row R: { token: String, .. }> Session<..R>: Describe {
+    fun describe(self) -> i64 { 2 }
+}
+
+fun main() {
+    let exact: Session<{ token: String }> :=
+        Session { id = 1, data = { token = "t" } };
+    let wider: Session<{ token: String, extra: i64 }> :=
+        Session { id = 2, data = { token = "t", extra = 1 } };
+    assert(exact.describe() == 1);
+    assert(wider.describe() == 2);
+    println("ok");
+}

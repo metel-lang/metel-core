@@ -3281,21 +3281,120 @@ impl TypeDefinitionRegistry {
     ) -> bool {
         for (i, arg) in type_args.iter().enumerate() {
             if let Some(required) = pos_bounds.get(i) {
-                for aspect in required.iter().filter_map(GenericBound::aspect_name) {
-                    if !self.infer_type_satisfies_aspect(current_module, arg, aspect, assumptions) {
+                for bound in required {
+                    let holds = match bound {
+                        GenericBound::Aspect(aspect) => self.infer_type_satisfies_aspect(
+                            current_module,
+                            arg,
+                            aspect,
+                            assumptions,
+                        ),
+                        GenericBound::Row(row) => {
+                            self.row_condition_holds(current_module, arg, row, false)
+                        }
+                    };
+                    if !holds {
                         return false;
                     }
                 }
             }
             if let Some(forbidden) = neg_bounds.get(i) {
-                for aspect in forbidden.iter().filter_map(GenericBound::aspect_name) {
-                    if self.infer_type_satisfies_aspect(current_module, arg, aspect, assumptions) {
+                for bound in forbidden {
+                    let violated = match bound {
+                        GenericBound::Aspect(aspect) => self.infer_type_satisfies_aspect(
+                            current_module,
+                            arg,
+                            aspect,
+                            assumptions,
+                        ),
+                        // A forbidden row that cannot be shown absent is not
+                        // satisfied either: see `row_condition_holds`.
+                        GenericBound::Row(row) => {
+                            !self.row_condition_holds(current_module, arg, row, true)
+                        }
+                    };
+                    if violated {
                         return false;
                     }
                 }
             }
         }
         true
+    }
+
+    /// RFC-0121 item 5 (`spec.types.generics.row-conditional-impls.legality-1`): does a
+    /// row-conditional impl's condition hold for the type argument `arg`?
+    ///
+    /// `forbidden == false` evaluates a row bound `{ l: T, .. }`: every listed label is
+    /// present (with an equal type when one is written), and a closed bound matches
+    /// exactly. `forbidden == true` evaluates `!{ l, .. }`: no listed label is present.
+    /// This is the same rule `check_positive_row_bound` / `check_negative_row_bound`
+    /// apply to a bounded parameter, as a yes/no for impl selection.
+    ///
+    /// An `arg` whose fields are not known (still a type variable, or not a record)
+    /// holds *neither* form: inside a generic body over an unconstrained row nothing
+    /// entails either condition, so the impl is not visible there (legality-3).
+    fn row_condition_holds(
+        &self,
+        current_module: &[String],
+        arg: &InferType,
+        row: &RowConstraint,
+        forbidden: bool,
+    ) -> bool {
+        let Some(fields) = self.row_condition_fields(current_module, arg) else {
+            return false;
+        };
+        let present = |required: &RowConstraintField| -> bool {
+            let Some((_, actual)) = fields.iter().find(|(label, _)| *label == required.label)
+            else {
+                return false;
+            };
+            match &required.ty {
+                None => true,
+                Some(expected) => {
+                    *actual
+                        == super::registry::type_expr_to_infer_for_registry(
+                            expected,
+                            &HashMap::new(),
+                            self,
+                            current_module,
+                        )
+                }
+            }
+        };
+        if forbidden {
+            !row.fields.iter().any(present)
+        } else {
+            (row.open || fields.len() == row.fields.len()) && row.fields.iter().all(present)
+        }
+    }
+
+    /// The labelled fields a row condition is evaluated against: a record type's own,
+    /// or a nominal record's (non-generic or instantiated). `None` when unknown.
+    fn row_condition_fields(
+        &self,
+        current_module: &[String],
+        arg: &InferType,
+    ) -> Option<Vec<(String, InferType)>> {
+        match arg {
+            InferType::Record(fields) | InferType::Residual { fields, .. } => Some(fields.clone()),
+            InferType::Named(name, args, _) => {
+                let (id, _, templates) = self.projection_struct_fields(current_module, name)?;
+                let mut subst = Substitution::new();
+                if let Some(params) = self.struct_type_params_by_id(id) {
+                    for (&tv, concrete) in params.iter().zip(args.iter()) {
+                        subst.bind(tv, concrete.clone());
+                    }
+                }
+                let mut fields: Vec<(String, InferType)> = templates
+                    .iter()
+                    .map(|f| (f.name.clone(), subst.apply(&f.ty)))
+                    .collect();
+                fields.sort_by(|a, b| a.0.cmp(&b.0));
+                Some(fields)
+            }
+            _ => None,
+        }
     }
 
     /// Check whether a concrete `Type` satisfies `aspect_name`, recursing into

@@ -1,0 +1,36 @@
+// RFC-0121 item 5 (metel-core#833): an inherent `extend` block may carry a row
+// condition on the row it splices -- `row R: { token: String, .. }` (a label must
+// be present) or `row R: !{ token }` (it must be absent) -- and its methods exist
+// only for a receiver whose row satisfies it. Disjoint conditions may reuse a
+// method name; dispatch follows the receiver's own row.
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R: { token: String, .. }> Session<..R> {
+    fun with_token(self) -> i64 { self.id }
+    fun kind(self) -> i64 { 1 }
+}
+
+extend<row R: !{ token }> Session<..R> {
+    fun send_data(self) -> i64 { self.id * 10 }
+    fun kind(self) -> i64 { 2 }
+}
+
+// The impl may call its row generic anything: `Q`, not the struct's own `R`.
+extend<row Q: { extra: i64, .. }> Session<..Q> {
+    fun has_extra(self) -> i64 { 3 }
+}
+
+fun main() {
+    let authed: Session<{ token: String }> :=
+        Session { id = 1, data = { token = "t" } };
+    let anon: Session<{ extra: i64 }> := Session { id = 2, data = { extra = 1 } };
+
+    assert(authed.with_token() == 1);
+    assert(anon.send_data() == 20);
+    assert(anon.has_extra() == 3);
+
+    assert(authed.kind() == 1);
+    assert(anon.kind() == 2);
+    println("ok");
+}

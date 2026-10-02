@@ -1,0 +1,18 @@
+// RFC-0121 item 5 (metel-core#833): a row-conditional aspect impl satisfies a
+// generic bound only for a row that meets its condition. The error is at the call
+// that needs the bound, not inside the generic body.
+
+aspect Describe { fun describe(self) -> i64; }
+
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R: { token: String, .. }> Session<..R>: Describe {
+    fun describe(self) -> i64 { self.id }
+}
+
+fun show<T: Describe>(t: T) -> i64 { t.describe() }
+
+fun main() {
+    let anon: Session<{ extra: i64 }> := Session { id = 1, data = { extra = 1 } };
+    println(show(anon));
+}

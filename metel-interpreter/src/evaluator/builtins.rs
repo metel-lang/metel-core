@@ -1055,6 +1055,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                             builtin_aspect_id(aspect_name),
                             type_args,
                             None,
+                            &[],
                             &method.name,
                             runtime_method,
                         );
@@ -1070,6 +1071,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                             target_id,
                             target_name,
                             None,
+                            &[],
                             &method.name,
                             runtime_method,
                         );
