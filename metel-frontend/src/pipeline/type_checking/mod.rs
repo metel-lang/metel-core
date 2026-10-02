@@ -246,6 +246,9 @@ fn refresh_scheme_for_export(
         bounds: scheme.bounds.clone(),
         neg_bounds: scheme.neg_bounds.clone(),
         record_kinds: scheme.record_kinds.clone(),
+        // Positional like `record_kinds`; dropping it would silently lose
+        // RFC-0121's by-value width-subtyping check across modules.
+        open_row_params: scheme.open_row_params.clone(),
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         // RFC-0037 opaque-return metadata is positional (index-aligned with

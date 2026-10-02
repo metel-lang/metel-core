@@ -1,0 +1,15 @@
+// RFC-0121 item 6: a method's open-row-tailed parameter is a positive row
+// bound like a free function's -- an argument missing a required field is
+// rejected at the call site (checked through the method's scheme).
+
+struct Handle { fd: i64 }
+
+extend Handle {
+    fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+}
+
+fun main() {
+    let h := Handle { fd = 1 };
+    let r := { y = 3 };
+    let _ := h.add(r);
+}

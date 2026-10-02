@@ -1579,6 +1579,14 @@ pub struct TypeScheme {
     /// build a concrete `Type` for the call expression and the function's own
     /// eagerly-built body. `None` means no opaque return at this position.
     pub opaque_returns: Vec<Option<(String, Type)>>,
+    /// RFC-0121 §4 (width subtyping): index-aligned flags marking the quantified
+    /// vars that stand for a method's open-row-tailed *parameters*
+    /// (`{ x, ..R }`), which are always taken by value -- see
+    /// `check_width_subtyping`. Empty when no parameter is open-row-tailed.
+    /// Deliberately not inferred from `record_kinds` + a `Row` bound: an
+    /// explicitly declared `record T: { x, .. }` parameter shares that shape but
+    /// can be taken by reference, where narrowing needs no `Copy` restriction.
+    pub open_row_params: Vec<bool>,
     pub ty: InferType,
 }
 
@@ -1595,6 +1603,7 @@ impl TypeScheme {
             assoc_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
+            open_row_params: vec![],
             ty,
         }
     }
@@ -1630,6 +1639,19 @@ impl TypeScheme {
             .quantified_vars
             .iter()
             .map(|v| by_var.get(v).cloned().unwrap_or_default())
+            .collect();
+        self
+    }
+
+    #[must_use]
+    pub fn with_open_row_params(mut self, vars: &std::collections::HashSet<TypeVar>) -> Self {
+        if vars.is_empty() {
+            return self;
+        }
+        self.open_row_params = self
+            .quantified_vars
+            .iter()
+            .map(|v| vars.contains(v))
             .collect();
         self
     }
@@ -1746,6 +1768,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
+        open_row_params: vec![],
         ty,
     }
 }

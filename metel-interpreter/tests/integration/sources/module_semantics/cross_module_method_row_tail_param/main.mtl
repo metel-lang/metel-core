@@ -1,0 +1,7 @@
+import helper::Handle;
+import helper::make;
+
+fun main() -> i64 {
+    let h := make();
+    return h.add({ x = 2, y = 3 });
+}

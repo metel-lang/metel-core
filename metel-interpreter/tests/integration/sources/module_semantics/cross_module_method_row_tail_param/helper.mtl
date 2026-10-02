@@ -1,0 +1,7 @@
+public struct Handle { public fd: i64 }
+
+extend Handle {
+    public fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+}
+
+public fun make() -> Handle { Handle { fd = 1 } }

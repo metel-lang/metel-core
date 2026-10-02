@@ -1030,22 +1030,35 @@ pub(super) fn infer_impl_method(
     // `generic_map` below, so this holds exactly the method's own generics --
     // used later to decide whether this method needs a polymorphic scheme
     // even when the struct/impl contributes no generics of its own.
-    let method_own_tvars: Vec<TypeVar> = method
+    // RFC-0121 item 6: an open-row-tailed parameter (`{ x, ..R }`) on a method
+    // desugars exactly as on a free function -- its own fresh, record-kinded,
+    // row-bounded `TypeVar` standing for the whole parameter -- but its bound
+    // and kind travel on the method's *scheme* (methods have no name-keyed
+    // registry tables) so the call site's `check_scheme_bounds` sees them.
+    let (open_param_vars, open_bounds, open_record_kinds, _open_projection_tails) =
+        collect_open_record_param_vars(method, ctx)?;
+    let mut method_own_tvars: Vec<TypeVar> = method
         .generics
         .iter()
         .filter_map(|g| generic_map.get(&g.name).copied())
         .collect();
+    method_own_tvars.extend(open_param_vars.values().copied());
     // Captured at the same point, for the same reason: `generic_map` is later
     // moved into `ctx.swap_type_params`, so the method's own bounds (used
     // below to attach to the call-site-checked scheme) must be collected now.
-    let method_own_bounds = collect_fun_type_var_bounds(method, &generic_map);
+    let mut method_own_bounds = collect_fun_type_var_bounds(method, &generic_map);
+    method_own_bounds.extend(open_bounds.clone());
     let method_own_neg_bounds = collect_negative_fun_type_var_bounds(method, &generic_map);
-    let method_own_record_kinds = collect_fun_type_var_record_kinds(method, &generic_map);
+    let mut method_own_record_kinds = collect_fun_type_var_record_kinds(method, &generic_map);
+    method_own_record_kinds.extend(open_record_kinds);
 
     // Seed with the target struct/enum's generic params so that type annotations
     // referencing e.g. `T` in `impl SortedList<T>` resolve to TypeVars and
     // aspect methods on bounded params are available in the body.
     let mut struct_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
+    // The open-row parameter's row bound must be visible while inferring the
+    // body, so field access on it (`p.x`) resolves through the row bound.
+    struct_bounds.extend(open_bounds);
     // Ordered TypeVars for the struct's generic params (same order as struct type args).
     let mut struct_tvars_ordered: Vec<TypeVar> = Vec::new();
     if let Some(names) = ctx.struct_generic_names_for(target_name).cloned() {
@@ -1255,9 +1268,12 @@ pub(super) fn infer_impl_method(
     let param_types: Vec<InferType> = method
         .params
         .iter()
-        .map(|p| {
+        .enumerate()
+        .map(|(i, p)| {
             if p.name == "self" {
                 Ok(self_ty.clone())
+            } else if let Some(&tv) = open_param_vars.get(&i) {
+                Ok(InferType::Var(tv))
             } else if let Some(ann) = &p.type_ann {
                 te_to_infer(ann, ctx)
             } else {
@@ -1406,10 +1422,18 @@ pub(super) fn infer_impl_method(
                 record_kinds_by_var.insert(resolved_tv, true);
             }
         }
+        let open_row_vars: std::collections::HashSet<TypeVar> = open_param_vars
+            .values()
+            .map(|tv| match partial_subst.apply(&InferType::Var(*tv)) {
+                InferType::Var(v) => v,
+                _ => *tv,
+            })
+            .collect();
         scheme = scheme
             .with_bounds(&by_var)
             .with_neg_bounds(&by_neg_var)
-            .with_record_kinds(&record_kinds_by_var);
+            .with_record_kinds(&record_kinds_by_var)
+            .with_open_row_params(&open_row_vars);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {
@@ -1542,9 +1566,15 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
         // (LIMIT-TYPES-001) -- a method's own type expressions, the only
         // thing this `Self`-substitution function ever processes, can
         // therefore never actually contain one.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
-        }
+        // RFC-0121 item 6: a method's record-tail parameter can name `Self`
+        // in a field type (`{ x: Self, ..R }`) like a closed record can.
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), substitute_structural_self(ty, replacement)))
+                .collect(),
+            tail.clone(),
+        ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("parse_fun_decl rejects OpenRecordProjection on a method's parameter")

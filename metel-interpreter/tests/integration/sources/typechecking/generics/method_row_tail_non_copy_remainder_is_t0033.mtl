@@ -1,0 +1,15 @@
+// RFC-0121 item 6 / §4: a method's open-row-tailed parameter takes its
+// argument by value, so the width-subtyping rule applies unchanged -- the
+// non-`Copy` field `name` would be forgotten, leaving no owner for it.
+
+struct Handle { fd: i64 }
+
+extend Handle {
+    fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+}
+
+fun main() {
+    let h := Handle { fd = 1 };
+    let r := { x = 2, name = "s".to_string() };
+    let _ := h.add(r);
+}

@@ -1,0 +1,4 @@
+runner = "full_pipeline"
+prelude = "empty"
+[expect]
+status = "success"

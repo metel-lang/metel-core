@@ -1354,13 +1354,16 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             format!("{} .{{ {} }}", path.join("::"), fields.join(", "))
         }
         TypeExpr::DynAspect { bound, .. } => format!("dyn {}", runtime_type_key(bound)),
-        // RFC-0121: grammar-legal on a method's parameter too, but
-        // `parse_fun_decl` itself rejects it there at parse time
-        // (LIMIT-TYPES-001); this function only ever keys a *method*'s
-        // runtime dispatch signature (`runtime_signature`'s one caller,
-        // `runtime_method_from_decl`), never a free function's.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("parse_fun_decl rejects OpenRecord on a method's parameter")
+        // RFC-0121 item 6: an instance method may carry a record-tail
+        // parameter (`{ x: f64, ..R }`); this function keys a *method's*
+        // runtime dispatch signature, so spell the tail back out.
+        TypeExpr::OpenRecord(fields, tail) => {
+            let mut parts: Vec<String> = fields
+                .iter()
+                .map(|(name, ty)| format!("{name}: {}", runtime_type_key(ty)))
+                .collect();
+            parts.push(format!("..{}", tail.var.as_deref().unwrap_or("")));
+            format!("{{ {} }}", parts.join(", "))
         }
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {

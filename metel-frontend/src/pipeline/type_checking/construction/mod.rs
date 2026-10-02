@@ -826,6 +826,7 @@ pub(super) fn symbolic_aspect_method_scheme(
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
+        open_row_params: vec![],
         ty: InferType::fun(params, ret),
     })
 }
@@ -901,6 +902,7 @@ pub(super) fn symbolic_impl_method_scheme(
         assoc_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
+        open_row_params: vec![],
         ty: InferType::fun(param_types, ret),
     })
 }
