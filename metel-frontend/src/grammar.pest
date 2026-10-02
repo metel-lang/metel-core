@@ -143,7 +143,15 @@ row_field     = { ident ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }
 assoc_binding = { ident ~ "=" ~ type_expr }
 where_clause     = { "where" ~ where_constraint ~ ("," ~ where_constraint)* }
-where_constraint = { record_kw? ~ ident ~ ":" ~ bound_list }
+where_constraint = { row_equation | (record_kw? ~ ident ~ ":" ~ bound_list) }
+// RFC-0121 §2's row decomposition (`where R = { token: Token, ..Rest }`):
+// names a row variable's current row by equation rather than bound. The
+// right-hand side reuses `open_record_type` (not plain `type_expr`'s closed
+// `record_type`) since a decomposition with no tail at all is pointless --
+// identical to an ordinary bound -- but the grammar still accepts a bare
+// `type_expr` so a malformed (tail-less) equation gets a clear parse-time
+// rejection downstream rather than silently failing to match this rule.
+row_equation = { ident ~ "=" ~ (open_record_type | type_expr) }
 
 // ── Statements ────────────────────────────────────────────────────────────────
 

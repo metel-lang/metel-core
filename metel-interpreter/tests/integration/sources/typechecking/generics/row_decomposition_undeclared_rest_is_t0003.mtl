@@ -1,0 +1,11 @@
+// RFC-0121 sec3: the decomposition's own remainder variable must name a
+// declared `row` parameter, exactly as `R` itself must -- `split` declares
+// only `row R`, so `Rest` is undefined.
+
+fun split<row R>(p: { token: i64, ..R }) -> i64
+where R = { extra: i64, ..Rest }
+{
+    p.token
+}
+
+fun main() {}

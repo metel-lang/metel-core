@@ -1,0 +1,14 @@
+// RFC-0121 sec3 (metel-core#1306 item 3): the decomposition equation's own
+// named fields are real requirements, checked structurally like any other
+// row bound -- a record missing one is rejected at compile time.
+
+fun split<row R, row Rest>(p: { token: i64, ..R }) -> i64
+where R = { extra: i64, ..Rest }
+{
+    p.token
+}
+
+fun main() {
+    let r := { token = 1 };
+    let _ := split(r);
+}

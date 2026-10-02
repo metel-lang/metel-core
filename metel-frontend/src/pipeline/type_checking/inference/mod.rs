@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::data::ast::{
     AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, BoundHead, Decl, Expr, ForInit,
     FunDecl, GenericParam, ImplBlock, Literal, MatchExpr, Param, Pattern, Polarity, Program,
-    RowTail, Span, Stmt, TypeExpr, UnaryOp, Visibility,
+    RowTail, Span, Stmt, TypeExpr, UnaryOp, Visibility, WhereClause,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
@@ -1060,6 +1060,29 @@ pub(super) fn collect_open_record_param_vars(
         }
     }
 
+    // RFC-0121 §2's row decomposition (`where R = { extra: i64, ..Rest }`):
+    // when an open-row-tailed parameter's tail names a row variable that has
+    // a decomposition equation in scope, the equation's own named fields are
+    // additional requirements on that variable's row -- fold them into the
+    // tail's own literal fields before building the row bound. `Rest` (the
+    // equation's own tail) is validated the same way `R` itself is above,
+    // but carries no further value, mirroring `R`'s own "validated, no
+    // value elsewhere" treatment from installment 1.
+    fn resolve_decomposed_fields(
+        tail: &RowTail,
+        where_clause: Option<&WhereClause>,
+        generics: &[GenericParam],
+    ) -> Result<Vec<(String, TypeExpr)>, MetelError> {
+        let (Some(name), Some(where_clause)) = (&tail.var, where_clause) else {
+            return Ok(vec![]);
+        };
+        let Some(equation) = where_clause.row_equation_for(name) else {
+            return Ok(vec![]);
+        };
+        check_row_var(&equation.tail, generics)?;
+        Ok(equation.fields.clone())
+    }
+
     let mut param_vars = HashMap::new();
     let mut bounds = HashMap::new();
     let mut record_kinds = HashMap::new();
@@ -1068,13 +1091,17 @@ pub(super) fn collect_open_record_param_vars(
         match &param.type_ann {
             Some(TypeExpr::OpenRecord(fields, tail)) => {
                 check_row_var(tail, &fun.generics)?;
+                let decomposed =
+                    resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
                 let tv = ctx.fresh_type_var_raw();
                 let row = RowConstraint {
                     fields: fields
                         .iter()
+                        .cloned()
+                        .chain(decomposed)
                         .map(|(label, ty)| RowConstraintField {
-                            label: label.clone(),
-                            ty: Some(ty.clone()),
+                            label,
+                            ty: Some(ty),
                         })
                         .collect(),
                     open: true,

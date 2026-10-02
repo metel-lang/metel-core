@@ -506,9 +506,27 @@ pub struct WhereConstraint {
     pub bounds: Vec<Bound>,
 }
 
+/// RFC-0121 §2's row decomposition (`where R = { token: Token, ..Rest }`):
+/// names a row variable's current row by equation rather than by bound,
+/// splitting it into one or more named fields plus a remainder row variable
+/// (`tail`). A deliberately separate `WhereClause` field, not a `WhereConstraint`
+/// variant -- every existing `WhereConstraint`-consuming pass (ordinary bound
+/// collection) stays oblivious to this, exactly like installments 1-3's own
+/// parallel-side-table pattern. `var`/`tail.var` are both validated as declared
+/// `row`-kinded generics in `collect_open_record_param_vars`, which has that
+/// generic-param context and the parser does not.
+#[derive(Debug, Clone)]
+pub struct RowEquation {
+    pub var: String,
+    pub fields: Vec<(String, TypeExpr)>,
+    pub tail: RowTail,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct WhereClause {
     pub constraints: Vec<WhereConstraint>,
+    pub row_equations: Vec<RowEquation>,
 }
 
 impl WhereClause {
@@ -517,6 +535,11 @@ impl WhereClause {
         self.constraints
             .iter()
             .find(|constraint| constraint.name == name)
+    }
+
+    #[must_use]
+    pub fn row_equation_for(&self, name: &str) -> Option<&RowEquation> {
+        self.row_equations.iter().find(|eq| eq.var == name)
     }
 }
 
