@@ -2262,6 +2262,16 @@ pub struct TypeDefinitionRegistry {
     /// row-bound-satisfaction mechanism (`record`-kind only) -- see
     /// `check_projection_tail_constraint`.
     fun_projection_tail_constraints: HashMap<String, HashMap<TypeVar, (String, RowConstraint)>>,
+    /// RFC-0121 §4 (width subtyping, concrete case): the generic type vars
+    /// standing for a function's open-row-tailed *parameters*
+    /// (`{ x, ..R }` / `Handle.{ fd, ..R }`). Deliberately a dedicated set,
+    /// not inferred from `fun_record_kinds` + a `Row` bound: an explicitly
+    /// declared `<record T: { x, .. }>` parameter shares that shape but can
+    /// be taken by reference, where narrowing needs no `Copy` restriction.
+    /// An open-row-tailed parameter's type is grammar-restricted to the
+    /// top level of a `fun_decl_param` (never under `&`), so it is always
+    /// taken by value -- see `check_width_subtyping`.
+    fun_open_row_params: HashMap<String, HashSet<TypeVar>>,
     /// RFC-0082 §4: associated-type equality constraints per generic function.
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
@@ -2643,6 +2653,7 @@ impl TypeDefinitionRegistry {
             neg_fun_bounds: HashMap::new(),
             fun_record_kinds: HashMap::new(),
             fun_projection_tail_constraints: HashMap::new(),
+            fun_open_row_params: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
             next_local_type_id: u32::MAX,
@@ -3631,6 +3642,17 @@ impl TypeDefinitionRegistry {
         name: &str,
     ) -> Option<&HashMap<TypeVar, (String, RowConstraint)>> {
         self.fun_projection_tail_constraints.get(name)
+    }
+
+    pub fn register_fun_open_row_params(&mut self, name: String, vars: HashSet<TypeVar>) {
+        if !vars.is_empty() {
+            self.fun_open_row_params.insert(name, vars);
+        }
+    }
+
+    #[must_use]
+    pub fn fun_open_row_params_for(&self, name: &str) -> Option<&HashSet<TypeVar>> {
+        self.fun_open_row_params.get(name)
     }
 
     pub fn register_neg_fun_bounds(
@@ -4976,6 +4998,10 @@ impl InferContext {
     ) {
         self.registry
             .register_fun_projection_tail_constraints(name, constraints);
+    }
+
+    pub fn register_fun_open_row_params(&mut self, name: String, vars: HashSet<TypeVar>) {
+        self.registry.register_fun_open_row_params(name, vars);
     }
 
     pub fn register_neg_fun_bounds(

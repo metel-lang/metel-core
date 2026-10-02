@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0033"
+contains = "forgets field `label`"
+
+[options]
+error = ["T0033"]

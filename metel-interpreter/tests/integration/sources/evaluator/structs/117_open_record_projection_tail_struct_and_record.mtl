@@ -4,10 +4,11 @@
 // bound (RFC-0118/0120) -- so unlike sec1's generic open-row-tailed record
 // parameter, eligibility is NOT scoped to the `record` brand: a plain
 // `struct` argument satisfies it too, as long as its brand matches exactly
-// and its current row has at least the named field(s).
+// and its current row has at least the named field(s). Every field the
+// tail forgets must be `Copy` (RFC-0121 §4) -- hence `i64`, not `String`.
 
 struct Handle { fd: i64, flags: i64 }
-record Box { public fd: i64, public label: String }
+record Box { public fd: i64, public label: i64 }
 
 fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 fun get_box_fd<row R>(b: Box.{ fd, ..R }) -> i64 { b.fd }
@@ -16,7 +17,7 @@ fun main() {
     let h := Handle { fd = 7, flags = 0 };
     assert(get_fd(h) == 7);
 
-    let b := Box { fd = 9, label = "x".to_string() };
+    let b := Box { fd = 9, label = 0 };
     assert(get_box_fd(b) == 9);
 
     println("ok");
