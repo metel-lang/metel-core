@@ -523,10 +523,21 @@ pub struct RowEquation {
     pub span: Span,
 }
 
+/// RFC-0123 §1's `where all R: Aspect`: every field of the row `var` satisfies
+/// each bound. Like `RowEquation`, a separate `WhereClause` field rather than a
+/// `WhereConstraint` variant, so every ordinary-bound pass stays oblivious to it.
+#[derive(Debug, Clone)]
+pub struct FieldWiseConstraint {
+    pub var: String,
+    pub bounds: Vec<Bound>,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct WhereClause {
     pub constraints: Vec<WhereConstraint>,
     pub row_equations: Vec<RowEquation>,
+    pub field_wise: Vec<FieldWiseConstraint>,
 }
 
 impl WhereClause {

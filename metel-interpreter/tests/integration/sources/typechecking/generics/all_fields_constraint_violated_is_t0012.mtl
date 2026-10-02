@@ -1,0 +1,12 @@
+// RFC-0123 sec1 (metel-core#1302): `where all R: Tag` is checked at the call --
+// `label: String` has no `Tag` impl, so the call is rejected and the error names
+// the field.
+
+aspect Tag { fun tag(self) -> i64; }
+extend i64: Tag { fun tag(self) -> i64 { 1 } }
+
+fun id_of<row R>(p: { id: i64, ..R }) -> i64 where all R: Tag { p.id }
+
+fun main() {
+    let _ := id_of({ id = 1, count = 2, label = "x".to_string() });
+}

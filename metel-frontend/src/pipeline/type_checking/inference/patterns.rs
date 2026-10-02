@@ -187,7 +187,7 @@ pub(super) fn infer_pattern(
                         .iter()
                         .filter_map(|b| match b {
                             GenericBound::Row(row) => Some(row),
-                            GenericBound::Aspect(_) => None,
+                            GenericBound::Aspect(_) | GenericBound::AllFields { .. } => None,
                         })
                         .flat_map(|row| row.fields.iter().map(|f| f.label.as_str()))
                         .collect();

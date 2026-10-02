@@ -1,0 +1,9 @@
+// RFC-0123 sec1 (metel-core#1302): `all R` must name the row tail of an open-row
+// parameter (or a decomposition's remainder). A row generic used any other way has
+// no fields to walk yet, and the constraint is rejected rather than silently ignored.
+
+fun lonely<row R>(x: i64) -> i64 where all R: Copy { x }
+
+fun main() {
+    let _ := lonely(1);
+}

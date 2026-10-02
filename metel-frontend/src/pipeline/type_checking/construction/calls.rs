@@ -1071,6 +1071,9 @@ pub(super) fn row_bound_error_prefix(bound: &GenericBound) -> String {
     match bound {
         GenericBound::Row(_) => format!("row bound `{bound}`"),
         GenericBound::Aspect(name) => format!("bound `{name}`"),
+        GenericBound::AllFields { aspects, .. } => {
+            format!("field-wise bound `all: {}`", aspects.join(" + "))
+        }
     }
 }
 
@@ -1341,6 +1344,44 @@ pub(super) fn check_negative_row_bound(
     Ok(())
 }
 
+/// RFC-0123 `where all R: Aspect`, concrete case: every field of the argument
+/// outside `except` (the labels the parameter already names) must satisfy each
+/// aspect. Vacuous on an empty remainder.
+fn check_all_fields(
+    record_fields: &[(String, Type)],
+    aspects: &[String],
+    except: &[String],
+    fun_name: &str,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for (label, ty) in record_fields
+        .iter()
+        .filter(|(label, _)| !except.contains(label))
+    {
+        for aspect in aspects {
+            let holds = (aspect == "Copy"
+                && matches!(
+                    ty,
+                    Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
+                ))
+                || registry.type_satisfies_aspect(current_module, ty, aspect);
+            if !holds {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "field `{label}` of type `{ty}` does not implement `{aspect}` \
+                         (required of every field by `where all .. : {aspect}` on `{fun_name}`)"
+                    ),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Check one concrete type against a set of required bounds. Aspect bounds are
 /// checked against the impl registry; row bounds are handled structurally.
 #[allow(clippy::too_many_arguments)] // threads registry + module + generic map through bound checking
@@ -1368,15 +1409,25 @@ pub(super) fn check_type_satisfies_bounds(
         structural_fields_for_row_check(concrete, registry, current_module, span)
     {
         for bound in bounds {
-            if let GenericBound::Row(row) = bound {
-                check_positive_row_bound(
+            match bound {
+                GenericBound::Row(row) => check_positive_row_bound(
                     &record_fields,
                     row,
                     span,
                     registry,
                     current_module,
                     generic_types_by_name,
-                )?;
+                )?,
+                GenericBound::AllFields { aspects, except } => check_all_fields(
+                    &record_fields,
+                    aspects,
+                    except,
+                    fun_name,
+                    span,
+                    registry,
+                    current_module,
+                )?,
+                GenericBound::Aspect(_) => {}
             }
         }
     }

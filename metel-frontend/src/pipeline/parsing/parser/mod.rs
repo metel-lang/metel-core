@@ -5,11 +5,11 @@ use pest_derive::Parser;
 use crate::data::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
     Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
-    ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath,
-    ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot,
-    Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation,
-    RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility,
-    WhereClause, WhereConstraint, WhileStmt,
+    FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl,
+    ImportPath, ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param,
+    PathRoot, Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField,
+    RowEquation, RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef,
+    Visibility, WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -3493,6 +3493,7 @@ fn parse_where_clause(
 ) -> Result<WhereClause, MetelError> {
     let mut constraints = vec![];
     let mut row_equations = vec![];
+    let mut field_wise = vec![];
     for p in pair.into_inner() {
         if p.as_rule() != Rule::where_constraint {
             continue;
@@ -3535,6 +3536,25 @@ fn parse_where_clause(
             });
             continue;
         }
+        if first.as_rule() == Rule::field_wise_constraint {
+            let span = Span::of(&first, filename);
+            let mut inner = first.into_inner();
+            inner.next(); // `all`
+            let var = inner
+                .next()
+                .ok_or_else(|| {
+                    MetelError::internal("field_wise_constraint: expected row variable")
+                })?
+                .as_str()
+                .to_string();
+            let bounds = inner
+                .next()
+                .map(|bl| parse_bound_list(bl, filename))
+                .transpose()?
+                .unwrap_or_default();
+            field_wise.push(FieldWiseConstraint { var, bounds, span });
+            continue;
+        }
         let mut is_record = false;
         let name_pair = if first.as_rule() == Rule::record_kw {
             is_record = true;
@@ -3558,6 +3578,7 @@ fn parse_where_clause(
     Ok(WhereClause {
         constraints,
         row_equations,
+        field_wise,
     })
 }
 

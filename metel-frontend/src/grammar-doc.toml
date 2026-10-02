@@ -295,6 +295,12 @@ mode = "named"
 name = "RowEquation"
 section = "Parameters"
 
+[[rule]]
+pest = "field_wise_constraint"
+mode = "named"
+name = "FieldWiseConstraint"
+section = "Parameters"
+
 # ── Statements ─────────────────────────────────────────────────────────────
 
 [[rule]]
@@ -817,6 +823,10 @@ values = ["record"]
 pest = "row_kw"
 mode = "literal"
 values = ["row"]
+[[rule]]
+pest = "all_kw"
+mode = "literal"
+values = ["all"]
 [[rule]]
 pest = "ident"
 mode = "terminal"

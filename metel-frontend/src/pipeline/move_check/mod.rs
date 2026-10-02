@@ -562,7 +562,7 @@ impl<'a> Checker<'a> {
                 // at all, and its use-after-move is never checked.
                 if let Some(row) = bounds.iter().find_map(|bound| match bound {
                     GenericBound::Row(row) => Some(row),
-                    GenericBound::Aspect(_) => None,
+                    GenericBound::Aspect(_) | GenericBound::AllFields { .. } => None,
                 }) {
                     generic_env
                         .row_fields

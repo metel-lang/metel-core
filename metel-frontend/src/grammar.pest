@@ -146,7 +146,7 @@ row_field     = { ident ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }
 assoc_binding = { ident ~ "=" ~ type_expr }
 where_clause     = { "where" ~ where_constraint ~ ("," ~ where_constraint)* }
-where_constraint = { row_equation | (record_kw? ~ ident ~ ":" ~ bound_list) }
+where_constraint = { row_equation | field_wise_constraint | (record_kw? ~ ident ~ ":" ~ bound_list) }
 // RFC-0121 §2's row decomposition (`where R = { token: Token, ..Rest }`):
 // names a row variable's current row by equation rather than bound. The
 // right-hand side reuses `open_record_type` (not plain `type_expr`'s closed
@@ -155,6 +155,13 @@ where_constraint = { row_equation | (record_kw? ~ ident ~ ":" ~ bound_list) }
 // `type_expr` so a malformed (tail-less) equation gets a clear parse-time
 // rejection downstream rather than silently failing to match this rule.
 row_equation = { ident ~ "=" ~ (open_record_type | type_expr) }
+// RFC-0123 §1's field-wise constraint (`where all R: Display`): the aspect
+// bound applies to every field of the row `R`, not to `R` as a whole. `all` is
+// contextual -- it is not a reserved word, so `all` stays an ordinary identifier
+// everywhere else (a method name, a binding); only this position reads it as a
+// keyword, and `all: Bound` (a type parameter named `all`) still parses as an
+// ordinary bound because the next token is not an identifier.
+field_wise_constraint = { all_kw ~ ident ~ ":" ~ bound_list }
 
 // ── Statements ────────────────────────────────────────────────────────────────
 
@@ -463,6 +470,7 @@ self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
 super_kw = @{ "super" ~ !(ASCII_ALPHANUMERIC | "_") }
 record_kw = @{ "record" ~ !(ASCII_ALPHANUMERIC | "_") }
 row_kw    = @{ "row" ~ !(ASCII_ALPHANUMERIC | "_") }
+all_kw    = @{ "all" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // arch-implements: ["arch.parsing.requirement-5"]
 ident = @{

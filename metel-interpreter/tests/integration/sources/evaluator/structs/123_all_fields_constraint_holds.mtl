@@ -1,0 +1,35 @@
+// RFC-0123 sec1 (metel-core#1302): `where all R: Aspect` holds when every field
+// of the row `R` -- the argument's fields beyond the ones the parameter names --
+// satisfies the aspect. It is vacuous on an empty remainder, covers a named
+// record argument as well as an anonymous one, and in a `where R = { .., ..Rest }`
+// decomposition `all Rest: A` skips the decomposed labels and `all R: A` does not.
+
+aspect Tag { fun tag(self) -> i64; }
+extend i64: Tag { fun tag(self) -> i64 { 1 } }
+extend f64: Tag { fun tag(self) -> i64 { 2 } }
+
+record Item { public id: i64, public weight: f64 }
+
+fun id_of<row R>(p: { id: i64, ..R }) -> i64 where all R: Tag { p.id }
+
+fun token_of<row R, row Rest>(p: { ..R }) -> i64
+where R = { token: i64, ..Rest }, all Rest: Copy
+{
+    p.token
+}
+
+fun whole<row R, row Rest>(p: { ..R }) -> i64
+where R = { token: i64, ..Rest }, all R: Tag
+{
+    p.token
+}
+
+fun main() {
+    assert(id_of({ id = 7, w = 1.5, h = 3 }) == 7);
+    assert(id_of({ id = 8 }) == 8);
+    assert(token_of({ token = 4, a = 1, b = 2.0 }) == 4);
+    assert(whole({ token = 5, ratio = 0.5 }) == 5);
+    let item := Item { id = 9, weight = 2.0 };
+    assert(id_of(item) == 9);
+    println("ok");
+}

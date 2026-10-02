@@ -1107,6 +1107,89 @@ fn resolve_decomposed_fields(
     Ok(equation.fields.clone())
 }
 
+/// RFC-0123 `where all R: Aspect` for an open-row parameter's tail: the aspects
+/// every field of the argument must satisfy, outside the labels the parameter
+/// already names. `R` itself (the tail) covers the argument's fields minus the
+/// pattern's own; the tail of a `where R = { .. , ..Rest }` equation (`Rest`)
+/// additionally excludes the decomposed labels. `consumed` records which
+/// constraints found a parameter to attach to.
+fn field_wise_bounds(
+    tail: &RowTail,
+    explicit: &[String],
+    decomposed: &[(String, TypeExpr)],
+    where_clause: Option<&WhereClause>,
+    consumed: &mut Vec<usize>,
+) -> Result<Vec<GenericBound>, MetelError> {
+    let (Some(name), Some(where_clause)) = (&tail.var, where_clause) else {
+        return Ok(vec![]);
+    };
+    let remainder = where_clause
+        .row_equation_for(name)
+        .and_then(|equation| equation.tail.var.as_deref());
+    let mut out = vec![];
+    for (index, constraint) in where_clause.field_wise.iter().enumerate() {
+        let mut except: Vec<String> = explicit.to_vec();
+        if remainder == Some(constraint.var.as_str()) {
+            except.extend(decomposed.iter().map(|(label, _)| label.clone()));
+        } else if constraint.var != *name {
+            continue;
+        }
+        let mut aspects = vec![];
+        for bound in &constraint.bounds {
+            match GenericBound::from_ast(bound) {
+                Some(GenericBound::Aspect(aspect)) if bound.polarity == Polarity::Positive => {
+                    aspects.push(aspect);
+                }
+                _ => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`all {}` takes aspect bounds only -- a row bound or a negative \
+                             bound does not apply field by field (RFC-0123 §1)",
+                            constraint.var
+                        ),
+                        &constraint.span,
+                    ));
+                }
+            }
+        }
+        consumed.push(index);
+        out.push(GenericBound::AllFields { aspects, except });
+    }
+    Ok(out)
+}
+
+/// Every `where all R: ..` must name the row tail of some open-row parameter (or
+/// a decomposition's remainder); a bare row generic has no fields to walk here.
+fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), MetelError> {
+    let Some(where_clause) = &fun.where_clause else {
+        return Ok(());
+    };
+    for (index, constraint) in where_clause.field_wise.iter().enumerate() {
+        check_row_var(
+            &RowTail {
+                var: Some(constraint.var.clone()),
+                span: constraint.span.clone(),
+            },
+            &fun.generics,
+        )?;
+        if !consumed.contains(&index) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`all {}` must name the row tail of an open-row parameter \
+                     (`{{ .., ..{}}}`) or the remainder of a `where` decomposition; \
+                     field-wise constraints on other uses of a row are not implemented yet \
+                     (metel-core#1302)",
+                    constraint.var, constraint.var
+                ),
+                &constraint.span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// `collect_open_record_param_vars` over an arbitrary fresh-`TypeVar` source, so
 /// the registry's method-scheme builders (which run before any `InferContext`
 /// exists and only hold the `TypeVarGenerator`) desugar open-row parameters
@@ -1119,6 +1202,7 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
     let mut bounds = HashMap::new();
     let mut record_kinds = HashMap::new();
     let mut projection_tail_constraints = HashMap::new();
+    let mut consumed_field_wise = vec![];
     for (i, param) in fun.params.iter().enumerate() {
         match &param.type_ann {
             Some(TypeExpr::OpenRecord(fields, tail)) => {
@@ -1130,7 +1214,7 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                     fields: fields
                         .iter()
                         .cloned()
-                        .chain(decomposed)
+                        .chain(decomposed.clone())
                         .map(|(label, ty)| RowConstraintField {
                             label,
                             ty: Some(ty),
@@ -1138,7 +1222,16 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                         .collect(),
                     open: true,
                 };
-                bounds.insert(tv, vec![GenericBound::Row(row)]);
+                let explicit: Vec<String> = fields.iter().map(|(label, _)| label.clone()).collect();
+                let mut param_bounds = vec![GenericBound::Row(row)];
+                param_bounds.extend(field_wise_bounds(
+                    tail,
+                    &explicit,
+                    &decomposed,
+                    fun.where_clause.as_ref(),
+                    &mut consumed_field_wise,
+                )?);
+                bounds.insert(tv, param_bounds);
                 record_kinds.insert(tv, true);
                 param_vars.insert(i, tv);
             }
@@ -1152,6 +1245,7 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                 // width-subtyping check.
                 let decomposed =
                     resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
+                let projection_decomposed = decomposed.clone();
                 let tv = fresh_type_var();
                 let row = RowConstraint {
                     fields: fields
@@ -1172,12 +1266,23 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                     open: true,
                 };
                 let brand = path.last().cloned().unwrap_or_default();
+                let field_wise = field_wise_bounds(
+                    tail,
+                    fields,
+                    &projection_decomposed,
+                    fun.where_clause.as_ref(),
+                    &mut consumed_field_wise,
+                )?;
+                if !field_wise.is_empty() {
+                    bounds.insert(tv, field_wise);
+                }
                 projection_tail_constraints.insert(tv, (brand, row));
                 param_vars.insert(i, tv);
             }
             _ => {}
         }
     }
+    check_field_wise_consumed(fun, &consumed_field_wise)?;
     Ok((
         param_vars,
         bounds,

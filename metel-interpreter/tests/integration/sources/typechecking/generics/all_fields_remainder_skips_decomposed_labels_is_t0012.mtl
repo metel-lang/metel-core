@@ -1,0 +1,12 @@
+// RFC-0123 sec1 (metel-core#1302): in a decomposition, `all R: Copy` covers the
+// decomposed labels too (here `name: String`), where `all Rest: Copy` would not.
+
+fun pick<row R, row Rest>(p: { ..R }) -> i64
+where R = { id: i64, name: String, ..Rest }, all R: Copy
+{
+    p.id
+}
+
+fun main() {
+    let _ := pick({ id = 1, name = "x".to_string() });
+}

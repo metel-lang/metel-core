@@ -433,7 +433,7 @@ fn provably_disjoint(
 fn row_bounds(bounds: &[GenericBound]) -> impl Iterator<Item = &RowConstraint> {
     bounds.iter().filter_map(|bound| match bound {
         GenericBound::Row(row) => Some(row),
-        GenericBound::Aspect(_) => None,
+        GenericBound::Aspect(_) | GenericBound::AllFields { .. } => None,
     })
 }
 

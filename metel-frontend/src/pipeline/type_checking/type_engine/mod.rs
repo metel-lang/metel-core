@@ -1922,6 +1922,14 @@ pub type AssocEqConstraints = HashMap<TypeVar, Vec<(String, String, InferType)>>
 pub enum GenericBound {
     Aspect(String),
     Row(RowConstraint),
+    /// RFC-0123 `where all R: A`, on the type variable of an open-row-tailed
+    /// parameter: every field of the argument *except* the labels in `except`
+    /// (those the parameter's pattern, or a `where R = { .. }` decomposition,
+    /// already names) satisfies each aspect in `aspects`.
+    AllFields {
+        aspects: Vec<String>,
+        except: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1970,7 +1978,7 @@ impl GenericBound {
     pub fn aspect_name(&self) -> Option<&str> {
         match self {
             Self::Aspect(name) => Some(name.as_str()),
-            Self::Row(_) => None,
+            Self::Row(_) | Self::AllFields { .. } => None,
         }
     }
 }
@@ -2105,6 +2113,7 @@ impl fmt::Display for GenericBound {
 
         match self {
             Self::Aspect(name) => f.write_str(name),
+            Self::AllFields { aspects, .. } => write!(f, "all: {}", aspects.join(" + ")),
             Self::Row(row) => {
                 f.write_str("{ ")?;
                 for (index, field) in row.fields.iter().enumerate() {
@@ -3320,6 +3329,9 @@ impl TypeDefinitionRegistry {
                         GenericBound::Row(row) => {
                             self.row_condition_holds(current_module, arg, row, false)
                         }
+                        // Only ever built for a function's open-row parameter,
+                        // never for an impl condition.
+                        GenericBound::AllFields { .. } => true,
                     };
                     if !holds {
                         return false;
@@ -3340,6 +3352,7 @@ impl TypeDefinitionRegistry {
                         GenericBound::Row(row) => {
                             !self.row_condition_holds(current_module, arg, row, true)
                         }
+                        GenericBound::AllFields { .. } => false,
                     };
                     if violated {
                         return false;
