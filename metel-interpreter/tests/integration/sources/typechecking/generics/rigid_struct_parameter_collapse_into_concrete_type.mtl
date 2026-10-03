@@ -1,0 +1,9 @@
+// Negative (RFC-0173 D1): a struct parameter is opaque inside an impl body that
+// is generic over that parameter, just like a function or method parameter.
+struct Box<T> { value: T }
+
+extend Box<T> {
+    fun pick(self) -> i64 { self.value } // ERROR[T0001]
+}
+
+fun main() { Box { value = 1 }.pick(); }

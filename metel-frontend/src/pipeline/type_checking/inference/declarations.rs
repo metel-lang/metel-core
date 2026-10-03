@@ -1118,9 +1118,8 @@ pub(super) fn infer_impl_method(
         .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
         .collect();
     // RFC-0173 D1: the method's own declared parameters, checked rigid after the body
-    // is solved. The struct's and impl's parameters are merged into `generic_map` below
-    // and are not checked here yet (a concrete `extend Box<i64>` legitimately resolves
-    // the struct's own parameter name to `i64`).
+    // is solved. The enclosing struct and impl parameters are captured after they are
+    // merged into `generic_map` below.
     let method_declared: Vec<(&str, TypeVar)> = method
         .generics
         .iter()
@@ -1254,6 +1253,43 @@ pub(super) fn infer_impl_method(
                     (r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()),
                 );
             }
+        }
+    }
+
+    // RFC-0173 D1: the parameters declared by the enclosing struct are rigid in an
+    // impl body only when the target names those parameters. A concrete target such as
+    // `extend Box<i64>` is allowed to resolve Box's parameter to `i64`, whereas
+    // `extend Box<T>` must not let its body collapse `T` to a concrete type. An
+    // argument-less generic target likewise ranges over the struct's parameters.
+    let mut enclosing_declared: Vec<(String, TypeVar)> = Vec::new();
+    if let Some(names) = ctx.struct_generic_names_for(target_name).cloned() {
+        let target_args = match &ib.target_type {
+            TypeExpr::Named(_, args) => Some(args.as_slice()),
+            _ => None,
+        };
+        for (i, name) in names.iter().enumerate() {
+            let Some(&tv) = generic_map.get(name) else {
+                continue;
+            };
+            let target_names_parameter = target_args.is_none_or(|args| {
+                args.is_empty()
+                    || matches!(args.get(i), Some(TypeExpr::Named(arg, inner))
+                        if inner.is_empty() && arg == name)
+            });
+            if target_names_parameter {
+                enclosing_declared.push((name.clone(), tv));
+            }
+        }
+    }
+    // An impl's own generics can alias a target parameter (for example
+    // `extend<T> Box<T>`). Keep one entry per TypeVar so that alias is checked once.
+    for generic in &ib.generics {
+        if let Some(&tv) = generic_map.get(&generic.name)
+            && !enclosing_declared
+                .iter()
+                .any(|(_, declared_tv)| *declared_tv == tv)
+        {
+            enclosing_declared.push((generic.name.clone(), tv));
         }
     }
 
@@ -1493,9 +1529,13 @@ pub(super) fn infer_impl_method(
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
-    check_declared_parameters_rigid(&method.span, &method_declared, &|ty| {
-        partial_subst.apply(ty)
-    })?;
+    let mut declared = method_declared;
+    for (name, tv) in &enclosing_declared {
+        if !declared.iter().any(|(_, declared_tv)| *declared_tv == *tv) {
+            declared.push((name, *tv));
+        }
+    }
+    check_declared_parameters_rigid(&method.span, &declared, &|ty| partial_subst.apply(ty))?;
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
 

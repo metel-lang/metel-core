@@ -1,0 +1,9 @@
+// RFC-0173 D1: only declared parameters are rigid. A concrete impl target may
+// legitimately resolve Box's declared parameter to i64.
+struct Box<T> { value: T }
+
+extend Box<i64> {
+    fun value_as_i64(self) -> i64 { self.value }
+}
+
+fun main() { assert(Box { value = 1 }.value_as_i64() == 1); }
