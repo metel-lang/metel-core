@@ -1,0 +1,11 @@
+// metel-core#1241: a blanket impl over a record-kinded type parameter would be accepted and
+// then never apply (the receiver is a bare type variable no method lookup reaches), so the
+// declaration is rejected; the supported spelling is a row target.
+aspect A { fun f(self) -> i64; }
+
+extend<record T: { x: f64, .. }> T: A {
+    fun f(self) -> i64 { 1 }
+}
+
+fun main() {
+}

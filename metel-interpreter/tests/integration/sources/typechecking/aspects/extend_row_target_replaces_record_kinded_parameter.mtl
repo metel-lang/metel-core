@@ -1,0 +1,15 @@
+// metel-core#1241: the row-target spelling of the same blanket impl applies, to anonymous
+// records and nominal `record`s whose row carries the bound's fields.
+aspect A { fun f(self) -> i64; }
+
+extend<row R: { x: f64, .. }> { ..R }: A {
+    fun f(self) -> i64 { 1 }
+}
+
+record P { public x: f64 }
+
+fun main() {
+    assert({ x = 1.0, y = 2.0 }.f() == 1);
+    assert(P { x = 3.0 }.f() == 1);
+    println("ok");
+}

@@ -1090,6 +1090,24 @@ pub(crate) fn reject_unregisterable_impl_target(
 ) -> Result<(), crate::data::error::MetelError> {
     use crate::data::ast::TypeExpr;
     check_impl_field_wise_constraints(ib)?;
+    // `extend<record T: { x, .. }> T: A`: a blanket impl over a record-kinded type parameter
+    // would never apply (its receiver is a bare type variable, which no method lookup
+    // reaches), so it is rejected rather than accepted and inert (metel-core#1241). The
+    // supported spelling of the same impl is a row target.
+    if let TypeExpr::Named(name, args) = &ib.target_type
+        && args.is_empty()
+        && ib.generics.iter().any(|g| g.name == *name && g.is_record)
+    {
+        return Err(crate::data::error::MetelError::type_error(
+            crate::data::error::TypeErrorCode::T0001,
+            format!(
+                "cannot `extend` the record-kinded type parameter `{name}`: this block's methods \
+                 could never be found. To fix it, write the target as a row, \
+                 `extend<row R: {{ .. }}> {{ ..R }}: Aspect` (the bound moves onto `R`)"
+            ),
+            &ib.span,
+        ));
+    }
     if impl_target_head(&ib.target_type).is_some() {
         return Ok(());
     }
