@@ -1,0 +1,14 @@
+// RFC-0173 D1: recursive generic calls instantiate the callee's parameters
+// afresh, including mutually recursive calls.
+fun even<T>(n: i64, value: T) -> T {
+    if (n == 0) { value } else { odd(n - 1, value) }
+}
+
+fun odd<U>(n: i64, value: U) -> U {
+    if (n == 0) { value } else { even(n - 1, value) }
+}
+
+fun main() {
+    assert(even(4, "yes") == "yes");
+    assert(odd(3, 7) == 7);
+}
