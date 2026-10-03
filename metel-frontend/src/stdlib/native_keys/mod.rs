@@ -73,6 +73,7 @@ pub enum NativeKey {
     /// `Display::to_string` for every displayable primitive — the host formats
     /// the receiver by its runtime value, so one key serves all 13 impls.
     StdCoreToString,
+    StdCoreRecordToString,
     /// `i8::from(numeric)` — convert any numeric value to i8.
     StdCoreI8From,
     /// `i16::from(numeric)` — convert any numeric value to i16.
@@ -184,6 +185,7 @@ impl NativeKey {
             ["std", "core", "string_char_at"] => NativeKey::StdCoreStringCharAt,
             ["std", "core", "string_substring"] => NativeKey::StdCoreStringSubstring,
             ["std", "core", "to_string"] => NativeKey::StdCoreToString,
+            ["std", "core", "record_to_string"] => NativeKey::StdCoreRecordToString,
             ["std", "core", "i8_from"] => NativeKey::StdCoreI8From,
             ["std", "core", "i16_from"] => NativeKey::StdCoreI16From,
             ["std", "core", "i32_from"] => NativeKey::StdCoreI32From,
@@ -254,6 +256,7 @@ impl NativeKey {
             NativeKey::StdCoreStringCharAt => "@std.core.string_char_at",
             NativeKey::StdCoreStringSubstring => "@std.core.string_substring",
             NativeKey::StdCoreToString => "@std.core.to_string",
+            NativeKey::StdCoreRecordToString => "@std.core.record_to_string",
             NativeKey::StdCoreI8From => "@std.core.i8_from",
             NativeKey::StdCoreI16From => "@std.core.i16_from",
             NativeKey::StdCoreI32From => "@std.core.i32_from",
@@ -321,6 +324,7 @@ impl NativeKey {
         NativeKey::StdCoreStringCharAt,
         NativeKey::StdCoreStringSubstring,
         NativeKey::StdCoreToString,
+        NativeKey::StdCoreRecordToString,
         NativeKey::StdCoreI8From,
         NativeKey::StdCoreI16From,
         NativeKey::StdCoreI32From,

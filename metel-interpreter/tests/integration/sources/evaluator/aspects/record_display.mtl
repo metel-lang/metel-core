@@ -1,0 +1,25 @@
+// metel-core#1338 / RFC-0123: `std::core` implements `Display` for every record whose fields
+// are all `Display`: anonymous and nominal records, nested records, and fields whose types
+// have a `Display` impl of their own. The impl's body is a built-in standing in for RFC-0174's
+// `comptime for` (LIMIT-TYPES-003): fields print in label order as `{ label: value, .. }`.
+
+record Pt { public x: i64, public y: i64 }
+struct Tag { public v: i64 }
+extend Tag: Display {
+    fun to_string(&self) -> String { "tag".to_string() }
+}
+
+fun show<T: Display>(x: &T) -> String { x.to_string() }
+
+fun main() {
+    let p := { x = 1, y = 2.5, s = "hi" };
+    assert(p.to_string() == "{ s: hi, x: 1, y: 2.5 }");
+    assert("${p}" == "{ s: hi, x: 1, y: 2.5 }");
+    assert("${{ a = 1, b = { c = 2 } }}" == "{ a: 1, b: { c: 2 } }");
+    assert("${{ t = Tag { v = 1 }, n = 7 }}" == "{ n: 7, t: tag }");
+    let pt := Pt { x = 3, y = 4 };
+    assert(pt.to_string() == "Pt { x: 3, y: 4 }");
+    assert(show(&pt) == "Pt { x: 3, y: 4 }");
+    assert(show(&p) == "{ s: hi, x: 1, y: 2.5 }");
+    println("ok");
+}

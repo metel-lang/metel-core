@@ -2441,6 +2441,10 @@ pub struct TypeDefinitionRegistry {
     /// Bare-parameter blanket impl metadata (`impl<T> Aspect for T`), keyed by
     /// aspect name alone because the target has no nominal head to resolve.
     bare_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
+    /// Conditions of impls whose target is a record type (`extend<row R> { ..R }: Aspect`),
+    /// keyed by aspect. Unlike `bare_impl_bounds` they apply only to a record-kinded type --
+    /// an anonymous record, a residual, or a nominal `record` -- never to a `struct`.
+    record_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
     /// Conditional impl metadata for structural array targets (`impl<T: Bound> Aspect for T[]`).
     array_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
     /// Generic negative impl metadata, keyed by `(target_type_id, aspect_name)`.
@@ -2763,6 +2767,7 @@ impl TypeDefinitionRegistry {
             impl_aspect_env: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
             bare_impl_bounds: HashMap::new(),
+            record_impl_bounds: HashMap::new(),
             array_impl_bounds: HashMap::new(),
             neg_conditional_impl_bounds: HashMap::new(),
             bare_neg_impl_bounds: HashMap::new(),
@@ -3228,6 +3233,31 @@ impl TypeDefinitionRegistry {
             .push((pos_bounds, neg_bounds));
     }
 
+    pub fn register_record_impl_bounds(
+        &mut self,
+        aspect: &str,
+        pos_bounds: Vec<Vec<GenericBound>>,
+        neg_bounds: Vec<Vec<GenericBound>>,
+    ) {
+        self.record_impl_bounds
+            .entry(aspect.to_string())
+            .or_default()
+            .push((pos_bounds, neg_bounds));
+    }
+
+    /// Whether `ty` is a type a record-target impl can apply to: an anonymous record, a
+    /// residual, or a nominal `record` (never a `struct`).
+    fn is_record_kinded(&self, current_module: &[String], ty: &InferType) -> bool {
+        match ty {
+            InferType::Record(_) | InferType::Residual { .. } => true,
+            InferType::Named(name, ..) => matches!(
+                self.visible_type_kind(current_module, name),
+                Some(VisibleTypeKind::Record)
+            ),
+            _ => false,
+        }
+    }
+
     pub fn register_symbolic_named_aspects(&mut self, name: String, aspects: HashSet<String>) {
         self.symbolic_named_aspects.insert(name, aspects);
     }
@@ -3543,6 +3573,21 @@ impl TypeDefinitionRegistry {
             }
         }
         if let Some(entries) = self.bare_impl_bounds.get(aspect_name) {
+            for (pos_bounds, neg_bounds) in entries {
+                if self.check_conditional_entry(
+                    current_module,
+                    std::slice::from_ref(ty),
+                    pos_bounds,
+                    neg_bounds,
+                    assumptions,
+                ) {
+                    return true;
+                }
+            }
+        }
+        if self.is_record_kinded(current_module, ty)
+            && let Some(entries) = self.record_impl_bounds.get(aspect_name)
+        {
             for (pos_bounds, neg_bounds) in entries {
                 if self.check_conditional_entry(
                     current_module,
@@ -4133,6 +4178,12 @@ impl TypeDefinitionRegistry {
         method_name: &str,
         receiver: &InferType,
     ) -> Option<&ArrayMethodSchemeVariant> {
+        // a `struct` is never a record receiver; a nominal `record` is
+        if !self.is_record_kinded(current_module, receiver)
+            && matches!(receiver, InferType::Named(..))
+        {
+            return None;
+        }
         self.record_method_scheme_variants_for(method_name)
             .iter()
             .rev()
@@ -4672,6 +4723,12 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.bare_impl_bounds {
             self.bare_impl_bounds
+                .entry(k.clone())
+                .or_default()
+                .extend(v.iter().cloned());
+        }
+        for (k, v) in &other.record_impl_bounds {
+            self.record_impl_bounds
                 .entry(k.clone())
                 .or_default()
                 .extend(v.iter().cloned());

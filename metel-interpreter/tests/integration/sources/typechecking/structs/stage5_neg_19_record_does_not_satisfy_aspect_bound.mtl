@@ -1,9 +1,12 @@
-// Negative (RFC-0116 §3): an anonymous record has no nominal owner, so it satisfies no
-// impl-based aspect. It must be rejected at the call site, like a tuple or a struct
-// without the impl — not accepted and then blown up at run time.
+// Negative (RFC-0116 §3): an anonymous record satisfies an impl-based aspect only through an
+// `extend` on a record target (`std::core`'s `Display` for a record needs every field to be
+// `Display`). A record with a field that has no `Display` is rejected at the call site, like a
+// tuple or a struct without the impl -- not accepted and then blown up at run time.
+struct Opaque { v: i64 }
+
 fun show<T: Display>(x: T) -> String { x.to_string() }
 
 fun main() {
-    let r := { x = 1 };
+    let r := { x = Opaque { v = 1 } };
     let s := show(r);
 }

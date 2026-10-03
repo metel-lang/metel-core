@@ -398,6 +398,17 @@ fn native_string_substring(
     Ok(Value::Str(sub))
 }
 
+// Never reached: calls to the record `Display` built-in are handled in
+// `call_runtime_callable`, where the runtime is available.
+fn native_record_to_string_placeholder(
+    _args: &[Value],
+    _span: &crate::data::ast::Span,
+) -> Result<Value, MetelError> {
+    Err(MetelError::internal(
+        "record to_string must be dispatched with the runtime",
+    ))
+}
+
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
 fn native_to_string(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
@@ -883,6 +894,11 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
         NativeKey::StdCoreStringCharAt => ("String::char_at", native_string_char_at),
         NativeKey::StdCoreStringSubstring => ("String::substring", native_string_substring),
         NativeKey::StdCoreToString => ("Display::to_string", native_to_string),
+        // intercepted by label in `call_runtime_callable`: it needs the runtime
+        NativeKey::StdCoreRecordToString => (
+            super::record_display::RECORD_TO_STRING,
+            native_record_to_string_placeholder,
+        ),
         NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
         NativeKey::StdCoreI16From => ("i16::from", native_i16_from),
         NativeKey::StdCoreI32From => ("i32::from", native_i32_from),

@@ -1466,7 +1466,7 @@ fn register_record_target_impl(
     if let Some(aspect_name) = &ib.aspect_name {
         let mut pos = vec![GenericBound::Row(row.clone())];
         pos.extend(record_target_all_fields(ib));
-        registry.register_bare_impl_bounds(aspect_name, vec![pos], vec![vec![]]);
+        registry.register_record_impl_bounds(aspect_name, vec![pos], vec![vec![]]);
     }
 }
 

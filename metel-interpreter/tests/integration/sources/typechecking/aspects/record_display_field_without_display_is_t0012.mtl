@@ -1,0 +1,8 @@
+// metel-core#1338: the record `Display` impl requires every field to be `Display`
+// (`where all R: Display`); a field of a struct with no impl is rejected at the call.
+struct Opaque { v: i64 }
+
+fun main() {
+    let p := { a = 1, o = Opaque { v = 2 } };
+    let _ := p.to_string();
+}

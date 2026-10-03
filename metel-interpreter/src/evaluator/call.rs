@@ -88,7 +88,14 @@ fn call_runtime_callable(
     match callable {
         RuntimeCallable::Intrinsic { label, fun } => {
             profiler_enter(&label);
-            let result = fun(args, span).map(Signal::Value).map_err(attach_stack);
+            // the record `Display` built-in needs the runtime to call each field's own impl
+            let result = if label == super::record_display::RECORD_TO_STRING {
+                super::record_display::record_to_string(args, span, runtime)
+            } else {
+                fun(args, span)
+            }
+            .map(Signal::Value)
+            .map_err(attach_stack);
             profiler_exit();
             result
         }

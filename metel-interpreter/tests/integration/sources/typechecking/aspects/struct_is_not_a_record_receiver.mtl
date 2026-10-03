@@ -1,0 +1,11 @@
+// RFC-0121 sec3: a record-target impl applies to anonymous records and nominal `record`s,
+// never to a `struct`. A struct reaches neither the impl's methods nor its aspect bound.
+aspect Mark { fun mark(&self) -> i64; }
+extend<row R> { ..R }: Mark { fun mark(&self) -> i64 { 1 } }
+
+struct V { public v: i64 }
+
+fun main() {
+    let v := V { v = 1 };
+    let _ := v.mark();
+}

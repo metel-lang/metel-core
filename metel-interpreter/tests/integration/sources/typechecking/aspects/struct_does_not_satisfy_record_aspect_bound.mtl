@@ -1,0 +1,12 @@
+// RFC-0121 sec3: a `struct` does not satisfy an aspect bound through a record-target impl.
+aspect Mark { fun mark(&self) -> i64; }
+extend<row R> { ..R }: Mark { fun mark(&self) -> i64 { 1 } }
+
+struct V { public v: i64 }
+
+fun show<T: Mark>(x: &T) -> i64 { x.mark() }
+
+fun main() {
+    let v := V { v = 1 };
+    let _ := show(&v);
+}

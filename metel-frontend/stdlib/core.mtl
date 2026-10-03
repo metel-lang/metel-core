@@ -379,6 +379,14 @@ native(@std.core.panic) public fun panic(msg: String) -> !;
 // One shared host implementation formats any displayable value, so every
 // impl binds to the same @std.core.to_string key.
 
+// Display for every record whose fields are all Display (RFC-0123, metel-core#1338). The
+// body is a built-in that walks the receiver's fields at runtime, calling each field's own
+// `to_string`: a stand-in for the `comptime for` loop of RFC-0174 that will replace it
+// (LIMIT-TYPES-003).
+extend<row R> { ..R }: Display where all R: Display {
+    native(@std.core.record_to_string) fun to_string(&self) -> String;
+}
+
 extend i8: Display {
     native(@std.core.to_string) fun to_string(&self) -> String;
 }
