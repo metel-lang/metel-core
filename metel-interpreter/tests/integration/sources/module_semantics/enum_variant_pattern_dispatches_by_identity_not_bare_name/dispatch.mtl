@@ -1,0 +1,10 @@
+// Only `alpha::Shape` is in scope here, so the bare `Shape::Circle` pattern
+// below always resolves -- statically and by identity -- to *alpha's*
+// declaration.
+import alpha::*;
+
+public fun radius(v: Shape) -> f64 {
+    match (v) {
+        Shape::Circle { r } => r,
+    }
+}

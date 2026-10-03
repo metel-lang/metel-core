@@ -1,9 +1,10 @@
-// Negative: generic body fixes T to a concrete type; call site provides a conflicting annotation.
+// Negative: a generic body that fixes T to a concrete type is rejected at the
+// definition (RFC-0173 D1), not at a call with a conflicting annotation.
 
-// Body always returns 42, so T is inferred as i64.
-// The caller annotates the result as boolean — type mismatch.
-fun always_int<T>(_x: T) -> T { 42 }
+// Body always returns 42, so T would have to be i64: but T is a declared parameter,
+// opaque inside its own definition.
+fun always_int<T>(_x: T) -> T { 42 } // ERROR[T0001]
 
 fun use_bad() {
-    let _s: boolean := always_int(true); // ERROR[T0001]
+    let _s: boolean := always_int(true);
 }

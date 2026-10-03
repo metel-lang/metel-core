@@ -1,0 +1,5 @@
+// Negative (RFC-0173 D1): two declared type parameters are distinct, so one
+// cannot be returned where the other is expected.
+fun id2<T, U>(a: T) -> U { a } // ERROR[T0001]
+
+fun main() { id2(1); }

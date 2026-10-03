@@ -1,11 +1,10 @@
-// Negative, deliberately out of scope (RFC-0138 §5): a generic function passed to
-// a parameter position that is itself still generic in the callee -- rank-2
-// polymorphism -- stays call-only. #736/RFC-0138 only lifted the restriction for a
-// bare reference and a higher-order argument whose *receiving* parameter is
-// concrete (see stage10_10/stage10_11); here `apply_twice`'s own `f: F` is not.
+// Negative (RFC-0173 D3): a bare type parameter is not callable. The rank-2 shape
+// this fixture used to probe (a generic function passed to a parameter that is itself
+// still generic in the callee, RFC-0138 §5) can no longer be written, because
+// `apply_twice`'s own `f: F` cannot be called: the spelling is `f: |T| -> T`.
 
 fun identity<T>(x: T) -> T { return x; }
-fun apply_twice<F, T>(f: F, x: T) -> T { return f(x); }
+fun apply_twice<F, T>(f: F, x: T) -> T { return f(x); } // ERROR[T0001]
 
 fun main() {
     apply_twice(identity, 5);

@@ -1,0 +1,13 @@
+// Negative (RFC-0173 D1, D2): matching a bare type parameter against a concrete enum
+// pattern relied on checking the body again per call. The parameter is opaque, so the
+// spelling is a bound or a concrete type in the signature.
+enum Shape { Circle { r: f64 }, Square { side: f64 } }
+
+fun radius<T>(v: T) -> f64 { // ERROR[T0001]
+    match (v) {
+        Shape::Circle { r } => r,
+        _ => 0.0,
+    }
+}
+
+fun main() { radius(Shape::Circle { r = 1.0 }); }

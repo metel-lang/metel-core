@@ -1,0 +1,5 @@
+// Negative (RFC-0173 D1): a declared type parameter is opaque inside its own
+// definition, so it cannot be used as a concrete type.
+fun pick<T>(a: T) -> i64 { a } // ERROR[T0001]
+
+fun main() { pick(1); }

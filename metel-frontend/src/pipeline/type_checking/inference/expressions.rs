@@ -1079,6 +1079,14 @@ pub(super) fn infer_expr(
                     if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned()
                         && let Some(method_def) = methods.iter().find(|m| m.name == *method)
                     {
+                        // The method's own generic parameters (`fun sink<U>(self, x: U)`)
+                        // are fresh at every call. Left unmapped they would resolve to a
+                        // concrete type named `U`, or -- worse -- to the caller's own
+                        // parameter of the same name (RFC-0173).
+                        let mut method_generic_map = self_generic_map.clone();
+                        for gp in &method_def.generics {
+                            method_generic_map.insert(gp.name.clone(), ctx.fresh_type_var_raw());
+                        }
                         // Resolve return type: Self → the TypeVar itself. A bare
                         // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
                         // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
@@ -1102,7 +1110,9 @@ pub(super) fn infer_expr(
                                         n,
                                     ))
                                 }
-                                other => type_expr_to_infer_with_generics(other, &self_generic_map),
+                                other => {
+                                    type_expr_to_infer_with_generics(other, &method_generic_map)
+                                }
                             },
                         );
 
@@ -1135,7 +1145,7 @@ pub(super) fn infer_expr(
                         for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                             if let Some(ann) = &param.type_ann {
                                 let param_ty =
-                                    type_expr_to_infer_with_generics(ann, &self_generic_map);
+                                    type_expr_to_infer_with_generics(ann, &method_generic_map);
                                 ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
                             }
                         }

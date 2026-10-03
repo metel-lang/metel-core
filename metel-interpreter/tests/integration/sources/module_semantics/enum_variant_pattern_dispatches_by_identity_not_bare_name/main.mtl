@@ -1,0 +1,22 @@
+// metel-core#1128: the evaluator's enum-variant pattern match discarded its
+// own resolved `variant_id` and compared bare, source-spelled `name`/variant
+// strings instead. Two unrelated modules' same-named enum + same-named
+// variant could then silently misdispatch.
+//
+// `dispatch::radius` only ever sees `alpha::Shape` lexically, and takes exactly
+// that type, so it matches `alpha`'s declaration by identity even though `beta`
+// declares an enum with the same bare spelling. (The original reproduction used a
+// generic `radius<T>`; RFC-0173 makes that a definition error, because a bare
+// parameter cannot be matched against a concrete enum. See
+// `typechecking/generics/rigid_parameter_cannot_match_concrete_enum`.)
+import alpha::*;
+import beta::*;
+import dispatch::*;
+
+fun main() {
+    let a := alpha::Shape::Circle { r = 3.0 };
+    assert(radius(a) == 3.0);
+
+    let b := beta::Shape::Circle { r = 9.0 };
+    let _ := b;
+}

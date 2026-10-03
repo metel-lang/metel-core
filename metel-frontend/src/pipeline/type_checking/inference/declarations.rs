@@ -557,6 +557,58 @@ pub(super) fn rewrite_impl_aspect_returns(
     }
 }
 
+/// RFC-0173 D1: a declared type parameter is rigid in its own definition. After the
+/// body is solved, each declared parameter must still be an unbound variable, and
+/// distinct from every other declared parameter; a parameter that resolved to a
+/// concrete type, or collapsed into another parameter, was used as something its
+/// declaration does not say it is.
+///
+/// The solved substitution only tells us *that* the collapse happened, not which
+/// expression caused it, so the error is reported at the function. Equalities the
+/// declared bounds state (a row equation, an associated-type binding) are held in side
+/// tables and never unify the two parameters, so they do not trip this check.
+fn check_declared_parameters_rigid(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+    resolve: &dyn Fn(&InferType) -> InferType,
+) -> Result<(), MetelError> {
+    let mut seen: Vec<(TypeVar, &str)> = Vec::new();
+    for gp in &fun.generics {
+        let Some(&tv) = generic_map.get(&gp.name) else {
+            continue;
+        };
+        match resolve(&InferType::Var(tv)) {
+            InferType::Var(resolved) => {
+                if let Some((_, other)) = seen.iter().find(|(v, _)| *v == resolved) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0001,
+                        format!(
+                            "expected type parameter `{}`, found type parameter `{other}`: \
+                             declared type parameters are opaque inside their own definition, so \
+                             `{other}` and `{}` cannot be the same type",
+                            gp.name, gp.name
+                        ),
+                        &fun.span,
+                    ));
+                }
+                seen.push((resolved, gp.name.as_str()));
+            }
+            concrete => {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    format!(
+                        "expected `{concrete}`, found type parameter `{}`: a declared type \
+                         parameter is opaque inside its own definition",
+                        gp.name
+                    ),
+                    &fun.span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -808,6 +860,7 @@ pub(super) fn infer_fun_decl(
     // when the same polymorphic function is called at different types.
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
+    check_declared_parameters_rigid(fun, &generic_map, &|ty| partial_subst.apply(ty))?;
 
     // RFC-0037: process pending opaque-return markers. For each marker, check
     // whether the body's own solve resolved it to a concrete type (unlinked case)
