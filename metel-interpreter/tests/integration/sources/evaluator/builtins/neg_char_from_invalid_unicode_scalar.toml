@@ -1,0 +1,8 @@
+[options]
+error = ["R0016"]
+spec = ["spec.runtime.char-methods.dynamics-1"]
+
+[expect]
+status = "runtime_error"
+code = "R0016"
+contains = "not a valid Unicode scalar"

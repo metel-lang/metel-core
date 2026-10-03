@@ -69,6 +69,7 @@ pub enum RuntimeErrorCode {
     R0013, // Unwrap on `None`/`Err` (`.yolo()`)
     R0014, // Explicit panic (`panic()`)
     R0015, // Re-entrant call to a mutating closure (RFC-0153)
+    R0016, // Invalid Unicode scalar value
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

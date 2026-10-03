@@ -477,20 +477,13 @@ fn native_u32_from(args: &[Value], _span: &crate::data::ast::Span) -> Result<Val
     }
 }
 
-fn native_char_from(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
+fn native_char_from(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
         Some(Value::U32(n)) => char::from_u32(*n).map(Value::Char).ok_or_else(|| {
-            // metel-core#986 classified every R0009 raise site as an
-            // unreachable-under-a-sound-typechecker invariant (RFC-0167). This
-            // one is not that: a `u32` outside the Unicode scalar range is an
-            // ordinary, well-typed runtime value -- reclassified here to match
-            // the RFC's Rust-enum-level scheme regardless, since R0009 is fully
-            // retired by it; whether this specific site deserves a genuine
-            // R00NN "invalid conversion value" code instead is tracked as a
-            // follow-up (metel-core#1297), not this RFC's own scope.
-            MetelError::internal_with_code(
-                InternalErrorCode::I0006,
+            MetelError::panic(
+                RuntimeErrorCode::R0016,
                 format!("u32 value {n} is not a valid Unicode scalar"),
+                span,
             )
         }),
         _ => Err(MetelError::internal("Char::from: expected a u32 argument")),

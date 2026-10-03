@@ -1,0 +1,5 @@
+// RUNTIME_ERROR[R0016]
+// Char::from rejects u32 values outside the Unicode scalar range.
+fun main() {
+    let _c := Char::from(55296u32);
+}
