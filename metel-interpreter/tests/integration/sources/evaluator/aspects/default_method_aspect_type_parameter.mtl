@@ -1,0 +1,26 @@
+// metel-core#1330: a default method of an aspect with a type parameter mentions it in its
+// signature (`-> T`, `other: T`). The impl's aspect type argument stands for it, on a
+// non-generic and on a generic target alike.
+
+aspect Conv<T> {
+    fun get(self) -> T;
+    fun again(self) -> T { self.get() }
+    fun pair(self, other: T) -> T { other }
+}
+
+struct Box { public v: i64 }
+extend Box: Conv<i64> {
+    fun get(self) -> i64 { 3 }
+}
+
+struct G<U> { public u: U }
+extend<U> G<U>: Conv<String> {
+    fun get(self) -> String { "g".to_string() }
+}
+
+fun main() {
+    assert(Box { v = 1 }.again() == 3);
+    assert(Box { v = 1 }.pair(8) == 8);
+    assert(G { u = 1 }.again() == "g");
+    println("ok");
+}

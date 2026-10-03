@@ -1,0 +1,18 @@
+// metel-core#1332: a default method with generics of its own is generic per call when the
+// impl is on a non-generic type, not pinned to the type of its first call.
+
+aspect Describe {
+    fun describe(self) -> i64;
+    fun pick<V>(self, x: V) -> V { x }
+}
+
+struct Box { public v: i64 }
+extend Box: Describe {
+    fun describe(self) -> i64 { 1 }
+}
+
+fun main() {
+    assert(Box { v = 1 }.pick(5) == 5);
+    assert(Box { v = 1 }.pick("s") == "s");
+    println("ok");
+}

@@ -212,12 +212,12 @@ fn expand_generic_impl_defaults(
     base_registry: &super::super::type_engine::TypeDefinitionRegistry,
     current_module_path: &[String],
 ) -> Program {
-    use crate::data::ast::{AspectMethod, Visibility};
+    use crate::data::ast::AspectMethod;
     use std::collections::HashMap;
 
-    /// `(aspect is expandable: no type parameters and no associated types, its methods)`,
+    /// `(the aspect's type parameter names, its associated type names, its methods)`,
     /// keyed by aspect name.
-    type AspectDefaults = HashMap<String, (bool, Vec<AspectMethod>)>;
+    type AspectDefaults = HashMap<String, (Vec<String>, Vec<String>, Vec<AspectMethod>)>;
 
     fn collect(decls: &[Decl], into: &mut AspectDefaults) {
         for decl in decls {
@@ -225,7 +225,8 @@ fn expand_generic_impl_defaults(
                 into.insert(
                     ad.name.clone(),
                     (
-                        ad.generics.is_empty() && ad.assoc_types.is_empty(),
+                        ad.generics.clone(),
+                        ad.assoc_types.iter().map(|a| a.name.clone()).collect(),
                         ad.methods.clone(),
                     ),
                 );
@@ -244,78 +245,32 @@ fn expand_generic_impl_defaults(
     collect(&decls, &mut known);
     collect(&crate::stdlib::core_program().decls, &mut known);
 
-    let defaults_of = |aspect: &str| -> Option<Vec<AspectMethod>> {
-        let (expandable, methods) = match known.get(aspect) {
-            Some((expandable, methods)) => (*expandable, methods.clone()),
-            None => (
+    let defaults_of = |aspect: &str| -> Option<(Vec<String>, Vec<String>, Vec<AspectMethod>)> {
+        match known.get(aspect) {
+            Some((params, assoc, methods)) => {
+                Some((params.clone(), assoc.clone(), methods.clone()))
+            }
+            None => Some((
                 base_registry
                     .aspect_generics_in(current_module_path, aspect)?
-                    .is_empty()
-                    && base_registry
-                        .aspect_assoc_type_decls_in(current_module_path, aspect)
-                        .is_none(),
+                    .clone(),
+                base_registry
+                    .aspect_assoc_type_decls_in(current_module_path, aspect)
+                    .map_or_else(Vec::new, |decls| {
+                        decls.iter().map(|d| d.name.clone()).collect()
+                    }),
                 base_registry
                     .aspect_method_defs_in(current_module_path, aspect)?
                     .clone(),
-            ),
-        };
-        expandable.then_some(methods)
+            )),
+        }
     };
 
     let decls = decls
         .into_iter()
-        .map(|decl| {
-            let Decl::Impl(mut ib) = decl else {
-                return decl;
-            };
-            // A record target (RFC-0121 §3) has no nominal type to pre-register a
-            // default against either, so it takes the same expansion.
-            let generic_target = !ib.generics.is_empty()
-                || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty())
-                || matches!(
-                    &ib.target_type,
-                    TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
-                );
-            let Some(aspect) = ib
-                .aspect_name
-                .clone()
-                .filter(|_| generic_target && ib.polarity == Polarity::Positive)
-            else {
-                return Decl::Impl(ib);
-            };
-            let Some(methods) = defaults_of(&aspect) else {
-                return Decl::Impl(ib);
-            };
-            let provided: std::collections::HashSet<String> =
-                ib.methods.iter().map(|m| m.name.clone()).collect();
-            let mut offset = 0usize;
-            for method in methods {
-                let Some(body) = method.default_body.clone() else {
-                    continue;
-                };
-                if provided.contains(&method.name) {
-                    continue;
-                }
-                offset += 1;
-                ib.methods.push(FunDecl {
-                    visibility: Visibility::Private,
-                    name: method.name,
-                    generics: method.generics,
-                    where_clause: None,
-                    params: method.params,
-                    return_type: method.return_type,
-                    native: None,
-                    body,
-                    span: Span {
-                        start: ib.span.start,
-                        end: ib.span.start + offset,
-                        filename: ib.span.filename.clone(),
-                        line: ib.span.line,
-                        col: ib.span.col,
-                    },
-                });
-            }
-            Decl::Impl(ib)
+        .map(|decl| match decl {
+            Decl::Impl(ib) => Decl::Impl(expand_impl_defaults(ib, &defaults_of)),
+            other => other,
         })
         .collect();
     Program {
@@ -323,6 +278,122 @@ fn expand_generic_impl_defaults(
         exports,
         decls,
     }
+}
+
+/// `(an aspect's type parameter names, its associated type names, its methods)`.
+type AspectDefaultsEntry = (
+    Vec<String>,
+    Vec<String>,
+    Vec<crate::data::ast::AspectMethod>,
+);
+
+/// Write out the inherited default methods of one impl block (see
+/// `expand_generic_impl_defaults`).
+fn expand_impl_defaults(
+    mut ib: ImplBlock,
+    defaults_of: &dyn Fn(&str) -> Option<AspectDefaultsEntry>,
+) -> ImplBlock {
+    use crate::data::ast::Visibility;
+    use std::collections::HashMap;
+
+    // A record target (RFC-0121 §3) has no nominal type to pre-register a
+    // default against either, so it takes the same expansion.
+    let generic_target = !ib.generics.is_empty()
+        || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty())
+        || matches!(
+            &ib.target_type,
+            TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
+        );
+    let Some(aspect) = ib
+        .aspect_name
+        .clone()
+        .filter(|_| ib.polarity == Polarity::Positive)
+    else {
+        return ib;
+    };
+    let Some((aspect_params, assoc_names, methods)) = defaults_of(&aspect) else {
+        return ib;
+    };
+    // An aspect with type parameters (`aspect Conv<T>`): the impl's aspect type
+    // arguments stand for them in the copied default (metel-core#1330). An arity
+    // mismatch is the impl's own error, reported elsewhere.
+    if aspect_params.len() != ib.aspect_type_args.len() {
+        return ib;
+    }
+    let mut subst: HashMap<&str, &TypeExpr> = aspect_params
+        .iter()
+        .map(String::as_str)
+        .zip(ib.aspect_type_args.iter())
+        .collect();
+    // An associated type a default names bare (`Item`, sugar for `Self::Item`)
+    // resolves only in the aspect's own context, not once the text is copied into
+    // the impl, so it is replaced by the impl's own definition of it (#1331). An
+    // impl that does not define one is the impl's own error (`T0017`).
+    let defined: HashMap<&str, &TypeExpr> = ib
+        .assoc_type_defs
+        .iter()
+        .map(|d| (d.name.as_str(), &d.ty))
+        .collect();
+    if !assoc_names.iter().all(|a| defined.contains_key(a.as_str())) {
+        return ib;
+    }
+    subst.extend(
+        assoc_names
+            .iter()
+            .filter_map(|a| defined.get(a.as_str()).map(|ty| (a.as_str(), *ty))),
+    );
+    let provided: std::collections::HashSet<String> =
+        ib.methods.iter().map(|m| m.name.clone()).collect();
+    let mut offset = 0usize;
+    for method in methods {
+        let Some(body) = method.default_body.clone() else {
+            continue;
+        };
+        if provided.contains(&method.name) {
+            continue;
+        }
+        // On a non-generic target the pre-registered monomorphic signature serves
+        // a default, except one with generics of its own: that would pin the
+        // method's own parameter at its first call (metel-core#1332), so it is
+        // written out as an ordinary generic method instead.
+        // The same goes for any default of an aspect with type parameters: the
+        // pre-registered signature still names the aspect's own `T` (#1330).
+        if !generic_target
+            && method.generics.is_empty()
+            && aspect_params.is_empty()
+            && assoc_names.is_empty()
+        {
+            continue;
+        }
+        offset += 1;
+        ib.methods.push(FunDecl {
+            visibility: Visibility::Private,
+            name: method.name,
+            generics: method.generics,
+            where_clause: None,
+            params: method
+                .params
+                .into_iter()
+                .map(|mut p| {
+                    p.type_ann = p.type_ann.map(|ty| substitute_type_params(&ty, &subst));
+                    p
+                })
+                .collect(),
+            return_type: method
+                .return_type
+                .map(|ty| substitute_type_params(&ty, &subst)),
+            native: None,
+            body,
+            span: Span {
+                start: ib.span.start,
+                end: ib.span.start + offset,
+                filename: ib.span.filename.clone(),
+                line: ib.span.line,
+                col: ib.span.col,
+            },
+        });
+    }
+    ib
 }
 
 fn lower_impl_aspects_in_program(program: Program) -> Program {
@@ -874,4 +945,59 @@ fn lower_projections_in_program(program: Program) -> Program {
         .map(lower_projections_in_decl)
         .collect();
     Program { decls, ..program }
+}
+
+/// `ty` with every bare `Named(param, [])` replaced by its binding in `subst`.
+fn substitute_type_params(
+    ty: &TypeExpr,
+    subst: &std::collections::HashMap<&str, &TypeExpr>,
+) -> TypeExpr {
+    let go = |t: &TypeExpr| substitute_type_params(t, subst);
+    match ty {
+        TypeExpr::Named(name, args) if args.is_empty() => subst
+            .get(name.as_str())
+            .map_or_else(|| ty.clone(), |replacement| (*replacement).clone()),
+        TypeExpr::Named(name, args) => TypeExpr::Named(name.clone(), args.iter().map(go).collect()),
+        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
+        TypeExpr::Record(fields) => {
+            TypeExpr::Record(fields.iter().map(|(n, t)| (n.clone(), go(t))).collect())
+        }
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            fields.iter().map(|(n, t)| (n.clone(), go(t))).collect(),
+            tail.clone(),
+        ),
+        TypeExpr::Array(inner) => TypeExpr::Array(Box::new(go(inner))),
+        TypeExpr::SizedArray(inner, n) => TypeExpr::SizedArray(Box::new(go(inner)), *n),
+        TypeExpr::Reference(inner) => TypeExpr::Reference(Box::new(go(inner))),
+        TypeExpr::MutReference(inner) => TypeExpr::MutReference(Box::new(go(inner))),
+        TypeExpr::Fun {
+            params,
+            return_type,
+            call_multiplicity,
+            call_mutation,
+        } => TypeExpr::Fun {
+            params: params.iter().map(go).collect(),
+            return_type: return_type.as_deref().map(|r| Box::new(go(r))),
+            call_multiplicity: *call_multiplicity,
+            call_mutation: *call_mutation,
+        },
+        TypeExpr::Projection {
+            base,
+            assoc_name,
+            span,
+        } => TypeExpr::Projection {
+            base: Box::new(go(base)),
+            assoc_name: assoc_name.clone(),
+            span: span.clone(),
+        },
+        TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
+            bound: Box::new(go(bound)),
+            span: span.clone(),
+        },
+        TypeExpr::ImplAspect { .. }
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::RowArg(_)
+        | TypeExpr::Unit => ty.clone(),
+    }
 }

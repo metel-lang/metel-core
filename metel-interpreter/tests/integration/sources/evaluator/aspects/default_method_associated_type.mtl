@@ -1,0 +1,26 @@
+// metel-core#1331: a default method names an associated type bare (`-> Item`). The impl's own
+// `type Item := ..` stands for it, on a generic and on a non-generic target alike.
+
+aspect Source {
+    type Item;
+    fun first(self) -> Item;
+    fun first_again(self) -> Item { self.first() }
+}
+
+struct Box<U> { public v: U }
+extend<U> Box<U>: Source {
+    type Item := i64;
+    fun first(self) -> i64 { 9 }
+}
+
+struct Plain { public v: i64 }
+extend Plain: Source {
+    type Item := String;
+    fun first(self) -> String { "p".to_string() }
+}
+
+fun main() {
+    assert(Box { v = "s" }.first_again() == 9);
+    assert(Plain { v = 1 }.first_again() == "p");
+    println("ok");
+}
