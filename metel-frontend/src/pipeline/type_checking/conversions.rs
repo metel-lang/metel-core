@@ -102,6 +102,12 @@ fn resolve_record_projection_type(
     }
 }
 
+/// What an anonymous row argument (`Session<..>`) converts to: the conversion functions are
+/// infallible and have no type-variable source, so the one place that can name it a fresh,
+/// nameless type variable (a function's parameter types, in `infer_fun_decl`) replaces each
+/// occurrence. Anywhere else `projections::check` has already rejected it.
+pub(crate) const ANONYMOUS_ROW_PLACEHOLDER: &str = "<row-arg>";
+
 // Exhaustive match over every TypeExpr variant; splitting it up would scatter
 // one coherent dispatch table across many small functions with no real gain
 // in clarity.
@@ -420,7 +426,7 @@ fn type_expr_to_infer_in_context(
             .map_or_else(
                 || {
                     InferType::Named(
-                        "<row-arg>".to_string(),
+                        ANONYMOUS_ROW_PLACEHOLDER.to_string(),
                         vec![],
                         crate::data::types::NominalId::NONE,
                     )

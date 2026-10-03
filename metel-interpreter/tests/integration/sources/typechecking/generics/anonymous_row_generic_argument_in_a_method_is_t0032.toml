@@ -1,0 +1,7 @@
+[options]
+error = ["T0032"]
+
+[expect]
+status = "typecheck_error"
+code = "T0032"
+contains = "free function's parameter type"

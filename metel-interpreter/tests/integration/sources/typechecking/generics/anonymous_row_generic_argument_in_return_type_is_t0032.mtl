@@ -1,0 +1,10 @@
+// RFC-0121 item 2 (metel-core#1310): an anonymous row has a meaning only where the function
+// can quantify it, a parameter's type; in a return type it is still rejected.
+record Session<row R> { public id: i64, public data: { ..R } }
+
+fun make() -> Session<..> {
+    Session { id = 1, data = { n = 1 } }
+}
+
+fun main() {
+}

@@ -1,9 +1,0 @@
-// RFC-0121 item 2 (metel-core#1310): the anonymous form (`Builder<..>`) in
-// generic-argument position is still not implemented -- it needs a fresh
-// row variable with no declared name to splice.
-
-record Builder<row R> { public data: { ..R } }
-
-fun foo(b: Builder<..>) -> i64 { 0 }
-
-fun main() {}

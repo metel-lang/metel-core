@@ -726,7 +726,10 @@ pub(super) fn infer_fun_decl(
             if let Some(&tv) = open_record_param_vars.get(&i) {
                 Ok(InferType::Var(tv))
             } else if let Some(ann) = &p.type_ann {
-                te_to_infer(ann, ctx)
+                // an anonymous row argument (`b: Builder<..>`) is "any row": a fresh,
+                // nameless type variable, quantified by generalization like any other
+                // free variable of the signature (metel-core#1310)
+                te_to_infer(ann, ctx).map(|ty| freshen_anonymous_row_args(&ty, ctx))
             } else {
                 Ok(ctx.fresh_var())
             }
@@ -1833,4 +1836,42 @@ pub(super) fn infer_default_aspect_method(
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
     ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     Ok(())
+}
+
+/// Replace every anonymous-row placeholder in `ty` (see `ANONYMOUS_ROW_PLACEHOLDER`) by a
+/// fresh type variable of its own, so each `..` in a signature is an independent row.
+fn freshen_anonymous_row_args(ty: &InferType, ctx: &mut InferContext) -> InferType {
+    match ty {
+        InferType::Named(name, args, id) => {
+            if args.is_empty() && name == super::super::conversions::ANONYMOUS_ROW_PLACEHOLDER {
+                return ctx.fresh_var();
+            }
+            InferType::Named(
+                name.clone(),
+                args.iter()
+                    .map(|a| freshen_anonymous_row_args(a, ctx))
+                    .collect(),
+                id.clone(),
+            )
+        }
+        InferType::Tuple(items) => InferType::Tuple(
+            items
+                .iter()
+                .map(|t| freshen_anonymous_row_args(t, ctx))
+                .collect(),
+        ),
+        InferType::Array(inner) => {
+            InferType::Array(Box::new(freshen_anonymous_row_args(inner, ctx)))
+        }
+        InferType::SizedArray(inner, n) => {
+            InferType::SizedArray(Box::new(freshen_anonymous_row_args(inner, ctx)), *n)
+        }
+        InferType::Reference(inner) => {
+            InferType::Reference(Box::new(freshen_anonymous_row_args(inner, ctx)))
+        }
+        InferType::MutReference(inner) => {
+            InferType::MutReference(Box::new(freshen_anonymous_row_args(inner, ctx)))
+        }
+        other => other.clone(),
+    }
 }

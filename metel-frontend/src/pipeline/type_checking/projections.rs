@@ -35,6 +35,10 @@ use crate::data::ast::{
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, VisibleTypeKind};
 
+/// Entry in a generics set that marks "an anonymous row argument is allowed here" (a function
+/// parameter's type). It cannot collide with a generic's name.
+const ANONYMOUS_ROW_MARKER: &str = "..<anonymous>";
+
 /// Check every type and aspect name reachable in an annotation position.
 ///
 /// # Errors
@@ -89,7 +93,9 @@ impl Cx<'_> {
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
         match decl {
-            Decl::Fun(fun) => self.fun(fun, generics, self_allowed, self_target, local_types)?,
+            Decl::Fun(fun) => {
+                self.fun(fun, generics, self_allowed, self_target, local_types, true)?;
+            }
             Decl::Let(d) => {
                 if let Some(t) = &d.type_ann {
                     self.ty(t, &d.span, generics, self_allowed, self_target, local_types)?;
@@ -162,6 +168,7 @@ impl Cx<'_> {
         self_allowed: bool,
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
+        anonymous_rows: bool,
     ) -> Result<(), MetelError> {
         let generics = Self::with_generics(inherited_generics, &fun.generics);
         self.bounds(
@@ -171,8 +178,15 @@ impl Cx<'_> {
             &generics,
             local_types,
         )?;
+        // RFC-0121 item 2: in a function's parameter types an anonymous row argument
+        // (`b: Builder<..>`) is allowed -- it means "any row" and inference gives each one a
+        // fresh type variable of its own. Everywhere else it is T0032.
+        let mut param_generics = generics.clone();
+        if anonymous_rows {
+            param_generics.insert(ANONYMOUS_ROW_MARKER.to_string());
+        }
         for p in &fun.params {
-            self.param(p, &generics, self_allowed, self_target, local_types)?;
+            self.param(p, &param_generics, self_allowed, self_target, local_types)?;
         }
         if let Some(t) = &fun.return_type {
             self.ty_return(
@@ -652,7 +666,7 @@ impl Cx<'_> {
             )?;
         }
         for method in &ib.methods {
-            self.fun(method, &generics, true, self_target, local_types)?;
+            self.fun(method, &generics, true, self_target, local_types, false)?;
         }
         Ok(())
     }
@@ -1070,10 +1084,14 @@ impl Cx<'_> {
         span: &Span,
     ) -> Result<(), MetelError> {
         let Some(name) = &tail.var else {
+            if generics.contains(ANONYMOUS_ROW_MARKER) {
+                return Ok(());
+            }
             return Err(MetelError::type_error(
                 TypeErrorCode::T0032,
-                "an anonymous row (`..`) in this position is not yet implemented -- \
-                 name a `row`-kinded generic parameter (`..R`)"
+                "an anonymous row (`..`) is only supported as a generic argument in a free function's \
+                 parameter type (`b: Builder<..>`); here, name a `row`-kinded generic \
+                 parameter (`..R`)"
                     .to_string(),
                 &tail.span,
             ));

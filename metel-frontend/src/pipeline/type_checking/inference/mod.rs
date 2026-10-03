@@ -1463,7 +1463,7 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             .map_or_else(
                 || {
                     InferType::Named(
-                        "<row-arg>".to_string(),
+                        super::conversions::ANONYMOUS_ROW_PLACEHOLDER.to_string(),
                         vec![],
                         crate::data::types::NominalId::NONE,
                     )

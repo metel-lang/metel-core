@@ -1,0 +1,13 @@
+// RFC-0121 item 2 (metel-core#1310): an anonymous row as a generic argument in a free function's
+// parameter type (`b: Session<..>`) means "any row": each one is a fresh, nameless type variable
+// of the function's signature, so two parameters may carry different rows.
+record Session<row R> { public id: i64, public data: { ..R } }
+
+fun pair(a: Session<..>, b: Session<..>) -> i64 { a.id + b.id }
+
+fun main() {
+    let x := Session { id = 1, data = { n = 1 } };
+    let y := Session { id = 2, data = { label = "s" } };
+    assert(pair(x, y) == 3);
+    println("ok");
+}
