@@ -1,0 +1,9 @@
+// Negative (RFC-0173 D1): a method's own declared type parameter is opaque inside the
+// method, like a function's. (The struct's and impl's parameters are not checked yet.)
+struct Box { value: i64 }
+
+extend Box {
+    fun pick<T>(self, a: T) -> i64 { a } // ERROR[T0001]
+}
+
+fun main() { Box { value = 1 }.pick(2); }

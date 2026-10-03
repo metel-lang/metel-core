@@ -568,40 +568,35 @@ pub(super) fn rewrite_impl_aspect_returns(
 /// declared bounds state (a row equation, an associated-type binding) are held in side
 /// tables and never unify the two parameters, so they do not trip this check.
 fn check_declared_parameters_rigid(
-    fun: &FunDecl,
-    generic_map: &HashMap<String, TypeVar>,
+    span: &crate::data::ast::Span,
+    params: &[(&str, TypeVar)],
     resolve: &dyn Fn(&InferType) -> InferType,
 ) -> Result<(), MetelError> {
     let mut seen: Vec<(TypeVar, &str)> = Vec::new();
-    for gp in &fun.generics {
-        let Some(&tv) = generic_map.get(&gp.name) else {
-            continue;
-        };
+    for &(name, tv) in params {
         match resolve(&InferType::Var(tv)) {
             InferType::Var(resolved) => {
                 if let Some((_, other)) = seen.iter().find(|(v, _)| *v == resolved) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0001,
                         format!(
-                            "expected type parameter `{}`, found type parameter `{other}`: \
+                            "expected type parameter `{name}`, found type parameter `{other}`: \
                              declared type parameters are opaque inside their own definition, so \
-                             `{other}` and `{}` cannot be the same type",
-                            gp.name, gp.name
+                             `{other}` and `{name}` cannot be the same type"
                         ),
-                        &fun.span,
+                        span,
                     ));
                 }
-                seen.push((resolved, gp.name.as_str()));
+                seen.push((resolved, name));
             }
             concrete => {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
                     format!(
-                        "expected `{concrete}`, found type parameter `{}`: a declared type \
-                         parameter is opaque inside its own definition",
-                        gp.name
+                        "expected `{concrete}`, found type parameter `{name}`: a declared type \
+                         parameter is opaque inside its own definition"
                     ),
-                    &fun.span,
+                    span,
                 ));
             }
         }
@@ -860,7 +855,12 @@ pub(super) fn infer_fun_decl(
     // when the same polymorphic function is called at different types.
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
-    check_declared_parameters_rigid(fun, &generic_map, &|ty| partial_subst.apply(ty))?;
+    let declared: Vec<(&str, TypeVar)> = fun
+        .generics
+        .iter()
+        .filter_map(|gp| generic_map.get(&gp.name).map(|&tv| (gp.name.as_str(), tv)))
+        .collect();
+    check_declared_parameters_rigid(&fun.span, &declared, &|ty| partial_subst.apply(ty))?;
 
     // RFC-0037: process pending opaque-return markers. For each marker, check
     // whether the body's own solve resolved it to a concrete type (unlinked case)
@@ -1116,6 +1116,15 @@ pub(super) fn infer_impl_method(
         .generics
         .iter()
         .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
+        .collect();
+    // RFC-0173 D1: the method's own declared parameters, checked rigid after the body
+    // is solved. The struct's and impl's parameters are merged into `generic_map` below
+    // and are not checked here yet (a concrete `extend Box<i64>` legitimately resolves
+    // the struct's own parameter name to `i64`).
+    let method_declared: Vec<(&str, TypeVar)> = method
+        .generics
+        .iter()
+        .filter_map(|g| generic_map.get(&g.name).map(|&tv| (g.name.as_str(), tv)))
         .collect();
     // #746: captured *before* the struct's own params are merged into
     // `generic_map` below, so this holds exactly the method's own generics --
@@ -1484,6 +1493,9 @@ pub(super) fn infer_impl_method(
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
+    check_declared_parameters_rigid(&method.span, &method_declared, &|ty| {
+        partial_subst.apply(ty)
+    })?;
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
 
