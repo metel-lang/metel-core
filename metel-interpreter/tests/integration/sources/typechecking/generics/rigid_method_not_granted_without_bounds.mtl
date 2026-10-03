@@ -1,0 +1,7 @@
+// Negative (RFC-0173 D2): a declared parameter with no bounds grants no method.
+aspect Show { fun show(self) -> i64; }
+extend i64: Show { fun show(self) -> i64 { 1 } }
+
+fun f<T>(x: T) -> i64 { x.show() } // ERROR[T0035]
+
+fun main() { f(1); }

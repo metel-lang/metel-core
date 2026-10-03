@@ -1,5 +1,5 @@
 // Negative: calling a method on a bounded type param that is NOT declared
-// by any of its bounds. Expect T0003.
+// by any of its bounds. Expect T0035 (RFC-0173 D2: not granted by the declared bounds).
 
 aspect Printable {
     fun print(self);
@@ -10,5 +10,5 @@ struct Item { name: String }
 extend Item: Printable { fun print(self) {} }
 
 fun bad<T: Printable>(x: T) {
-    x.nonexistent_method() // ERROR[T0003]
+    x.nonexistent_method() // ERROR[T0035]
 }

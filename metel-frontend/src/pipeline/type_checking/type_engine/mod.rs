@@ -5164,6 +5164,15 @@ impl InferContext {
         self.var_gen.fresh()
     }
 
+    /// The declared name of the type parameter `tv`, when `tv` is one of the declared
+    /// parameters of the generic definition being checked (RFC-0173).
+    #[must_use]
+    pub fn declared_type_param_name(&self, tv: TypeVar) -> Option<&str> {
+        self.current_type_params
+            .iter()
+            .find_map(|(name, &var)| (var == tv).then_some(name.as_str()))
+    }
+
     /// Install a new type-param map for the duration of a generic function body.
     /// Returns the previous map so it can be restored with a second call.
     pub fn swap_type_params(&mut self, map: HashMap<String, TypeVar>) -> HashMap<String, TypeVar> {

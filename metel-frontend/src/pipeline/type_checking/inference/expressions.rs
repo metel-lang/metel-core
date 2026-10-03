@@ -685,6 +685,19 @@ pub(super) fn infer_expr(
             {
                 return result;
             }
+            if let InferType::Var(tv) = &peeled
+                && let Some(param) = ctx.declared_type_param_name(*tv)
+            {
+                // RFC-0173 D2: only a row bound grants a field of a declared parameter.
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0035,
+                    format!(
+                        "field `{field}` is not granted by the declared bounds of type \
+                         parameter `{param}`"
+                    ),
+                    span,
+                ));
+            }
             let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0002,
@@ -1183,15 +1196,40 @@ pub(super) fn infer_expr(
                         return Ok(ret_var);
                     }
                 }
+                let bounds_list = aspect_names
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" + ");
+                // RFC-0173 D2: on a declared parameter this is "not granted by the
+                // declared bounds"; on any other bounded variable (an opaque
+                // `extends Aspect` return value) it stays an ordinary missing method.
+                return Err(match ctx.declared_type_param_name(*tv) {
+                    Some(param) => MetelError::type_error(
+                        TypeErrorCode::T0035,
+                        format!(
+                            "method `{method}` is not granted by the declared bounds of type \
+                             parameter `{param}` (bounds: {bounds_list})"
+                        ),
+                        span,
+                    ),
+                    None => MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("no method `{method}` on type parameter (bounds: {bounds_list})"),
+                        span,
+                    ),
+                });
+            }
+
+            if let InferType::Var(tv) = &peeled_recv_for_bounds
+                && let Some(param) = ctx.declared_type_param_name(*tv)
+            {
+                // RFC-0173 D2: a declared parameter with no bounds grants no method.
                 return Err(MetelError::type_error(
-                    TypeErrorCode::T0003,
+                    TypeErrorCode::T0035,
                     format!(
-                        "no method `{method}` on type parameter (bounds: {})",
-                        aspect_names
-                            .iter()
-                            .map(ToString::to_string)
-                            .collect::<Vec<_>>()
-                            .join(" + ")
+                        "method `{method}` is not granted by the declared bounds of type \
+                         parameter `{param}` (it has none)"
                     ),
                     span,
                 ));
