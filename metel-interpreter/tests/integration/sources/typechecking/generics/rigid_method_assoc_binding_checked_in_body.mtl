@@ -1,0 +1,14 @@
+// RFC-0173 D1: associated-type bindings are facts in generic method bodies.
+aspect Container { type Item; fun get(self) -> Item; }
+
+struct IntBox { value: i64 }
+extend IntBox: Container { type Item := i64; fun get(self) -> i64 { self.value } }
+
+struct Host {}
+extend Host {
+    fun wrong<T: Container<Item = i64>>(value: T) -> String { // ERROR[T0001]
+        value.get()
+    }
+}
+
+fun main() { Host {}.wrong(IntBox { value = 1 }); }

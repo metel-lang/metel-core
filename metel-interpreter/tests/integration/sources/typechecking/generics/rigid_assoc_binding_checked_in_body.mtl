@@ -1,0 +1,11 @@
+// RFC-0173 D1: an associated-type binding is a fact while the body is checked.
+aspect Container { type Item; fun get(self) -> Item; }
+
+struct IntBox { value: i64 }
+extend IntBox: Container { type Item := i64; fun get(self) -> i64 { self.value } }
+
+fun wrong<T: Container<Item = i64>>(value: T) -> String { // ERROR[T0001]
+    value.get()
+}
+
+fun main() { wrong(IntBox { value = 1 }); }

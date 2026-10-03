@@ -604,6 +604,23 @@ fn check_declared_parameters_rigid(
     Ok(())
 }
 
+/// RFC-0173 D1: associated-type bindings in a generic declaration are facts of
+/// the body check, not merely obligations deferred to a concrete call.  Each
+/// `T: Aspect<Item = X>` therefore constrains the same projection placeholder
+/// used by body annotations and aspect-method return types.
+fn install_assoc_eq_facts(
+    ctx: &mut InferContext,
+    constraints: &HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    span: &crate::data::ast::Span,
+) {
+    for (&base, equalities) in constraints {
+        for (aspect, assoc, expected) in equalities {
+            let projection = ctx.fresh_assoc_projection_var(base, aspect, assoc);
+            ctx.add_constraint(InferType::Var(projection), expected.clone(), span.clone());
+        }
+    }
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -820,6 +837,7 @@ pub(super) fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map.clone());
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
+    install_assoc_eq_facts(ctx, &assoc_eq_by_var, &fun.span);
     let saved_projection_tail_constraints =
         ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
     let saved_row_field_vars = ctx.swap_row_field_vars();
@@ -1500,6 +1518,8 @@ pub(super) fn infer_impl_method(
         .as_ref()
         .map_or_else(|| Ok(InferType::unit()), |t| te_to_infer(t, ctx))?;
 
+    let method_assoc_eq = collect_fun_assoc_eq_constraints(method, &generic_map);
+
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
     // method scheme below so call sites resolve.
@@ -1513,6 +1533,7 @@ pub(super) fn infer_impl_method(
         }
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
+        install_assoc_eq_facts(ctx, &method_assoc_eq, &method.span);
         let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
