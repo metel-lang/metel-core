@@ -1,0 +1,17 @@
+// RFC-0123 sec1 (`spec.types.generics.field-wise-row-constraints.legality-1`): `all R: A`
+// holds vacuously when the row has no fields beyond the ones the parameter names, and it
+// constrains the *contents* of the row, not which labels it has -- any labels will do, so
+// long as their types satisfy the aspect.
+
+aspect Tag { fun tag(self) -> i64; }
+extend i64: Tag { fun tag(self) -> i64 { 1 } }
+extend boolean: Tag { fun tag(self) -> i64 { 2 } }
+
+fun id_of<row R>(p: { id: i64, ..R }) -> i64 where all R: Tag { p.id }
+
+fun main() {
+    assert(id_of({ id = 1 }) == 1);                               // empty remainder
+    assert(id_of({ id = 2, a = 1 }) == 2);                         // one label
+    assert(id_of({ id = 3, zebra = true, apple = 5 }) == 3);      // other labels, other Tag types
+    println("ok");
+}

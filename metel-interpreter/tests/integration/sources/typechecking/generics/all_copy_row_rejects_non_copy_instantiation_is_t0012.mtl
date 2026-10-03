@@ -1,0 +1,9 @@
+// RFC-0123 sec1: the enclosing generic's `all R: Copy` is checked at its call: a row with a
+// `String` field does not instantiate it.
+fun consume<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun outer<row R>(s: { x: i64, ..R }) -> i64 where all R: Copy { consume(s) + 1 }
+
+fun main() {
+    let _ := outer({ x = 1, k = "s".to_string() });
+}

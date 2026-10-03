@@ -1,0 +1,11 @@
+// RFC-0121 sec4 + RFC-0123: `all R: Copy` on the enclosing generic states that every field of
+// the unknown remainder is `Copy`, so narrowing by value inside the body is sound; a row of
+// `Copy` fields instantiates it.
+fun consume<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun outer<row R>(s: { x: i64, ..R }) -> i64 where all R: Copy { consume(s) + 1 }
+
+fun main() {
+    assert(outer({ x = 1, k = 2, flag = true }) == 2);
+    println("ok");
+}

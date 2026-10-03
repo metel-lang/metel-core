@@ -1,4 +1,5 @@
 [options]
+spec = ["spec.types.generics.field-wise-row-constraints.legality-1"]
 error = ["T0012"]
 
 [expect]
