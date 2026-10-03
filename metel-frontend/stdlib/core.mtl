@@ -387,6 +387,10 @@ extend<row R> { ..R }: Display where all R: Display {
     native(@std.core.record_to_string) fun to_string(&self) -> String;
 }
 
+// Copy for every record whose fields are all Copy (RFC-0123, metel-core#1337): a bodyless
+// impl, so it needs no built-in.
+extend<row R> { ..R }: Copy where all R: Copy;
+
 extend i8: Display {
     native(@std.core.to_string) fun to_string(&self) -> String;
 }

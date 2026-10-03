@@ -1,0 +1,26 @@
+// metel-core#1337 / RFC-0123: `std::core` implements `Copy` for every record whose fields
+// are all `Copy` (`extend<row R> { ..R }: Copy where all R: Copy`), so such a record is
+// copied, not moved: it stays usable after `let b := a`, satisfies a `T: Copy` bound, and
+// can be passed by value twice. This holds for anonymous and nominal `record`s.
+
+record Pt { public x: i64, public y: i64 }
+
+fun dup<T: Copy>(v: T) -> T { v }
+
+fun main() {
+    let a := { x = 1, y = 2 };
+    let b := a;
+    assert(a.x == 1);
+    assert(b.y == 2);
+
+    let p := Pt { x = 3, y = 4 };
+    let q := dup(p);
+    assert(p.x == 3);
+    assert(q.y == 4);
+
+    let nested := { inner = { n = 5 }, k = 6 };
+    let copy := dup(nested);
+    assert(nested.inner.n == 5);
+    assert(copy.k == 6);
+    println("ok");
+}

@@ -1,0 +1,7 @@
+[options]
+error = ["T0012"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not implement `Copy`"

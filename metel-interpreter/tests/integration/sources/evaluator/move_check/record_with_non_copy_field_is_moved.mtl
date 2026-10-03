@@ -1,0 +1,8 @@
+// metel-core#1337: a record with a field that is not `Copy` does not get `Copy` from the
+// blanket impl (`where all R: Copy` fails on `s: String`), so `let b := a` moves it and the
+// later use of `a` is a use-after-move.
+fun main() {
+    let a := { x = 1, s = "hi".to_string() };
+    let b := a;
+    println(a.x);
+}
