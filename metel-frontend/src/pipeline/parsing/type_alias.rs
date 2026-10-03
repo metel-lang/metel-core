@@ -466,6 +466,52 @@ fn expand_refs(
     Ok(())
 }
 
+/// Replace every bare type name in `names` throughout `block` -- annotations, casts,
+/// ascriptions, turbofish, closure parameters, nested items -- by its type, using the same
+/// traversal alias expansion does with the names as one block-local frame of
+/// parameterless aliases. For code lifted out of the scope that gave those names meaning
+/// (an aspect's inherited default method copied into an impl: its type parameters and
+/// associated types stand for the impl's arguments and definitions).
+///
+/// # Errors
+/// Propagates an error the traversal raises; none is expected for parameterless frames.
+pub(crate) fn substitute_type_names_in_block(
+    block: &mut Block,
+    names: &HashMap<&str, &TypeExpr>,
+) -> Result<(), MetelError> {
+    let span = Span {
+        start: 0,
+        end: 0,
+        filename: String::new(),
+        line: 0,
+        col: 0,
+    };
+    let frame: HashMap<String, Alias> = names
+        .iter()
+        .map(|(name, target)| {
+            (
+                (*name).to_string(),
+                Alias {
+                    params: vec![],
+                    target: (*target).clone(),
+                    span: span.clone(),
+                },
+            )
+        })
+        .collect();
+    let raw = HashMap::new();
+    let import_scopes = HashMap::new();
+    let resolved = HashMap::new();
+    let mut ex = Expander {
+        current: vec![],
+        scopes: vec![frame],
+        raw: &raw,
+        import_scopes: &import_scopes,
+        resolved: &resolved,
+    };
+    ex.walk_block(block)
+}
+
 // ── Per-module rewrite ───────────────────────────────────────────────────────
 
 struct Expander<'a> {
@@ -503,6 +549,17 @@ impl Expander<'_> {
     fn subst_type(&self, te: &mut TypeExpr) -> Result<(), MetelError> {
         for child in children_mut(te) {
             self.subst_type(child)?;
+        }
+        // `Self::Name` where the frame binds `Name` (only `substitute_type_names_in_block`
+        // does: an associated type of an aspect, lifted into an impl)
+        if let TypeExpr::Projection {
+            base, assoc_name, ..
+        } = te
+            && matches!(base.as_ref(), TypeExpr::Named(n, a) if n == "Self" && a.is_empty())
+            && let Some(alias) = self.local_lookup(assoc_name)
+        {
+            *te = alias.target;
+            return Ok(());
         }
         let TypeExpr::Named(name, args) = te else {
             return Ok(());

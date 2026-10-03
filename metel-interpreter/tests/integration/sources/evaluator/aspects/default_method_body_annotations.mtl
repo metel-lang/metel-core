@@ -1,0 +1,34 @@
+// metel-core#1330 / #1331: a default method's *body* can annotate with the aspect's type
+// parameter (`let x: T`) or associated type (`let x: Item`, `let x: Self::Item`); the impl's
+// aspect type argument or `type Item := ..` stands for it there too, on generic and
+// non-generic targets alike.
+
+aspect Conv<T> {
+    fun get(self) -> T;
+    fun again(self) -> T { let x: T := self.get(); x }
+}
+
+aspect Source {
+    type Item;
+    fun first(self) -> Item;
+    fun bare(self) -> Item { let x: Item := self.first(); x }
+    fun qualified(self) -> Self::Item { let x: Self::Item := self.first(); x }
+}
+
+struct Box { public v: i64 }
+extend Box: Conv<i64> {
+    fun get(self) -> i64 { 3 }
+}
+
+struct Wrap<U> { public v: U }
+extend<U> Wrap<U>: Source {
+    type Item := i64;
+    fun first(self) -> i64 { 9 }
+}
+
+fun main() {
+    assert(Box { v = 1 }.again() == 3);
+    assert(Wrap { v = "s" }.bare() == 9);
+    assert(Wrap { v = "s" }.qualified() == 9);
+    println("ok");
+}

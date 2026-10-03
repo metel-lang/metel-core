@@ -1,0 +1,20 @@
+// RFC-0082: inside an aspect, `Self::Item` and the bare `Item` name the same associated
+// type, in a required method's signature and in a default's.
+
+aspect Source {
+    type Item;
+    fun first(self) -> Self::Item;
+    fun again(self) -> Item { self.first() }
+}
+
+struct Box { public v: i64 }
+extend Box: Source {
+    type Item := i64;
+    fun first(self) -> i64 { 9 }
+}
+
+fun main() {
+    assert(Box { v = 1 }.first() == 9);
+    assert(Box { v = 1 }.again() == 9);
+    println("ok");
+}

@@ -383,7 +383,22 @@ fn expand_impl_defaults(
                 .return_type
                 .map(|ty| substitute_type_params(&ty, &subst)),
             native: None,
-            body,
+            body: {
+                // The default's own body can annotate with the aspect's parameter or
+                // associated type too (`let x: T := ..`); a body the substitution cannot
+                // rewrite is kept as written and reported by the checker.
+                let mut rewritten = body.clone();
+                if crate::pipeline::parsing::type_alias::substitute_type_names_in_block(
+                    &mut rewritten,
+                    &subst,
+                )
+                .is_ok()
+                {
+                    rewritten
+                } else {
+                    body
+                }
+            },
             span: Span {
                 start: ib.span.start,
                 end: ib.span.start + offset,
@@ -454,7 +469,53 @@ fn lower_projections_in_decl(decl: Decl) -> Decl {
             &stmt,
             &std::collections::HashSet::new(),
         ))),
+        // An aspect's own signatures and default bodies: `Self::Item` and `P::Item` for a
+        // type parameter `P` of the aspect or the method.
+        Decl::Aspect(ad) => Decl::Aspect(crate::data::ast::AspectDecl {
+            methods: ad
+                .methods
+                .iter()
+                .map(|m| lower_projections_in_aspect_method(m, &ad.generics))
+                .collect(),
+            ..ad
+        }),
         other => other,
+    }
+}
+
+/// `lower_projections_in_fun` for an aspect method, with `Self` and the aspect's type
+/// parameters in scope: the method is lowered as a function and its pieces copied back.
+fn lower_projections_in_aspect_method(
+    method: &crate::data::ast::AspectMethod,
+    aspect_generics: &[String],
+) -> crate::data::ast::AspectMethod {
+    use crate::data::ast::Visibility;
+    let as_fun = FunDecl {
+        visibility: Visibility::Private,
+        name: method.name.clone(),
+        generics: method.generics.clone(),
+        where_clause: None,
+        params: method.params.clone(),
+        return_type: method.return_type.clone(),
+        native: None,
+        body: method
+            .default_body
+            .clone()
+            .unwrap_or_else(|| crate::data::ast::Block {
+                stmts: vec![],
+                tail: None,
+                span: method.span.clone(),
+            }),
+        span: method.span.clone(),
+    };
+    let mut names: std::collections::HashSet<String> = aspect_generics.iter().cloned().collect();
+    names.insert("Self".to_string());
+    let lowered = lower_projections_in_fun_with_generics(&as_fun, &names);
+    crate::data::ast::AspectMethod {
+        params: lowered.params,
+        return_type: lowered.return_type,
+        default_body: method.default_body.as_ref().map(|_| lowered.body),
+        ..method.clone()
     }
 }
 
@@ -981,6 +1042,15 @@ fn substitute_type_params(
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
         },
+        // `Self::Item` (a default lowered with its aspect's projections) names the same
+        // associated type the bare spelling does
+        TypeExpr::Projection {
+            base, assoc_name, ..
+        } if matches!(base.as_ref(), TypeExpr::Named(n, a) if n == "Self" && a.is_empty())
+            && subst.contains_key(assoc_name.as_str()) =>
+        {
+            (*subst[assoc_name.as_str()]).clone()
+        }
         TypeExpr::Projection {
             base,
             assoc_name,
