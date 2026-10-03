@@ -1,9 +1,11 @@
 // Integration: turbofish + generic functions + sized numeric types +
 // List<T> with non-default element types.
 
-fun clamp<T>(v: T, lo: T, hi: T) -> T {
-    if (v < lo) { lo }
-    else if (v > hi) { hi }
+// The ordering comes in as a closure: no aspect grants `<` on a bare `T` yet
+// (RFC-0173 D5, GAP-TYPES-005), so a generic body cannot compare two `T`s itself.
+fun clamp<T: Copy>(v: T, lo: T, hi: T, lt: |T, T| -> boolean) -> T {
+    if (lt(v, lo)) { lo }
+    else if (lt(hi, v)) { hi }
     else { v }
 }
 
@@ -59,18 +61,18 @@ fun zip_add_i32(a: &List<i32>, b: &List<i32>) -> List<i32> {
 
 fun main() {
     // clamp with i32 — turbofish pins the type; literals now adopt i32 at construction.
-    assert(clamp::<i32>(5, 0, 10) == 5i32);
-    assert(clamp::<i32>(-3, 0, 10) == 0i32);
-    assert(clamp::<i32>(15, 0, 10) == 10i32);
+    assert(clamp::<i32>(5, 0, 10, |a: i32, b: i32| -> boolean { a < b }) == 5i32);
+    assert(clamp::<i32>(-3, 0, 10, |a: i32, b: i32| -> boolean { a < b }) == 0i32);
+    assert(clamp::<i32>(15, 0, 10, |a: i32, b: i32| -> boolean { a < b }) == 10i32);
 
     // clamp with u8.
-    assert(clamp::<u8>(200, 0, 255) == 200u8);
-    assert(clamp::<u8>(100, 128, 255) == 128u8);
+    assert(clamp::<u8>(200, 0, 255, |a: u8, b: u8| -> boolean { a < b }) == 200u8);
+    assert(clamp::<u8>(100, 128, 255, |a: u8, b: u8| -> boolean { a < b }) == 128u8);
 
     // clamp with f32.
-    assert(clamp::<f32>(1.5, 0.0, 1.0) == 1.0f32);
-    assert(clamp::<f32>(-0.5, 0.0, 1.0) == 0.0f32);
-    assert(clamp::<f32>(0.7, 0.0, 1.0) == 0.7f32);
+    assert(clamp::<f32>(1.5, 0.0, 1.0, |a: f32, b: f32| -> boolean { a < b }) == 1.0f32);
+    assert(clamp::<f32>(-0.5, 0.0, 1.0, |a: f32, b: f32| -> boolean { a < b }) == 0.0f32);
+    assert(clamp::<f32>(0.7, 0.0, 1.0, |a: f32, b: f32| -> boolean { a < b }) == 0.7f32);
 
     // map_to_list: i32[] literal — element type propagated from annotation.
     let src_i32: [i32] := [1, 2, 3, 4, 5];

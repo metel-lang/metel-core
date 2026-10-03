@@ -1,0 +1,6 @@
+// Negative (RFC-0173 D5): no aspect grants an arithmetic or ordering operator yet, so
+// such an operator on a bare declared parameter is rejected (GAP-TYPES-005). The
+// workaround is to pass the operation in, or to write the function for the concrete types.
+fun add<T>(a: T, b: T) -> T { a + b } // ERROR[T0005]
+
+fun main() { add(1, 2); }

@@ -1838,6 +1838,46 @@ fn infer_literal(lit: &Literal, ctx: &mut InferContext) -> InferType {
     }
 }
 
+/// RFC-0173 D5: no aspect grants an arithmetic or ordering operator yet, so such an
+/// operator on a bare declared parameter is rejected (GAP-TYPES-005).
+fn reject_operator_on_declared_parameter(
+    op: &BinOp,
+    operands: [&InferType; 2],
+    span: &Span,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
+    if !matches!(
+        op,
+        BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::Div
+            | BinOp::Rem
+            | BinOp::Lt
+            | BinOp::Le
+            | BinOp::Gt
+            | BinOp::Ge
+    ) {
+        return Ok(());
+    }
+    for operand in operands {
+        if let InferType::Var(tv) = operand
+            && let Some(param) = ctx.declared_type_param_name(*tv)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0005,
+                format!(
+                    "operator `{}` on type parameter `{param}`: no declared bound grants it \
+                     (no aspect grants an operator yet)",
+                    op.symbol()
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn infer_binop(
     lhs: &Expr,
     op: &BinOp,
@@ -1848,6 +1888,7 @@ fn infer_binop(
 ) -> Result<InferType, MetelError> {
     let lhs_ty = infer_expr(lhs, ctx, fun_generalizations)?;
     let rhs_ty = infer_expr(rhs, ctx, fun_generalizations)?;
+    reject_operator_on_declared_parameter(op, [&lhs_ty, &rhs_ty], span, ctx)?;
     match op {
         BinOp::Add => {
             let subst = ctx.solve()?;
