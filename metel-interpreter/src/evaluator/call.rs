@@ -10,6 +10,23 @@ use super::{
     type_of,
 };
 
+/// A generic body has already passed its definition-time check.  If its
+/// construction-time re-check nevertheless produces a type error, that is a
+/// checker disagreement, not an error in the caller's program (RFC-0173 D4).
+pub(super) fn generic_definition_disagrees(name: &str, error: MetelError) -> MetelError {
+    if matches!(error, MetelError::TypeError { .. }) {
+        MetelError::internal_with_code(
+            InternalErrorCode::I0010,
+            format!(
+                "generic definition `{name}` and construction disagree; the definition was \
+                 accepted but reconstruction rejected its body"
+            ),
+        )
+    } else {
+        error
+    }
+}
+
 /// Bind a method call's receiver and positional arguments into `call_env`,
 /// keyed additionally by each parameter's [`LocalId`] in the id-indexed frame
 /// when identity allocation stamped one (metel-core#1052b).
@@ -159,7 +176,13 @@ fn call_runtime_callable(
                                 span,
                                 type_ctx,
                                 expected_ret,
-                            )?;
+                            )
+                            .map_err(|error| {
+                                generic_definition_disagrees(
+                                    closure.name.as_deref().unwrap_or("<anonymous>"),
+                                    error,
+                                )
+                            })?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(MetelError::internal_with_code(
@@ -315,7 +338,13 @@ pub(super) fn call_method_function(
                                 span,
                                 type_ctx,
                                 expected_ret,
-                            )?;
+                            )
+                            .map_err(|error| {
+                                generic_definition_disagrees(
+                                    closure.name.as_deref().unwrap_or("<anonymous>"),
+                                    error,
+                                )
+                            })?;
                             eval_block(&tb, &mut call_env, runtime)
                         }
                         None => Err(MetelError::internal_with_code(

@@ -2655,6 +2655,7 @@ fn run_main(
                     &type_ctx,
                     None,
                 )
+                .map_err(|error| call::generic_definition_disagrees("main", error))
                 .and_then(|typed| eval_block(&typed, env, runtime)),
                 None => Err(MetelError::internal(
                     "main: generic body has no scheme after program-entry-point validation (T0031)",
