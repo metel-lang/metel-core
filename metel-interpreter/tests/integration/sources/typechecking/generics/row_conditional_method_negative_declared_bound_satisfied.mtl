@@ -1,0 +1,14 @@
+// A negative row bound also entails a negative row-conditional impl condition.
+
+record Session<row R> {
+    public id: i64,
+    public data: { ..R },
+}
+
+extend<row R: !{ token }> Session<..R> {
+    fun without_token(self) -> i64 { self.id }
+}
+
+fun use_session<row R: !{ token }>(session: Session<..R>) -> i64 {
+    session.without_token()
+}

@@ -1944,6 +1944,29 @@ pub struct RowConstraintField {
     pub ty: Option<TypeExpr>,
 }
 
+/// Whether a row fact declared on a generic parameter proves a row condition.
+/// A closed condition needs a closed fact with exactly its fields; an open
+/// condition needs only the fields it names.  Type annotations are compared as
+/// source-level type expressions because both originate in the declaration's
+/// bounds and no inference is allowed in this entailment judgment.
+fn row_bound_entails(actual: &RowConstraint, required: &RowConstraint) -> bool {
+    if !required.open && (actual.open || actual.fields.len() != required.fields.len()) {
+        return false;
+    }
+    required.fields.iter().all(|needed| {
+        actual.fields.iter().any(|known| {
+            known.label == needed.label
+                && match (&known.ty, &needed.ty) {
+                    (_, None) => true,
+                    (Some(actual_ty), Some(required_ty)) => {
+                        format!("{actual_ty:?}") == format!("{required_ty:?}")
+                    }
+                    (None, Some(_)) => false,
+                }
+        })
+    })
+}
+
 impl From<&RowBound> for RowConstraint {
     fn from(value: &RowBound) -> Self {
         Self {
@@ -2214,6 +2237,14 @@ pub fn type_to_infer(ty: &Type) -> InferType {
 /// name conflated the two: a real `struct T` in scope would match an entry
 /// meant for a parameter called `T` and inherit its assumed aspects.
 pub type AspectAssumptions = HashMap<TypeVar, std::collections::HashSet<String>>;
+
+/// Facts a generic body may use when selecting a conditional method impl.
+#[derive(Clone, Copy)]
+pub struct GenericMethodEntailment<'a> {
+    pub aspect_assumptions: &'a AspectAssumptions,
+    pub bounds: &'a HashMap<TypeVar, Vec<GenericBound>>,
+    pub negative_bounds: &'a HashMap<TypeVar, Vec<GenericBound>>,
+}
 
 /// One aspect declaration, indexed in `TypeDefinitionRegistry::aspects` under its bare
 /// short name (metel-core#989). Everything the registry knows about an aspect lives here
@@ -3815,6 +3846,80 @@ impl TypeDefinitionRegistry {
         }
     }
 
+    /// Whether the bounds carried by a generic method's receiver parameters are
+    /// entailed by the receiver arguments currently being inferred.  This is the
+    /// definition-time counterpart of construction's scheme-bound check: the
+    /// arguments may still be declared type parameters, so their declared aspect
+    /// assumptions are the only facts available.
+    #[must_use]
+    pub fn generic_method_receiver_bounds_hold(
+        &self,
+        current_module: &[String],
+        scheme: &TypeScheme,
+        receiver_tvars: &[TypeVar],
+        receiver_args: &[InferType],
+        entailment: GenericMethodEntailment<'_>,
+    ) -> bool {
+        receiver_tvars
+            .iter()
+            .zip(receiver_args)
+            .all(|(receiver_tv, receiver_arg)| {
+                let Some(index) = scheme
+                    .quantified_vars
+                    .iter()
+                    .position(|quantified| quantified == receiver_tv)
+                else {
+                    return true;
+                };
+                let pos_bounds = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
+                let neg_bounds = scheme.neg_bounds.get(index).map_or(&[][..], Vec::as_slice);
+                if let InferType::Var(tv) = receiver_arg {
+                    let declared = entailment.bounds.get(tv).map_or(&[][..], Vec::as_slice);
+                    let declared_negative = entailment
+                        .negative_bounds
+                        .get(tv)
+                        .map_or(&[][..], Vec::as_slice);
+                    let positive_entailed = pos_bounds.iter().all(|bound| match bound {
+                        GenericBound::Aspect(aspect) => self.infer_type_satisfies_aspect(
+                            current_module,
+                            receiver_arg,
+                            aspect,
+                            entailment.aspect_assumptions,
+                        ),
+                        GenericBound::Row(required) => declared.iter().any(|candidate| {
+                            matches!(candidate, GenericBound::Row(actual)
+                                if row_bound_entails(actual, required))
+                        }),
+                        // D6 forwards `where all R: A` only to another all-fields
+                        // requirement. Its implementation is deliberately kept
+                        // with the pending all-fields work, rather than treating it
+                        // as an aspect of R itself here.
+                        GenericBound::AllFields { .. } => false,
+                    });
+                    let negative_entailed = neg_bounds.iter().all(|bound| match bound {
+                        GenericBound::Aspect(aspect) => declared_negative.iter().any(
+                            |candidate| matches!(candidate, GenericBound::Aspect(name) if name == aspect),
+                        ),
+                        GenericBound::Row(required) => declared_negative.iter().any(|candidate| {
+                            matches!(candidate, GenericBound::Row(actual)
+                                if row_bound_entails(actual, required))
+                        }),
+                        GenericBound::AllFields { .. } => false,
+                    });
+                    return positive_entailed && negative_entailed;
+                }
+                let pos_bounds = vec![pos_bounds.to_vec()];
+                let neg_bounds = vec![neg_bounds.to_vec()];
+                self.check_conditional_entry(
+                    current_module,
+                    std::slice::from_ref(receiver_arg),
+                    &pos_bounds,
+                    &neg_bounds,
+                    entailment.aspect_assumptions,
+                )
+            })
+    }
+
     pub fn register_type_param_bounds(&mut self, owner: SymbolId, bounds: Vec<Vec<GenericBound>>) {
         self.type_param_bounds.insert(owner, bounds);
     }
@@ -4835,6 +4940,9 @@ pub struct InferContext {
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    /// Negative bounds for the current generic body, kept separate so a
+    /// negative row condition is never mistaken for a positive row fact.
+    current_negative_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
     /// Labels known to be absent from a row parameter in the current generic body.
     /// A decomposition `R = { token: String, ..Rest }` installs `token` here for
     /// `Rest`; unlike the call-time remainder backfill, this fact is available
@@ -4958,6 +5066,7 @@ impl InferContext {
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
+            current_negative_type_param_bounds: HashMap::new(),
             current_row_exclusions: HashMap::new(),
             current_projection_tail_constraints: HashMap::new(),
             current_assoc_projections: HashMap::new(),
@@ -5192,6 +5301,14 @@ impl InferContext {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 
+    /// Install negative generic bounds for the duration of one body.
+    pub fn swap_negative_type_param_bounds(
+        &mut self,
+        bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    ) -> HashMap<TypeVar, Vec<GenericBound>> {
+        std::mem::replace(&mut self.current_negative_type_param_bounds, bounds)
+    }
+
     /// Install row labels that a generic body's row parameters are known not to
     /// contain, returning the previous body-local table.
     pub fn swap_row_exclusions(
@@ -5333,6 +5450,29 @@ impl InferContext {
     #[allow(dead_code)]
     pub fn type_param_bounds(&self) -> &HashMap<TypeVar, Vec<GenericBound>> {
         &self.current_type_param_bounds
+    }
+
+    #[must_use]
+    pub fn negative_type_param_bounds(&self) -> &HashMap<TypeVar, Vec<GenericBound>> {
+        &self.current_negative_type_param_bounds
+    }
+
+    /// The positive aspect assumptions available to the generic body currently
+    /// being inferred.  Conditional-impl selection uses these rather than trying
+    /// to resolve an opaque declared parameter as a concrete type.
+    #[must_use]
+    pub fn current_aspect_assumptions(&self) -> AspectAssumptions {
+        self.current_type_param_bounds
+            .iter()
+            .map(|(tv, bounds)| {
+                let aspects = bounds
+                    .iter()
+                    .filter_map(GenericBound::aspect_name)
+                    .map(str::to_owned)
+                    .collect();
+                (*tv, aspects)
+            })
+            .collect()
     }
 
     /// Swap in empty projection state for a new function/method body, returning the old state.

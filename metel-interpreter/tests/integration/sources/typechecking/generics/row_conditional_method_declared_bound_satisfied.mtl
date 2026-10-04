@@ -1,0 +1,23 @@
+// RFC-0173 D6(3): a declared row bound makes the corresponding conditional
+// inherent method visible within the generic body.
+
+record Session<row R> {
+    public id: i64,
+    public data: { ..R },
+}
+
+extend<row R: { token: String, .. }> Session<..R> {
+    fun with_token(self) -> i64 { self.id }
+}
+
+fun use_session<row R: { token: String, .. }>(session: Session<..R>) -> i64 {
+    session.with_token()
+}
+
+fun main() {
+    let session: Session<{ token: String }> := Session {
+        id = 1,
+        data = { token = "token" },
+    };
+    println(use_session(session));
+}

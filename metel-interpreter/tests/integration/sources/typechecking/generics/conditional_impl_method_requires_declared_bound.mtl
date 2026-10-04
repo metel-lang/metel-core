@@ -1,0 +1,23 @@
+// RFC-0173 D6(3) / #1323: a conditional inherent method is unavailable in
+// a generic body until the receiver argument's declared bounds entail the
+// impl condition.
+
+aspect Tag {
+    fun tag(self) -> i64;
+}
+
+struct Box<T> {
+    value: T,
+}
+
+extend i64: Tag {
+    fun tag(self) -> i64 { 7 }
+}
+
+extend<T: Tag> Box<T> {
+    fun tagged(self) -> i64 { 1 }
+}
+
+fun use_box<U>(box: Box<U>) -> i64 {
+    box.tagged() // ERROR[T0035]
+}

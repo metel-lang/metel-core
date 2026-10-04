@@ -838,6 +838,7 @@ pub(super) fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map.clone());
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
+    let saved_neg_tp_bounds = ctx.swap_negative_type_param_bounds(neg_type_var_bounds.clone());
     let saved_row_exclusions = ctx.swap_row_exclusions(row_exclusions);
     install_assoc_eq_facts(ctx, &assoc_eq_by_var, &fun.span);
     let saved_projection_tail_constraints =
@@ -852,6 +853,7 @@ pub(super) fn infer_fun_decl(
     ctx.restore_row_field_vars(saved_row_field_vars);
     ctx.swap_row_exclusions(saved_row_exclusions);
     ctx.swap_projection_tail_constraints(saved_projection_tail_constraints);
+    ctx.swap_negative_type_param_bounds(saved_neg_tp_bounds);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
     // Capture the projection log recorded during this function's body BEFORE restoring.

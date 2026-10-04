@@ -9,6 +9,7 @@ use super::{
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
     signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer,
 };
+use crate::pipeline::type_checking::type_engine::GenericMethodEntailment;
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
@@ -884,14 +885,72 @@ pub(super) fn infer_expr(
                     _ => vec![],
                 };
 
-                // Try concrete method_env first; fall back to method_scheme_env for generic structs.
+                // A conditional generic impl is visible in a generic body only
+                // when its receiver requirements are entailed by the body's
+                // declared bounds.  Concrete receivers keep the existing
+                // construction-time bound diagnostic; the definition-time
+                // check matters when an argument is an opaque parameter.
+                let generic_candidates = ctx
+                    .registry()
+                    .method_scheme_variants_for(ctx.current_module_path(), &struct_name, method)
+                    .to_vec();
+                let declared_receiver_param = recv_type_args.iter().find_map(|arg| {
+                    let InferType::Var(tv) = arg else {
+                        return None;
+                    };
+                    ctx.declared_type_param_name(*tv)
+                        .map(|name| (name.to_string(), *tv))
+                });
+                let assumptions = ctx.current_aspect_assumptions();
+                // An inherited aspect default is checked with `Self: Aspect`
+                // in scope. Its receiver may already have been constrained to
+                // a nominal generic target, but that does not erase the aspect
+                // guarantee: resolving another method of the same aspect must
+                // remain legal without re-proving which conditional impl will
+                // supply it at construction time.
+                let self_aspect_grants_method = ctx
+                    .type_params()
+                    .get("Self")
+                    .and_then(|tv| ctx.bounds_for_type_var(*tv))
+                    .is_some_and(|bounds| {
+                        generic_candidates.iter().any(|(_, _, aspect)| {
+                            aspect.as_ref().is_some_and(|candidate| {
+                                bounds.iter().any(|bound| {
+                                    bound.aspect_name().is_some_and(|known| known == candidate)
+                                })
+                            })
+                        })
+                    });
+                let generic_method = generic_candidates
+                    .iter()
+                    .rev()
+                    .find(|(scheme, receiver_tvars, _)| {
+                        ctx.registry().generic_method_receiver_bounds_hold(
+                            ctx.current_module_path(),
+                            scheme,
+                            receiver_tvars,
+                            &recv_type_args,
+                            GenericMethodEntailment {
+                                aspect_assumptions: &assumptions,
+                                bounds: ctx.type_param_bounds(),
+                                negative_bounds: ctx.negative_type_param_bounds(),
+                            },
+                        )
+                    })
+                    .cloned()
+                    // A concrete receiver is diagnosed by construction's
+                    // scheme-bound check, which can render its actual type.
+                    .or_else(|| {
+                        (declared_receiver_param.is_none() || self_aspect_grants_method)
+                            .then(|| generic_candidates.last().cloned())
+                            .flatten()
+                    });
+
+                // Try concrete method_env first; fall back to a generic method scheme.
                 let method_ty = if let Some(ty) = ctx.get_method_type(&struct_name, method).cloned()
                 {
                     ty
-                } else if let Some((scheme, struct_tvars)) = ctx
-                    .method_scheme_for(&struct_name, method)
-                    .map(|(s, t)| (s.clone(), t.clone()))
-                {
+                } else if let Some((scheme, struct_tvars, _)) = generic_method {
                     // Instantiate the scheme with a fresh TypeVar for EVERY
                     // quantified var — the struct's type params and the method's
                     // own generics (e.g. `U` in `fun map<U>(...)`). Instantiating
@@ -919,6 +978,18 @@ pub(super) fn infer_expr(
                     }
                     ctx.stamp_row_remainders(span);
                     pin.apply(&instance)
+                } else if let Some((param, _)) = declared_receiver_param
+                    && !generic_candidates.is_empty()
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0035,
+                        format!(
+                            "method `{method}` is not granted by the declared bounds of type \
+                             parameter `{param}`; its conditional implementation requirements \
+                             are not entailed"
+                        ),
+                        span,
+                    ));
                 } else if ctx
                     .registry()
                     .record_method_variant_for(ctx.current_module_path(), method, &peeled_recv)

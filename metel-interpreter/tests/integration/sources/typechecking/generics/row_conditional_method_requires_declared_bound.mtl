@@ -1,0 +1,15 @@
+// RFC-0173 D6(3): a row-conditional inherent method is unavailable in a
+// generic body until the row parameter's declared bounds entail the condition.
+
+record Session<row R> {
+    public id: i64,
+    public data: { ..R },
+}
+
+extend<row R: { token: String, .. }> Session<..R> {
+    fun with_token(self) -> i64 { self.id }
+}
+
+fun use_session<row R>(session: Session<..R>) -> i64 {
+    session.with_token() // ERROR[T0035]
+}
