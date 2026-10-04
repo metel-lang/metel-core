@@ -1124,6 +1124,18 @@ struct PendingRowRemainder {
     span: Option<Span>,
 }
 
+/// A symbolic row-decomposition fact retained while both sides are still
+/// abstract.  Unlike [`PendingRowRemainder`], this is the declaration-facing
+/// form: it deliberately carries neither call-site span nor construction
+/// machinery, so an enclosing generic declaration can retain and re-export
+/// the relationship it learned from a generic call.
+#[derive(Debug, Clone)]
+pub(crate) struct RowRemainderFact {
+    pub source: TypeVar,
+    pub removed: Vec<String>,
+    pub remainder: TypeVar,
+}
+
 fn is_integer_type(t: &Type) -> bool {
     matches!(
         t,
@@ -5000,6 +5012,15 @@ pub struct InferContext {
     /// RFC-0121 §2: `Rest` derivations waiting for their `R` to resolve to a closed
     /// record. Registered at instantiation, retried at the end of every `solve()`.
     pending_row_remainders: Vec<PendingRowRemainder>,
+    /// Declared parameters whose constraint-induced substitutions need a
+    /// definition-site diagnostic span (RFC-0173 D1).  This is independent of
+    /// `current_type_params`: the latter is scope-swapped before the final
+    /// solve, while provenance must survive until rigidity is checked.
+    rigidity_tracked_vars: Vec<TypeVar>,
+    /// The most recent constraint that changed a tracked parameter's resolved
+    /// type.  A later constraint replaces an earlier variable-to-variable
+    /// link, so `T -> U` followed by `U -> i64` correctly reports the latter.
+    rigidity_origins: HashMap<TypeVar, Span>,
     solve_stats: SolveStats,
     /// Free-function overload sets for the current module (METEL-180). Names with
     /// a single definition never appear here. Built by `typechecker::overload`.
@@ -5082,6 +5103,8 @@ impl InferContext {
             cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
             pending_row_remainders: Vec::new(),
+            rigidity_tracked_vars: Vec::new(),
+            rigidity_origins: HashMap::new(),
             solve_stats: SolveStats::default(),
             overloads: OverloadTable::new(),
             variant_deferrals: Vec::new(),
@@ -5890,6 +5913,60 @@ impl InferContext {
         }
     }
 
+    /// Mark the current end of the symbolic row-decomposition facts.  A
+    /// function body uses this before inference and later drains only facts
+    /// introduced by calls in that body, leaving enclosing generic facts in
+    /// place for nested bodies.
+    #[must_use]
+    pub fn row_remainder_checkpoint(&self) -> usize {
+        self.pending_row_remainders.len()
+    }
+
+    /// Take unresolved row-decomposition facts added after `checkpoint`.
+    /// Resolved facts have already been consumed by `solve`; retaining only
+    /// this abstract remainder is exactly what a generalized scheme needs.
+    pub(crate) fn take_row_remainder_facts_since(
+        &mut self,
+        checkpoint: usize,
+    ) -> Vec<RowRemainderFact> {
+        self.pending_row_remainders
+            .split_off(checkpoint.min(self.pending_row_remainders.len()))
+            .into_iter()
+            .map(|pending| RowRemainderFact {
+                source: pending.r,
+                removed: pending.removed,
+                remainder: pending.rest,
+            })
+            .collect()
+    }
+
+    /// Start tracking declared parameters for RFC-0173 rigidity diagnostics.
+    /// Returns a checkpoint that restores an enclosing generic body's tracked
+    /// parameters after a nested declaration has been checked.
+    #[must_use]
+    pub(crate) fn rigidity_tracking_checkpoint(&self) -> usize {
+        self.rigidity_tracked_vars.len()
+    }
+
+    pub(crate) fn track_rigidity_parameters(&mut self, vars: impl IntoIterator<Item = TypeVar>) {
+        for var in vars {
+            if !self.rigidity_tracked_vars.contains(&var) {
+                self.rigidity_tracked_vars.push(var);
+            }
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn rigidity_origin(&self, var: TypeVar) -> Option<&Span> {
+        self.rigidity_origins.get(&var)
+    }
+
+    pub(crate) fn restore_rigidity_tracking(&mut self, checkpoint: usize) {
+        for var in self.rigidity_tracked_vars.drain(checkpoint..) {
+            self.rigidity_origins.remove(&var);
+        }
+    }
+
     /// Fire every pending `Rest` derivation whose `R` has resolved to a closed record,
     /// to a fixpoint (a derivation can resolve the `R` of another).
     fn resolve_pending_row_remainders(&mut self) -> Result<(), MetelError> {
@@ -6195,6 +6272,13 @@ impl InferContext {
         let new_count = self.constraints.len();
         let subst = Rc::make_mut(&mut self.cached_subst);
         for constraint in &self.constraints[self.solved_constraint_count..] {
+            let mut constraint_vars = free_vars(&constraint.lhs);
+            constraint_vars.extend(free_vars(&constraint.rhs));
+            let before: Vec<(TypeVar, InferType)> = self
+                .rigidity_tracked_vars
+                .iter()
+                .map(|&var| (var, subst.apply(&InferType::Var(var))))
+                .collect();
             apply_constraint_with_coercion(
                 subst,
                 constraint,
@@ -6204,6 +6288,23 @@ impl InferContext {
                 &self.registry,
                 &self.declared_var_names,
             )?;
+            for (var, previous) in before {
+                let touches_current_class = constraint_vars
+                    .iter()
+                    .any(|touched| subst.apply(&InferType::Var(*touched)) == previous);
+                if previous != subst.apply(&InferType::Var(var)) {
+                    self.rigidity_origins.insert(var, constraint.span.clone());
+                } else if touches_current_class {
+                    // Literal defaulting can happen after this constraint and
+                    // therefore leave the tracked parameter structurally
+                    // unchanged here. Keep the first such causal span; a later
+                    // declaration-registration constraint must not replace the
+                    // body expression that introduced the link.
+                    self.rigidity_origins
+                        .entry(var)
+                        .or_insert_with(|| constraint.span.clone());
+                }
+            }
         }
 
         self.resolve_pending_row_remainders()?;

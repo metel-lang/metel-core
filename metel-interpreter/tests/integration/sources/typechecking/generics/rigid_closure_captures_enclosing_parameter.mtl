@@ -1,7 +1,7 @@
 // Negative (RFC-0173 D1): a closure inside a generic definition sees the
 // enclosing parameter as opaque.
-fun pick<T>(value: T) -> i64 { // ERROR[T0001]
-    let read := || -> i64 { value };
+fun pick<T>(value: T) -> i64 {
+    let read := || -> i64 { value }; // ERROR[T0001]
     read()
 }
 

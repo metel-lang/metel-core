@@ -3,9 +3,9 @@
 // spelling is a bound or a concrete type in the signature.
 enum Shape { Circle { r: f64 }, Square { side: f64 } }
 
-fun radius<T>(v: T) -> f64 { // ERROR[T0001]
+fun radius<T>(v: T) -> f64 {
     match (v) {
-        Shape::Circle { r } => r,
+        Shape::Circle { r } => r, // ERROR[T0001]
         _ => 0.0,
     }
 }

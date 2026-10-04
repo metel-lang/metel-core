@@ -3,7 +3,9 @@
 
 // Body always returns 42, so T would have to be i64: but T is a declared parameter,
 // opaque inside its own definition.
-fun always_int<T>(_x: T) -> T { 42 } // ERROR[T0001]
+fun always_int<T>(_x: T) -> T {
+    42 // ERROR[T0001]
+}
 
 fun use_bad() {
     let _s: boolean := always_int(true);

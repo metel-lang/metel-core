@@ -571,6 +571,7 @@ fn check_declared_parameters_rigid(
     span: &crate::data::ast::Span,
     params: &[(&str, TypeVar)],
     resolve: &dyn Fn(&InferType) -> InferType,
+    origin: &dyn Fn(TypeVar) -> Option<crate::data::ast::Span>,
 ) -> Result<(), MetelError> {
     let mut seen: Vec<(TypeVar, &str)> = Vec::new();
     for &(name, tv) in params {
@@ -584,7 +585,7 @@ fn check_declared_parameters_rigid(
                              declared type parameters are opaque inside their own definition, so \
                              `{other}` and `{name}` cannot be the same type"
                         ),
-                        span,
+                        &origin(tv).unwrap_or_else(|| span.clone()),
                     ));
                 }
                 seen.push((resolved, name));
@@ -596,7 +597,7 @@ fn check_declared_parameters_rigid(
                         "expected `{concrete}`, found type parameter `{name}`: a declared type \
                          parameter is opaque inside its own definition"
                     ),
-                    span,
+                    &origin(tv).unwrap_or_else(|| span.clone()),
                 ));
             }
         }
@@ -673,6 +674,8 @@ pub(super) fn infer_fun_decl(
 
     // For generic functions, create fresh type variables for each parameter name.
     let generic_map = fun_generic_map(fun, ctx);
+    let rigidity_tracking_checkpoint = ctx.rigidity_tracking_checkpoint();
+    ctx.track_rigidity_parameters(generic_map.values().copied());
 
     // RFC-0121 installment 1: an open-row-tailed parameter (`{ x: f64, ..R }`)
     // desugars to its own anonymous, record-kinded, row-bounded `TypeVar` --
@@ -845,9 +848,19 @@ pub(super) fn infer_fun_decl(
         ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
     let saved_row_field_vars = ctx.swap_row_field_vars();
     let saved_ret = ctx.push_return_type(ret_ty.clone());
+    // Generic calls made in this body can introduce an unresolved symbolic
+    // `Rest = R minus labels` fact.  Keep a checkpoint so those facts can be
+    // generalized with this declaration instead of leaking into its enclosing
+    // inference context or being left for construction to rediscover.
+    let row_remainder_checkpoint = ctx.row_remainder_checkpoint();
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
-    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), fun.body.span.clone());
+    let return_span = fun
+        .body
+        .tail
+        .as_ref()
+        .map_or_else(|| fun.body.span.clone(), |tail| tail.span().clone());
+    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), return_span);
 
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
@@ -878,12 +891,19 @@ pub(super) fn infer_fun_decl(
     // when the same polymorphic function is called at different types.
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
+    let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let declared: Vec<(&str, TypeVar)> = fun
         .generics
         .iter()
         .filter_map(|gp| generic_map.get(&gp.name).map(|&tv| (gp.name.as_str(), tv)))
         .collect();
-    check_declared_parameters_rigid(&fun.span, &declared, &|ty| partial_subst.apply(ty))?;
+    check_declared_parameters_rigid(
+        &fun.span,
+        &declared,
+        &|ty| partial_subst.apply(ty),
+        &|var| ctx.rigidity_origin(var).cloned(),
+    )?;
+    ctx.restore_rigidity_tracking(rigidity_tracking_checkpoint);
 
     // RFC-0037: process pending opaque-return markers. For each marker, check
     // whether the body's own solve resolved it to a concrete type (unlinked case)
@@ -1029,7 +1049,7 @@ pub(super) fn infer_fun_decl(
     // Remapped through `partial_subst` like the maps above. A `Rest` the body has
     // unified with `R` (generics are not rigid) is no longer a separate var, so
     // there is nothing left to derive and the entry is dropped.
-    let row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = fun
+    let mut row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = fun
         .where_clause
         .iter()
         .flat_map(|wc| wc.row_equations.iter())
@@ -1051,6 +1071,24 @@ pub(super) fn infer_fun_decl(
             })
         })
         .collect();
+    // A generic call inside this body may have imposed the same equation without
+    // spelling it in this declaration.  Retain it on the generalized scheme so a
+    // later generic caller receives the typed fact as well.  Concrete equations
+    // have already fired during `solve`; only two still-abstract, distinct
+    // parameters belong in the scheme.
+    for fact in propagated_row_remainders {
+        let (InferType::Var(source), InferType::Var(remainder)) = (
+            partial_subst.apply(&InferType::Var(fact.source)),
+            partial_subst.apply(&InferType::Var(fact.remainder)),
+        ) else {
+            continue;
+        };
+        if source != remainder {
+            row_remainders
+                .entry(remainder)
+                .or_insert((source, fact.removed));
+        }
+    }
     let scheme = scheme
         .with_record_kinds(&type_var_record_kinds)
         .with_row_remainders(&row_remainders);
@@ -1564,9 +1602,12 @@ pub(super) fn infer_impl_method(
         }
     }
 
+    let rigidity_tracking_checkpoint = ctx.rigidity_tracking_checkpoint();
+    ctx.track_rigidity_parameters(generic_map.values().copied());
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
     // method scheme below so call sites resolve.
+    let row_remainder_checkpoint = ctx.row_remainder_checkpoint();
     if method.native.is_none() {
         ctx.push_scope();
         let saved_flow = ctx.flow_enter_body();
@@ -1582,7 +1623,12 @@ pub(super) fn infer_impl_method(
         let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
         let body_ty = infer_block(&method.body, ctx, fun_generalizations)?;
-        constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), method.body.span.clone());
+        let return_span = method
+            .body
+            .tail
+            .as_ref()
+            .map_or_else(|| method.body.span.clone(), |tail| tail.span().clone());
+        constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), return_span);
         ctx.pop_return_type(saved_ret);
         ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_row_exclusions(saved_row_exclusions);
@@ -1596,13 +1642,20 @@ pub(super) fn infer_impl_method(
 
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
+    let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let mut declared = method_declared;
     for (name, tv) in &enclosing_declared {
         if !declared.iter().any(|(_, declared_tv)| *declared_tv == *tv) {
             declared.push((name, *tv));
         }
     }
-    check_declared_parameters_rigid(&method.span, &declared, &|ty| partial_subst.apply(ty))?;
+    check_declared_parameters_rigid(
+        &method.span,
+        &declared,
+        &|ty| partial_subst.apply(ty),
+        &|var| ctx.rigidity_origin(var).cloned(),
+    )?;
+    ctx.restore_rigidity_tracking(rigidity_tracking_checkpoint);
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);
 
@@ -1745,7 +1798,7 @@ pub(super) fn infer_impl_method(
             .with_open_row_params(&open_row_vars);
         // RFC-0121 §2: remap the impl's `Rest` derivations through the solved
         // substitution; a `Rest` the body unified with `R` is no longer separate.
-        let row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = impl_row_remainders
+        let mut row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = impl_row_remainders
             .iter()
             .filter_map(|(rest_tv, (r_tv, labels))| {
                 let (InferType::Var(rest), InferType::Var(r)) = (
@@ -1757,6 +1810,19 @@ pub(super) fn infer_impl_method(
                 (rest != r).then(|| (rest, (r, labels.clone())))
             })
             .collect();
+        for fact in propagated_row_remainders {
+            let (InferType::Var(source), InferType::Var(remainder)) = (
+                partial_subst.apply(&InferType::Var(fact.source)),
+                partial_subst.apply(&InferType::Var(fact.remainder)),
+            ) else {
+                continue;
+            };
+            if source != remainder {
+                row_remainders
+                    .entry(remainder)
+                    .or_insert((source, fact.removed));
+            }
+        }
         scheme = scheme.with_row_remainders(&row_remainders);
         let scheme = if body_assoc_log.is_empty() {
             scheme

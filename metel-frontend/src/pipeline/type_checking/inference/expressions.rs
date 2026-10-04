@@ -39,10 +39,20 @@ fn check_forwarded_generic_bounds(
     else {
         return Ok(());
     };
-    let Some(argument_name) = ctx.declared_type_param_name(*arg_var) else {
-        return Ok(());
-    };
     let available = ctx.bounds_for_type_var(*arg_var).unwrap_or_default();
+    // An open-row parameter is represented by the anonymous type variable of
+    // its `{ ..R }` parameter, rather than by `R` itself.  It consequently has
+    // no declared type-parameter name, but its `Row`/`AllFields` bounds still
+    // identify it as an abstract generic row.  Do not apply this rule to an
+    // ordinary inference variable: only a declared parameter or an open-row
+    // parameter can forward an entitlement from a generic body.
+    let argument_name = ctx.declared_type_param_name(*arg_var);
+    let is_open_row_parameter = available
+        .iter()
+        .any(|bound| matches!(bound, GenericBound::Row(_) | GenericBound::AllFields { .. }));
+    if argument_name.is_none() && !is_open_row_parameter {
+        return Ok(());
+    }
     let required = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
     let granted = |need: &GenericBound| {
         available.iter().any(|have| match (have, need) {
@@ -67,8 +77,12 @@ fn check_forwarded_generic_bounds(
         return Err(MetelError::type_error(
             TypeErrorCode::T0012,
             format!(
-                "type parameter `{argument_name}` does not satisfy required bound `{missing}` \
-                 for generic call to `{callee_name}`"
+                "{} does not satisfy required bound `{missing}` for generic call to \
+                 `{callee_name}`",
+                argument_name.map_or_else(
+                    || "open-row parameter".to_owned(),
+                    |name| format!("type parameter `{name}`"),
+                )
             ),
             span,
         ));

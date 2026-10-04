@@ -1,0 +1,11 @@
+// RFC-0173 D6: `all R: Tag` is an entitlement for the fields of R. Passing an
+// open row to a callee that requires the entitlement must be rejected in this
+// generic definition when it does not declare the same `all` bound.
+
+aspect Tag {}
+
+fun require_tagged<row R>(value: { ..R }) -> i64 where all R: Tag { 1 }
+
+fun forward<row R>(value: { ..R }) -> i64 {
+    require_tagged(value) // ERROR[T0012]
+}

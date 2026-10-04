@@ -1,0 +1,10 @@
+// RFC-0173 D6: the same `all R: Tag` entitlement is forwarded to a callee
+// requiring it for the fields of its open-row argument.
+
+aspect Tag {}
+
+fun require_tagged<row R>(value: { ..R }) -> i64 where all R: Tag { 1 }
+
+fun forward<row R>(value: { ..R }) -> i64 where all R: Tag {
+    require_tagged(value)
+}
