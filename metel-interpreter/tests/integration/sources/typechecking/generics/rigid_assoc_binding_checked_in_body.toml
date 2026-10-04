@@ -1,2 +1,8 @@
 [options]
+error = ["T0001"]
 spec = ["spec.types.generics.rigid-type-parameters.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 8
