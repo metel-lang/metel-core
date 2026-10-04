@@ -1,0 +1,13 @@
+// RFC-0173 D6: an abstract record row cannot use a record-target conditional
+// method unless its declared all-fields entitlement entails the impl condition.
+
+aspect Mark {}
+aspect Label { fun label(&self) -> String; }
+
+extend<row R> { ..R }: Label where all R: Mark {
+    fun label(&self) -> String { "marked".to_string() }
+}
+
+fun use<row R>(value: { ..R }) -> String {
+    value.label() // ERROR[T0035]
+}

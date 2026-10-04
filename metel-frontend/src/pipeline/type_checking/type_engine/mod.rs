@@ -3902,11 +3902,19 @@ impl TypeDefinitionRegistry {
                             matches!(candidate, GenericBound::Row(actual)
                                 if row_bound_entails(actual, required))
                         }),
-                        // D6 forwards `where all R: A` only to another all-fields
-                        // requirement. Its implementation is deliberately kept
-                        // with the pending all-fields work, rather than treating it
-                        // as an aspect of R itself here.
-                        GenericBound::AllFields { .. } => false,
+                        // RFC-0173 D6: a field-wise entitlement is forwarded only
+                        // to the same field-wise requirement.  It is not an aspect
+                        // of the row itself, so neither weaker aspect matching nor
+                        // transitive closure is sound here.
+                        GenericBound::AllFields {
+                            aspects,
+                            except,
+                        } => declared.iter().any(|candidate| {
+                            matches!(candidate, GenericBound::AllFields {
+                                aspects: declared_aspects,
+                                except: declared_except,
+                            } if declared_aspects == aspects && declared_except == except)
+                        }),
                     });
                     let negative_entailed = neg_bounds.iter().all(|bound| match bound {
                         GenericBound::Aspect(aspect) => declared_negative.iter().any(
@@ -3916,7 +3924,15 @@ impl TypeDefinitionRegistry {
                             matches!(candidate, GenericBound::Row(actual)
                                 if row_bound_entails(actual, required))
                         }),
-                        GenericBound::AllFields { .. } => false,
+                        GenericBound::AllFields {
+                            aspects,
+                            except,
+                        } => declared_negative.iter().any(|candidate| {
+                            matches!(candidate, GenericBound::AllFields {
+                                aspects: declared_aspects,
+                                except: declared_except,
+                            } if declared_aspects == aspects && declared_except == except)
+                        }),
                     });
                     return positive_entailed && negative_entailed;
                 }

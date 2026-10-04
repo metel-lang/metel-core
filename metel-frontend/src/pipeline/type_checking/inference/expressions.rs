@@ -993,6 +993,65 @@ pub(super) fn infer_expr(
                 );
             }
 
+            // RFC-0173 D6: record-target conditional methods can be selected
+            // against an abstract open-row parameter only when its declared
+            // row/all-fields bounds entail the selected impl's requirements.
+            // A concrete record continues through `infer_record_method_call`
+            // above, where its actual fields are checked directly.
+            if let InferType::Var(receiver_tv) = &peeled_recv {
+                let record_candidates = ctx.registry().record_method_scheme_variants_for(method);
+                if !record_candidates.is_empty()
+                    && ctx.bounds_for_type_var(*receiver_tv).is_some_and(|bounds| {
+                        bounds.iter().any(|bound| {
+                            matches!(bound, GenericBound::Row(_) | GenericBound::AllFields { .. })
+                        })
+                    })
+                {
+                    let assumptions = ctx.current_aspect_assumptions();
+                    let Some((scheme, receiver_tvars, _)) = record_candidates
+                        .iter()
+                        .rev()
+                        .find(|(scheme, receiver_tvars, _)| {
+                            ctx.registry().generic_method_receiver_bounds_hold(
+                                ctx.current_module_path(),
+                                scheme,
+                                receiver_tvars,
+                                std::slice::from_ref(&peeled_recv),
+                                GenericMethodEntailment {
+                                    aspect_assumptions: &assumptions,
+                                    bounds: ctx.type_param_bounds(),
+                                    negative_bounds: ctx.negative_type_param_bounds(),
+                                },
+                            )
+                        })
+                        .cloned()
+                    else {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0035,
+                            format!(
+                                "method `{method}` is not granted by the declared bounds of this \
+                                 record parameter; its conditional implementation requirements are \
+                                 not entailed"
+                            ),
+                            span,
+                        ));
+                    };
+                    return infer_record_method_call_with_scheme(
+                        RecordMethodCall {
+                            receiver,
+                            recv_ty: &recv_ty,
+                            peeled_recv: &peeled_recv,
+                            method,
+                            arg_tys: &arg_tys,
+                            span,
+                        },
+                        ctx,
+                        &scheme,
+                        &receiver_tvars,
+                    );
+                }
+            }
+
             // Fast path: concrete named type — look up method as usual.
             if let Some(struct_name) = named_type_name(&recv_ty) {
                 let recv_type_args = match &recv_ty {
@@ -1875,9 +1934,47 @@ fn infer_record_method_call(
             span,
         ));
     };
-    let (instance, renaming) = ctx.instantiate_with_renaming(&scheme);
+    infer_record_method_call_with_scheme(
+        RecordMethodCall {
+            receiver,
+            recv_ty,
+            peeled_recv,
+            method,
+            arg_tys,
+            span,
+        },
+        ctx,
+        &scheme,
+        &receiver_tvars,
+    )
+}
+
+struct RecordMethodCall<'a> {
+    receiver: &'a Expr,
+    recv_ty: &'a InferType,
+    peeled_recv: &'a InferType,
+    method: &'a str,
+    arg_tys: &'a [InferType],
+    span: &'a crate::data::ast::Span,
+}
+
+fn infer_record_method_call_with_scheme(
+    call: RecordMethodCall<'_>,
+    ctx: &mut InferContext,
+    scheme: &TypeScheme,
+    receiver_tvars: &[TypeVar],
+) -> Result<InferType, MetelError> {
+    let RecordMethodCall {
+        receiver,
+        recv_ty,
+        peeled_recv,
+        method,
+        arg_tys,
+        span,
+    } = call;
+    let (instance, renaming) = ctx.instantiate_with_renaming(scheme);
     let mut pin = Substitution::new();
-    for &tv in &receiver_tvars {
+    for &tv in receiver_tvars {
         if let Some(&fresh) = renaming.get(&tv) {
             pin.bind(fresh, peeled_recv.clone());
         }
