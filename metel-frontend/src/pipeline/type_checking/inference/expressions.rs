@@ -1037,7 +1037,7 @@ pub(super) fn infer_expr(
                         ));
                     };
                     return infer_record_method_call_with_scheme(
-                        RecordMethodCall {
+                        &RecordMethodCall {
                             receiver,
                             recv_ty: &recv_ty,
                             peeled_recv: &peeled_recv,
@@ -1935,7 +1935,7 @@ fn infer_record_method_call(
         ));
     };
     infer_record_method_call_with_scheme(
-        RecordMethodCall {
+        &RecordMethodCall {
             receiver,
             recv_ty,
             peeled_recv,
@@ -1959,7 +1959,7 @@ struct RecordMethodCall<'a> {
 }
 
 fn infer_record_method_call_with_scheme(
-    call: RecordMethodCall<'_>,
+    call: &RecordMethodCall<'_>,
     ctx: &mut InferContext,
     scheme: &TypeScheme,
     receiver_tvars: &[TypeVar],
@@ -1971,7 +1971,7 @@ fn infer_record_method_call_with_scheme(
         method,
         arg_tys,
         span,
-    } = call;
+    } = *call;
     let (instance, renaming) = ctx.instantiate_with_renaming(scheme);
     let mut pin = Substitution::new();
     for &tv in receiver_tvars {
