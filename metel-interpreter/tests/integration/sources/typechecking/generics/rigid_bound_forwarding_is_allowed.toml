@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.generics.rigid-type-parameters.legality-2"]

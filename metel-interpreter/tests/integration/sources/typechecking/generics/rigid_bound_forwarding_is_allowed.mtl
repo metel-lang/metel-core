@@ -1,0 +1,10 @@
+// RFC-0173 D6(2): matching declared bounds forward to the callee.
+
+aspect Tag { fun tag(self) -> i64; }
+extend i64: Tag { fun tag(self) -> i64 { 7 } }
+
+fun needs_tag<T: Tag>(value: T) -> i64 { value.tag() }
+
+fun forward<U: Tag>(value: U) -> i64 { needs_tag(value) }
+
+fun main() { println(forward(1)); }

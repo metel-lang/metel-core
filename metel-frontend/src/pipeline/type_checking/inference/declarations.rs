@@ -978,6 +978,30 @@ pub(super) fn infer_fun_decl(
         .iter()
         .map(|var| names_by_var.get(var).cloned().unwrap_or_default())
         .collect();
+    // Keep declared bounds on the locally callable scheme as well as in the
+    // registry.  Construction has historically consulted the latter, but the
+    // definition-time forwarding check instantiates this scheme directly.
+    let scheme_bounds: HashMap<TypeVar, Vec<GenericBound>> = type_var_bounds
+        .iter()
+        .filter_map(
+            |(original, bounds)| match partial_subst.apply(&InferType::Var(*original)) {
+                InferType::Var(resolved) => Some((resolved, bounds.clone())),
+                _ => None,
+            },
+        )
+        .collect();
+    let scheme_neg_bounds: HashMap<TypeVar, Vec<GenericBound>> = neg_type_var_bounds
+        .iter()
+        .filter_map(
+            |(original, bounds)| match partial_subst.apply(&InferType::Var(*original)) {
+                InferType::Var(resolved) => Some((resolved, bounds.clone())),
+                _ => None,
+            },
+        )
+        .collect();
+    scheme = scheme
+        .with_bounds(&scheme_bounds)
+        .with_neg_bounds(&scheme_neg_bounds);
     // Attach assoc_projections if any projections were recorded during body inference.
     // `proj_map` is already keyed by the FINAL (post-`partial_subst`) TypeVar (see
     // `build_assoc_projection_map`), so it's carried into `FunGeneralization` as-is,

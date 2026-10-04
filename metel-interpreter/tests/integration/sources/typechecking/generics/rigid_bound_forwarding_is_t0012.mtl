@@ -1,0 +1,10 @@
+// RFC-0173 D6(2): a caller cannot pass an unconstrained declared parameter
+// to a callee whose corresponding parameter requires Tag.
+
+aspect Tag { fun tag(self) -> i64; }
+
+fun needs_tag<T: Tag>(value: T) -> i64 { value.tag() }
+
+fun forward<U>(value: U) -> i64 {
+    needs_tag(value) // ERROR[T0012]
+}

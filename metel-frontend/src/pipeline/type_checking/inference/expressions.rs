@@ -9,7 +9,72 @@ use super::{
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
     signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer,
 };
-use crate::pipeline::type_checking::type_engine::GenericMethodEntailment;
+use crate::pipeline::type_checking::type_engine::{GenericMethodEntailment, TypeScheme};
+
+/// Enforce RFC-0173 D6(2) for the direct parameter-passing shape.  General
+/// unification still relates the two signatures; this check supplies the one
+/// fact unification must not invent: that a declared argument grants every
+/// bound required by the callee's corresponding parameter.
+fn check_forwarded_generic_bounds(
+    callee_name: &str,
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    param_ty: &InferType,
+    arg_ty: &InferType,
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
+    let (InferType::Var(param_var), InferType::Var(arg_var)) = (param_ty, arg_ty) else {
+        return Ok(());
+    };
+    let Some((index, _)) = scheme
+        .quantified_vars
+        .iter()
+        .enumerate()
+        .find(|(_, original)| {
+            renaming
+                .get(original)
+                .is_some_and(|fresh| fresh == param_var)
+        })
+    else {
+        return Ok(());
+    };
+    let Some(argument_name) = ctx.declared_type_param_name(*arg_var) else {
+        return Ok(());
+    };
+    let available = ctx.bounds_for_type_var(*arg_var).unwrap_or_default();
+    let required = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
+    let granted = |need: &GenericBound| {
+        available.iter().any(|have| match (have, need) {
+            (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,
+            (GenericBound::Row(left), GenericBound::Row(right)) => {
+                format!("{left:?}") == format!("{right:?}")
+            }
+            (
+                GenericBound::AllFields {
+                    aspects: left_aspects,
+                    except: left_except,
+                },
+                GenericBound::AllFields {
+                    aspects: right_aspects,
+                    except: right_except,
+                },
+            ) => left_aspects == right_aspects && left_except == right_except,
+            _ => false,
+        })
+    };
+    if let Some(missing) = required.iter().find(|need| !granted(need)) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "type parameter `{argument_name}` does not satisfy required bound `{missing}` \
+                 for generic call to `{callee_name}`"
+            ),
+            span,
+        ));
+    }
+    Ok(())
+}
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
@@ -415,6 +480,48 @@ pub(super) fn infer_expr(
 
                     return Ok(*ret);
                 }
+            }
+
+            // RFC-0173 D6(2): a generic body cannot defer a callee's bound
+            // check to construction.  Instantiate the named callee here so a
+            // direct declared parameter argument is checked against the
+            // callee's own scheme while the caller's declared bounds are in
+            // scope.  Concrete arguments retain construction's ordinary
+            // call-site diagnostic.
+            if let Some(callee_name) = super::super::overload::callee_name(callee)
+                && let Some(scheme) = ctx.poly_scheme(callee_name)
+                && !scheme.quantified_vars.is_empty()
+            {
+                let (callee_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                let InferType::Fun(params, ret, ..) = callee_ty else {
+                    return Err(MetelError::internal(
+                        "function scheme is not a function type",
+                    ));
+                };
+                if params.len() != args.len() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0004,
+                        format!("expected {} argument(s), got {}", params.len(), args.len()),
+                        span,
+                    ));
+                }
+                let arg_tys: Vec<InferType> = args
+                    .iter()
+                    .map(|arg| infer_expr(arg, ctx, fun_generalizations))
+                    .collect::<Result<_, _>>()?;
+                for (arg_ty, param_ty) in arg_tys.iter().zip(params.iter()) {
+                    check_forwarded_generic_bounds(
+                        callee_name,
+                        &scheme,
+                        &renaming,
+                        param_ty,
+                        arg_ty,
+                        span,
+                        ctx,
+                    )?;
+                    ctx.add_constraint(arg_ty.clone(), param_ty.clone(), span.clone());
+                }
+                return Ok(*ret);
             }
 
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
