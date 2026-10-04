@@ -1,0 +1,13 @@
+// RFC-0173 D1: a row-equation remainder cannot regain a removed label by a
+// write inside the generic definition.
+record Session<row R> { public data: { ..R } }
+
+fun write_removed<row R, row Rest>(value: &var Session<..Rest>)
+where R = { token: String, ..Rest } {
+    value.data.token := "x"; // ERROR[T0003]
+}
+
+fun main() {
+    var value := Session { data = { extra = 1 } };
+    write_removed(&var value);
+}

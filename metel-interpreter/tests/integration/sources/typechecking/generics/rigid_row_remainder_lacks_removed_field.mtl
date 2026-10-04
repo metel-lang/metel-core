@@ -1,0 +1,12 @@
+// RFC-0173 D1: the remainder in a row equation lacks every removed label in
+// the definition body, not merely after a concrete call derives it.
+record Session<row R> { public data: { ..R } }
+
+fun read_removed<row R, row Rest>(value: Session<..Rest>) -> String
+where R = { token: String, ..Rest } {
+    value.data.token // ERROR[T0003]
+}
+
+fun main() {
+    read_removed(Session { data = { extra = 1 } });
+}

@@ -3,7 +3,7 @@ use super::{
     InferContext, InferType, MetelError, NativeFunTyResult, Polarity, Substitution, Type,
     TypeErrorCode, TypeExpr, TypeVar, ann_to_infer, aspect_impl_method_signature_matches,
     build_assoc_projection_map, check_copy_impl_eligibility, closed_nominal_target,
-    collect_fun_assoc_eq_constraints, collect_fun_type_var_bounds,
+    collect_fun_assoc_eq_constraints, collect_fun_row_exclusions, collect_fun_type_var_bounds,
     collect_fun_type_var_record_kinds, collect_negative_fun_type_var_bounds,
     collect_open_record_param_vars, constrain_with_read_copy, dyn_array_elem_ann, free_vars,
     fun_generic_map, generalize, infer_block, infer_dyn_array_literal, infer_expr, infer_stmt,
@@ -715,6 +715,7 @@ pub(super) fn infer_fun_decl(
         ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
     }
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
+    let row_exclusions = collect_fun_row_exclusions(fun, &generic_map);
     if !assoc_eq_by_var.is_empty() {
         ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var.clone());
     }
@@ -837,6 +838,7 @@ pub(super) fn infer_fun_decl(
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map.clone());
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
+    let saved_row_exclusions = ctx.swap_row_exclusions(row_exclusions);
     install_assoc_eq_facts(ctx, &assoc_eq_by_var, &fun.span);
     let saved_projection_tail_constraints =
         ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
@@ -848,6 +850,7 @@ pub(super) fn infer_fun_decl(
 
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
+    ctx.swap_row_exclusions(saved_row_exclusions);
     ctx.swap_projection_tail_constraints(saved_projection_tail_constraints);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
@@ -1519,6 +1522,21 @@ pub(super) fn infer_impl_method(
         .map_or_else(|| Ok(InferType::unit()), |t| te_to_infer(t, ctx))?;
 
     let method_assoc_eq = collect_fun_assoc_eq_constraints(method, &generic_map);
+    let mut method_row_exclusions = collect_fun_row_exclusions(method, &generic_map);
+    for equation in ib
+        .where_clause
+        .iter()
+        .flat_map(|where_clause| where_clause.row_equations.iter())
+    {
+        if let Some(tail) = &equation.tail.var
+            && let Some(&tv) = generic_map.get(tail)
+        {
+            method_row_exclusions
+                .entry(tv)
+                .or_default()
+                .extend(equation.fields.iter().map(|(label, _)| label.clone()));
+        }
+    }
 
     // Native methods have no Metel body; their signature comes entirely from
     // annotations (METEL-181). Skip body inference but still register the
@@ -1533,6 +1551,7 @@ pub(super) fn infer_impl_method(
         }
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
+        let saved_row_exclusions = ctx.swap_row_exclusions(method_row_exclusions);
         install_assoc_eq_facts(ctx, &method_assoc_eq, &method.span);
         let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
@@ -1540,6 +1559,7 @@ pub(super) fn infer_impl_method(
         constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), method.body.span.clone());
         ctx.pop_return_type(saved_ret);
         ctx.restore_row_field_vars(saved_row_field_vars);
+        ctx.swap_row_exclusions(saved_row_exclusions);
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_type_params(saved_type_params);
         ctx.flow_exit_body(saved_flow);

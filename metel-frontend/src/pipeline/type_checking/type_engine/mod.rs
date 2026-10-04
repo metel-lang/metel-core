@@ -4835,6 +4835,11 @@ pub struct InferContext {
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    /// Labels known to be absent from a row parameter in the current generic body.
+    /// A decomposition `R = { token: String, ..Rest }` installs `token` here for
+    /// `Rest`; unlike the call-time remainder backfill, this fact is available
+    /// while the definition itself is inferred.
+    current_row_exclusions: HashMap<TypeVar, Vec<String>>,
     /// RFC-0121 installment 2: `TypeVar` → (expected brand, row) for the current
     /// generic function's `Handle.{ fd, ..R }`-typed parameters. A deliberately
     /// separate, parallel table to `current_type_param_bounds` above -- see
@@ -4953,6 +4958,7 @@ impl InferContext {
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
+            current_row_exclusions: HashMap::new(),
             current_projection_tail_constraints: HashMap::new(),
             current_assoc_projections: HashMap::new(),
             recorded_assoc_projections: Vec::new(),
@@ -5184,6 +5190,34 @@ impl InferContext {
         bounds: HashMap<TypeVar, Vec<GenericBound>>,
     ) -> HashMap<TypeVar, Vec<GenericBound>> {
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
+    }
+
+    /// Install row labels that a generic body's row parameters are known not to
+    /// contain, returning the previous body-local table.
+    pub fn swap_row_exclusions(
+        &mut self,
+        exclusions: HashMap<TypeVar, Vec<String>>,
+    ) -> HashMap<TypeVar, Vec<String>> {
+        std::mem::replace(&mut self.current_row_exclusions, exclusions)
+    }
+
+    /// Whether `field` is absent by a row-decomposition fact for `tv`.
+    #[must_use]
+    pub fn row_excludes_field(&self, tv: TypeVar, field: &str) -> bool {
+        let resolved = match self.cached_subst.apply(&InferType::Var(tv)) {
+            InferType::Var(v) => v,
+            _ => tv,
+        };
+        self.current_row_exclusions
+            .iter()
+            .any(|(candidate, labels)| {
+                let candidate_resolved = match self.cached_subst.apply(&InferType::Var(*candidate))
+                {
+                    InferType::Var(v) => v,
+                    _ => *candidate,
+                };
+                candidate_resolved == resolved && labels.iter().any(|label| label == field)
+            })
     }
 
     /// RFC-0121 installment 2: install a new projection-tail-constraints map

@@ -1,0 +1,13 @@
+// RFC-0173 D1: an enclosing impl's row equation is a body fact for its methods.
+record Session<row R> { public data: { ..R } }
+
+extend<row R, row Rest> Session<..R> where R = { token: String, ..Rest } {
+    fun read_removed(self, value: Session<..Rest>) -> String {
+        value.data.token // ERROR[T0003]
+    }
+}
+
+fun main() {
+    let session := Session { data = { token = "x", extra = 1 } };
+    session.read_removed(Session { data = { extra = 1 } });
+}

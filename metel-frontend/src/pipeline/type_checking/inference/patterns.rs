@@ -342,6 +342,13 @@ pub(super) fn resolve_row_bound_field(
     field: &str,
     span: &Span,
 ) -> Option<Result<InferType, MetelError>> {
+    if ctx.row_excludes_field(tv, field) {
+        return Some(Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no field `{field}` on the derived row remainder"),
+            span,
+        )));
+    }
     // RFC-0121 installment 2: `Handle.{ fd, ..R }` desugars into its own
     // parallel side-table (`fun_projection_tail_constraints`), never into the
     // ordinary bounds table `bounds_for_type_var` below reads -- see that

@@ -1337,6 +1337,30 @@ pub(super) fn collect_fun_assoc_eq_constraints(
     map
 }
 
+/// RFC-0173 D1: the tail of a row equation is derived from the source row and
+/// therefore lacks every label the equation removes.
+pub(super) fn collect_fun_row_exclusions(
+    fun: &FunDecl,
+    generic_map: &HashMap<String, TypeVar>,
+) -> HashMap<TypeVar, Vec<String>> {
+    fun.where_clause
+        .iter()
+        .flat_map(|wc| wc.row_equations.iter())
+        .filter_map(|equation| {
+            let tail = equation.tail.var.as_ref()?;
+            let &tv = generic_map.get(tail)?;
+            Some((
+                tv,
+                equation
+                    .fields
+                    .iter()
+                    .map(|(label, _)| label.clone())
+                    .collect(),
+            ))
+        })
+        .collect()
+}
+
 pub(super) fn infer_program(
     program: &Program,
     ctx: &mut InferContext,
