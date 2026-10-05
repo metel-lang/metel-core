@@ -2373,6 +2373,18 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
                 .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
                 .collect::<Option<Vec<_>>>()?,
         )),
+        InferType::RowExtend { fields, tail } => {
+            let Type::Record(mut tail_fields) = infer_to_type(tail)? else {
+                return None;
+            };
+            let mut fields = fields
+                .iter()
+                .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
+                .collect::<Option<Vec<_>>>()?;
+            fields.append(&mut tail_fields);
+            fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Some(Type::Record(fields))
+        }
         InferType::Array(inner) => infer_to_type(inner).map(|inner| Type::Array(Box::new(inner))),
         InferType::SizedArray(inner, len) => {
             infer_to_type(inner).map(|inner| Type::SizedArray(Box::new(inner), *len))

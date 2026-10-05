@@ -361,16 +361,10 @@ fn type_expr_to_infer_in_context(
                     .collect(),
             }
         }
-        // RFC-0121: `{ x: f64, ..R }` is grammar-restricted to a `fun_decl`
-        // parameter's own type annotation, and `infer_fun_decl` intercepts it
-        // there -- minting a fresh bounded `TypeVar` for the parameter and
-        // registering the named fields as a positive, open row bound (reusing
-        // RFC-0118/0120's existing structural row-bound checking) -- before
-        // the parameter's annotation ever reaches this general conversion.
-        // A nested open record that reaches this function is handled below.
-        // RFC-0121 item 2: a tail-only open record (`{ ..R }`) outside a
-        // `fun_decl` parameter's top level -- e.g. a struct field's type -- is
-        // exactly the row variable `R` (a row with no fixed fields).
+        // RFC-0121: a top-level function parameter uses its dedicated path in
+        // `infer_fun_decl`, where the fixed labels become row bounds. Nested
+        // occurrences keep their structural row form here: `{ ..R }` is `R`,
+        // while `{ x: T, ..R }` is a row extension.
         TypeExpr::OpenRecord(fields, tail)
             if fields.is_empty()
                 && tail
@@ -385,12 +379,34 @@ fn type_expr_to_infer_in_context(
                     .expect("guarded"),
             )
         }
-        // Anything else reaching here is a nested open record the registry converts
-        // before `projections::check` runs -- a struct field's `{ x: T, ..R }` (row
-        // extension, not implemented), or a tail naming an undeclared row variable.
-        // `projections::check` rejects both (T0032 / T0003), but this function is
-        // infallible by signature and runs first when the registry is built, so it
-        // lowers to a placeholder that equals no declared type, not a panic.
+        TypeExpr::OpenRecord(fields, tail)
+            if !fields.is_empty()
+                && tail
+                    .var
+                    .as_deref()
+                    .is_some_and(|v| generics.is_some_and(|g| g.contains_key(v))) =>
+        {
+            let tail_var = generics
+                .and_then(|g| g.get(tail.var.as_deref()?))
+                .copied()
+                .expect("guarded");
+            InferType::RowExtend {
+                fields: fields
+                    .iter()
+                    .map(|(name, ty)| {
+                        (
+                            name.clone(),
+                            type_expr_to_infer_in_context(ty, generics, self_ty_name, assoc_ctx),
+                        )
+                    })
+                    .collect(),
+                tail: Box::new(InferType::Var(tail_var)),
+            }
+        }
+        // A tail that does not name a row parameter is rejected by
+        // `projections::check`. This conversion is infallible and registry
+        // construction precedes that check, so retain a non-matching placeholder
+        // instead of panicking if the invalid annotation reaches this point.
         TypeExpr::OpenRecord(..) => InferType::Named(
             "<open-row>".to_string(),
             vec![],
@@ -509,6 +525,22 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
                 .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
                 .collect::<Result<Vec<_>, MetelError>>()?,
         )),
+        InferType::RowExtend { fields, tail } => {
+            let Type::Record(mut tail_fields) = infer_type_to_type(tail, span)? else {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    "cannot infer open-row remainder; add a type annotation",
+                    span,
+                ));
+            };
+            let mut resolved_fields: Vec<_> = fields
+                .iter()
+                .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
+                .collect::<Result<_, MetelError>>()?;
+            resolved_fields.append(&mut tail_fields);
+            resolved_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            Ok(Type::Record(resolved_fields))
+        }
         InferType::Array(t) => Ok(Type::Array(Box::new(infer_type_to_type(t, span)?))),
         InferType::SizedArray(t, n) => {
             Ok(Type::SizedArray(Box::new(infer_type_to_type(t, span)?), *n))

@@ -110,6 +110,13 @@ pub enum InferType {
     Tuple(Vec<InferType>),
     /// A closed anonymous record type with lexicographically sorted labels.
     Record(Vec<(String, InferType)>),
+    /// A record assembled from fixed fields and an open-row tail. This exists
+    /// only while inferring a generic declaration: construction requires the
+    /// tail to resolve and emits an ordinary closed `Record`.
+    RowExtend {
+        fields: Vec<(String, InferType)>,
+        tail: Box<InferType>,
+    },
     /// A homogeneous array type.
     Array(Box<InferType>),
     /// A fixed-size array type `[T; N]`.
@@ -230,6 +237,19 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, " }}")
             }
+            InferType::RowExtend { fields, tail } => {
+                write!(f, "{{ ")?;
+                for (i, (name, ty)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {ty}")?;
+                }
+                if !fields.is_empty() {
+                    write!(f, ", ")?;
+                }
+                write!(f, "..{tail} }}")
+            }
             InferType::Array(t) => write!(f, "{t}[]"),
             InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             InferType::Reference(t) => write!(f, "&{t}"),
@@ -346,6 +366,12 @@ fn collect_free_vars_in_order(
             for (_, t) in fields {
                 collect_free_vars_in_order(t, known, local, next);
             }
+        }
+        InferType::RowExtend { fields, tail } => {
+            for (_, field_ty) in fields {
+                collect_free_vars_in_order(field_ty, known, local, next);
+            }
+            collect_free_vars_in_order(tail, known, local, next);
         }
         InferType::Array(t)
         | InferType::SizedArray(t, _)
@@ -548,6 +574,13 @@ impl Substitution {
                     .map(|(name, ty)| (name.clone(), self.apply(ty)))
                     .collect(),
             ),
+            InferType::RowExtend { fields, tail } => InferType::RowExtend {
+                fields: fields
+                    .iter()
+                    .map(|(name, ty)| (name.clone(), self.apply(ty)))
+                    .collect(),
+                tail: Box::new(self.apply(tail)),
+            },
             InferType::Array(t) => InferType::Array(Box::new(self.apply(t))),
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
             InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
@@ -687,6 +720,9 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         }
         InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
         InferType::Record(fields) => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
+        InferType::RowExtend { fields, tail } => {
+            fields.iter().any(|(_, ty)| occurs_in(var, ty)) || occurs_in(var, tail)
+        }
         InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
@@ -845,6 +881,9 @@ fn contains_type_var(ty: &InferType) -> bool {
         }
         InferType::Tuple(items) => items.iter().any(contains_type_var),
         InferType::Record(fields) => fields.iter().any(|(_, ty)| contains_type_var(ty)),
+        InferType::RowExtend { fields, tail } => {
+            fields.iter().any(|(_, ty)| contains_type_var(ty)) || contains_type_var(tail)
+        }
         InferType::Array(item)
         | InferType::SizedArray(item, _)
         | InferType::Reference(item)
@@ -941,6 +980,43 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 }
                 unify_seq(&mut subst, ty1, ty2)?;
             }
+            Ok(subst)
+        }
+        (InferType::RowExtend { fields, tail }, InferType::Record(record))
+        | (InferType::Record(record), InferType::RowExtend { fields, tail }) => {
+            let mut subst = Substitution::new();
+            let mut remainder = record.clone();
+            for (name, expected) in fields {
+                let Some(index) = remainder.iter().position(|(actual, _)| actual == name) else {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                };
+                let (_, actual) = remainder.remove(index);
+                unify_seq(&mut subst, expected, &actual)?;
+            }
+            unify_seq(&mut subst, tail, &InferType::Record(remainder))?;
+            Ok(subst)
+        }
+        (
+            InferType::RowExtend {
+                fields: left_fields,
+                tail: left_tail,
+            },
+            InferType::RowExtend {
+                fields: right_fields,
+                tail: right_tail,
+            },
+        ) => {
+            if left_fields.len() != right_fields.len() {
+                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+            }
+            let mut subst = Substitution::new();
+            for ((left_name, left), (right_name, right)) in left_fields.iter().zip(right_fields) {
+                if left_name != right_name {
+                    return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
+                }
+                unify_seq(&mut subst, left, right)?;
+            }
+            unify_seq(&mut subst, left_tail, right_tail)?;
             Ok(subst)
         }
         (InferType::SizedArray(t1, n1), InferType::SizedArray(t2, n2)) => {
@@ -1545,6 +1621,12 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
             for (_, ty) in fields {
                 collect_free_vars(ty, vars);
             }
+        }
+        InferType::RowExtend { fields, tail } => {
+            for (_, field_ty) in fields {
+                collect_free_vars(field_ty, vars);
+            }
+            collect_free_vars(tail, vars);
         }
         InferType::Array(t)
         | InferType::SizedArray(t, _)
@@ -3661,6 +3743,7 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
+            InferType::RowExtend { .. } | InferType::Var(_) | InferType::Never => false,
             InferType::SizedArray(elem, _) => {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
@@ -3807,7 +3890,6 @@ impl TypeDefinitionRegistry {
                 "Sync" => *call_mutation != CallMutation::Mutating,
                 _ => false,
             },
-            InferType::Var(_) | InferType::Never => false,
             InferType::Concrete(other) => {
                 let name = match other {
                     Type::Str => "String",

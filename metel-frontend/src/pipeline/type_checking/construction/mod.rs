@@ -966,6 +966,18 @@ pub(super) fn substitute_named_generics(
                 })
                 .collect(),
         ),
+        InferType::RowExtend { fields, tail } => InferType::RowExtend {
+            fields: fields
+                .iter()
+                .map(|(name, field_ty)| {
+                    (
+                        name.clone(),
+                        substitute_named_generics(field_ty, named_samples),
+                    )
+                })
+                .collect(),
+            tail: Box::new(substitute_named_generics(tail, named_samples)),
+        },
         InferType::Array(item) => {
             InferType::Array(Box::new(substitute_named_generics(item, named_samples)))
         }

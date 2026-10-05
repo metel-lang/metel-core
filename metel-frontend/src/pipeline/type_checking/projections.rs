@@ -469,22 +469,22 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            // RFC-0121: reaching here, an open record is *nested* (a function
-            // parameter's top-level one is handled by `param`). A tail-only
-            // `{ ..R }` -- e.g. a struct field's type -- is the row variable
-            // `R` itself (a row with no fixed fields). One with fixed fields
-            // would be a row *extension*, which needs a row-extending type
-            // representation that doesn't exist yet.
+            // RFC-0121: reaching here, an open record is nested (a function
+            // parameter's top-level one is handled by `param`). Its tail must
+            // name a declared row parameter, and every fixed field remains an
+            // ordinary type annotation checked in the same generic scope.
             TypeExpr::OpenRecord(fields, tail) => {
-                if !fields.is_empty() {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0032,
-                        "an open record with fixed fields (`{ x: T, ..R }`) is only \
-                         supported as a function parameter's own type; use a tail-only \
-                         `{ ..R }` (or `..R` as a generic argument) here"
-                            .to_string(),
+                for (_, field_ty) in fields {
+                    self.ty_at(
+                        field_ty,
                         span,
-                    ));
+                        field_of,
+                        generics,
+                        self_allowed,
+                        self_target,
+                        impl_aspect_allowed,
+                        local_types,
+                    )?;
                 }
                 Self::row_var_use(tail, generics, span)
             }

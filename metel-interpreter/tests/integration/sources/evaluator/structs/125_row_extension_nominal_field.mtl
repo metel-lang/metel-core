@@ -1,0 +1,13 @@
+// RFC-0121 remainder (metel-core#1306, #1310): a nominal field may extend a
+// row parameter. Constructing the nominal type infers the tail from the
+// record's fields that the extension does not name.
+
+record Wrap<row R> { public data: { x: i64, ..R } }
+
+fun main() {
+    var wrap := Wrap { data = { x = 1, y = 2 } };
+    wrap.data.x := 3;
+    assert(wrap.data.x == 3);
+    assert(wrap.data.y == 2);
+    println("ok");
+}

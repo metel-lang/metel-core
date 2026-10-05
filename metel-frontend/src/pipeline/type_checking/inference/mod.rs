@@ -418,6 +418,7 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
         | InferType::Var(_)
         | InferType::Fun(..)
         | InferType::Record(_)
+        | InferType::RowExtend { .. }
         | InferType::Residual { .. } => None,
     }
 }
@@ -517,6 +518,13 @@ fn substitute_impl_params(
                 .map(|(label, field_ty)| (label.clone(), go(field_ty)))
                 .collect(),
         ),
+        InferType::RowExtend { fields, tail } => InferType::RowExtend {
+            fields: fields
+                .iter()
+                .map(|(label, field_ty)| (label.clone(), go(field_ty)))
+                .collect(),
+            tail: Box::new(go(tail)),
+        },
         InferType::Array(item) => InferType::Array(Box::new(go(item))),
         InferType::SizedArray(item, size) => InferType::SizedArray(Box::new(go(item)), *size),
         InferType::Reference(item) => InferType::Reference(Box::new(go(item))),
@@ -2409,14 +2417,15 @@ fn infer_struct_literal(
             remap.insert(tp, fresh);
         }
     }
+    // A declared parameter may sit under a compound field type. In particular,
+    // `{ x: i64, ..R }` must receive this literal's fresh `R`, not retain the
+    // declaration's original variable beneath the row extension.
     let apply_remap = |ty: &InferType| -> InferType {
-        if remap.is_empty() {
-            return ty.clone();
+        let mut substitution = Substitution::new();
+        for (param, arg) in &remap {
+            substitution.bind(*param, arg.clone());
         }
-        match ty {
-            InferType::Var(v) => remap.get(v).cloned().unwrap_or_else(|| ty.clone()),
-            other => other.clone(),
-        }
+        substitution.apply(ty)
     };
     for (name, expr) in fields {
         let field = expected_fields
@@ -2529,6 +2538,9 @@ fn infer_field_assign_type(
                 )
             });
     }
+    if let InferType::RowExtend { fields, tail } = &peeled {
+        return infer_row_extend_field_type(fields, tail, field, target_span, ctx, &peeled);
+    }
     // Mirror of Expr::FieldAccess's row-bound branch above, so `p.x = value` works
     // symmetrically wherever `p.x` does. `fresh_row_field_var` is memoized by
     // (tv, field), so an untyped field's read and write sides agree on a type.
@@ -2597,6 +2609,48 @@ fn infer_field_assign_type(
         Ok(remap.apply(&raw_ty))
     } else {
         Ok(raw_ty)
+    }
+}
+
+/// Resolve a field of a nested row extension for the assignment path. Its
+/// fixed fields are directly available; the solved tail supplies the rest.
+fn infer_row_extend_field_type(
+    fields: &[(String, InferType)],
+    tail: &InferType,
+    field: &str,
+    target_span: &Span,
+    ctx: &mut InferContext,
+    whole: &InferType,
+) -> Result<InferType, MetelError> {
+    if let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) {
+        return Ok(ty.clone());
+    }
+    match tail {
+        InferType::Record(tail_fields)
+        | InferType::Residual {
+            fields: tail_fields,
+            ..
+        } => tail_fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on {whole}"),
+                    target_span,
+                )
+            }),
+        InferType::Var(tv)
+            if let Some(result) = resolve_row_bound_field(ctx, *tv, field, target_span) =>
+        {
+            result
+        }
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no field `{field}` on {whole}"),
+            target_span,
+        )),
     }
 }
 

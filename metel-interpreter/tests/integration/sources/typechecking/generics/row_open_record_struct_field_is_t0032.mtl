@@ -1,7 +1,0 @@
-// RFC-0121 item 2 (metel-core#1324): `{ x: i64, ..R }` in a struct field is row
-// extension, which is not implemented. It must report T0032, not panic while the
-// registry converts the field type.
-
-record Wrap<row R> { public data: { x: i64, ..R } }
-
-fun main() {}

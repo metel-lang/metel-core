@@ -1,7 +1,0 @@
-[expect]
-status = "typecheck_error"
-code = "T0032"
-contains = "fixed fields"
-
-[options]
-error = ["T0032"]

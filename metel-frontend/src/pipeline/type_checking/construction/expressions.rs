@@ -13,7 +13,7 @@ use super::{
     maybe_singleton_coerce, merge_branch_types, peel_type_references, resolve_expected_enum,
     resolve_generic_method_call, resolve_unqualified_variant_expr, resolved_to_type,
     type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
-    typed_place_ty, unqualified_variant_needs_annotation_error,
+    typed_place_ty, unify, unqualified_variant_needs_annotation_error,
 };
 
 fn capture_name(capture: &crate::data::ast::CaptureSpec) -> &str {
@@ -1669,23 +1669,28 @@ pub(super) fn construct_expr(
                         .ok_or_else(|| {
                             MetelError::internal(format!("missing raw fields for `{type_name}`"))
                         })?;
-                    let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
-                    for &tp in type_params {
-                        remap.entry(tp).or_insert_with(|| InferType::Var(tp));
-                    }
-                    // Match each field value type to its raw InferType param; resolve via subst.
+                    // Recover the type arguments by unifying every raw field
+                    // type with its constructed value. A field can mention a
+                    // parameter structurally (not only as a bare `T`): row
+                    // extensions use `{ fixed, ..R }`, whose unification binds
+                    // `R` to the exact remaining record fields.
+                    let mut field_subst = Substitution::new();
                     for (fname, fexpr) in &typed_fields {
-                        if let Some(field) = raw_fields.iter().find(|entry| entry.name == *fname)
-                            && let InferType::Var(v) = &field.ty
-                            && type_params.contains(v)
-                        {
-                            remap.insert(*v, type_to_infer(fexpr.ty()));
+                        if let Some(field) = raw_fields.iter().find(|entry| entry.name == *fname) {
+                            let expected = field_subst.apply(&field.ty);
+                            let actual = type_to_infer(fexpr.ty());
+                            let delta = unify(&actual, &expected).map_err(|_| {
+                                MetelError::internal(format!(
+                                    "constructed field `{fname}` does not match its inferred type"
+                                ))
+                            })?;
+                            field_subst.compose_in_place(&delta);
                         }
                     }
                     let type_args: Vec<Type> = type_params
                         .iter()
                         .map(|tp| {
-                            let it = remap.get(tp).cloned().unwrap_or(InferType::Var(*tp));
+                            let it = field_subst.apply(&InferType::Var(*tp));
                             infer_type_to_type(&ctx.subst.apply(&it), span)
                         })
                         .collect::<Result<_, _>>()?;

@@ -823,6 +823,57 @@ pub(super) fn infer_expr(
                         )
                     });
             }
+            // RFC-0121 remainder (#1306, #1310): a row extension preserves its
+            // explicitly declared fields while its tail supplies every other
+            // field. Construction has already solved the tail for a concrete
+            // value; in an abstract body, a row-bound tail is handled by the
+            // ordinary variable path below.
+            if let InferType::RowExtend { fields, tail } = &peeled {
+                if let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) {
+                    return Ok(ty.clone());
+                }
+                match tail.as_ref() {
+                    InferType::Record(tail_fields)
+                    | InferType::Residual {
+                        fields: tail_fields,
+                        ..
+                    } => {
+                        return tail_fields
+                            .iter()
+                            .find(|(name, _)| name == field)
+                            .map(|(_, ty)| ty.clone())
+                            .ok_or_else(|| {
+                                MetelError::type_error(
+                                    TypeErrorCode::T0003,
+                                    format!("no field `{field}` on {peeled}"),
+                                    span,
+                                )
+                            });
+                    }
+                    InferType::Var(tv)
+                        if let Some(result) = resolve_row_bound_field(ctx, *tv, field, span) =>
+                    {
+                        return result;
+                    }
+                    InferType::Var(tv) if let Some(param) = ctx.declared_type_param_name(*tv) => {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0035,
+                            format!(
+                                "field `{field}` is not granted by the declared bounds of type \
+                                 parameter `{param}`"
+                            ),
+                            span,
+                        ));
+                    }
+                    _ => {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0003,
+                            format!("no field `{field}` on {peeled}"),
+                            span,
+                        ));
+                    }
+                }
+            }
             // Abstract, row-bounded generic type parameter (`<record T: { x: f64, .. }>`):
             // resolve `field` against the row bound the same way MethodCall's slow path
             // (below) resolves a method against an aspect bound, instead of falling

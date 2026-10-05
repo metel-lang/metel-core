@@ -478,8 +478,8 @@ pub struct RowBoundField {
 
 /// RFC-0121: the `..R` (or anonymous `..`) tail of an `OpenRecord` type.
 /// `var: None` is the anonymous form; `var: Some(name)` must name a `row`-kinded
-/// generic parameter declared on the enclosing `fun_decl` (checked in
-/// `infer_fun_decl`, not here -- the parser has no generic-param context).
+/// generic parameter declared by the enclosing generic declaration (checked
+/// during projection validation, not by the parser).
 #[derive(Debug, Clone)]
 pub struct RowTail {
     pub var: Option<String>,
@@ -493,8 +493,8 @@ pub struct GenericParam {
     /// RFC-0121: declared `row R` rather than a plain or `record`-kinded `T`.
     /// Mutually exclusive with `is_record` (the grammar's `record_kw | row_kw`
     /// alternation already guarantees this); never a bound carrier itself --
-    /// a row variable's only legal use is `..R` in a `fun_decl` parameter's
-    /// open-row-tailed record type (`OpenRecord`/`RowTail` below).
+    /// a row variable is used as `..R` in an open record type or as a row
+    /// argument in a nominal type.
     pub is_row: bool,
     pub bounds: Vec<Bound>, // empty = unconstrained
 }
@@ -1025,13 +1025,9 @@ pub enum TypeExpr {
     Unit,
     Tuple(Vec<TypeExpr>),
     Record(Vec<(String, TypeExpr)>),
-    /// RFC-0121: `{ x: f64, ..R }` or `{ .. }` -- a record type with an open
-    /// row tail. Grammar-restricted to a `fun_decl` parameter's own type
-    /// (`fun_decl_param`, not `param`): never a struct field, a let
-    /// annotation, a return type, a closure parameter, or an aspect/`extend`
-    /// method's parameter. `parse_fun_decl` itself rejects it on a method or
-    /// a native function, so every other `TypeExpr`-consuming pass may treat
-    /// this variant as unreachable there too (LIMIT-TYPES-001).
+    /// RFC-0121: `{ x: f64, ..R }` or `{ ..R }` -- a record type with an open
+    /// row tail. A top-level function parameter has dedicated row-bound
+    /// checking; nested occurrences retain this structural representation.
     OpenRecord(Vec<(String, TypeExpr)>, RowTail),
     Array(Box<TypeExpr>),
     SizedArray(Box<TypeExpr>, u64),
