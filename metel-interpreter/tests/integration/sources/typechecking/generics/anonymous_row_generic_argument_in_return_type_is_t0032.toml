@@ -4,4 +4,4 @@ error = ["T0032"]
 [expect]
 status = "typecheck_error"
 code = "T0032"
-contains = "only supported as a generic argument in a free function's parameter type"
+contains = "only supported as a generic argument in a free function's or instance method's parameter type"

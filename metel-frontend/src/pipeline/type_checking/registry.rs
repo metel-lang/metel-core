@@ -705,9 +705,19 @@ fn register_program_decls(
             // way to represent the method's own generic parameter, so nothing
             // usable for call-time dispatch ever got registered for it.
             let has_method_own_generics = ib.methods.iter().any(|m| !m.generics.is_empty());
+            let has_method_row_args = ib.methods.iter().any(|m| {
+                m.params
+                    .iter()
+                    .filter_map(|p| p.type_ann.as_ref())
+                    .any(type_expr_contains_row_arg)
+                    || m.return_type
+                        .as_ref()
+                        .is_some_and(type_expr_contains_row_arg)
+            });
             let is_generic_target = is_array_generic_target
                 || !ib.generics.is_empty()
                 || has_method_own_generics
+                || has_method_row_args
                 || nominal_target_name.as_ref().is_some_and(|target_name| {
                     registry
                         .struct_generic_names_for(current_module_path, target_name.as_str())
@@ -929,6 +939,37 @@ fn register_program_decls(
     }
 }
 
+fn type_expr_contains_row_arg(ty: &crate::data::ast::TypeExpr) -> bool {
+    use crate::data::ast::TypeExpr;
+    match ty {
+        TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_row_arg),
+        TypeExpr::Tuple(items) => items.iter().any(type_expr_contains_row_arg),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner)
+        | TypeExpr::ImplAspect { bound: inner, .. }
+        | TypeExpr::DynAspect { bound: inner, .. } => type_expr_contains_row_arg(inner),
+        TypeExpr::Fun {
+            params,
+            return_type,
+            ..
+        } => {
+            params.iter().any(type_expr_contains_row_arg)
+                || return_type
+                    .as_deref()
+                    .is_some_and(type_expr_contains_row_arg)
+        }
+        TypeExpr::Projection { base, .. } => type_expr_contains_row_arg(base),
+        TypeExpr::RowArg(_) => true,
+        TypeExpr::Unit
+        | TypeExpr::Record(_)
+        | TypeExpr::OpenRecord(..)
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. } => false,
+    }
+}
+
 fn register_aspect_decl(
     ad: &AspectDecl,
     declaring_module: &[String],
@@ -1129,6 +1170,7 @@ fn register_generic_impl_method_schemes(
             quantified.push(tv);
             param_names.push(g.name.clone());
         }
+        let mut anonymous_row_vars = Vec::new();
         // #746: the scheme's own `.bounds`/`.neg_bounds` (used for call-site
         // checking, e.g. `f.describe(bad_arg)`) previously only carried the
         // struct's/impl's bounds (`by_var`/`by_neg_var`, shared across every
@@ -1181,14 +1223,30 @@ fn register_generic_impl_method_schemes(
                 .type_ann
                 .as_ref()
                 .expect("declarations on generic types are fully annotated");
-            param_types.push(type_expr_to_infer_with_generics(ann, &gen_map));
+            let lowered = type_expr_to_infer_with_generics(ann, &gen_map);
+            param_types.push(freshen_anonymous_row_args_for_method(
+                &lowered,
+                type_var_gen,
+                &mut anonymous_row_vars,
+            ));
         }
         let ret_ty = method
             .return_type
             .as_ref()
             .map_or_else(InferType::unit, |ann| {
-                type_expr_to_infer_with_generics(ann, &gen_map)
+                let lowered = type_expr_to_infer_with_generics(ann, &gen_map);
+                freshen_anonymous_row_args_for_method(
+                    &lowered,
+                    type_var_gen,
+                    &mut anonymous_row_vars,
+                )
             });
+        quantified.extend(anonymous_row_vars.iter().copied());
+        param_names.extend(
+            anonymous_row_vars
+                .iter()
+                .map(|tv| format!("_OpenRow{}", tv.0)),
+        );
         let scheme = TypeScheme {
             quantified_vars: quantified,
             param_names,
@@ -1288,6 +1346,53 @@ fn desugar_method_open_row_params(
         bounds,
         record_kinds,
         vars,
+    }
+}
+
+fn freshen_anonymous_row_args_for_method(
+    ty: &InferType,
+    type_var_gen: &mut TypeVarGenerator,
+    vars: &mut Vec<TypeVar>,
+) -> InferType {
+    match ty {
+        InferType::Named(name, args, _)
+            if args.is_empty() && name == super::conversions::ANONYMOUS_ROW_PLACEHOLDER =>
+        {
+            let var = type_var_gen.fresh();
+            vars.push(var);
+            InferType::Var(var)
+        }
+        InferType::Named(name, args, id) => InferType::Named(
+            name.clone(),
+            args.iter()
+                .map(|arg| freshen_anonymous_row_args_for_method(arg, type_var_gen, vars))
+                .collect(),
+            id.clone(),
+        ),
+        InferType::Tuple(items) => InferType::Tuple(
+            items
+                .iter()
+                .map(|item| freshen_anonymous_row_args_for_method(item, type_var_gen, vars))
+                .collect(),
+        ),
+        InferType::Array(inner) => InferType::Array(Box::new(
+            freshen_anonymous_row_args_for_method(inner, type_var_gen, vars),
+        )),
+        InferType::SizedArray(inner, size) => InferType::SizedArray(
+            Box::new(freshen_anonymous_row_args_for_method(
+                inner,
+                type_var_gen,
+                vars,
+            )),
+            *size,
+        ),
+        InferType::Reference(inner) => InferType::Reference(Box::new(
+            freshen_anonymous_row_args_for_method(inner, type_var_gen, vars),
+        )),
+        InferType::MutReference(inner) => InferType::MutReference(Box::new(
+            freshen_anonymous_row_args_for_method(inner, type_var_gen, vars),
+        )),
+        other => other.clone(),
     }
 }
 

@@ -178,9 +178,10 @@ impl Cx<'_> {
             &generics,
             local_types,
         )?;
-        // RFC-0121 item 2: in a function's parameter types an anonymous row argument
-        // (`b: Builder<..>`) is allowed -- it means "any row" and inference gives each one a
-        // fresh type variable of its own. Everywhere else it is T0032.
+        // RFC-0121 item 2: in a free function or instance method's parameter types an
+        // anonymous row argument (`b: Builder<..>`) is allowed -- it means "any row"
+        // and inference gives each one a fresh type variable of its own. Everywhere else
+        // it is T0032.
         let mut param_generics = generics.clone();
         if anonymous_rows {
             param_generics.insert(ANONYMOUS_ROW_MARKER.to_string());
@@ -666,7 +667,9 @@ impl Cx<'_> {
             )?;
         }
         for method in &ib.methods {
-            self.fun(method, &generics, true, self_target, local_types, false)?;
+            // Method parameters use the same anonymous-row meaning as free-function
+            // parameters: each `..` generic argument gets its own fresh scheme variable.
+            self.fun(method, &generics, true, self_target, local_types, true)?;
         }
         Ok(())
     }
@@ -1077,7 +1080,7 @@ impl Cx<'_> {
     /// RFC-0121 item 2: a row variable used as a generic argument (`Session<..R>`)
     /// or as a tail-only open record outside a function parameter's top level
     /// (`field: { ..R }`). It must name a declared `row`-kinded generic; the
-    /// anonymous form has no variable to substitute and is not implemented yet.
+    /// anonymous form is only permitted in function and instance-method parameters.
     fn row_var_use(
         tail: &crate::data::ast::RowTail,
         generics: &HashSet<String>,
@@ -1090,7 +1093,7 @@ impl Cx<'_> {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0032,
                 "an anonymous row (`..`) is only supported as a generic argument in a free function's \
-                 parameter type (`b: Builder<..>`); here, name a `row`-kinded generic \
+                 or instance method's parameter type (`b: Builder<..>`); here, name a `row`-kinded generic \
                  parameter (`..R`)"
                     .to_string(),
                 &tail.span,
