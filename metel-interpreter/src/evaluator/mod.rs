@@ -21,7 +21,7 @@ use crate::data::ast::{BinOp, CaptureSpec, Literal, Param, Span, TypeExpr, Unary
 use crate::data::error::{
     FrameInfo, InternalErrorCode, MetelError, RuntimeErrorCode, TypeErrorCode,
 };
-use crate::pipeline::type_checking::type_engine::TypeCtx;
+use crate::pipeline::type_checking::type_engine::{TypeCtx, TypeScheme};
 
 thread_local! {
     static CALL_STACK: RefCell<Vec<FrameInfo>> = const { RefCell::new(Vec::new()) };
@@ -1173,6 +1173,10 @@ pub struct ClosureValue {
     /// Present only when `body` is `ClosureBody::Untyped` (generic function). Provides
     /// the type context for construction-at-call-time so the untyped path is not needed.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
+    /// The exact declaration scheme for a generic method. Runtime dispatch has already
+    /// selected the implementation, so construction must not try to rediscover it by
+    /// receiver name (which does not exist for primitive targets).
+    pub generic_method_scheme: Option<TypeScheme>,
     /// The concrete function type of this closure, if known. Used by `value_to_type` to
     /// recover the closure's parameter/return types when it is passed as a generic argument.
     pub fun_type: Option<crate::data::types::Type>,
@@ -1210,6 +1214,7 @@ fn deep_clone_value(v: Value) -> Value {
                 call_mutation: closure.call_mutation,
                 in_call: Cell::new(false),
                 type_ctx: closure.type_ctx.clone(),
+                generic_method_scheme: closure.generic_method_scheme.clone(),
                 fun_type: closure.fun_type.clone(),
             })))
         }
@@ -1558,6 +1563,21 @@ fn runtime_signature(
     }
 }
 
+fn generic_method_scheme(
+    method: &crate::data::typed_ast::TypedFunDecl,
+    env: &Environment,
+) -> Option<TypeScheme> {
+    matches!(method.body, FunBody::Generic(_))
+        .then(|| {
+            env.type_ctx
+                .as_ref()?
+                .registry
+                .generic_method_scheme_for_decl(&method.span)
+                .cloned()
+        })
+        .flatten()
+}
+
 /// The callable for a method of an impl on a structural target: a native binds to its
 /// host implementation, a typed body runs as written, and a deferred (`Generic`) body is
 /// checked per call against the concrete receiver, so it carries the type context.
@@ -1581,6 +1601,7 @@ fn structural_method_callable(
         call_mutation: crate::data::types::CallMutation::Reading,
         in_call: Cell::new(false),
         type_ctx,
+        generic_method_scheme: generic_method_scheme(method, env),
         fun_type: None,
     }))
 }
@@ -2336,6 +2357,7 @@ fn run_passes(
                     call_mutation: crate::data::types::CallMutation::Reading,
                     in_call: Cell::new(false),
                     type_ctx: ctx,
+                    generic_method_scheme: None,
                     fun_type: None,
                 })));
                 if let Some(id) = f.symbol_id.or(f.def_id) {
@@ -2376,6 +2398,7 @@ fn run_passes(
                                 call_mutation: crate::data::types::CallMutation::Reading,
                                 in_call: Cell::new(false),
                                 type_ctx: None,
+                                generic_method_scheme: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
@@ -2390,6 +2413,7 @@ fn run_passes(
                                     call_mutation: crate::data::types::CallMutation::Reading,
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
+                                    generic_method_scheme: generic_method_scheme(method, env),
                                     fun_type: None,
                                 }))
                             }
@@ -2478,6 +2502,7 @@ fn run_passes(
                                 call_mutation: crate::data::types::CallMutation::Reading,
                                 in_call: Cell::new(false),
                                 type_ctx: None,
+                                generic_method_scheme: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
@@ -2492,6 +2517,7 @@ fn run_passes(
                                     call_mutation: crate::data::types::CallMutation::Reading,
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
+                                    generic_method_scheme: generic_method_scheme(method, env),
                                     fun_type: None,
                                 }))
                             }
@@ -2707,6 +2733,7 @@ fn build_and_set_nested_fun(
         call_mutation: crate::data::types::CallMutation::Reading,
         in_call: Cell::new(false),
         type_ctx: ctx,
+        generic_method_scheme: None,
         fun_type: None,
     })));
     // `f.local_id` is the same id `hoist_nested_funs` filed the placeholder
@@ -4410,6 +4437,7 @@ pub fn eval_expr(
                     call_mutation: *call_mutation,
                     in_call: Cell::new(false),
                     type_ctx: None,
+                    generic_method_scheme: None,
                     fun_type: Some(ty.clone()),
                 }),
             ))))
@@ -4439,6 +4467,7 @@ pub fn eval_expr(
                     call_mutation: *call_mutation,
                     in_call: Cell::new(false),
                     type_ctx: env.type_ctx.clone(),
+                    generic_method_scheme: None,
                     fun_type: None,
                 }),
             ))))

@@ -300,15 +300,21 @@ pub(super) fn call_method_function(
                     // name); fall back to the flat scheme env for the rare case a
                     // free generic closure reaches this path.
                     let resolved = closure
-                        .name
-                        .as_deref()
+                        .generic_method_scheme
+                        .as_ref()
                         .zip(closure.type_ctx.as_ref())
-                        .and_then(|(name, type_ctx)| {
-                            let method_scheme =
-                                method_scheme_for_receiver(type_ctx, name, &receiver_type);
-                            method_scheme
-                                .or_else(|| type_ctx.scheme_env.get(name))
-                                .map(|scheme| (scheme, type_ctx))
+                        .or_else(|| {
+                            closure
+                                .name
+                                .as_deref()
+                                .zip(closure.type_ctx.as_ref())
+                                .and_then(|(name, type_ctx)| {
+                                    let method_scheme =
+                                        method_scheme_for_receiver(type_ctx, name, &receiver_type);
+                                    method_scheme
+                                        .or_else(|| type_ctx.scheme_env.get(name))
+                                        .map(|scheme| (scheme, type_ctx))
+                                })
                         });
                     match resolved {
                         Some((scheme, type_ctx)) => {

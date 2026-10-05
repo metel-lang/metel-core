@@ -1,0 +1,14 @@
+// metel-core#1365: a method's own generic parameters must retain the
+// construction context needed to execute its deferred body.
+aspect GenericSink {
+    fun sink<U>(self, other: U) -> i64;
+}
+
+extend i64: GenericSink {
+    fun sink<U>(self, other: U) -> i64 { self }
+}
+
+fun main() {
+    assert(1.sink("x") == 1);
+    assert(2.sink(3) == 2);
+}
