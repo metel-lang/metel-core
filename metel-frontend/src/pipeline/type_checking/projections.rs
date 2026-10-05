@@ -178,10 +178,11 @@ impl Cx<'_> {
             &generics,
             local_types,
         )?;
-        // RFC-0121 item 2: in a free function or instance method's parameter types an
-        // anonymous row argument (`b: Builder<..>`) is allowed -- it means "any row"
-        // and inference gives each one a fresh type variable of its own. Everywhere else
-        // it is T0032.
+        // RFC-0121 item 2 / #1381: an anonymous row argument (`Builder<..>`) is
+        // allowed throughout a function's reusable type positions. Inference gives
+        // each occurrence a fresh row variable; the marker is carried through the
+        // whole function scope so returns, locals, and nested annotations use the
+        // same validation path as parameters.
         let mut param_generics = generics.clone();
         if anonymous_rows {
             param_generics.insert(ANONYMOUS_ROW_MARKER.to_string());
@@ -193,13 +194,19 @@ impl Cx<'_> {
             self.ty_return(
                 t,
                 &fun.span,
-                &generics,
+                &param_generics,
                 self_allowed,
                 self_target,
                 local_types,
             )?;
         }
-        self.block(&fun.body, &generics, self_allowed, self_target, local_types)
+        self.block(
+            &fun.body,
+            &param_generics,
+            self_allowed,
+            self_target,
+            local_types,
+        )
     }
 
     fn block(
@@ -1077,10 +1084,10 @@ impl Cx<'_> {
         result
     }
 
-    /// RFC-0121 item 2: a row variable used as a generic argument (`Session<..R>`)
-    /// or as a tail-only open record outside a function parameter's top level
-    /// (`field: { ..R }`). It must name a declared `row`-kinded generic; the
-    /// anonymous form is only permitted in function and instance-method parameters.
+    /// RFC-0121 item 2 / #1381: a row variable used as a generic argument
+    /// (`Session<..R>`) or as a tail-only open record. Named tails must name a
+    /// declared `row`-kinded generic; anonymous tails are admitted only when the
+    /// enclosing reusable type scope opted into anonymous rows.
     fn row_var_use(
         tail: &crate::data::ast::RowTail,
         generics: &HashSet<String>,
@@ -1092,9 +1099,9 @@ impl Cx<'_> {
             }
             return Err(MetelError::type_error(
                 TypeErrorCode::T0032,
-                "an anonymous row (`..`) is only supported as a generic argument in a free function's \
-                 or instance method's parameter type (`b: Builder<..>`); here, name a `row`-kinded generic \
-                 parameter (`..R`)"
+                "an anonymous row (`..`) is only supported in reusable type positions \
+                 whose enclosing declaration permits anonymous rows; here, name a `row`-kinded \
+                 generic parameter (`..R`)"
                     .to_string(),
                 &tail.span,
             ));

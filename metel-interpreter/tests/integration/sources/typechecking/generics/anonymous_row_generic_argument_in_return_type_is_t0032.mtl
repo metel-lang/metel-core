@@ -1,9 +1,10 @@
-// RFC-0121 item 2 (metel-core#1310): an anonymous row has a meaning only where the function
-// can quantify it, a parameter's type; in a return type it is still rejected.
+// RFC-0121 / #1381: anonymous row arguments are fresh in reusable type positions,
+// including return types and local annotations.
 record Session<row R> { public id: i64, public data: { ..R } }
 
 fun make() -> Session<..> {
-    Session { id = 1, data = { n = 1 } }
+    let typed: Session<..> := Session { id = 1, data = { n = 1 } };
+    typed
 }
 
 fun main() {

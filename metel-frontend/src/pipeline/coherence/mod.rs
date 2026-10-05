@@ -161,7 +161,7 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
                 .collect(),
         ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above --
-        // grammar-restricted to a `fun_decl` parameter's own type.
+        // reusable open-record type positions are canonicalized structurally.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!(
                 "OpenRecordProjection cannot appear as an impl target type or bound argument"

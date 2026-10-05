@@ -2202,11 +2202,23 @@ impl fmt::Display for GenericBound {
                     f.write_str("dyn ")?;
                     write_type_expr(f, bound)
                 }
-                // RFC-0121: grammar-restricted to a `fun_decl` parameter's own
-                // type; a bound's own field types (`row_bound`/`bound_arg`,
-                // the only thing this `Display` formats) never contain one.
-                TypeExpr::OpenRecord(..) => {
-                    unreachable!("OpenRecord cannot appear in a bound's type argument")
+                TypeExpr::OpenRecord(fields, tail) => {
+                    f.write_str("{ ")?;
+                    for (index, (name, ty)) in fields.iter().enumerate() {
+                        if index > 0 {
+                            f.write_str(", ")?;
+                        }
+                        write!(f, "{name}: ")?;
+                        write_type_expr(f, ty)?;
+                    }
+                    if !fields.is_empty() {
+                        f.write_str(", ")?;
+                    }
+                    f.write_str("..")?;
+                    if let Some(var) = &tail.var {
+                        f.write_str(var)?;
+                    }
+                    f.write_str(" }")
                 }
                 // RFC-0121 installment 2: same restriction as `OpenRecord` above.
                 TypeExpr::OpenRecordProjection { .. } => {

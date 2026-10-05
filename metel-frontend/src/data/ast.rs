@@ -1069,10 +1069,8 @@ pub enum TypeExpr {
         span: Span,
     },
     /// RFC-0121 installment 2: `Handle.{ fd, ..R }` or `Handle.{ .. }` -- a
-    /// struct's own residual-projection tail. Grammar-restricted exactly like
-    /// `OpenRecord`: a `fun_decl` parameter's own type only, never a struct
-    /// field, a let annotation, a return type, a closure parameter, or an
-    /// aspect/`extend` method's parameter.
+    /// struct's own residual-projection tail. This remains restricted to the
+    /// parameter/projection positions handled by the residual narrowing pass.
     OpenRecordProjection {
         path: Vec<String>,
         fields: Vec<String>,
@@ -1087,7 +1085,7 @@ pub enum TypeExpr {
         bound: Box<TypeExpr>,
         span: Span,
     },
-    /// RFC-0121 item 2 (metel-core#1310), representation-only slice: `Session<..R>`
+    /// RFC-0121 item 2 (metel-core#1310): `Session<..R>`
     /// (or anonymous `Session<..>`) -- a row splice in generic-argument position,
     /// slotted directly into the enclosing `Named`'s existing `Vec<TypeExpr>` args
     /// rather than changing that field's shape. Grammar-restricted to `type_args`

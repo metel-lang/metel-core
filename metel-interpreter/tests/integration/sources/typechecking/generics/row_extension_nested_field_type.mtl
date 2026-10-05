@@ -1,0 +1,9 @@
+// RFC-0121 / #1380: an open row may occur in a nominal field type.
+record Box<row R> {
+    public value: { x: i64, ..R },
+}
+
+fun main() {
+    let boxed := Box { value = { x = 1, extra = "ok" } };
+    assert(boxed.value.x == 1);
+}
