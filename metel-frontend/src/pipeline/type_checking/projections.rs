@@ -109,8 +109,7 @@ impl Cx<'_> {
                 self.expr(&d.value, generics, self_allowed, self_target, local_types)?;
             }
             Decl::Struct(sd) => {
-                let mut scope = Self::with_generics(generics, &sd.generics);
-                scope.insert(ANONYMOUS_ROW_MARKER.to_string());
+                let scope = Self::with_generics(generics, &sd.generics);
                 self.bounds(
                     &sd.generics,
                     sd.where_clause.as_ref(),
@@ -134,8 +133,7 @@ impl Cx<'_> {
                 }
             }
             Decl::Enum(ed) => {
-                let mut scope = Self::with_generics(generics, &ed.generics);
-                scope.insert(ANONYMOUS_ROW_MARKER.to_string());
+                let scope = Self::with_generics(generics, &ed.generics);
                 self.bounds(
                     &ed.generics,
                     ed.where_clause.as_ref(),
