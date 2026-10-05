@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::data::ast::{
     AspectMethod, AssignOp, AssignTarget, BinOp, Block, Bound, BoundHead, Decl, Expr, ForInit,
@@ -282,6 +282,7 @@ struct NativeFunTyResult {
     neg_bounds: HashMap<TypeVar, Vec<GenericBound>>,
     record_kinds: HashMap<TypeVar, bool>,
     assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    open_row_params: HashSet<TypeVar>,
 }
 
 fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyResult, MetelError> {
@@ -289,14 +290,22 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
     // parameter to a fresh TypeVar; the caller generalizes the result into a
     // polymorphic scheme carrying the bounds.
     let generic_map = fun_generic_map(fun, ctx);
-    let bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
+    let (
+        open_record_param_vars,
+        open_record_bounds,
+        open_record_record_kinds,
+        _open_record_projection_tail_constraints,
+    ) = collect_open_record_param_vars(fun, ctx)?;
+    let mut bounds_by_var = collect_fun_type_var_bounds(fun, &generic_map);
+    bounds_by_var.extend(open_record_bounds);
     let neg_bounds_by_var = collect_negative_fun_type_var_bounds(fun, &generic_map);
-    let record_kinds_by_var = collect_fun_type_var_record_kinds(fun, &generic_map);
+    let mut record_kinds_by_var = collect_fun_type_var_record_kinds(fun, &generic_map);
+    record_kinds_by_var.extend(open_record_record_kinds);
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
     let te_to_infer =
         |te: &TypeExpr| -> InferType { type_expr_to_infer_with_ctx(te, &generic_map, ctx) };
     let mut param_types = Vec::with_capacity(fun.params.len());
-    for p in &fun.params {
+    for (index, p) in fun.params.iter().enumerate() {
         let ann = p.type_ann.as_ref().ok_or_else(|| {
             MetelError::type_error(
                 TypeErrorCode::T0002,
@@ -307,7 +316,11 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
                 &p.span,
             )
         })?;
-        param_types.push(te_to_infer(ann));
+        param_types.push(
+            open_record_param_vars
+                .get(&index)
+                .map_or_else(|| te_to_infer(ann), |tv| InferType::Var(*tv)),
+        );
     }
     let ret_ty = match &fun.return_type {
         Some(te) => te_to_infer(te),
@@ -319,6 +332,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
         neg_bounds: neg_bounds_by_var,
         record_kinds: record_kinds_by_var,
         assoc_eq: assoc_eq_by_var,
+        open_row_params: open_record_param_vars.values().copied().collect(),
     })
 }
 
@@ -745,7 +759,9 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                         generalize(result.fun_ty, &env_fvs)
                             .with_bounds(&result.bounds)
                             .with_neg_bounds(&result.neg_bounds)
-                            .with_assoc_eq_constraints(&result.assoc_eq),
+                            .with_record_kinds(&result.record_kinds)
+                            .with_assoc_eq_constraints(&result.assoc_eq)
+                            .with_open_row_params(&result.open_row_params),
                     );
                 }
                 continue;

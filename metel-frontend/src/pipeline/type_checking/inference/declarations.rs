@@ -643,6 +643,7 @@ pub(super) fn infer_fun_decl(
             neg_bounds,
             record_kinds,
             assoc_eq,
+            open_row_params,
         } = native_fun_ty(fun, ctx)?;
         // Overloaded native definitions (std::core's assert pair) are
         // dispatched by SymbolId and never enter the name-keyed scheme env.
@@ -650,13 +651,29 @@ pub(super) fn infer_fun_decl(
             return Ok(());
         }
         let env_fvs = ctx.env_free_vars();
+        if !bounds.is_empty() {
+            ctx.register_fun_bounds(fun.name.clone(), bounds.clone());
+        }
+        if !record_kinds.is_empty() {
+            ctx.register_fun_record_kinds(fun.name.clone(), record_kinds.clone());
+        }
+        if !open_row_params.is_empty() {
+            ctx.register_fun_open_row_params(fun.name.clone(), open_row_params.clone());
+        }
+        if !neg_bounds.is_empty() {
+            ctx.register_neg_fun_bounds(fun.name.clone(), neg_bounds.clone());
+        }
+        if !assoc_eq.is_empty() {
+            ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq.clone());
+        }
         ctx.bind_poly(
             &fun.name,
             generalize(fun_ty.clone(), &env_fvs)
                 .with_bounds(&bounds)
                 .with_neg_bounds(&neg_bounds)
                 .with_record_kinds(&record_kinds)
-                .with_assoc_eq_constraints(&assoc_eq),
+                .with_assoc_eq_constraints(&assoc_eq)
+                .with_open_row_params(&open_row_params),
         );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
@@ -670,7 +687,7 @@ pub(super) fn infer_fun_decl(
             assoc_eq,
             opaque_returns: HashMap::new(),
             row_remainders: HashMap::new(),
-            open_row_params: HashSet::new(),
+            open_row_params,
         });
         return Ok(());
     }

@@ -312,39 +312,10 @@ fn populate_schemes_from_embedded_core(
                 if super::overload::core_overload_table().contains_key(&fun.name) {
                     continue;
                 }
-                let generic_map: HashMap<String, TypeVar> = fun
-                    .generics
-                    .iter()
-                    .map(|g| (g.name.clone(), type_var_gen.fresh()))
-                    .collect();
-                let te = |t: &TypeExpr| -> InferType {
-                    if generic_map.is_empty() {
-                        type_expr_to_infer(t)
-                    } else {
-                        type_expr_to_infer_with_generics(t, &generic_map)
-                    }
-                };
-                let params: Vec<InferType> = fun
-                    .params
-                    .iter()
-                    .map(|p| {
-                        p.type_ann.as_ref().map(te).expect(
-                            "native declarations are fully annotated (enforced by native_fun_ty)",
-                        )
-                    })
-                    .collect();
-                let ret = fun.return_type.as_ref().map_or_else(InferType::unit, te);
-                let fun_ty = InferType::fun(params, ret);
-                let bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
-                let neg_bounds =
-                    super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
-                let scheme = crate::pipeline::type_checking::type_engine::generalize(
-                    fun_ty,
-                    &HashSet::default(),
-                )
-                .with_bounds(&bounds)
-                .with_neg_bounds(&neg_bounds);
-                map.insert(fun.name.clone(), scheme);
+                map.insert(
+                    fun.name.clone(),
+                    embedded_native_fun_scheme(fun, type_var_gen),
+                );
             }
             Decl::Impl(ib) => {
                 // Static native methods on generic structs become joined-key
@@ -399,6 +370,57 @@ fn populate_schemes_from_embedded_core(
             _ => {}
         }
     }
+}
+
+fn embedded_native_fun_scheme(
+    fun: &crate::data::ast::FunDecl,
+    type_var_gen: &mut TypeVarGenerator,
+) -> TypeScheme {
+    let generic_map: HashMap<String, TypeVar> = fun
+        .generics
+        .iter()
+        .map(|g| (g.name.clone(), type_var_gen.fresh()))
+        .collect();
+    let te = |t: &TypeExpr| -> InferType {
+        if generic_map.is_empty() {
+            type_expr_to_infer(t)
+        } else {
+            type_expr_to_infer_with_generics(t, &generic_map)
+        }
+    };
+    let (open_row_param_vars, open_row_bounds, open_row_record_kinds, _tails) =
+        super::inference::collect_open_record_param_vars_with(fun, || type_var_gen.fresh())
+            .unwrap_or_default();
+    let params = fun
+        .params
+        .iter()
+        .enumerate()
+        .map(|(index, p)| {
+            open_row_param_vars.get(&index).map_or_else(
+                || {
+                    p.type_ann.as_ref().map(te).expect(
+                        "native declarations are fully annotated (enforced by native_fun_ty)",
+                    )
+                },
+                |tv| InferType::Var(*tv),
+            )
+        })
+        .collect();
+    let ret = fun.return_type.as_ref().map_or_else(InferType::unit, te);
+    let mut bounds = super::inference::collect_fun_type_var_bounds(fun, &generic_map);
+    bounds.extend(open_row_bounds);
+    let neg_bounds = super::inference::collect_negative_fun_type_var_bounds(fun, &generic_map);
+    let mut record_kinds = super::inference::collect_fun_type_var_record_kinds(fun, &generic_map);
+    record_kinds.extend(open_row_record_kinds);
+    let open_row_params = open_row_param_vars.values().copied().collect();
+    crate::pipeline::type_checking::type_engine::generalize(
+        InferType::fun(params, ret),
+        &HashSet::default(),
+    )
+    .with_bounds(&bounds)
+    .with_neg_bounds(&neg_bounds)
+    .with_record_kinds(&record_kinds)
+    .with_open_row_params(&open_row_params)
 }
 
 pub(super) fn type_expr_to_infer_for_registry(

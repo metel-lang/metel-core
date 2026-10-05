@@ -1,7 +1,0 @@
-[options]
-error = ["P0001"]
-
-[expect]
-status = "parse_error"
-code = "P0001"
-contains = "not yet supported on a native function's parameter"

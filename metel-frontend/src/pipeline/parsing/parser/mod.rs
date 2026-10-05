@@ -318,12 +318,11 @@ fn parse_opt_type_then_expr(
 
 /// RFC-0121: an open-row-tailed parameter is grammar-legal in a method's or a
 /// native function's param list too (`fun_decl_param`, reached from
-/// `extend_impl_braced` and `native_attr?` alike). Instance methods support the
-/// record-tail form (`{ x: f64, ..R }`): their row bound and record kind travel
-/// on the method's scheme, checked at the call site by `check_scheme_bounds`.
-/// Everything else is rejected explicitly here rather than silently
-/// mishandled downstream (LIMIT-TYPES-001):
-/// - a native function (no call-site resolution path for its bounds);
+/// `extend_impl_braced` and `native_attr?` alike). Free and native functions,
+/// plus instance methods, support the record-tail form (`{ x: f64, ..R }`):
+/// its row bound and record kind travel on their schemes, checked at the call
+/// site by `check_scheme_bounds`. Everything else is rejected explicitly here
+/// rather than silently mishandled downstream (LIMIT-TYPES-001):
 /// - a static method (no receiver): static methods register under a joined,
 ///   name-keyed path that carries none of the scheme's bound data;
 /// - the residual-projection form (`Handle.{ fd, ..R }`) on any method: its
@@ -331,15 +330,14 @@ fn parse_opt_type_then_expr(
 fn reject_open_record_param_outside_free_fun(
     params: &[Param],
     is_method: bool,
-    is_native: bool,
     span: &Span,
 ) -> Result<(), MetelError> {
-    if !is_method && !is_native {
+    if !is_method {
         return Ok(());
     }
     let has_receiver = params.first().is_some_and(|p| p.receiver.is_some());
     let unsupported = |t: &TypeExpr| match t {
-        TypeExpr::OpenRecord(..) => is_native || !has_receiver,
+        TypeExpr::OpenRecord(..) => is_method && !has_receiver,
         TypeExpr::OpenRecordProjection { .. } => true,
         _ => false,
     };
@@ -359,20 +357,15 @@ fn reject_open_record_param_outside_free_fun(
             _ => None,
         })
         .unwrap_or("");
-    let (kind, hint) = if is_native {
-        (
-            "a native function's",
-            "only a plain free function's or an instance method's parameters support it today",
-        )
-    } else if !has_receiver {
-        (
-            "a static method's",
-            "only a plain free function's or an instance method's parameters support it today",
-        )
-    } else {
+    let (kind, hint) = if has_receiver {
         (
             "a method's",
             "a method only supports the record-tail form (`{ x, ..R }`), not `Handle.{ fd, ..R }`",
+        )
+    } else {
+        (
+            "a static method's",
+            "only a plain free function's or an instance method's parameters support it today",
         )
     };
     Err(MetelError::parse(
@@ -439,7 +432,7 @@ fn parse_fun_decl(
         }
     }
 
-    reject_open_record_param_outside_free_fun(&params, is_method, native.is_some(), &span)?;
+    reject_open_record_param_outside_free_fun(&params, is_method, &span)?;
 
     // A native function has no block body (`;`); other functions require one.
     let body = match (native.is_some(), body) {

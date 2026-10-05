@@ -1,0 +1,6 @@
+// RFC-0121 item 6: native functions carry open-row parameter bounds on their
+// schemes, just as ordinary free functions do.
+
+native(@std.core.println) fun shout<row R>(x: { a: i64, ..R });
+
+fun main() {}
