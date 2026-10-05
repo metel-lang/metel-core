@@ -1093,12 +1093,9 @@ pub enum TypeExpr {
     /// rather than changing that field's shape. Grammar-restricted to `type_args`
     /// (a `named_type`'s own argument list) -- never a bare top-level type
     /// position. The row variable is validated (must name a declared `row`-kinded
-    /// generic) but every real use of the resulting type is rejected with a
-    /// dedicated "not yet implemented" diagnostic (T0031): unlike `OpenRecord`/
-    /// `OpenRecordProjection`, which desugar to an immediately-checked-and-discarded
-    /// fresh `TypeVar`, a generic argument must survive instantiation as part of a
-    /// reusable type -- real row-polymorphism through nominal-type instantiation,
-    /// not yet designed.
+    /// generic). Named splices survive instantiation as part of a reusable type;
+    /// anonymous splices in function and instance-method parameter signatures are
+    /// freshened to a per-signature type variable.
     RowArg(RowTail),
 }
 

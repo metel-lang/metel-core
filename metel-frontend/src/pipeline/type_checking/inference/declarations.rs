@@ -1595,6 +1595,7 @@ pub(super) fn infer_impl_method(
     // of naming a projection as a non-native one's, even with no body to swap
     // around on its own.
     let (saved_assoc_memo, saved_assoc_log) = ctx.swap_assoc_projections();
+    let mut anonymous_row_vars = Vec::new();
     let param_types: Vec<InferType> = method
         .params
         .iter()
@@ -1605,12 +1606,15 @@ pub(super) fn infer_impl_method(
             } else if let Some(&tv) = open_param_vars.get(&i) {
                 Ok(InferType::Var(tv))
             } else if let Some(ann) = &p.type_ann {
-                te_to_infer(ann, ctx)
+                te_to_infer(ann, ctx).map(|ty| {
+                    freshen_anonymous_row_args_with_vars(&ty, ctx, &mut anonymous_row_vars)
+                })
             } else {
                 Ok(ctx.fresh_var())
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
+    method_own_tvars.extend(anonymous_row_vars.iter().copied());
     let ret_ty = method
         .return_type
         .as_ref()
@@ -2110,15 +2114,29 @@ pub(super) fn infer_default_aspect_method(
 /// Replace every anonymous-row placeholder in `ty` (see `ANONYMOUS_ROW_PLACEHOLDER`) by a
 /// fresh type variable of its own, so each `..` in a signature is an independent row.
 fn freshen_anonymous_row_args(ty: &InferType, ctx: &mut InferContext) -> InferType {
+    let mut vars = Vec::new();
+    freshen_anonymous_row_args_with_vars(ty, ctx, &mut vars)
+}
+
+fn freshen_anonymous_row_args_with_vars(
+    ty: &InferType,
+    ctx: &mut InferContext,
+    vars: &mut Vec<TypeVar>,
+) -> InferType {
     match ty {
         InferType::Named(name, args, id) => {
             if args.is_empty() && name == super::super::conversions::ANONYMOUS_ROW_PLACEHOLDER {
-                return ctx.fresh_var();
+                let var = ctx.fresh_var();
+                vars.push(match var {
+                    InferType::Var(tv) => tv,
+                    _ => unreachable!(),
+                });
+                return var;
             }
             InferType::Named(
                 name.clone(),
                 args.iter()
-                    .map(|a| freshen_anonymous_row_args(a, ctx))
+                    .map(|a| freshen_anonymous_row_args_with_vars(a, ctx, vars))
                     .collect(),
                 id.clone(),
             )
@@ -2126,21 +2144,22 @@ fn freshen_anonymous_row_args(ty: &InferType, ctx: &mut InferContext) -> InferTy
         InferType::Tuple(items) => InferType::Tuple(
             items
                 .iter()
-                .map(|t| freshen_anonymous_row_args(t, ctx))
+                .map(|t| freshen_anonymous_row_args_with_vars(t, ctx, vars))
                 .collect(),
         ),
-        InferType::Array(inner) => {
-            InferType::Array(Box::new(freshen_anonymous_row_args(inner, ctx)))
-        }
-        InferType::SizedArray(inner, n) => {
-            InferType::SizedArray(Box::new(freshen_anonymous_row_args(inner, ctx)), *n)
-        }
-        InferType::Reference(inner) => {
-            InferType::Reference(Box::new(freshen_anonymous_row_args(inner, ctx)))
-        }
-        InferType::MutReference(inner) => {
-            InferType::MutReference(Box::new(freshen_anonymous_row_args(inner, ctx)))
-        }
+        InferType::Array(inner) => InferType::Array(Box::new(
+            freshen_anonymous_row_args_with_vars(inner, ctx, vars),
+        )),
+        InferType::SizedArray(inner, n) => InferType::SizedArray(
+            Box::new(freshen_anonymous_row_args_with_vars(inner, ctx, vars)),
+            *n,
+        ),
+        InferType::Reference(inner) => InferType::Reference(Box::new(
+            freshen_anonymous_row_args_with_vars(inner, ctx, vars),
+        )),
+        InferType::MutReference(inner) => InferType::MutReference(Box::new(
+            freshen_anonymous_row_args_with_vars(inner, ctx, vars),
+        )),
         other => other.clone(),
     }
 }

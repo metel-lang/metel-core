@@ -1,0 +1,16 @@
+// RFC-0121 item 2 (#1310): method signatures freshen anonymous row arguments
+// independently, just as free-function parameters do.
+record Session<row R> { public id: i64, public data: { ..R } }
+
+extend<row R> Session<..R> {
+    fun total(self, left: Session<..>, right: Session<..>) -> i64 {
+        self.id + left.id + right.id
+    }
+}
+
+fun main() {
+    let x := Session { id = 1, data = { left = 1 } };
+    let y := Session { id = 2, data = { right = "ok" } };
+    let z := Session { id = 3, data = { third = true } };
+    assert(x.total(y, z) == 6);
+}
