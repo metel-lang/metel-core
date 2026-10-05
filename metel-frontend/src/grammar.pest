@@ -363,6 +363,7 @@ type_expr = {
   | unit_type
   | tuple_type
   | record_projection_type
+  | open_record_type
   | record_type
   | extends_type
   | dyn_type
@@ -392,12 +393,10 @@ unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
 record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { ident ~ ":" ~ type_expr }
-// RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`), legal
-// today only in a `fun_decl` parameter's own type (`fun_decl_param` above, not
-// `param`) -- not a `type_expr` alternative, so it cannot appear in a struct
-// field, a let annotation, a return type, or any other ordinary type position
-// (LIMIT-TYPES-001; generic-argument position `Session<..R>` is tracked
-// separately, not yet implemented).
+// RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`) is a
+// regular type expression. Function parameters retain a dedicated top-level
+// checking path for row bounds; nested and reusable occurrences use ordinary
+// row-extension inference.
 open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
                     | "{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }

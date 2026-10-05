@@ -172,12 +172,9 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         // `OpenRecord`/`OpenRecordProjection` below, it *can* appear in an
         // aspect method's own parameter/return type.
         TypeExpr::RecordProjection { .. } | TypeExpr::Unit | TypeExpr::RowArg(_) => None,
-        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
-        // this function only ever walks an aspect method's declared
-        // signature (`aspect_method`'s own, unchanged, `param`/`type_expr`).
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear in an aspect method's signature")
-        }
+        TypeExpr::OpenRecord(fields, _) => fields
+            .iter()
+            .find_map(|(_, ty)| type_expr_violation(ty, assoc_type_names)),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear in an aspect method's signature")

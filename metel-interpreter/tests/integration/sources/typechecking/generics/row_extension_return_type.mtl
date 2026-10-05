@@ -1,0 +1,18 @@
+// RFC-0121 / #1380: an open row may be carried through a reusable return type.
+fun identity<row R>(value: { x: i64, ..R }) -> ({ x: i64, ..R }, i64) {
+    let typed: { x: i64, ..R } := value;
+    (typed, 1)
+}
+
+fun tail_identity<row R>(value: { ..R }) -> { ..R } {
+    value
+}
+
+fun main() {
+    let source := { x = 1, extra = "ok" };
+    let result := identity(source);
+    assert(result.0.x == 1);
+
+    let tail := tail_identity({ extra = 2 });
+    assert(tail.extra == 2);
+}

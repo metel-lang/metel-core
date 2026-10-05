@@ -447,11 +447,9 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         | TypeExpr::Projection { .. }
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::RowArg(_) => false,
-        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
-        // every call site here checks a *return* type instead.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear in a return-type annotation")
-        }
+        TypeExpr::OpenRecord(fields, _) => fields
+            .iter()
+            .any(|(_, ty)| type_expr_contains_impl_aspect(ty)),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear in a return-type annotation")
@@ -541,11 +539,18 @@ pub(super) fn rewrite_impl_aspect_returns(
         TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => {
             te.clone()
         }
-        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
-        // this function only ever rewrites a *return* type annotation.
-        TypeExpr::OpenRecord(..) => {
-            unreachable!("OpenRecord cannot appear in a return-type annotation")
-        }
+        TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| {
+                    (
+                        name.clone(),
+                        rewrite_impl_aspect_returns(ty, counter, replacements),
+                    )
+                })
+                .collect(),
+            tail.clone(),
+        ),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear in a return-type annotation")
@@ -840,9 +845,12 @@ pub(super) fn infer_fun_decl(
                 extended_map.insert(placeholder.clone(), tv);
                 pending_opaque_returns.push((tv, aspect_name.clone()));
             }
-            type_expr_to_infer_with_generics(&rewritten, &extended_map)
+            freshen_anonymous_row_args(
+                &type_expr_to_infer_with_generics(&rewritten, &extended_map),
+                ctx,
+            )
         } else {
-            te_to_infer(ann, ctx)?
+            te_to_infer(ann, ctx).map(|ty| freshen_anonymous_row_args(&ty, ctx))?
         }
     } else {
         ctx.fresh_var()
@@ -1615,10 +1623,14 @@ pub(super) fn infer_impl_method(
         })
         .collect::<Result<Vec<_>, _>>()?;
     method_own_tvars.extend(anonymous_row_vars.iter().copied());
-    let ret_ty = method
-        .return_type
-        .as_ref()
-        .map_or_else(|| Ok(InferType::unit()), |t| te_to_infer(t, ctx))?;
+    let ret_ty = method.return_type.as_ref().map_or_else(
+        || Ok(InferType::unit()),
+        |t| {
+            te_to_infer(t, ctx)
+                .map(|ty| freshen_anonymous_row_args_with_vars(&ty, ctx, &mut anonymous_row_vars))
+        },
+    )?;
+    method_own_tvars.extend(anonymous_row_vars.iter().copied());
 
     let method_assoc_eq = collect_fun_assoc_eq_constraints(method, &generic_map);
     let mut method_row_exclusions = collect_fun_row_exclusions(method, &generic_map);

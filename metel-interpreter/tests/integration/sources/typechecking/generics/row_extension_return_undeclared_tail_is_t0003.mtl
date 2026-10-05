@@ -1,0 +1,6 @@
+// RFC-0121 / #1380: reusable open-row types still validate their row tail.
+fun bad() -> { x: i64, ..Q } {
+    { x = 1, extra = "ok" }
+}
+
+fun main() {}

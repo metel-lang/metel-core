@@ -217,7 +217,83 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
         }
     }
     let params = ctx.type_params().clone();
-    type_expr_to_infer_with_ctx(te, &params, ctx)
+    freshen_anonymous_row_args(type_expr_to_infer_with_ctx(te, &params, ctx), ctx)
+}
+
+/// Give every anonymous row splice in a body annotation its own inference
+/// variable.  Unlike a named `<row R>` argument, `..` is intentionally fresh at
+/// each occurrence, including return/local annotations and nested reusable types.
+fn freshen_anonymous_row_args(ty: InferType, ctx: &mut InferContext) -> InferType {
+    match ty {
+        InferType::Named(name, args, _id)
+            if args.is_empty() && name == super::conversions::ANONYMOUS_ROW_PLACEHOLDER =>
+        {
+            ctx.fresh_var()
+        }
+        InferType::Named(name, args, id) => InferType::Named(
+            name,
+            args.into_iter()
+                .map(|arg| freshen_anonymous_row_args(arg, ctx))
+                .collect(),
+            id,
+        ),
+        InferType::Tuple(items) => InferType::Tuple(
+            items
+                .into_iter()
+                .map(|item| freshen_anonymous_row_args(item, ctx))
+                .collect(),
+        ),
+        InferType::Record(fields) => InferType::Record(
+            fields
+                .into_iter()
+                .map(|(name, ty)| (name, freshen_anonymous_row_args(ty, ctx)))
+                .collect(),
+        ),
+        InferType::RowExtend { fields, tail } => InferType::RowExtend {
+            fields: fields
+                .into_iter()
+                .map(|(name, ty)| (name, freshen_anonymous_row_args(ty, ctx)))
+                .collect(),
+            tail: Box::new(freshen_anonymous_row_args(*tail, ctx)),
+        },
+        InferType::Array(inner) => {
+            InferType::Array(Box::new(freshen_anonymous_row_args(*inner, ctx)))
+        }
+        InferType::SizedArray(inner, size) => {
+            InferType::SizedArray(Box::new(freshen_anonymous_row_args(*inner, ctx)), size)
+        }
+        InferType::Reference(inner) => {
+            InferType::Reference(Box::new(freshen_anonymous_row_args(*inner, ctx)))
+        }
+        InferType::MutReference(inner) => {
+            InferType::MutReference(Box::new(freshen_anonymous_row_args(*inner, ctx)))
+        }
+        InferType::Fun(params, ret, call, use_, mutation) => InferType::Fun(
+            params
+                .into_iter()
+                .map(|param| freshen_anonymous_row_args(param, ctx))
+                .collect(),
+            Box::new(freshen_anonymous_row_args(*ret, ctx)),
+            call,
+            use_,
+            mutation,
+        ),
+        InferType::Dyn { aspect, type_args } => InferType::Dyn {
+            aspect,
+            type_args: type_args
+                .into_iter()
+                .map(|arg| freshen_anonymous_row_args(arg, ctx))
+                .collect(),
+        },
+        InferType::Residual { brand, fields } => InferType::Residual {
+            brand,
+            fields: fields
+                .into_iter()
+                .map(|(name, ty)| (name, freshen_anonymous_row_args(ty, ctx)))
+                .collect(),
+        },
+        other => other,
+    }
 }
 
 /// RFC-0008 §6 / metel-core#876: `ann` names an array (`T[]`) or sized-array
@@ -456,8 +532,8 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::Projection { base, .. } => go(base),
         TypeExpr::DynAspect { bound, .. } => go(bound),
         TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
-        // RFC-0121: grammar-restricted to a `fun_decl` parameter's own type;
-        // this function only ever walks an impl block's target type.
+        // RFC-0121: an open record's fixed fields and row tail both participate
+        // in generic-parameter mention analysis.
         TypeExpr::OpenRecord(fields, tail) => {
             fields.iter().any(|(_, t)| go(t))
                 || tail.var.as_deref().is_some_and(|v| params.contains(v))
