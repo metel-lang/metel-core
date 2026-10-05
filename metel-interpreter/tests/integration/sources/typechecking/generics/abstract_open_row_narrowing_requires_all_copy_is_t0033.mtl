@@ -1,0 +1,9 @@
+// RFC-0121 §4 / RFC-0123: the generic definition itself must reject an
+// abstract by-value narrowing unless its row remainder is known to be Copy.
+fun keep_x<row R>(value: { x: i64, ..R }) -> i64 { value.x }
+
+fun forward<row R>(value: { x: i64, ..R }) -> i64 {
+    keep_x(value) // ERROR[T0033]
+}
+
+fun main() {}

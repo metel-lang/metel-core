@@ -11,6 +11,7 @@ use super::{
     type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
     type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
+use std::collections::HashSet;
 
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -105,6 +106,7 @@ pub(super) fn infer_decl(
                         assoc_eq: HashMap::new(),
                         opaque_returns: HashMap::new(),
                         row_remainders: HashMap::new(),
+                        open_row_params: HashSet::new(),
                     });
                     return Ok(InferType::unit());
                 }
@@ -668,6 +670,7 @@ pub(super) fn infer_fun_decl(
             assoc_eq,
             opaque_returns: HashMap::new(),
             row_remainders: HashMap::new(),
+            open_row_params: HashSet::new(),
         });
         return Ok(());
     }
@@ -1089,9 +1092,19 @@ pub(super) fn infer_fun_decl(
                 .or_insert((source, fact.removed));
         }
     }
+    let open_row_params: HashSet<TypeVar> = open_record_param_vars
+        .values()
+        .filter_map(
+            |orig_tv| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+                InferType::Var(final_tv) => Some(final_tv),
+                _ => None,
+            },
+        )
+        .collect();
     let scheme = scheme
         .with_record_kinds(&type_var_record_kinds)
-        .with_row_remainders(&row_remainders);
+        .with_row_remainders(&row_remainders)
+        .with_open_row_params(&open_row_params);
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -1170,6 +1183,7 @@ pub(super) fn infer_fun_decl(
         assoc_eq,
         opaque_returns: opaque_map,
         row_remainders,
+        open_row_params,
     });
     Ok(())
 }

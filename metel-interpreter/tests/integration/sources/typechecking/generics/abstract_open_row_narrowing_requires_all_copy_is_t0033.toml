@@ -1,0 +1,9 @@
+[options]
+error = ["T0033"]
+spec = ["spec.types.generics.open-rows.legality-3"]
+
+[expect]
+status = "typecheck_error"
+code = "T0033"
+contains = "abstract open-row parameter"
+line = 6

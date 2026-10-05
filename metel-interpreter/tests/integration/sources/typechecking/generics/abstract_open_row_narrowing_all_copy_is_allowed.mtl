@@ -1,0 +1,11 @@
+// RFC-0121 §4 / RFC-0123: `where all R: Copy` grants the definition-time
+// entitlement to narrow an abstract open-row value by value.
+fun keep_x<row R>(value: { x: i64, ..R }) -> i64 { value.x }
+
+fun forward<row R>(value: { x: i64, ..R }) -> i64 where all R: Copy {
+    keep_x(value)
+}
+
+fun main() {
+    assert(forward({ x = 1, y = 2 }) == 1);
+}

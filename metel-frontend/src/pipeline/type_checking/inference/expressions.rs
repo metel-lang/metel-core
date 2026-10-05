@@ -53,7 +53,34 @@ fn check_forwarded_generic_bounds(
     if argument_name.is_none() && !is_open_row_parameter {
         return Ok(());
     }
+    // RFC-0121 §4 / RFC-0123: passing an abstract open-row parameter by value
+    // to another open-row parameter with named fields can discard fields that
+    // neither signature names. That is sound only when the caller explicitly
+    // grants `Copy` for every such field; concrete arguments remain
+    // construction's responsibility. A tail-only `{ ..R }` parameter does not
+    // narrow its argument, so its ordinary field-wise bound forwarding below is
+    // sufficient.
     let required = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
+    let callee_narrows_by_value = required
+        .iter()
+        .any(|bound| matches!(bound, GenericBound::Row(row) if !row.fields.is_empty()));
+    if scheme.open_row_params.get(index).copied().unwrap_or(false)
+        && is_open_row_parameter
+        && callee_narrows_by_value
+        && !available.iter().any(|bound| {
+            matches!(bound, GenericBound::AllFields { aspects, .. } if aspects.iter().any(|aspect| aspect == "Copy"))
+        })
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0033,
+            format!(
+                "passing an abstract open-row parameter by value to `{callee_name}` may forget \
+                 fields that are not `Copy`; add `where all R: Copy` to this declaration \
+                 (RFC-0121 §4)"
+            ),
+            span,
+        ));
+    }
     let granted = |need: &GenericBound| {
         available.iter().any(|have| match (have, need) {
             (GenericBound::Aspect(left), GenericBound::Aspect(right)) => left == right,

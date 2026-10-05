@@ -120,6 +120,10 @@ struct FunGeneralization {
     /// `R` var and the labels the equation removes (RFC-0121 §2). Attached to the
     /// re-generalized scheme so `Rest` is derived from `R` at each call site.
     row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)>,
+    /// Anonymous type variables that represent `{ ..R }` function parameters.
+    /// Preserved when rebuilding the construction-pass scheme so callers can
+    /// distinguish an abstract open row from an ordinary type parameter.
+    open_row_params: HashSet<TypeVar>,
 }
 
 // ── CorePrelude ────────────────────────────────────────────────────────────────
@@ -1604,7 +1608,8 @@ fn build_module_scheme_env(
             .with_assoc_projections(&fg.assoc_projections)
             .with_assoc_eq_constraints(&fg.assoc_eq)
             .with_opaque_returns(&fg.opaque_returns)
-            .with_row_remainders(&fg.row_remainders);
+            .with_row_remainders(&fg.row_remainders)
+            .with_open_row_params(&fg.open_row_params);
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported
