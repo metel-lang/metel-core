@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.generics.row-conditional-impls.legality-1"]

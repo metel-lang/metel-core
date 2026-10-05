@@ -1,0 +1,22 @@
+// RFC-0121 remainder (metel-core#1306): a partially moved nominal record is
+// checked against record-target row conditions using its residual row.
+
+record Handle { public id: i64, public name: String }
+
+aspect Describe { fun state(&self) -> String; }
+
+extend<row R: !{ name }> { ..R }: Describe {
+    fun state(&self) -> String { "no name" }
+}
+
+extend<row R: { name: String, .. }> { ..R }: Describe {
+    fun state(&self) -> String { "has name" }
+}
+
+fun main() {
+    var h := Handle { id = 1, name = "secret" };
+    let name := h.name;
+    assert(name == "secret");
+    assert(h.state() == "no name");
+    println("ok");
+}

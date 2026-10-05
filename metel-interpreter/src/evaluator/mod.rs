@@ -446,7 +446,10 @@ pub struct ReceiverTypeArgs {
 /// out -- dispatch then falls back to the last-registered blanket impl, as before.
 fn row_guards_hold(guards: &[RowGuard], receiver: &ReceiverTypeArgs) -> bool {
     guards.iter().all(|guard| {
-        let Some(crate::data::types::Type::Record(fields)) = receiver.tys.get(guard.position)
+        let Some(
+            crate::data::types::Type::Record(fields)
+            | crate::data::types::Type::Residual { fields, .. },
+        ) = receiver.tys.get(guard.position)
         else {
             return true;
         };
@@ -3436,6 +3439,21 @@ fn eval_method_call_expr(
         let Value::Struct { fields, .. } = &recv_type_view else {
             return None;
         };
+        // A partially moved nominal record has a static residual row. Its runtime
+        // value still physically retains the moved field, so reconstructing the
+        // row from `fields` here would incorrectly make a row-conditional impl
+        // see that field again. For an ordinary record, the static row is equally
+        // precise; only a whole nominal value needs the runtime field view.
+        if matches!(
+            peel_static_type_references(&static_receiver_ty),
+            crate::data::types::Type::Record(_) | crate::data::types::Type::Residual { .. }
+        ) {
+            let aspect_id = match dispatch {
+                MethodDispatch::Aspect { aspect_id } => Some(*aspect_id),
+                _ => None,
+            };
+            return runtime.get_record_aspect_method(aspect_id, method, &receiver_target_type_args);
+        }
         let registry = crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry::new();
         let mut row: Vec<(String, crate::data::types::Type)> = fields
             .iter()
