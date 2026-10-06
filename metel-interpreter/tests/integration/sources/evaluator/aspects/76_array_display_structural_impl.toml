@@ -1,2 +1,3 @@
 [options]
 spec = ["spec.types.arrays.legality-1", "spec.declarations.structural-aspect-bounds.legality-5"]
+arch_verifies = ["arch.type-inference.requirement-8"]

@@ -378,14 +378,21 @@ pub(super) fn infer_expr(
         }
         Expr::Array(elems, span) => {
             if elems.is_empty() {
-                return Ok(InferType::Array(Box::new(ctx.fresh_var())));
+                return Ok(InferType::SizedArray(Box::new(ctx.fresh_var()), 0));
             }
             let first_ty = infer_expr(&elems[0], ctx, fun_generalizations)?;
             for elem in &elems[1..] {
                 let ty = infer_expr(elem, ctx, fun_generalizations)?;
                 ctx.add_constraint(ty, first_ty.clone(), span.clone());
             }
-            Ok(InferType::Array(Box::new(first_ty)))
+            // RFC-0053/RFC-0177: an unannotated literal is an owning fixed-size
+            // array. It can still coerce to `[T]` at an explicit view-typed use
+            // site; keeping the intrinsic length here is what lets later lookup
+            // distinguish construction from that coercion.
+            Ok(InferType::SizedArray(
+                Box::new(first_ty),
+                elems.len() as u64,
+            ))
         }
         Expr::RepeatArray(elem, n, _span) => {
             let elem_ty = infer_expr(elem, ctx, fun_generalizations)?;
@@ -989,7 +996,7 @@ pub(super) fn infer_expr(
 
             // Fast path: concrete named type — look up method as usual.
             let peeled_recv = peel_all_references(&recv_ty);
-            if let InferType::Array(elem) = &peeled_recv {
+            if let InferType::Array(elem) | InferType::SizedArray(elem, _) = &peeled_recv {
                 let method_ty = if let Some(ty) = ctx.get_array_method_type(method).cloned() {
                     ty
                 } else if let Some((scheme, struct_tvars)) = ctx

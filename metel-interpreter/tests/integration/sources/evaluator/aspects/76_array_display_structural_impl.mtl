@@ -2,4 +2,9 @@ fun main() {
     let xs := [1, 2, 3];
     assert(xs.to_string() == "[1, 2, 3]");
     assert([4, 5].to_string() == "[4, 5]");
+    assert(show([6, 7]) == "[6, 7]");
+}
+
+fun show<T: Display>(value: T) -> String {
+    value.to_string()
 }

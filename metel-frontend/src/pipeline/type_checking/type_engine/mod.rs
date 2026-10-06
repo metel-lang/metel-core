@@ -3706,6 +3706,7 @@ impl TypeDefinitionRegistry {
     #[must_use]
     #[allow(clippy::too_many_lines)]
     // arch-implements: ["arch.type-construction.requirement-4"]
+    // arch-implements: ["arch.type-inference.requirement-8"]
     pub fn infer_type_satisfies_aspect(
         &self,
         current_module: &[String],
@@ -3798,7 +3799,17 @@ impl TypeDefinitionRegistry {
                         assumptions,
                     );
                 }
-                false
+                // RFC-0177: structural aspect lookup may satisfy a sized
+                // array through the existing one-way `[T; N]` -> `[T]`
+                // coercion. Keep `Copy`'s fixed-array rule above: the view
+                // itself is unconditionally Copy, while an owning fixed array
+                // remains Copy only when its elements are.
+                self.infer_type_satisfies_aspect(
+                    current_module,
+                    &InferType::Array(elem.clone()),
+                    aspect_name,
+                    assumptions,
+                )
             }
             InferType::Tuple(items) => {
                 if aspect_name == "Copy" {

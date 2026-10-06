@@ -983,7 +983,10 @@ pub(super) fn construct_expr(
                 .map(|e| construct_expr(e, None, ctx))
                 .collect::<Result<_, _>>()?;
             let elem_ty = typed[0].ty().clone();
-            let ty = Type::Array(Box::new(elem_ty));
+            // RFC-0053/RFC-0177: a literal owns its elements and retains its
+            // statically known length. Coercion to `[T]` is inserted only when
+            // an enclosing use site explicitly requires the view type.
+            let ty = Type::SizedArray(Box::new(elem_ty), elems.len() as u64);
             Ok(TypedExpr::Array(typed, ty, span.clone()))
         }
         Expr::RepeatArray(elem, n, span) => {

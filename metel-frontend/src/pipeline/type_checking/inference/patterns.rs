@@ -269,11 +269,21 @@ pub(super) fn infer_pattern(
             } else {
                 // Exact pattern: scrutinee must be [T; N] where N = elems.len()
                 let n = elems.len() as u64;
-                ctx.add_constraint(
-                    scrutinee_ty.clone(),
-                    InferType::SizedArray(Box::new(elem_var.clone()), n),
-                    pat_span.clone(),
-                );
+                // Keep an already-known length mismatch for construction's
+                // exhaustiveness check (T0008), rather than turning it into
+                // an earlier unification mismatch (T0001). This preserves the
+                // diagnostic for exact-count patterns while literals now retain
+                // their intrinsic `[T; N]` type during inference.
+                let resolved = ctx
+                    .solve()
+                    .map_or_else(|_| scrutinee_ty.clone(), |subst| subst.apply(scrutinee_ty));
+                if !matches!(resolved, InferType::SizedArray(_, actual) if actual != n) {
+                    ctx.add_constraint(
+                        scrutinee_ty.clone(),
+                        InferType::SizedArray(Box::new(elem_var.clone()), n),
+                        pat_span.clone(),
+                    );
+                }
             }
             for pat in elems {
                 infer_pattern(pat, &elem_var, ctx)?;

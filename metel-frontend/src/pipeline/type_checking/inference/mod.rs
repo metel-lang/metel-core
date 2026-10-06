@@ -2289,6 +2289,14 @@ fn constrain_with_read_copy(
         ctx.add_constraint(peeled, declared.clone(), span);
         return declared;
     }
+    // RFC-0053/RFC-0177: an owning fixed-size array may enter an explicitly
+    // view-typed binding through the one-way `[T; N]` -> `[T]` coercion. Keep
+    // the declared view type in the environment so a later use cannot regain
+    // the literal's length accidentally.
+    if matches!(declared, InferType::Array(_)) && matches!(actual, InferType::SizedArray(_, _)) {
+        ctx.add_constraint(actual, declared.clone(), span);
+        return declared;
+    }
     // RFC-0078 §3.3: if `actual` is (plausibly) a singleton-coercible enum, bind
     // the environment to `declared` rather than the raw enum type — otherwise a
     // later use of this binding (e.g. `x + y` where `y`'s binding is still the raw
