@@ -1,0 +1,13 @@
+// RFC-0121 / metel-core#1307: a block-local record keeps its declaration
+// identity when passed to a generic row-bounded function.
+
+fun needs_fd<record T: { fd: i64, .. }>(value: T) -> i64 {
+    value.fd
+}
+
+fun main() {
+    record Handle { public fd: i64 }
+    let handle := Handle { fd = 3 };
+    assert(needs_fd(handle) == 3);
+    println("ok");
+}

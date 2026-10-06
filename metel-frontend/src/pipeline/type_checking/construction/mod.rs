@@ -105,6 +105,10 @@ struct ConstructCtx<'a> {
     mut_env: Vec<HashMap<String, bool>>,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
+    /// Declaration identities for block-local structs, parallel to
+    /// `struct_scopes`. The registry retains archived candidates, while this
+    /// stack selects the candidate belonging to the current lexical block.
+    local_struct_ids: Vec<HashMap<String, SymbolId>>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
     registry: &'a TypeDefinitionRegistry,
     /// Concrete method-type map derived from the registry's own `method_env`
@@ -194,6 +198,7 @@ impl<'a> ConstructCtx<'a> {
             env: vec![HashMap::new()],
             mut_env: vec![HashMap::new()],
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
+            local_struct_ids: vec![HashMap::new()],
             registry,
             method_env,
             type_var_gen,
@@ -239,13 +244,41 @@ impl<'a> ConstructCtx<'a> {
 
     fn push_struct_scope(&mut self) {
         self.struct_scopes.push(HashMap::new());
+        self.local_struct_ids.push(HashMap::new());
     }
     fn pop_struct_scope(&mut self) {
         self.struct_scopes.pop();
+        self.local_struct_ids.pop();
     }
 
     fn register_local_struct(&mut self, name: String, fields: Vec<(String, Type, Span)>) {
-        self.struct_scopes.last_mut().unwrap().insert(name, fields);
+        let field_names: HashSet<&str> =
+            fields.iter().map(|(field, _, _)| field.as_str()).collect();
+        let owner = self
+            .registry
+            .archived_local_type_ids(&name)
+            .iter()
+            .copied()
+            .find(|id| {
+                self.registry
+                    .struct_fields_by_id(*id)
+                    .is_some_and(|declared| {
+                        declared.len() == field_names.len()
+                            && declared
+                                .iter()
+                                .all(|field| field_names.contains(field.name.as_str()))
+                    })
+            });
+        self.struct_scopes
+            .last_mut()
+            .unwrap()
+            .insert(name.clone(), fields);
+        if let Some(owner) = owner {
+            self.local_struct_ids
+                .last_mut()
+                .unwrap()
+                .insert(name, owner);
+        }
     }
 
     fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
@@ -349,6 +382,23 @@ impl<'a> ConstructCtx<'a> {
     /// Uses the registry's declaring-module index, falling back to the current
     /// module for locally-declared types. `None` without resolver context.
     fn type_symbol_id(&self, type_name: &str) -> Option<SymbolId> {
+        // Block-local declarations have synthetic ids rather than entries in
+        // the name-resolver symbol table.  Resolve those directly from the
+        // registry so runtime values preserve their declaration identity.
+        if let Some(id) = self
+            .registry
+            .resolve_type_id(self.current_module, type_name)
+        {
+            return Some(id);
+        }
+        if let Some(id) = self
+            .local_struct_ids
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(type_name).copied())
+        {
+            return Some(id);
+        }
         let symbols = self.symbols?;
         if let Some(module) = self
             .registry

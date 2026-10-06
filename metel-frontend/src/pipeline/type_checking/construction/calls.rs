@@ -1166,7 +1166,14 @@ pub(super) fn check_record_kind_requirement(
             ));
         }
     };
-    match registry.visible_type_kind(current_module, brand) {
+    let kind = match concrete {
+        Type::Named(_, _, nominal_id) => nominal_id
+            .get()
+            .and_then(|id| registry.visible_type_kind_by_id(id))
+            .or_else(|| registry.visible_type_kind(current_module, brand)),
+        _ => registry.visible_type_kind(current_module, brand),
+    };
+    match kind {
         Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Record) => Ok(()),
         Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Struct) => {
             Err(MetelError::type_error(
