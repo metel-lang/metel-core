@@ -1,6 +1,6 @@
 // RFC-0008 §6: an array-literal element declared `dyn Aspect` coerces the
 // same way any other hinted position does -- both the dynamically-sized
-// (`T[]`) and fixed-size (`[T; N]`) forms. Real gap found during a targeted
+// (`[T]`) and fixed-size (`[T; N]`) forms. Real gap found during a targeted
 // edge-case audit: `Expr::Array`'s two hinted construction branches never
 // called `maybe_dyn_coerce` (see neg_40 for the corresponding rejection).
 //

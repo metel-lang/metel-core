@@ -1,4 +1,4 @@
-// RFC-0081 + RFC-0061: a blanket negative impl on a structural target (`T[]`)
+// RFC-0081 + RFC-0061: a blanket negative impl on a structural target (`[T]`)
 // must override a blanket positive impl the same way it already does for a
 // named generic target (see generic_negative_impl_blocks_positive_bound) --
 // negative-impl priority over a blanket positive is a property of the

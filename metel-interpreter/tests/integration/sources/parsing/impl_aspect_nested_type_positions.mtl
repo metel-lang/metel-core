@@ -4,7 +4,7 @@
 // so `impl_type` alone cannot consume a trailing `[]` — the `[]` is owned by
 // `array_type` via `array_atom`, which lists `impl_type` as an element. If those two
 // rules ever fall out of step, or if the `type_expr` alternation order changes so that
-// `impl_type` is committed to before `array_type` is tried, `extends Foo[]` starts leaving
+// `impl_type` is committed to before `array_type` is tried, `[extends Foo]` starts leaving
 // `[]` unconsumed and every line below becomes a parse error.
 //
 // PEG ordered choice has bitten this grammar before: see

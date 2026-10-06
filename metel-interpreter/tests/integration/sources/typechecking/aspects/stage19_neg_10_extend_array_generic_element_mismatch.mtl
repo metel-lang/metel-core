@@ -3,8 +3,8 @@ aspect Area {
 }
 
 // `T` is declared but does not name the array's element — `array_target_generic_name`
-// only recognizes `extend<T> T[]`, so this registers nothing and would otherwise be
-// exactly as inert as `extend i64[]: Area` (found by adversarial review of #296: the
+// only recognizes `extend<T> [T]`, so this registers nothing and would otherwise be
+// exactly as inert as `extend [i64]: Area` (found by adversarial review of #296: the
 // first cut's exemption checked only "is an array with generics", not this).
 extend<T> [i64]: Area {
     fun area(&self) -> i64 { return 99; }

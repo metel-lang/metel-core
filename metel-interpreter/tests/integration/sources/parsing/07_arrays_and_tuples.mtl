@@ -1,5 +1,5 @@
 // 07 — Arrays and tuples
-// Covers: array literals, T[] type syntax, Array<T> syntax, index access,
+// Covers: array literals, [T] type syntax, Array<T> syntax, index access,
 //         array_push, array_len, for-in, tuple literals, tuple type syntax,
 //         positional access (.0 .1), tuple destructuring in match.
 
@@ -43,7 +43,7 @@ fun min_max(arr: [i64]) -> (i64, i64) {
 }
 
 fun main() {
-    // --- array literal and T[] type ---
+    // --- array literal and [T] type ---
     let nums: [i64] := [5, 3, 8, 1, 9, 2];
     println(int_to_string(array_len(nums)));   // 6
     println(int_to_string(nums[0]));           // 5

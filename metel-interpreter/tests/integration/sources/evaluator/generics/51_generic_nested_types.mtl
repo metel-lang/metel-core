@@ -1,6 +1,6 @@
 // Generic functions operating on arrays and tuples as type parameter positions.
 
-// First element of an array (using T[] postfix syntax).
+// First element of an array (using [T] syntax).
 fun array_first<T: Copy>(arr: [T]) -> T { arr[0] }
 
 // Second element of an array.

@@ -77,7 +77,7 @@ extend B: Show {
 }
 
 // Takes `&T`, not `T`: the only use is `show(&self)`, so ownership was never needed, and
-// the caller below reaches this through a borrowed `T[]` view that cannot give an element
+// the caller below reaches this through a borrowed `[T]` view that cannot give an element
 // away. `B` is not `Copy`, so borrowing is the only option — and making it `Copy` would
 // change what this fixture is about.
 // Calls the aspect method straight through the reference: auto-deref reaches an

@@ -1,5 +1,5 @@
 // Regression for #272: two different aspects (`Foo`, `Bar`) provide the same
-// method name (`describe`) for `T[]`, with *provably disjoint* bounds
+// method name (`describe`) for `[T]`, with *provably disjoint* bounds
 // (`Display` vs. `!Display`) -- coherence correctly allows this (at most one
 // bound can ever be satisfied by a given element type), but dispatch used to
 // pick whichever aspect's method was registered last regardless of which

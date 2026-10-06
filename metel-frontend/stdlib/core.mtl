@@ -387,6 +387,13 @@ extend<row R> { ..R }: Display where all R: Display {
     native(@std.core.record_to_string) fun to_string(&self) -> String;
 }
 
+// Clone for every record whose fields are all Clone (RFC-0123, #1350). The host
+// implementation recursively clones the record fields; this is a temporary stand-in
+// for the field iteration that RFC-0174 will make expressible in Metel.
+extend<row R> { ..R }: Clone where all R: Clone {
+    native(@std.core.record_clone) fun clone(&self) -> Self;
+}
+
 // Copy for every record whose fields are all Copy (RFC-0123, metel-core#1337): a bodyless
 // impl, so it needs no built-in.
 extend<row R> { ..R }: Copy where all R: Copy;
@@ -448,6 +455,19 @@ extend String: Clone {
         return self;
     }
 }
+
+extend i8: Clone { fun clone(&self) -> Self { self } }
+extend i16: Clone { fun clone(&self) -> Self { self } }
+extend i32: Clone { fun clone(&self) -> Self { self } }
+extend i64: Clone { fun clone(&self) -> Self { self } }
+extend u8: Clone { fun clone(&self) -> Self { self } }
+extend u16: Clone { fun clone(&self) -> Self { self } }
+extend u32: Clone { fun clone(&self) -> Self { self } }
+extend u64: Clone { fun clone(&self) -> Self { self } }
+extend f32: Clone { fun clone(&self) -> Self { self } }
+extend f64: Clone { fun clone(&self) -> Self { self } }
+extend boolean: Clone { fun clone(&self) -> Self { self } }
+extend Char: Clone { fun clone(&self) -> Self { self } }
 
 extend<T: Display> [T]: Display {
     fun to_string(&self) -> String {

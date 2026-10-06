@@ -409,6 +409,17 @@ fn native_record_to_string_placeholder(
     ))
 }
 
+// Never reached: calls to the record Clone built-in are handled in
+// `call_runtime_callable`, where the runtime dispatch context is available.
+fn native_record_clone_placeholder(
+    _args: &[Value],
+    _span: &crate::data::ast::Span,
+) -> Result<Value, MetelError> {
+    Err(MetelError::internal(
+        "record clone must be dispatched with the runtime",
+    ))
+}
+
 // `Display::to_string` for every displayable primitive: one host fn formats the
 // receiver by its runtime value, so all 13 std::core impls share one NativeKey.
 fn native_to_string(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
@@ -891,6 +902,10 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
         NativeKey::StdCoreRecordToString => (
             super::record_display::RECORD_TO_STRING,
             native_record_to_string_placeholder,
+        ),
+        NativeKey::StdCoreRecordClone => (
+            super::record_clone::RECORD_CLONE,
+            native_record_clone_placeholder,
         ),
         NativeKey::StdCoreI8From => ("i8::from", native_i8_from),
         NativeKey::StdCoreI16From => ("i16::from", native_i16_from),

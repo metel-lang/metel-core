@@ -1,7 +1,7 @@
 // Test: explicit type annotations using generic type params inside function bodies
 // Covers issue #128: T/U in body annotations must resolve to TypeVars, not Named types.
 
-// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes
 // retained values owned. The callback is scaffolding, not part of what this fixture tests;
 // it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where

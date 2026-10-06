@@ -74,6 +74,8 @@ pub enum NativeKey {
     /// the receiver by its runtime value, so one key serves all 13 impls.
     StdCoreToString,
     StdCoreRecordToString,
+    /// `Clone::clone` for every record whose fields implement Clone.
+    StdCoreRecordClone,
     /// `i8::from(numeric)` — convert any numeric value to i8.
     StdCoreI8From,
     /// `i16::from(numeric)` — convert any numeric value to i16.
@@ -186,6 +188,7 @@ impl NativeKey {
             ["std", "core", "string_substring"] => NativeKey::StdCoreStringSubstring,
             ["std", "core", "to_string"] => NativeKey::StdCoreToString,
             ["std", "core", "record_to_string"] => NativeKey::StdCoreRecordToString,
+            ["std", "core", "record_clone"] => NativeKey::StdCoreRecordClone,
             ["std", "core", "i8_from"] => NativeKey::StdCoreI8From,
             ["std", "core", "i16_from"] => NativeKey::StdCoreI16From,
             ["std", "core", "i32_from"] => NativeKey::StdCoreI32From,
@@ -257,6 +260,7 @@ impl NativeKey {
             NativeKey::StdCoreStringSubstring => "@std.core.string_substring",
             NativeKey::StdCoreToString => "@std.core.to_string",
             NativeKey::StdCoreRecordToString => "@std.core.record_to_string",
+            NativeKey::StdCoreRecordClone => "@std.core.record_clone",
             NativeKey::StdCoreI8From => "@std.core.i8_from",
             NativeKey::StdCoreI16From => "@std.core.i16_from",
             NativeKey::StdCoreI32From => "@std.core.i32_from",
@@ -325,6 +329,7 @@ impl NativeKey {
         NativeKey::StdCoreStringSubstring,
         NativeKey::StdCoreToString,
         NativeKey::StdCoreRecordToString,
+        NativeKey::StdCoreRecordClone,
         NativeKey::StdCoreI8From,
         NativeKey::StdCoreI16From,
         NativeKey::StdCoreI32From,

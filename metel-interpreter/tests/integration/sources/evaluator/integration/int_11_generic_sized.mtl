@@ -9,7 +9,7 @@ fun clamp<T: Copy>(v: T, lo: T, hi: T, lt: |T, T| -> boolean) -> T {
     else { v }
 }
 
-// `T: Copy` because `src` is a borrowed `T[]` view: passing the `for-in` binding to `f`
+// `T: Copy` because `src` is a borrowed `[T]` view: passing the `for-in` binding to `f`
 // by value consumes an element, which a view does not own. Every caller here maps `i32`,
 // so requiring `Copy` keeps the callbacks and the turbofish call sites exactly as they
 // were — the alternative, `f: (&T) -> U`, would put a deref in every closure of a fixture
@@ -74,10 +74,10 @@ fun main() {
     assert(clamp::<f32>(-0.5, 0.0, 1.0, |a: f32, b: f32| -> boolean { a < b }) == 0.0f32);
     assert(clamp::<f32>(0.7, 0.0, 1.0, |a: f32, b: f32| -> boolean { a < b }) == 0.7f32);
 
-    // map_to_list: i32[] literal — element type propagated from annotation.
+    // map_to_list: [i32] literal — element type propagated from annotation.
     let src_i32: [i32] := [1, 2, 3, 4, 5];
 
-    // i32[] → List<i32> doubling each element.
+    // [i32] → List<i32> doubling each element.
     let doubled := map_to_list::<i32, i32>(src_i32, |x: i32| -> i32 { x * 2i32 });
     assert((&doubled).len() == 5);
     match ((&doubled).get(0)) {
@@ -89,7 +89,7 @@ fun main() {
         None => assert(false),
     };
 
-    // map_to_list: i32[] → List<i64> widening cast.
+    // map_to_list: [i32] → List<i64> widening cast.
     let src_i32_widened: [i32] := [1, 2, 3, 4, 5];
     let widened := map_to_list::<i32, i64>(src_i32_widened, |x: i32| -> i64 { x as i64 });
     assert((&widened).len() == 5);
@@ -98,7 +98,7 @@ fun main() {
         None => assert(false),
     };
 
-    // map_to_list: i32[] → List<boolean> via threshold.
+    // map_to_list: [i32] → List<boolean> via threshold.
     let src_i32_flags: [i32] := [1, 2, 3, 4, 5];
     let flags := map_to_list::<i32, boolean>(src_i32_flags, |x: i32| -> boolean { x > 3i32 });
     assert((&flags).len() == 5);

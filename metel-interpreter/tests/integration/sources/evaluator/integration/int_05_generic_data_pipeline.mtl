@@ -59,7 +59,7 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
-// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes the
 // filtered output owned. The callback is scaffolding, not part of what this fixture tests;
 // it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where

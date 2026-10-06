@@ -4,7 +4,7 @@ public enum Status { Open, InProgress, Done }
 public struct Task { public title: String, public priority: Priority, public status: Status, public effort: i64 }
 public struct ValidationError { public message: String }
 
-// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. utils.mtl indexes and uses explicit clone callbacks
 // so filter/find results own their elements. These helpers are scaffolding, not part of what
 // this fixture tests; they go away once `Clone` has stdlib coverage (#335, #328).

@@ -1,0 +1,12 @@
+// #1350: field-wise Clone remains available after a record is narrowed by a
+// partial move; the moved field is no longer present in the runtime payload.
+record Handle { public fd: i64, public name: String }
+
+fun main() {
+    let handle := Handle { fd = 3, name = "residual" };
+    let moved := handle.fd;
+    let copied := handle.clone();
+    assert(moved == 3);
+    assert(copied.name == "residual");
+    println("ok");
+}

@@ -1,0 +1,7 @@
+// #1350: a record with a non-Clone field does not receive Clone.
+record NotClone { public values: List<i64> }
+
+fun main() {
+    let value := NotClone { values = List::new() };
+    let _copy := value.clone();
+}

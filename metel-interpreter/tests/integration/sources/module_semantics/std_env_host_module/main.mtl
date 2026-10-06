@@ -6,7 +6,7 @@ fun main() {
     // A name that should not exist in any test environment resolves to None.
     assert(get("METEL_DEFINITELY_UNSET_9z8y7x").is_none());
 
-    // vars() yields an EnvVar[]; List ergonomics apply after List::from, and
+// vars() yields a [EnvVar]; List ergonomics apply after List::from, and
     // mapping preserves the element count.
     let all := vars();
     let names := List::from(all).map(|e: EnvVar| -> String { e.name });

@@ -1,6 +1,6 @@
 // Positive: type parameters inside nested type positions (arrays, tuples, functions).
 
-// T inside an array (using T[] postfix syntax).
+// T inside an array (using [T] syntax).
 fun array_first<T: Copy>(arr: [T]) -> T { arr[0] }
 
 // T inside a tuple param.

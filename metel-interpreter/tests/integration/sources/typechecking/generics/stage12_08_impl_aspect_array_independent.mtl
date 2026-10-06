@@ -1,10 +1,10 @@
-// Positive: two `extends Aspect[]` parameters are independent type variables, so they may
+// Positive: two `[extends Aspect]` parameters are independent type variables, so they may
 // be called with arrays of two different element types. The array counterpart of
 // stage12_04.
 //
 // This guards the `counter` threading in the recursive lowering walk: if the counter did
 // not advance per occurrence, both parameters would collapse onto one `_ImplT` generic
-// and this call would fail to unify `Tag[]` with `Label[]`.
+// and this call would fail to unify `[Tag]` with `[Label]`.
 //
 // Before #331 this failed with T0002 "cannot infer receiver type for method call".
 

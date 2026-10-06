@@ -1,5 +1,5 @@
 // RFC-0060 coherence, generalized to structural targets (issue #272): two
-// different aspects providing the same method name for `T[]` is ambiguous
+// different aspects providing the same method name for `[T]` is ambiguous
 // dispatch when their bounds could both apply to the same element type (here,
 // `Display` and `Clone` are unrelated -- nothing stops a type from satisfying
 // both), the same way it's already rejected for two aspects on the same

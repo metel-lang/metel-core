@@ -46,16 +46,16 @@ fun main() {
         None => assert(false),
     };
     assert((&lst).len() == 2);
-    // as_slice returns a T[] view
+    // as_slice returns a [T] view
     lst.push(99);
     let sl := (&lst).as_slice();
     assert(sl[0] == 10);
     assert(sl[2] == 99);
-    // List::from copies an existing T[] array
+    // List::from copies an existing [T] array
     let src: [i64] := [1, 2, 3, 4, 5];
     let lst2 := List::from(src);
     assert(lst2.len() == 5);
-    // Building a list with a loop then converting to T[]
+    // Building a list with a loop then converting to [T]
     var built: List<i64> := List::new();
     var i := 1;
     while (i <= 5) {

@@ -39,7 +39,7 @@ fun int_max(a: i64, b: i64) -> i64 {
 // ── Sorting ───────────────────────────────────────────────────────────────────
 
 // Bubble sort, in place, over an owned List<f64> — returns a sorted copy of the
-// input. Returns List<f64> rather than f64[] because a T[] is a borrowed view
+// input. Returns List<f64> rather than [f64] because a [T] is a borrowed view
 // under RFC-0126: a function that builds its own buffer has nothing else for
 // that view to outlive.
 fun sort_floats(arr: [f64]) -> List<f64> {
@@ -65,7 +65,7 @@ fun sort_floats(arr: [f64]) -> List<f64> {
 
 // ── Searching ─────────────────────────────────────────────────────────────────
 
-// Binary search in a sorted f64[].  Returns Perhaps<i64> with the index.
+// Binary search in a sorted [f64].  Returns Perhaps<i64> with the index.
 fun binary_search(sorted: [f64], target: f64) -> Perhaps<i64> {
     if (sorted.len() == 0) { return None; }
     var lo := 0;
@@ -141,7 +141,7 @@ fun compute_stats(data: [f64]) -> Result<Stats, String> {
     Result::Ok { value = Stats { count = n, sum = total, mean = mean, variance = variance, min = mn, max = mx } }
 }
 
-// Median of a f64[].  Returns None for empty input (RFC-0019: types None as
+// Median of a [f64].  Returns None for empty input (RFC-0019: types None as
 // Perhaps<f64> from the return annotation).
 fun median(data: [f64]) -> Perhaps<f64> {
     let n := data.len();
@@ -211,7 +211,7 @@ fun running_sums(data: [f64]) -> [f64] {
     out.as_slice()
 }
 
-// Build an i64[] of squares using a C-style for loop.
+// Build a [i64] of squares using a C-style for loop.
 fun squares_up_to(n: i64) -> [i64] {
     var out: List<i64> := List::new();
     for (var i := 1; i <= n; i += 1) {

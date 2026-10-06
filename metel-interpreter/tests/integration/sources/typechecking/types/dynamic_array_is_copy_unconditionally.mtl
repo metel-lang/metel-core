@@ -1,4 +1,4 @@
-// `T[]` is `Copy` regardless of its element type: the typechecker special-cases
+// `[T]` is `Copy` regardless of its element type: the typechecker special-cases
 // `InferType::Array` and never inspects the element. `Plain` implements nothing,
 // so if copy eligibility looked at the element this call would be rejected.
 struct Plain {

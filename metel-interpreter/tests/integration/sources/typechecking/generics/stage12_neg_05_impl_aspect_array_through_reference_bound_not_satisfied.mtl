@@ -1,4 +1,4 @@
-// Negative: `extends Aspect[]` behind a reference still enforces the bound on the array's
+// Negative: `[extends Aspect]` behind a reference still enforces the bound on the array's
 // element type. Expect T0012.
 
 aspect Printable {

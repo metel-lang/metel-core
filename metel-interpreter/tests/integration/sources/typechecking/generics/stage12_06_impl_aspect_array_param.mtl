@@ -3,7 +3,7 @@
 // methods resolve on the loop binding.
 //
 // Before nested lowering (#331) this was rejected with a spurious T0002 "cannot infer
-// receiver type": `extends Printable[]` parsed as a bound on the *array* type, so the
+// receiver type": `[extends Printable]` parsed as a bound on the *array* type, so the
 // parameter became a bare type variable with no element type to iterate.
 
 aspect Printable {

@@ -1,7 +1,7 @@
 // TYPECHECK_ERROR[orphan implementation]
-// RFC-0061: structural type constructors (T[], tuples, fun types) are owned by
+// RFC-0061: structural type constructors ([T], tuples, fun types) are owned by
 // std::core for orphan-rule purposes. A user module implementing a std::core
-// aspect (Display) for a structural target (T[]) owns neither half of the pair —
+// aspect (Display) for a structural target ([T]) owns neither half of the pair —
 // this must still be rejected as an orphan implementation, exactly as for a
 // nominal target, confirming issue #233's ImplBlock generalization didn't bypass
 // the existing coherence pass (issue #238) for the new structural-target shape.

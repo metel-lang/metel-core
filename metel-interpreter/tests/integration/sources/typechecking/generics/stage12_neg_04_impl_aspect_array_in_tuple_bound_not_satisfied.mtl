@@ -1,4 +1,4 @@
-// Negative: `extends Aspect[]` nested in a tuple still enforces the bound on the array's
+// Negative: `[extends Aspect]` nested in a tuple still enforces the bound on the array's
 // element type. Expect T0012.
 
 aspect Printable {

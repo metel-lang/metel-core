@@ -6,6 +6,7 @@ mod call;
 mod display;
 mod lvalue;
 mod pattern;
+mod record_clone;
 mod record_display;
 mod type_of;
 

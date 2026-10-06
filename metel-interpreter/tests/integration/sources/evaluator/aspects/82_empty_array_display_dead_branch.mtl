@@ -3,7 +3,7 @@
 // call time (`construct_generic_body`), which then failed to typecheck any
 // branch that called a non-`Unit` method on an element -- even when that
 // branch is provably dead for an empty collection at runtime (`self.len() ==
-// 0` guards it). std::core's own `impl<T: Display> Display for T[]`'s
+// 0` guards it). std::core's own `impl<T: Display> Display for [T]`'s
 // `to_string` has exactly this shape: a `for (item in self)` loop whose body
 // calls `item.to_string()`, never executed for an empty array, but previously
 // still typechecked eagerly against the bogus `Unit` placeholder.

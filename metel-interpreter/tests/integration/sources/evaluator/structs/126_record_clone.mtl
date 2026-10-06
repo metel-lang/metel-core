@@ -1,0 +1,27 @@
+// #1350: records receive field-wise Clone when every field is Clone.
+record Inner { public value: i64 }
+record Outer { public name: String, public inner: Inner, public values: [i64] }
+struct Custom { value: i64 }
+
+extend Custom: Clone {
+    fun clone(&self) -> Self {
+        Custom { value = self.value + 1 }
+    }
+}
+
+fun main() {
+    let original := Outer {
+        name = "copy",
+        inner = Inner { value = 7 },
+        values = [1, 2, 3],
+    };
+    let copied := original.clone();
+    assert(copied.name == "copy");
+    assert(copied.inner.value == 7);
+    assert(copied.values.to_string() == "[1, 2, 3]");
+
+    let custom_record := { item = Custom { value = 4 } };
+    let custom_copy := custom_record.clone();
+    assert(custom_copy.item.value == 5);
+    println("ok");
+}

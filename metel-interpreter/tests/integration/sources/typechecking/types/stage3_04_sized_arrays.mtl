@@ -2,7 +2,7 @@
 //
 // [expr; N]  constructs a SizedArray.
 // [T; N]     is the type annotation syntax.
-// [T; N] coerces to T[] (one-directional).
+// [T; N] coerces to [T] (one-directional).
 // Indexing [T; N] yields T.
 // for-in over [T; N] yields T.
 // Pattern [a, b, c] matches [T; 3] exactly.
@@ -16,7 +16,7 @@ let zeros: [i64; 3] := [0; 3];
 let ones:  [i64; 3] := [1, 2, 3];
 let result: i64 := sum3(ones);
 
-// Coercion: [T; N] coerces to T[] when passed as T[] argument.
+// Coercion: [T; N] coerces to [T] when passed as [T] argument.
 fun first(xs: [i64]) -> i64 { xs[0] }
 let coerced: i64 := first(zeros);
 

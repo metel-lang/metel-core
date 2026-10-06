@@ -1,4 +1,4 @@
-// RFC-0126: `T[]` is an unconditionally Copy, non-owning view -- it never
+// RFC-0126: `[T]` is an unconditionally Copy, non-owning view -- it never
 // grants write access through its indices, regardless of let/var.
 fun main() {
     let a: [i64] := [1, 2, 3];

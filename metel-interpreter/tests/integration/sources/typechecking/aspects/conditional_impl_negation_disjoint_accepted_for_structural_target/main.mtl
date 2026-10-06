@@ -2,10 +2,10 @@
 // §2 and RFC-0036 §3.1 without special cases." This is the structural-target
 // counterpart of conditional_impl_negation_disjoint_accepted (which targets a
 // nominal struct): `impl<T: Copy3> ...` and `impl<T: !Copy3> ...` for the
-// same locally-declared aspect on the *same structural target* (`T[]`) are
+// same locally-declared aspect on the *same structural target* (`[T]`) are
 // provably disjoint via syntactic negation and must not be reported as a
 // coherence conflict. `Serialize3` is declared locally, so the orphan rule
-// permits a user module to implement it for `T[]` at all (RFC-0061 §1).
+// permits a user module to implement it for `[T]` at all (RFC-0061 §1).
 
 aspect Copy3 {
     fun dup(self) -> i64;

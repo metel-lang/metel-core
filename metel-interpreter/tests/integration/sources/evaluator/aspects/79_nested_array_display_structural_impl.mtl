@@ -1,4 +1,4 @@
-// Positive: `T[]: Display` is itself conditional on `T: Display` (RFC-0061
+// Positive: `[T]: Display` is itself conditional on `T: Display` (RFC-0061
 // §2/§4), so it must apply recursively when `T` is itself an array -- an
 // array-of-arrays is Display as long as the innermost element type is.
 // Exercises `type_satisfies_aspect`'s `Type::Array` arm recursing through

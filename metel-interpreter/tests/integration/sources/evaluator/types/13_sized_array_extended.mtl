@@ -20,7 +20,7 @@ fun main() {
     assert(arr[1] == 99);
     assert(arr[2] == 3);
 
-    // Coercion: [T; N] iterates via for-in (same as T[]).
+    // Coercion: [T; N] iterates via for-in (same as [T]).
     let sized: [i64; 4] := [10, 20, 30, 40];
     var dyn_sum := 0;
     for (x in sized) {

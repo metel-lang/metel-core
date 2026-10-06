@@ -88,7 +88,7 @@ fun stack_empty(s: &Stack) -> boolean {
 
 // ── Generic array combinators ─────────────────────────────────────────────────
 
-// Ownership workaround (#328): `T[]` is a borrowed view, so a non-`Copy` element cannot be
+// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes
 // filter/find extraction owned. The callback is scaffolding, not part of what this fixture
 // tests; it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
@@ -370,7 +370,7 @@ fun main() {
     let maximum := fold(nums_max, 1, |acc: i64, x: &i64| -> i64 { max_int(acc, *x) });
     assert(maximum == 10);
 
-    // fold over boolean[]
+    // fold over [boolean]
     let flags: [boolean] := [true, true, false, true];
     let all_set := fold(flags, true, |acc: boolean, b: &boolean| -> boolean { acc && *b });
     assert(!all_set);
@@ -399,7 +399,7 @@ fun main() {
     assert(partial.len() == 2);
     assert(partial[1] == 202);
 
-    // zip producing boolean[]: check which b[i] equals a[i]*10
+    // zip producing [boolean]: check which b[i] equals a[i]*10
     let a_exact: [i64] := [1, 2, 3, 4];
     let b_exact: [i64] := [10, 20, 30, 40];
     let exact: [boolean] := zip_with(a_exact, b_exact, |x: i64, y: i64| -> boolean { y == x * 10 });

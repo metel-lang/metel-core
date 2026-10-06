@@ -1,6 +1,6 @@
-// Negative: `extends Aspect[]` enforces the bound on the array's *element* type.
+// Negative: `[extends Aspect]` enforces the bound on the array's *element* type.
 //
-// This is the half that mattered. Before nested lowering (#331), `extends Printable[]`
+// This is the half that mattered. Before nested lowering (#331), `[extends Printable]`
 // parsed as a bound on the array type, which no aspect names — the bound was vacuous
 // and this program was accepted. Expect T0012.
 
