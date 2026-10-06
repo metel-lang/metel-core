@@ -1,0 +1,15 @@
+// Issue #1386: when disjoint row candidates all fail, retain every alternative.
+
+aspect Label { fun label(self) -> String; }
+
+extend<row R: { tag: i64, .. }> { ..R }: Label {
+    fun label(self) -> String { "integer" }
+}
+
+extend<row R: { tag: String, .. }> { ..R }: Label {
+    fun label(self) -> String { "text" }
+}
+
+fun main() {
+    { tag = true }.label() // ERROR[T0012]
+}

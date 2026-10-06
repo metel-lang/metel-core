@@ -1,4 +1,4 @@
-// RFC-0121 sec3: a method call on a record whose row no record-target impl accepts.
+// RFC-0121 sec3: report the row fact a record-target method requires.
 
 aspect Area { fun area(&self) -> i64; }
 
@@ -8,5 +8,5 @@ extend<row R: { w: i64, .. }> { ..R }: Area {
 
 fun main() {
     let t := { h = 3 };
-    let _ := t.area();
+    let _ := t.area(); // ERROR[T0012]
 }

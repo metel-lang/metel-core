@@ -1,0 +1,15 @@
+// Issue #1386: abstract rows report all requirements and the missing entailment.
+
+aspect Label { fun label(self) -> String; }
+
+extend<row R: { tag: i64, .. }> { ..R }: Label {
+    fun label(self) -> String { "integer" }
+}
+
+extend<row R: { tag: String, .. }> { ..R }: Label {
+    fun label(self) -> String { "text" }
+}
+
+fun use<row R>(value: { ..R }) -> String {
+    value.label() // ERROR[T0035]
+}

@@ -2038,6 +2038,67 @@ pub struct RowConstraintField {
     pub ty: Option<TypeExpr>,
 }
 
+/// Result of checking a concrete row against one row-conditional impl.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowConditionCheck {
+    Satisfied,
+    Unknown,
+    Rejected(Vec<RowConditionFailure>),
+}
+
+/// A concrete reason a known row does not satisfy a row condition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowConditionFailure {
+    MissingLabel {
+        label: String,
+    },
+    IncompatibleFieldType {
+        label: String,
+        expected: String,
+        actual: String,
+    },
+    FieldTypeNotEntailed {
+        label: String,
+        expected: String,
+    },
+    UnexpectedLabels {
+        labels: Vec<String>,
+    },
+    ExactRowNotEstablished,
+    ForbiddenLabelPresent {
+        label: String,
+    },
+}
+
+impl fmt::Display for RowConditionFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingLabel { label } => write!(f, "missing required label `{label}`"),
+            Self::IncompatibleFieldType {
+                label,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "label `{label}` has type `{actual}`, expected `{expected}`"
+            ),
+            Self::FieldTypeNotEntailed { label, expected } => write!(
+                f,
+                "the declared row facts do not establish that label `{label}` has type `{expected}`"
+            ),
+            Self::UnexpectedLabels { labels } => {
+                write!(f, "unexpected label(s) {}", labels.join(", "))
+            }
+            Self::ExactRowNotEstablished => {
+                f.write_str("an open row does not establish an exact field set")
+            }
+            Self::ForbiddenLabelPresent { label } => {
+                write!(f, "forbidden label `{label}` is present")
+            }
+        }
+    }
+}
+
 /// Whether a row fact declared on a generic parameter proves a row condition.
 /// A closed condition needs a closed fact with exactly its fields; an open
 /// condition needs only the fields it names.  Type annotations are compared as
@@ -2059,6 +2120,120 @@ fn row_bound_entails(actual: &RowConstraint, required: &RowConstraint) -> bool {
                 }
         })
     })
+}
+
+/// Describe which facts a declared row bound fails to establish for an impl
+/// requirement. This is the generic-row counterpart of `row_condition_check`.
+fn row_bound_entailment_failures(
+    actual: &RowConstraint,
+    required: &RowConstraint,
+) -> Vec<RowConditionFailure> {
+    let mut failures = Vec::new();
+    if !required.open && actual.open {
+        failures.push(RowConditionFailure::ExactRowNotEstablished);
+    }
+    if !required.open {
+        let labels: Vec<String> = actual
+            .fields
+            .iter()
+            .filter(|actual_field| {
+                !required
+                    .fields
+                    .iter()
+                    .any(|required_field| required_field.label == actual_field.label)
+            })
+            .map(|field| field.label.clone())
+            .collect();
+        if !labels.is_empty() {
+            failures.push(RowConditionFailure::UnexpectedLabels { labels });
+        }
+    }
+    for needed in &required.fields {
+        let Some(known) = actual
+            .fields
+            .iter()
+            .find(|field| field.label == needed.label)
+        else {
+            failures.push(RowConditionFailure::MissingLabel {
+                label: needed.label.clone(),
+            });
+            continue;
+        };
+        if let (Some(actual_ty), Some(required_ty)) = (&known.ty, &needed.ty)
+            && format!("{actual_ty:?}") != format!("{required_ty:?}")
+        {
+            failures.push(RowConditionFailure::IncompatibleFieldType {
+                label: needed.label.clone(),
+                expected: row_field_type_display(needed).unwrap_or_else(|| "<any type>".into()),
+                actual: row_field_type_display(known).unwrap_or_else(|| "<unknown type>".into()),
+            });
+        } else if known.ty.is_none()
+            && let Some(expected) = row_field_type_display(needed)
+        {
+            failures.push(RowConditionFailure::FieldTypeNotEntailed {
+                label: needed.label.clone(),
+                expected,
+            });
+        }
+    }
+    failures
+}
+
+fn row_field_type_display(field: &RowConstraintField) -> Option<String> {
+    let ty = field.ty.as_ref()?;
+    let rendered = GenericBound::Row(RowConstraint {
+        fields: vec![RowConstraintField {
+            label: field.label.clone(),
+            ty: Some(ty.clone()),
+        }],
+        open: true,
+    })
+    .to_string();
+    let prefix = format!("{{ {}: ", field.label);
+    rendered
+        .strip_prefix(&prefix)
+        .and_then(|rest| rest.strip_suffix(", .. }"))
+        .map(str::to_owned)
+}
+
+#[must_use]
+pub fn row_bound_failures(
+    actual: &[GenericBound],
+    required: &RowConstraint,
+) -> Vec<RowConditionFailure> {
+    // Bounds are conjunctive, but repeated declarations can state the same
+    // field. Combine facts before reporting so one bound can supply the field
+    // and another can supply its more precise type.
+    let mut known = RowConstraint {
+        fields: Vec::new(),
+        // A set of open facts does not prove that the row is open: any
+        // closed fact fixes the complete field set (and is the stronger fact).
+        open: !actual
+            .iter()
+            .filter_map(|bound| match bound {
+                GenericBound::Row(row) => Some(row.open),
+                _ => None,
+            })
+            .any(|open| !open),
+    };
+    for row in actual.iter().filter_map(|bound| match bound {
+        GenericBound::Row(row) => Some(row),
+        _ => None,
+    }) {
+        for field in &row.fields {
+            if let Some(existing) = known.fields.iter_mut().find(|f| f.label == field.label) {
+                if existing.ty.is_none() {
+                    existing.ty.clone_from(&field.ty);
+                }
+            } else {
+                known.fields.push(field.clone());
+            }
+        }
+    }
+    known
+        .fields
+        .sort_by(|left, right| left.label.cmp(&right.label));
+    row_bound_entailment_failures(&known, required)
 }
 
 impl From<&RowBound> for RowConstraint {
@@ -3611,31 +3786,92 @@ impl TypeDefinitionRegistry {
         row: &RowConstraint,
         forbidden: bool,
     ) -> bool {
+        matches!(
+            self.row_condition_check(current_module, arg, row, forbidden),
+            RowConditionCheck::Satisfied
+        )
+    }
+
+    /// Check a concrete receiver row and retain why a row condition failed.
+    /// `Unknown` means no structural row is available yet (for example, an
+    /// unbounded generic parameter); it does not count as satisfying either
+    /// a positive or negative condition.
+    #[must_use]
+    pub fn row_condition_check(
+        &self,
+        current_module: &[String],
+        arg: &InferType,
+        row: &RowConstraint,
+        forbidden: bool,
+    ) -> RowConditionCheck {
         let Some(fields) = self.row_condition_fields(current_module, arg) else {
-            return false;
+            return RowConditionCheck::Unknown;
         };
-        let present = |required: &RowConstraintField| -> bool {
-            let Some((_, actual)) = fields.iter().find(|(label, _)| *label == required.label)
-            else {
-                return false;
-            };
-            match &required.ty {
-                None => true,
-                Some(expected) => {
-                    *actual
-                        == super::registry::type_expr_to_infer_for_registry(
-                            expected,
-                            &HashMap::new(),
-                            self,
-                            current_module,
-                        )
-                }
-            }
+        let mut failures = Vec::new();
+        let field_matches = |required: &RowConstraintField, actual: &InferType| {
+            required.ty.as_ref().is_none_or(|expected| {
+                *actual
+                    == super::registry::type_expr_to_infer_for_registry(
+                        expected,
+                        &HashMap::new(),
+                        self,
+                        current_module,
+                    )
+            })
         };
         if forbidden {
-            !row.fields.iter().any(present)
+            for required in &row.fields {
+                if fields.iter().any(|(label, actual)| {
+                    label == &required.label && field_matches(required, actual)
+                }) {
+                    failures.push(RowConditionFailure::ForbiddenLabelPresent {
+                        label: required.label.clone(),
+                    });
+                }
+            }
         } else {
-            (row.open || fields.len() == row.fields.len()) && row.fields.iter().all(present)
+            if !row.open {
+                let unexpected: Vec<String> = fields
+                    .iter()
+                    .filter(|(label, _)| !row.fields.iter().any(|field| &field.label == label))
+                    .map(|(label, _)| label.clone())
+                    .collect();
+                if !unexpected.is_empty() {
+                    failures.push(RowConditionFailure::UnexpectedLabels { labels: unexpected });
+                }
+            }
+            for required in &row.fields {
+                match fields.iter().find(|(label, _)| label == &required.label) {
+                    None => failures.push(RowConditionFailure::MissingLabel {
+                        label: required.label.clone(),
+                    }),
+                    Some((_, actual)) if !field_matches(required, actual) => {
+                        let expected = required.ty.as_ref().map_or_else(
+                            || "<any type>".to_string(),
+                            |ty| {
+                                super::registry::type_expr_to_infer_for_registry(
+                                    ty,
+                                    &HashMap::new(),
+                                    self,
+                                    current_module,
+                                )
+                                .to_string()
+                            },
+                        );
+                        failures.push(RowConditionFailure::IncompatibleFieldType {
+                            label: required.label.clone(),
+                            expected,
+                            actual: actual.to_string(),
+                        });
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+        if failures.is_empty() {
+            RowConditionCheck::Satisfied
+        } else {
+            RowConditionCheck::Rejected(failures)
         }
     }
 

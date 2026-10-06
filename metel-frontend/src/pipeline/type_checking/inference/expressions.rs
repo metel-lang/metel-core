@@ -9,7 +9,10 @@ use super::{
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
     signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer,
 };
-use crate::pipeline::type_checking::type_engine::{GenericMethodEntailment, TypeScheme};
+use crate::pipeline::type_checking::type_engine::{
+    ArrayMethodSchemeVariant, GenericMethodEntailment, RowConditionCheck, RowConditionFailure,
+    RowConstraint, TypeScheme, row_bound_failures,
+};
 
 /// Enforce RFC-0173 D6(2) for the direct parameter-passing shape.  General
 /// unification still relates the two signatures; this check supplies the one
@@ -1111,13 +1114,18 @@ pub(super) fn infer_expr(
                         })
                         .cloned()
                     else {
+                        let row_diagnostic = row_candidate_failure_message(
+                            record_candidates,
+                            std::slice::from_ref(&peeled_recv),
+                            ctx,
+                        );
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0035,
-                            format!(
+                            row_diagnostic.unwrap_or_else(|| format!(
                                 "method `{method}` is not granted by the declared bounds of this \
                                  record parameter; its conditional implementation requirements are \
                                  not entailed"
-                            ),
+                            )),
                             span,
                         ));
                     };
@@ -1186,7 +1194,7 @@ pub(super) fn infer_expr(
                             })
                         })
                     });
-                let generic_method = generic_candidates
+                let selected_generic_method = generic_candidates
                     .iter()
                     .rev()
                     .find(|(scheme, receiver_tvars, _)| {
@@ -1202,14 +1210,23 @@ pub(super) fn infer_expr(
                             },
                         )
                     })
-                    .cloned()
-                    // A concrete receiver is diagnosed by construction's
-                    // scheme-bound check, which can render its actual type.
-                    .or_else(|| {
-                        (declared_receiver_param.is_none() || self_aspect_grants_method)
-                            .then(|| generic_candidates.last().cloned())
-                            .flatten()
-                    });
+                    .cloned();
+                if selected_generic_method.is_none()
+                    && declared_receiver_param.is_none()
+                    && !self_aspect_grants_method
+                    && let Some(message) =
+                        row_candidate_failure_message(&generic_candidates, &recv_type_args, ctx)
+                {
+                    return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
+                }
+                // A concrete non-row/aspect failure keeps the established
+                // construction-time bound diagnostic. For a generic parameter,
+                // the fallback preserves the declaration-time T0035 path below.
+                let generic_method = selected_generic_method.or_else(|| {
+                    (declared_receiver_param.is_none() || self_aspect_grants_method)
+                        .then(|| generic_candidates.last().cloned())
+                        .flatten()
+                });
 
                 // Try concrete method_env first; fall back to a generic method scheme.
                 let method_ty = if let Some(ty) = ctx.get_method_type(&struct_name, method).cloned()
@@ -1246,13 +1263,17 @@ pub(super) fn infer_expr(
                 } else if let Some((param, _)) = declared_receiver_param
                     && !generic_candidates.is_empty()
                 {
+                    let row_diagnostic =
+                        row_candidate_failure_message(&generic_candidates, &recv_type_args, ctx);
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0035,
-                        format!(
-                            "method `{method}` is not granted by the declared bounds of type \
+                        row_diagnostic.unwrap_or_else(|| {
+                            format!(
+                                "method `{method}` is not granted by the declared bounds of type \
                              parameter `{param}`; its conditional implementation requirements \
                              are not entailed"
-                        ),
+                            )
+                        }),
                         span,
                     ));
                 } else if ctx
@@ -2008,14 +2029,23 @@ fn infer_record_method_call(
     span: &crate::data::ast::Span,
     ctx: &mut InferContext,
 ) -> Result<InferType, MetelError> {
+    let candidates = ctx.registry().record_method_scheme_variants_for(method);
     let Some((scheme, receiver_tvars, _)) = ctx
         .registry()
         .record_method_variant_for(ctx.current_module_path(), method, peeled_recv)
         .cloned()
     else {
+        let diagnostic =
+            row_candidate_failure_message(candidates, std::slice::from_ref(peeled_recv), ctx);
         return Err(MetelError::type_error(
-            TypeErrorCode::T0003,
-            format!("no method `{method}` on this record type: no `extend` for it provides one"),
+            if diagnostic.is_some() {
+                TypeErrorCode::T0012
+            } else {
+                TypeErrorCode::T0003
+            },
+            diagnostic.unwrap_or_else(|| {
+                format!("no method `{method}` on this record type: no `extend` for it provides one")
+            }),
             span,
         ));
     };
@@ -2032,6 +2062,145 @@ fn infer_record_method_call(
         &scheme,
         &receiver_tvars,
     )
+}
+
+/// Explain row-condition failures without collapsing distinct impl candidates
+/// into one synthetic conjunction. Each displayed alternative corresponds to
+/// one implementation candidate and retains all of its own row requirements.
+fn row_candidate_failure_message(
+    candidates: &[ArrayMethodSchemeVariant],
+    receiver_args: &[InferType],
+    ctx: &InferContext,
+) -> Option<String> {
+    let mut alternatives = Vec::new();
+    let mut saw_rejected = false;
+    let mut every_candidate_rejected = true;
+    for (candidate_index, (scheme, receiver_tvars, _)) in candidates.iter().enumerate() {
+        let mut requirements = Vec::new();
+        let mut failures = Vec::new();
+        for (&receiver_tv, receiver) in receiver_tvars.iter().zip(receiver_args) {
+            let Some(index) = scheme
+                .quantified_vars
+                .iter()
+                .position(|tv| *tv == receiver_tv)
+            else {
+                continue;
+            };
+            for (forbidden, bounds) in [
+                (false, scheme.bounds.get(index)),
+                (true, scheme.neg_bounds.get(index)),
+            ] {
+                for row in bounds
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|bound| match bound {
+                        GenericBound::Row(row) => Some(row),
+                        _ => None,
+                    })
+                {
+                    let requirement = if forbidden {
+                        format!("!{}", GenericBound::Row(row.clone()))
+                    } else {
+                        GenericBound::Row(row.clone()).to_string()
+                    };
+                    requirements.push(requirement);
+                    let candidate_failures = if let InferType::Var(tv) = receiver {
+                        let available = if forbidden {
+                            ctx.negative_type_param_bounds()
+                                .get(tv)
+                                .cloned()
+                                .unwrap_or_default()
+                        } else {
+                            ctx.bounds_for_type_var(*tv).unwrap_or_default()
+                        };
+                        if forbidden {
+                            negative_row_bound_failures(&available, row)
+                        } else {
+                            row_bound_failures(&available, row)
+                        }
+                    } else {
+                        match ctx.registry().row_condition_check(
+                            ctx.current_module_path(),
+                            receiver,
+                            row,
+                            forbidden,
+                        ) {
+                            RowConditionCheck::Rejected(failures) => failures,
+                            RowConditionCheck::Satisfied | RowConditionCheck::Unknown => Vec::new(),
+                        }
+                    };
+                    if !candidate_failures.is_empty() {
+                        saw_rejected = true;
+                        failures.extend(candidate_failures);
+                    }
+                }
+            }
+        }
+        if requirements.is_empty() {
+            continue;
+        }
+        if failures.is_empty() {
+            every_candidate_rejected = false;
+        }
+        let requirement_text = requirements.join(" and ");
+        let failure_text = if failures.is_empty() {
+            "row requirements are established".to_string()
+        } else {
+            failures.sort_by_key(ToString::to_string);
+            failures.dedup();
+            failures
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("; ")
+        };
+        alternatives.push(format!(
+            "candidate {} requires {requirement_text}: {failure_text}",
+            candidate_index + 1
+        ));
+    }
+    if !saw_rejected || !every_candidate_rejected || alternatives.is_empty() {
+        return None;
+    }
+    let receiver_description = receiver_args.first().map_or_else(
+        || "the receiver".to_string(),
+        |receiver| format!("receiver `{receiver}`"),
+    );
+    Some(format!(
+        "no row-conditional implementation matches {receiver_description}; {}",
+        alternatives.join("; ")
+    ))
+}
+
+/// Negative row facts describe excluded field patterns, not exact rows. An
+/// untyped exclusion is stronger than a typed one, while a typed exclusion
+/// does not establish that the label is absent at every type.
+fn negative_row_bound_failures(
+    actual: &[GenericBound],
+    required: &RowConstraint,
+) -> Vec<RowConditionFailure> {
+    let mut failures = Vec::new();
+    for needed in &required.fields {
+        let entailed = actual
+            .iter()
+            .filter_map(|bound| match bound {
+                GenericBound::Row(row) => {
+                    row.fields.iter().find(|field| field.label == needed.label)
+                }
+                _ => None,
+            })
+            .any(|field| {
+                field.ty.is_none()
+                    || field.ty.as_ref().map(|ty| format!("{ty:?}"))
+                        == needed.ty.as_ref().map(|ty| format!("{ty:?}"))
+            });
+        if !entailed {
+            failures.push(RowConditionFailure::MissingLabel {
+                label: needed.label.clone(),
+            });
+        }
+    }
+    failures
 }
 
 struct RecordMethodCall<'a> {

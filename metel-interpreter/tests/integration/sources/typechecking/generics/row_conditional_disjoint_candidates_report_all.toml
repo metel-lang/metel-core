@@ -1,0 +1,8 @@
+[options]
+error = ["T0012"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+line = 14
+contains = "candidate 2 requires { tag: String, .. }"
