@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.runtime.built-in-aspects.iterable-t.legality-1"]

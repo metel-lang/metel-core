@@ -1,0 +1,22 @@
+// List<T> implements Iterable<T>; each loop gets an independent cursor.
+
+fun main() {
+    var numbers: List<i64> := List::new();
+    numbers.push(1);
+    numbers.push(2);
+    numbers.push(3);
+
+    var total := 0;
+    for (x in numbers) {
+        total += x;
+    }
+    assert(total == 6);
+
+    var nested := 0;
+    for (_ in numbers) {
+        for (x in numbers) {
+            nested += x;
+        }
+    }
+    assert(nested == 18);
+}

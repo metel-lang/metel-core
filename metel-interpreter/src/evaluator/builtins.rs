@@ -513,6 +513,7 @@ fn list_value(backing: Vec<Value>) -> Value {
         "inner".to_string(),
         Value::Array(Rc::new(RefCell::new(backing))),
     );
+    fields.insert("cursor".to_string(), Value::I64(0));
     Value::Struct {
         name: "List".to_string(),
         type_id: Some(crate::identity::symbols::SYM_TYPE_LIST),

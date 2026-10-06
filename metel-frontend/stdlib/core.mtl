@@ -233,6 +233,7 @@ fun __eq_array_item<T: Eq>(left: T, right: T) -> boolean {
 
 public struct List<T> {
     inner: [T],
+    cursor: i64,
 }
 
 extend List<T> {
@@ -297,6 +298,18 @@ extend List<T> {
             out.push(y);
         }
         out
+    }
+}
+
+// Lists carry iteration state in the value copied for each `for` loop. The
+// evaluator deep-clones the iterable before dispatching `next`, so nested and
+// concurrent loops each get an independent cursor while sharing the backing
+// array's normal list semantics.
+extend<T> List<T>: Iterable<T> {
+    fun next(&var self) -> Perhaps<T> {
+        let index := self.cursor;
+        self.cursor := self.cursor + 1;
+        self.get(index)
     }
 }
 
