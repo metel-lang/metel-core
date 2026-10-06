@@ -221,7 +221,7 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, " }}")
             }
-            Type::Array(t) => write!(f, "{t}[]"),
+            Type::Array(t) => write!(f, "[{t}]"),
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
             Type::MutReference(t) => write!(f, "&var {t}"),

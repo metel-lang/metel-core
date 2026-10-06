@@ -250,7 +250,7 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, "..{tail} }}")
             }
-            InferType::Array(t) => write!(f, "{t}[]"),
+            InferType::Array(t) => write!(f, "[{t}]"),
             InferType::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             InferType::Reference(t) => write!(f, "&{t}"),
             InferType::MutReference(t) => write!(f, "&var {t}"),
@@ -434,7 +434,7 @@ fn render_with_names(
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        InferType::Array(t) => format!("{}[]", render_with_names(t, known, local)),
+        InferType::Array(t) => format!("[{}]", render_with_names(t, known, local)),
         InferType::SizedArray(t, n) => format!("[{}; {n}]", render_with_names(t, known, local)),
         InferType::Reference(t) => format!("&{}", render_with_names(t, known, local)),
         InferType::MutReference(t) => format!("&var {}", render_with_names(t, known, local)),

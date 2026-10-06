@@ -699,7 +699,7 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
             let rendered: Vec<String> = items.iter().map(|i| display_type(i, params)).collect();
             format!("({})", rendered.join(", "))
         }
-        InferType::Array(item) => format!("{}[]", display_type(item, params)),
+        InferType::Array(item) => format!("[{}]", display_type(item, params)),
         InferType::SizedArray(item, size) => format!("[{}; {size}]", display_type(item, params)),
         InferType::Reference(item) => format!("&{}", display_type(item, params)),
         InferType::MutReference(item) => format!("&var {}", display_type(item, params)),

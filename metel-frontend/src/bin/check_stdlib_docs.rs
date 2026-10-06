@@ -99,7 +99,7 @@ fn render_type(t: &TypeExpr) -> String {
                 items.iter().map(render_type).collect::<Vec<_>>().join(", ")
             )
         }
-        TypeExpr::Array(inner) => format!("{}[]", render_type(inner)),
+        TypeExpr::Array(inner) => format!("[{}]", render_type(inner)),
         TypeExpr::SizedArray(inner, n) => format!("[{}; {n}]", render_type(inner)),
         TypeExpr::Reference(inner) => format!("&{}", render_type(inner)),
         TypeExpr::MutReference(inner) => format!("&var {}", render_type(inner)),
