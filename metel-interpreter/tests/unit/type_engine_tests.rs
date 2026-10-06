@@ -135,7 +135,7 @@ mod phase_2_infer_types {
     #[test]
     fn test_display_array() {
         let ty = InferType::Array(Box::new(InferType::int()));
-        assert_eq!(format!("{}", ty), "i64[]");
+        assert_eq!(format!("{}", ty), "[i64]");
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod phase_2_infer_types {
             vec![InferType::int()],
             Box::new(InferType::bool()),
         )));
-        assert_eq!(format!("{}", ty), "|i64| -> boolean[]");
+        assert_eq!(format!("{}", ty), "[|i64| -> boolean]");
     }
 
     #[test]
