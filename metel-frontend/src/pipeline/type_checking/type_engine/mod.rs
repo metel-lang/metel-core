@@ -2405,6 +2405,10 @@ pub struct TypeDefinitionRegistry {
     /// module check — so it can never leak an unimported type into another module
     /// (metel-core#1060).
     local_type_decl_ids: HashMap<String, SymbolId>,
+    /// Historical ids for block-local declarations. These survive lexical
+    /// teardown so runtime generic-body reconstruction can recover a value's
+    /// declaration identity after its defining block closes (#1307).
+    archived_local_type_decl_ids: HashMap<String, Vec<SymbolId>>,
     /// struct `SymbolId` → the struct's own `pub`/private visibility (RFC-0032 §7,
     /// issue #776). Consulted alongside a field's own `visibility` by
     /// `check_field_visibility`: a `public` field on a private struct must not
@@ -2846,6 +2850,25 @@ impl TypeDefinitionRegistry {
         None
     }
 
+    /// Resolve a type kind from an already-carried declaration identity.
+    ///
+    /// Block-local declarations do not have a name-resolver symbol, but they do
+    /// receive a synthetic `SymbolId`.  Runtime generic-body reconstruction
+    /// carries that identity on `Type::Named`, so kind checks must not fall back
+    /// to the block-local bare-name index after the declaring block has closed.
+    pub(crate) fn visible_type_kind_by_id(&self, id: SymbolId) -> Option<VisibleTypeKind> {
+        if self.struct_env.contains_key(&id) {
+            return Some(if self.record_structs.contains(&id) {
+                VisibleTypeKind::Record
+            } else {
+                VisibleTypeKind::Struct
+            });
+        }
+        self.enum_env
+            .contains_key(&id)
+            .then_some(VisibleTypeKind::Enum)
+    }
+
     /// The resolved `(SymbolId, declared name, fields)` of the struct a
     /// projection spelling names in `current_module`, or `None` if it does not
     /// resolve to a visible struct.
@@ -2869,6 +2892,7 @@ impl TypeDefinitionRegistry {
             type_decl_names: HashMap::new(),
             type_decl_ids: HashMap::new(),
             local_type_decl_ids: HashMap::new(),
+            archived_local_type_decl_ids: HashMap::new(),
             struct_visibility: HashMap::new(),
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
@@ -3073,7 +3097,19 @@ impl TypeDefinitionRegistry {
             visibility,
             is_record,
         );
-        self.local_type_decl_ids.insert(name, owner);
+        self.local_type_decl_ids.insert(name.clone(), owner);
+        self.archived_local_type_decl_ids
+            .entry(name)
+            .or_default()
+            .push(owner);
+    }
+
+    /// Identity-only fallback for construction; ordinary lexical name
+    /// resolution deliberately does not consult this archived index.
+    pub(crate) fn archived_local_type_ids(&self, name: &str) -> &[SymbolId] {
+        self.archived_local_type_decl_ids
+            .get(name)
+            .map_or(&[], Vec::as_slice)
     }
 
     #[must_use]
@@ -3093,18 +3129,13 @@ impl TypeDefinitionRegistry {
     pub fn pop_struct_scope(&mut self) {
         if let Some(ids) = self.struct_scope_stack.pop() {
             for id in ids {
-                self.struct_env.remove(&id);
-                self.struct_decl_modules.remove(&id);
-                self.struct_visibility.remove(&id);
-                // A block-local id lives in exactly one of the struct / enum
-                // families; removing from both is safe.
-                if self.enum_env.remove(&id).is_some() {
-                    self.enum_decl_modules.remove(&id);
-                    for enums in self.variant_declaring_enums.values_mut() {
-                        enums.retain(|owner| *owner != id);
-                    }
-                }
-                if let Some(name) = self.type_decl_names.remove(&id) {
+                // Keep the id-keyed declaration metadata after lexical lookup
+                // ends.  Runtime generic-body reconstruction can receive a
+                // value of this block-local type later, carrying the synthetic
+                // id on `Type::Named`; deleting the metadata here made the
+                // record look like an ordinary struct at the call site
+                // (#1307).  Only the bare-name indexes are scope-local.
+                if let Some(name) = self.type_decl_names.get(&id).cloned() {
                     if self.type_decl_ids.get(&name) == Some(&id) {
                         self.type_decl_ids.remove(&name);
                     }
@@ -4250,7 +4281,11 @@ impl TypeDefinitionRegistry {
     ) {
         let owner = self.fresh_local_type_id();
         self.register_enum(owner, name.clone(), info, declaring_module);
-        self.local_type_decl_ids.insert(name, owner);
+        self.local_type_decl_ids.insert(name.clone(), owner);
+        self.archived_local_type_decl_ids
+            .entry(name)
+            .or_default()
+            .push(owner);
         if let Some(scope) = self.struct_scope_stack.last_mut() {
             scope.push(owner);
         }

@@ -1789,6 +1789,17 @@ pub(super) fn construct_expr(
                 .then(|| ctx.variant_id_for(type_id, &resolved_path[1]))
                 .flatten();
 
+            // Preserve synthetic identities for block-local records as well as
+            // resolver-assigned top-level declarations.  Generic calls may
+            // inspect this value after the declaring block has closed, so a
+            // bare name is not sufficient to recover its record kind (#1307).
+            let ty = match ty {
+                Type::Named(name, args, _) => {
+                    Type::Named(name, args, crate::data::types::NominalId(type_id))
+                }
+                other => other,
+            };
+
             Ok(TypedExpr::StructLiteral {
                 path: resolved_path,
                 fields: typed_fields,
