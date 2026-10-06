@@ -398,6 +398,7 @@ record_type_field = { ident ~ ":" ~ type_expr }
 // checking path for row bounds; nested and reusable occurrences use ordinary
 // row-extension inference.
 open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
+                    | "{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
                     | "{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }
 record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
