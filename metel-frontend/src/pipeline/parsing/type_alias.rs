@@ -704,6 +704,7 @@ impl Expander<'_> {
                 }
                 self.walk_expr(&mut ld.value)?;
             }
+            Decl::LetPattern(ld) => self.walk_expr(&mut ld.value)?,
             Decl::Mut(md) => {
                 if let Some(t) = &mut md.type_ann {
                     self.subst_type(t)?;

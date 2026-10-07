@@ -180,8 +180,9 @@ block      = { "{" ~ block_item* ~ expr? ~ "}" }
 // `match`, and `loop` in statement position with an optional trailing `;`. The
 // !"}" lookahead keeps the tail-expression case for `expr?`; if the optional
 // `;` was consumed and `}` follows, pest backtracks and `expr_stmt` takes over.
-block_item      = { block_expr_stmt | decl }
+block_item      = { block_expr_stmt | let_pattern_decl | decl }
 block_expr_stmt = { (if_expr | match_expr | loop_expr) ~ ";"? ~ !"}" }
+let_pattern_decl = { ("let" ~ mut_kw | "let" | mut_kw) ~ record_pattern ~ ":=" ~ expr ~ ";" }
 expr_stmt  = { expr ~ ";" }
 
 while_stmt = { "while" ~ "(" ~ expr ~ ")" ~ block }

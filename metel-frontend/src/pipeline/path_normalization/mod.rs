@@ -104,6 +104,9 @@ fn normalize_decl(
         Decl::Let(ld) => {
             normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
         }
+        Decl::LetPattern(ld) => {
+            normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
+        }
         Decl::Mut(md) => {
             normalize_expr(&mut md.value, scope, current_module, module_names, symbols)
         }

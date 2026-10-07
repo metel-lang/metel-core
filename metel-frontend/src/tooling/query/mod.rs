@@ -187,6 +187,7 @@ fn decl_expr_at<'a>(
 ) -> Option<&'a TypedExpr> {
     match decl {
         TypedDecl::Let(decl) => expr_at_expr(&decl.value, filename, byte_offset),
+        TypedDecl::LetPattern { value, .. } => expr_at_expr(value, filename, byte_offset),
         TypedDecl::Mut(decl) => expr_at_expr(&decl.value, filename, byte_offset),
         TypedDecl::Fun(decl) => match &decl.body {
             FunBody::Typed(body) => block_expr_at(body, filename, byte_offset),

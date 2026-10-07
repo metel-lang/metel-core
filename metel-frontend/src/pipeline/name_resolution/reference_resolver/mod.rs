@@ -191,6 +191,7 @@ impl Walker<'_, '_> {
     fn resolve_decl(&mut self, decl: &Decl) {
         match decl {
             Decl::Let(ld) => self.resolve_expr(&ld.value),
+            Decl::LetPattern(ld) => self.resolve_expr(&ld.value),
             Decl::Mut(md) => self.resolve_expr(&md.value),
             Decl::Fun(fd) => self.resolve_fun(fd),
             Decl::Impl(ib) => {
@@ -239,6 +240,10 @@ impl Walker<'_, '_> {
                 Decl::Let(ld) => {
                     self.resolve_expr(&ld.value);
                     self.bind_local(&ld.name);
+                }
+                Decl::LetPattern(ld) => {
+                    self.resolve_expr(&ld.value);
+                    bind_pattern(&ld.pattern, &mut |name| self.bind_local(name));
                 }
                 Decl::Mut(md) => {
                     self.resolve_expr(&md.value);

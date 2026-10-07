@@ -6,10 +6,10 @@ use crate::data::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
     Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
     FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl,
-    ImportPath, ImportTree, LetDecl, Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param,
-    PathRoot, Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField,
-    RowEquation, RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef,
-    Visibility, WhereClause, WhereConstraint, WhileStmt,
+    ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal, MatchArm, MatchExpr, MutDecl,
+    NativeBinding, Param, PathRoot, Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound,
+    RowBoundField, RowEquation, RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp,
+    VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -1749,6 +1749,11 @@ fn shift_decl_span(decl: &mut Decl, base_start: usize, base_line: u32, base_col:
             shift_expr_span(&mut ld.value, base_start, base_line, base_col);
             shift_span(&mut ld.span, base_start, base_line, base_col);
         }
+        Decl::LetPattern(ld) => {
+            shift_pattern_span(&mut ld.pattern, base_start, base_line, base_col);
+            shift_expr_span(&mut ld.value, base_start, base_line, base_col);
+            shift_span(&mut ld.span, base_start, base_line, base_col);
+        }
         Decl::Mut(md) => {
             shift_expr_span(&mut md.value, base_start, base_line, base_col);
             shift_span(&mut md.span, base_start, base_line, base_col);
@@ -3419,6 +3424,33 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
                             }
                         };
                         stmts.push(Decl::Stmt(Box::new(Stmt::Expr(expr))));
+                    }
+                    Rule::let_pattern_decl => {
+                        let span = Span::of(&inner, filename);
+                        let mutable = inner.as_str().starts_with("var")
+                            || inner.as_str().starts_with("let var");
+                        let mut parts = inner.into_inner();
+                        if parts.peek().is_some_and(|p| p.as_rule() == Rule::mut_kw) {
+                            parts.next();
+                        }
+                        let pattern = parse_pattern(
+                            parts.next().ok_or_else(|| {
+                                MetelError::internal("let_pattern_decl: missing pattern")
+                            })?,
+                            filename,
+                        )?;
+                        let value = parse_expr(
+                            parts.next().ok_or_else(|| {
+                                MetelError::internal("let_pattern_decl: missing value")
+                            })?,
+                            filename,
+                        )?;
+                        stmts.push(Decl::LetPattern(LetPatternDecl {
+                            pattern,
+                            mutable,
+                            value,
+                            span,
+                        }));
                     }
                     Rule::decl => stmts.extend(parse_decl(inner, filename)?),
                     r => {

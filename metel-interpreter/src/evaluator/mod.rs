@@ -2214,6 +2214,7 @@ fn check_program_entry_point(root_decls: &[TypedDecl]) -> Result<SymbolId, Metel
     fn decl_span(decl: &TypedDecl) -> Option<Span> {
         match decl {
             TypedDecl::Let(d) => Some(d.span.clone()),
+            TypedDecl::LetPattern { span, .. } => Some(span.clone()),
             TypedDecl::Mut(d) => Some(d.span.clone()),
             TypedDecl::Fun(d) => Some(d.span.clone()),
             TypedDecl::Struct(d) => Some(d.span.clone()),
@@ -2872,6 +2873,27 @@ fn eval_decl(
         TypedDecl::Let(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
                 env.define_binding(d.local_id, val);
+                Ok(Signal::Value(Value::Unit))
+            }
+            other => Ok(other),
+        },
+        TypedDecl::LetPattern {
+            pattern,
+            value,
+            span,
+            ..
+        } => match eval_expr(value, env, runtime)? {
+            Signal::Value(val) => {
+                let mut bindings = Vec::new();
+                if !pattern::match_pattern(pattern, &val, &mut bindings) {
+                    return Err(MetelError::internal(format!(
+                        "type-checked record let pattern failed at runtime at {}:{}",
+                        span.filename, span.line
+                    )));
+                }
+                for (_, local_id, binding) in bindings {
+                    env.define_binding(local_id, binding);
+                }
                 Ok(Signal::Value(Value::Unit))
             }
             other => Ok(other),

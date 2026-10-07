@@ -406,7 +406,7 @@ fn decl_span(decl: &Decl) -> Option<&Span> {
         Decl::Let(d) => Some(&d.span),
         Decl::Mut(d) => Some(&d.span),
         Decl::TypeAlias(d) => Some(&d.span),
-        Decl::Impl(_) | Decl::Stmt(_) => None,
+        Decl::LetPattern(_) | Decl::Impl(_) | Decl::Stmt(_) => None,
     }
 }
 
@@ -432,7 +432,7 @@ fn decl_any_name(decl: &Decl) -> Option<String> {
         Decl::Let(d) => Some(d.name.clone()),
         Decl::Mut(d) => Some(d.name.clone()),
         Decl::TypeAlias(d) => Some(d.name.clone()),
-        Decl::Impl(_) | Decl::Stmt(_) => None,
+        Decl::LetPattern(_) | Decl::Impl(_) | Decl::Stmt(_) => None,
     }
 }
 

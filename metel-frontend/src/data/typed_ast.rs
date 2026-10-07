@@ -70,6 +70,12 @@ pub struct TypedModuleGraph {
 #[derive(Debug, Clone)]
 pub enum TypedDecl {
     Let(TypedLetDecl),
+    LetPattern {
+        pattern: TypedPattern,
+        mutable: bool,
+        value: TypedExpr,
+        span: Span,
+    },
     Mut(TypedMutDecl),
     Fun(TypedFunDecl),
     Struct(#[allow(dead_code)] TypedStructDecl),

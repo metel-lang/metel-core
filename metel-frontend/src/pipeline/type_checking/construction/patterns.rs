@@ -145,7 +145,7 @@ pub(super) fn construct_match(
         };
         ctx.flow = entry_flow.clone();
         ctx.push_scope();
-        construct_pattern_bindings(&pattern, &scrutinee_ty, ctx)?;
+        construct_pattern_bindings(&pattern, &scrutinee_ty, false, ctx)?;
         let guard = match &arm.guard {
             Some(g) => Some(construct_expr(g, None, ctx)?),
             None => None,
@@ -202,7 +202,7 @@ pub(super) fn construct_match(
 /// is needed here. `None` at any member site is the sanctioned recovery state
 /// (no member table, or a member the table never interned, e.g. a block-local
 /// type); it is never a fabricated id.
-fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
+pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
     match pattern {
         Pattern::Wildcard(span) => TypedPattern::Wildcard(span.clone()),
         Pattern::Literal(lit, span) => TypedPattern::Literal(lit.clone(), span.clone()),
@@ -610,6 +610,7 @@ pub(in crate::pipeline::type_checking) fn resolve_struct_pattern(
 pub(super) fn construct_pattern_bindings(
     pattern: &Pattern,
     scrutinee_ty: &Type,
+    mutable: bool,
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
     match pattern {
@@ -623,7 +624,7 @@ pub(super) fn construct_pattern_bindings(
                 _ => return Err(MetelError::internal("tuple pattern on non-tuple")),
             };
             for (pat, elem_ty) in pats.iter().zip(elems.iter()) {
-                construct_pattern_bindings(pat, elem_ty, ctx)?;
+                construct_pattern_bindings(pat, elem_ty, false, ctx)?;
             }
         }
         Pattern::EnumVariant {
@@ -657,7 +658,11 @@ pub(super) fn construct_pattern_bindings(
                     .ok_or_else(|| {
                         MetelError::internal(format!("missing record field `{field}`"))
                     })?;
-                ctx.bind(field, field_ty);
+                if mutable {
+                    ctx.bind_mut(field, field_ty);
+                } else {
+                    ctx.bind(field, field_ty);
+                }
             }
             if let Some((rest_name, _)) = rest_binding {
                 let remaining = record_fields
@@ -665,7 +670,11 @@ pub(super) fn construct_pattern_bindings(
                     .filter(|(name, _)| !fields.contains(name))
                     .cloned()
                     .collect();
-                ctx.bind(rest_name, Type::Record(remaining));
+                if mutable {
+                    ctx.bind_mut(rest_name, Type::Record(remaining));
+                } else {
+                    ctx.bind(rest_name, Type::Record(remaining));
+                }
             }
         }
         Pattern::Array {
@@ -681,7 +690,7 @@ pub(super) fn construct_pattern_bindings(
                 ctx.bind(rest_name, Type::Array(Box::new(elem_ty.clone())));
             }
             for pat in elems {
-                construct_pattern_bindings(pat, &elem_ty, ctx)?;
+                construct_pattern_bindings(pat, &elem_ty, false, ctx)?;
             }
         }
     }

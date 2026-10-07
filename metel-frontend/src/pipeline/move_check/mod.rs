@@ -274,6 +274,10 @@ impl<'a> Checker<'a> {
                 self.consume_expr(&let_decl.value, current_module, state);
                 state.bind_typed(&let_decl.name, let_decl.value.ty());
             }
+            TypedDecl::LetPattern { pattern, value, .. } => {
+                self.consume_expr(value, current_module, state);
+                self.apply_pattern_moves(pattern, value, current_module, state);
+            }
             TypedDecl::Mut(mut_decl) => {
                 self.consume_expr(&mut_decl.value, current_module, state);
                 state.bind_typed(&mut_decl.name, mut_decl.value.ty());
@@ -2629,6 +2633,22 @@ impl FreeRootCollector {
             TypedDecl::Let(let_decl) => {
                 self.expr(&let_decl.value);
                 self.bind(&let_decl.name);
+            }
+            TypedDecl::LetPattern { pattern, value, .. } => {
+                self.expr(value);
+                if let TypedPattern::Record {
+                    fields,
+                    rest_binding,
+                    ..
+                } = pattern
+                {
+                    for (name, _) in fields {
+                        self.bind(name);
+                    }
+                    if let Some((name, _)) = rest_binding {
+                        self.bind(name);
+                    }
+                }
             }
             TypedDecl::Mut(mut_decl) => {
                 self.expr(&mut_decl.value);

@@ -265,6 +265,7 @@ pub enum ImportTree {
 #[derive(Debug, Clone)]
 pub enum Decl {
     Let(LetDecl),
+    LetPattern(LetPatternDecl),
     Mut(MutDecl),
     Fun(FunDecl),
     Struct(StructDecl),
@@ -290,6 +291,14 @@ pub struct TypeAliasDecl {
 pub struct LetDecl {
     pub name: String,
     pub type_ann: Option<TypeExpr>,
+    pub value: Expr,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct LetPatternDecl {
+    pub pattern: Pattern,
+    pub mutable: bool,
     pub value: Expr,
     pub span: Span,
 }

@@ -61,7 +61,7 @@ pub(super) fn infer_match(
         };
         *ctx.flow_mut() = entry_flow.clone();
         ctx.push_scope();
-        infer_pattern(&pattern, &scrutinee_ty, ctx)?;
+        infer_pattern(&pattern, &scrutinee_ty, false, ctx)?;
         if let Some(guard) = &arm.guard {
             let g = infer_expr(guard, ctx, fun_generalizations)?;
             ctx.add_constraint(g, InferType::bool(), arm.span.clone());
@@ -83,6 +83,7 @@ pub(super) fn infer_match(
 pub(super) fn infer_pattern(
     pattern: &Pattern,
     scrutinee_ty: &InferType,
+    mutable: bool,
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
     let span = pattern_span(pattern);
@@ -103,7 +104,7 @@ pub(super) fn infer_pattern(
                 span.clone(),
             );
             for (pat, elem_ty) in pats.iter().zip(elem_vars.iter()) {
-                infer_pattern(pat, elem_ty, ctx)?;
+                infer_pattern(pat, elem_ty, false, ctx)?;
             }
         }
         Pattern::EnumVariant {
@@ -227,13 +228,13 @@ pub(super) fn infer_pattern(
                 }
                 for field_name in fields {
                     match resolve_row_bound_field(ctx, *tv, field_name, pat_span) {
-                        Some(Ok(field_ty)) => ctx.bind_mono(field_name, field_ty, false),
+                        Some(Ok(field_ty)) => ctx.bind_mono(field_name, field_ty, mutable),
                         Some(Err(e)) => return Err(e),
                         None => unreachable!("row bound already confirmed present above"),
                     }
                 }
                 if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
-                    ctx.bind_mono(rest_name, rest_ty, false);
+                    ctx.bind_mono(rest_name, rest_ty, mutable);
                 }
             } else if rest_binding.is_some() {
                 let record_fields = match &peeled {
@@ -259,10 +260,10 @@ pub(super) fn infer_pattern(
                             pat_span,
                         ));
                     };
-                    ctx.bind_mono(field_name, field_ty.clone(), false);
+                    ctx.bind_mono(field_name, field_ty.clone(), mutable);
                 }
                 if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
-                    ctx.bind_mono(rest_name, rest_ty, false);
+                    ctx.bind_mono(rest_name, rest_ty, mutable);
                 }
             } else if *rest {
                 let record_fields = match &peeled {
@@ -288,7 +289,7 @@ pub(super) fn infer_pattern(
                             pat_span,
                         ));
                     };
-                    ctx.bind_mono(field_name, field_ty.clone(), false);
+                    ctx.bind_mono(field_name, field_ty.clone(), mutable);
                 }
             } else {
                 let field_vars: Vec<(String, InferType)> = fields
@@ -301,7 +302,7 @@ pub(super) fn infer_pattern(
                     pat_span.clone(),
                 );
                 for (name, ty) in field_vars {
-                    ctx.bind_mono(&name, ty, false);
+                    ctx.bind_mono(&name, ty, mutable);
                 }
             }
         }
@@ -345,7 +346,7 @@ pub(super) fn infer_pattern(
                 }
             }
             for pat in elems {
-                infer_pattern(pat, &elem_var, ctx)?;
+                infer_pattern(pat, &elem_var, false, ctx)?;
             }
         }
     }

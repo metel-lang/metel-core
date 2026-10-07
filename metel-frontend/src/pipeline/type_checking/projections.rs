@@ -102,6 +102,9 @@ impl Cx<'_> {
                 }
                 self.expr(&d.value, generics, self_allowed, self_target, local_types)?;
             }
+            Decl::LetPattern(d) => {
+                self.expr(&d.value, generics, self_allowed, self_target, local_types)?;
+            }
             Decl::Mut(d) => {
                 if let Some(t) = &d.type_ann {
                     self.ty(t, &d.span, generics, self_allowed, self_target, local_types)?;

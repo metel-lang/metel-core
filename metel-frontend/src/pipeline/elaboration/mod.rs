@@ -288,6 +288,7 @@ fn elaborate_decl(decl: &mut TypedDecl, cx: &ElabCtx<'_>) {
     match decl {
         TypedDecl::Fun(f) => elaborate_fun_body(&mut f.body, cx),
         TypedDecl::Let(l) => elaborate_expr(&mut l.value, cx),
+        TypedDecl::LetPattern { value, .. } => elaborate_expr(value, cx),
         TypedDecl::Mut(m) => elaborate_expr(&mut m.value, cx),
         TypedDecl::Impl(block) => elaborate_impl_block(block, cx),
         // Struct / Enum / Aspect carry no executable bodies.

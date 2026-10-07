@@ -1,9 +1,10 @@
 fun take_id<row R, row Rest>(r: { id: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
-    match (r) {
-        { id, ..rest } => id + rest.extra
-    }
+    let var { id, ..rest } := r;
+    id := id + 1;
+    rest.extra := rest.extra + 1;
+    id + rest.extra
 }
 
 fun add_auth<row R: !{ auth }>(r: { ..R }, auth: i64) -> { ..R, auth: i64 } {
@@ -26,6 +27,7 @@ fun nominal_remainder(pair: PublicPair) -> i64 {
 }
 
 fun main() -> i64 {
+    assert(take_id({ id = 7, extra = 5 }) == 14);
     let r := add_auth({ id = 7 }, 5);
     let total := take_id({ id = 7, extra = 5 });
     let anonymous := match ({ id = total, extra = r.auth }) {

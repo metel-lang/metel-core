@@ -1,3 +1,4 @@
+use super::patterns::infer_pattern;
 use super::{
     AspectMethod, AssocResolveCtx, Decl, Expr, FunDecl, FunGeneralization, GenericBound, HashMap,
     InferContext, InferType, MetelError, NativeFunTyResult, Polarity, Substitution, Type,
@@ -113,6 +114,12 @@ pub(super) fn infer_decl(
                 }
             }
             ctx.bind_mono(&ld.name, bound_ty, false);
+            Ok(InferType::unit())
+        }
+        Decl::LetPattern(decl) => {
+            let value_ty = infer_expr(&decl.value, ctx, fun_generalizations)?;
+            ctx.note_consumed_infer(&decl.value);
+            infer_pattern(&decl.pattern, &value_ty, decl.mutable, ctx)?;
             Ok(InferType::unit())
         }
         Decl::Mut(md) => {

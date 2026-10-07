@@ -450,6 +450,10 @@ fn lower_projections_in_decl(decl: Decl) -> Decl {
             value: lower_projections_in_expr(&let_decl.value, &std::collections::HashSet::new()),
             ..let_decl
         }),
+        Decl::LetPattern(let_decl) => Decl::LetPattern(crate::data::ast::LetPatternDecl {
+            value: lower_projections_in_expr(&let_decl.value, &std::collections::HashSet::new()),
+            ..let_decl
+        }),
         Decl::Mut(mut_decl) => Decl::Mut(crate::data::ast::MutDecl {
             type_ann: mut_decl.type_ann.as_ref().map(|t| {
                 lower_projections_in_type(t, &std::collections::HashSet::new(), &mut_decl.span)

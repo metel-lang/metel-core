@@ -636,6 +636,10 @@ impl Walker<'_> {
                     LexicalSeg::Let(d.name.clone()),
                 );
             }
+            Decl::LetPattern(d) => {
+                self.walk_expr(&d.value);
+                self.bind_pattern(&d.pattern);
+            }
             Decl::Mut(d) => {
                 self.walk_expr(&d.value);
                 self.bind(

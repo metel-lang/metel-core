@@ -1,3 +1,4 @@
+use super::patterns::{construct_pattern_bindings, lower_typed_pattern};
 use super::{
     AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr, FunBody, FunDecl, HashMap, ImplBlock,
     InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar,
@@ -132,6 +133,17 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 local_id: ctx.local_binding_at(&ld.span),
                 span: ld.span.clone(),
             }))
+        }
+        Decl::LetPattern(decl) => {
+            let value = construct_expr(&decl.value, None, ctx)?;
+            ctx.note_consumed(&value);
+            construct_pattern_bindings(&decl.pattern, value.ty(), decl.mutable, ctx)?;
+            Ok(TypedDecl::LetPattern {
+                pattern: lower_typed_pattern(&decl.pattern, ctx),
+                mutable: decl.mutable,
+                value,
+                span: decl.span.clone(),
+            })
         }
         Decl::Mut(md) => {
             let expected_ty = md

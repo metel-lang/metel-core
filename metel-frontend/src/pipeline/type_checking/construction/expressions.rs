@@ -38,6 +38,20 @@ fn collect_closure_body_uses(
                 collect_closure_expr_uses(&ld.value, bound, reads, writes, spans);
                 bound.insert(ld.name.clone());
             }
+            crate::data::ast::Decl::LetPattern(ld) => {
+                collect_closure_expr_uses(&ld.value, bound, reads, writes, spans);
+                if let crate::data::ast::Pattern::Record {
+                    fields,
+                    rest_binding,
+                    ..
+                } = &ld.pattern
+                {
+                    bound.extend(fields.iter().cloned());
+                    if let Some((name, _)) = rest_binding {
+                        bound.insert(name.clone());
+                    }
+                }
+            }
             crate::data::ast::Decl::Mut(md) => {
                 collect_closure_expr_uses(&md.value, bound, reads, writes, spans);
                 bound.insert(md.name.clone());
