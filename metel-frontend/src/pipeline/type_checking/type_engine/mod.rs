@@ -2012,6 +2012,10 @@ pub struct EnumInfo {
 /// RFC-0082 §4 equality constraints for one generic function/type var: a list
 /// of `(aspect, assoc_name, expected_type)` triples.
 pub type AssocEqConstraints = HashMap<TypeVar, Vec<(String, String, InferType)>>;
+/// Typed row fields and the optional named open tail determined for a row variable.
+pub type RowDecomposition = (Vec<(String, InferType)>, Option<TypeVar>);
+/// Body-local decompositions keyed by the row variable they describe.
+pub type RowDecompositions = HashMap<TypeVar, RowDecomposition>;
 #[derive(Debug, Clone)]
 pub enum GenericBound {
     Aspect(String),
@@ -5352,6 +5356,9 @@ pub struct InferContext {
     /// `Rest`; unlike the call-time remainder backfill, this fact is available
     /// while the definition itself is inferred.
     current_row_exclusions: HashMap<TypeVar, Vec<String>>,
+    /// RFC-0121/0178: typed decomposition facts from `where R = { fields, ..Rest }`
+    /// that are available while checking a generic body.
+    current_row_decompositions: RowDecompositions,
     /// RFC-0121 installment 2: `TypeVar` → (expected brand, row) for the current
     /// generic function's `Handle.{ fd, ..R }`-typed parameters. A deliberately
     /// separate, parallel table to `current_type_param_bounds` above -- see
@@ -5481,6 +5488,7 @@ impl InferContext {
             current_type_param_bounds: HashMap::new(),
             current_negative_type_param_bounds: HashMap::new(),
             current_row_exclusions: HashMap::new(),
+            current_row_decompositions: HashMap::new(),
             current_projection_tail_constraints: HashMap::new(),
             current_assoc_projections: HashMap::new(),
             recorded_assoc_projections: Vec::new(),
@@ -5733,6 +5741,18 @@ impl InferContext {
         std::mem::replace(&mut self.current_row_exclusions, exclusions)
     }
 
+    pub fn swap_row_decompositions(
+        &mut self,
+        decompositions: RowDecompositions,
+    ) -> RowDecompositions {
+        std::mem::replace(&mut self.current_row_decompositions, decompositions)
+    }
+
+    #[must_use]
+    pub fn row_decomposition_for_type_var(&self, tv: TypeVar) -> Option<RowDecomposition> {
+        self.current_row_decompositions.get(&tv).cloned()
+    }
+
     /// Whether `field` is absent by a row-decomposition fact for `tv`.
     #[must_use]
     pub fn row_excludes_field(&self, tv: TypeVar, field: &str) -> bool {
@@ -5749,6 +5769,15 @@ impl InferContext {
                     _ => *candidate,
                 };
                 candidate_resolved == resolved && labels.iter().any(|label| label == field)
+            }) || self.current_negative_type_param_bounds.iter().any(|(candidate, bounds)| {
+                let candidate_resolved = match self.cached_subst.apply(&InferType::Var(*candidate)) {
+                    InferType::Var(v) => v,
+                    _ => *candidate,
+                };
+                candidate_resolved == resolved && bounds.iter().any(|bound| matches!(
+                    bound,
+                    GenericBound::Row(row) if row.fields.iter().any(|row_field| row_field.label == field)
+                ))
             })
     }
 

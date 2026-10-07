@@ -260,7 +260,15 @@ fn expr_at_expr<'a>(
         TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => items
             .iter()
             .find_map(|item| expr_at_expr(item, filename, byte_offset)),
-        TypedExpr::RecordLiteral { fields, .. } | TypedExpr::StructLiteral { fields, .. } => fields
+        TypedExpr::RecordLiteral { fields, spread, .. } => fields
+            .iter()
+            .find_map(|(_, value)| expr_at_expr(value, filename, byte_offset))
+            .or_else(|| {
+                spread
+                    .as_ref()
+                    .and_then(|(value, _)| expr_at_expr(value, filename, byte_offset))
+            }),
+        TypedExpr::StructLiteral { fields, .. } => fields
             .iter()
             .find_map(|(_, value)| expr_at_expr(value, filename, byte_offset)),
         TypedExpr::RepeatArray(value, ..)

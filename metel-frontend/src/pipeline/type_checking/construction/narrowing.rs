@@ -132,8 +132,11 @@ fn note_consumed_expr(ctx: &mut ConstructCtx, typed: &TypedExpr) {
         }
         return;
     }
-    if let TypedExpr::RecordLiteral { fields, .. } = typed {
+    if let TypedExpr::RecordLiteral { fields, spread, .. } = typed {
         for (_, value) in fields {
+            note_consumed_expr(ctx, value);
+        }
+        if let Some((value, _)) = spread {
             note_consumed_expr(ctx, value);
         }
         return;

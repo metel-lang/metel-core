@@ -372,12 +372,87 @@ pub(super) fn infer_expr(
                 .collect::<Result<_, _>>()?;
             Ok(InferType::Tuple(elem_tys))
         }
-        Expr::RecordLiteral { fields, .. } => {
+        Expr::RecordLiteral { fields, spread, .. } => {
             let mut inferred_fields = Vec::with_capacity(fields.len());
             for (name, expr) in fields {
                 inferred_fields.push((name.clone(), infer_expr(expr, ctx, fun_generalizations)?));
             }
-            Ok(InferType::Record(inferred_fields))
+            inferred_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            if let Some((spread_expr, _, spread_span)) = spread {
+                let raw_spread_ty = infer_expr(spread_expr, ctx, fun_generalizations)?;
+                let solved_spread_ty = ctx.solve()?.apply(&raw_spread_ty);
+                let through_reference = matches!(
+                    solved_spread_ty,
+                    InferType::Reference(_) | InferType::MutReference(_)
+                );
+                let spread_ty = match solved_spread_ty {
+                    InferType::Reference(inner) | InferType::MutReference(inner) => *inner,
+                    other => other,
+                };
+                let spread_ty = match spread_ty {
+                    InferType::Named(name, args, _) => InferType::Record(
+                        super::patterns::nominal_record_fields(&name, &args, spread_span, ctx)?,
+                    ),
+                    other => other,
+                };
+                if through_reference && !infer_row_is_copy(ctx, &spread_ty) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0033,
+                        "cannot spread a record through a reference unless every field is `Copy`; clone the record explicitly",
+                        spread_span,
+                    ));
+                }
+                for (name, _) in &inferred_fields {
+                    require_spread_field_absent(ctx, &spread_ty, name, spread_span)?;
+                }
+                match spread_ty {
+                    InferType::Record(mut spread_fields) => {
+                        for (name, field_ty) in inferred_fields {
+                            if spread_fields.iter().any(|(existing, _)| existing == &name) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0012,
+                                    format!("record spread already contains field `{name}`"),
+                                    spread_span,
+                                ));
+                            }
+                            spread_fields.push((name, field_ty));
+                        }
+                        spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                        Ok(InferType::Record(spread_fields))
+                    }
+                    InferType::RowExtend {
+                        fields: mut spread_fields,
+                        tail,
+                    } => {
+                        for (name, field_ty) in inferred_fields {
+                            if spread_fields.iter().any(|(existing, _)| existing == &name) {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0012,
+                                    format!("record spread already contains field `{name}`"),
+                                    spread_span,
+                                ));
+                            }
+                            spread_fields.push((name, field_ty));
+                        }
+                        spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                        Ok(InferType::RowExtend {
+                            fields: spread_fields,
+                            tail,
+                        })
+                    }
+                    var @ InferType::Var(_) => Ok(InferType::RowExtend {
+                        fields: inferred_fields,
+                        tail: Box::new(var),
+                    }),
+                    other => Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!("record spread requires a record, got `{other}`"),
+                        spread_span,
+                    )),
+                }
+            } else {
+                Ok(InferType::Record(inferred_fields))
+            }
         }
         Expr::Array(elems, span) => {
             if elems.is_empty() {
@@ -2013,6 +2088,129 @@ pub(super) fn infer_expr(
             }
             Ok(InferType::never())
         }
+    }
+}
+
+fn require_spread_field_absent(
+    ctx: &mut InferContext,
+    row: &InferType,
+    label: &str,
+    span: &crate::data::ast::Span,
+) -> Result<(), MetelError> {
+    let row = ctx.solve()?.apply(row);
+    let (present, absent) = match &row {
+        InferType::Record(fields) => (
+            fields.iter().any(|(name, _)| name == label),
+            !fields.iter().any(|(name, _)| name == label),
+        ),
+        InferType::RowExtend { fields, tail } => {
+            let fixed_present = fields.iter().any(|(name, _)| name == label);
+            let (tail_present, tail_absent) = known_row_label_facts(ctx, tail, label);
+            (
+                fixed_present || tail_present,
+                !fixed_present && !tail_present && tail_absent,
+            )
+        }
+        InferType::Var(tv) => known_row_label_facts(ctx, &InferType::Var(*tv), label),
+        _ => (false, false),
+    };
+    if present {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("record spread already contains field `{label}`"),
+            span,
+        ));
+    }
+    if !absent {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("cannot prove field `{label}` absent from the spread row"),
+            span,
+        ));
+    }
+    Ok(())
+}
+
+fn known_row_label_facts(ctx: &InferContext, row: &InferType, label: &str) -> (bool, bool) {
+    match row {
+        InferType::Record(fields) => {
+            let present = fields.iter().any(|(name, _)| name == label);
+            (present, !present)
+        }
+        InferType::RowExtend { fields, tail } => {
+            let fixed_present = fields.iter().any(|(name, _)| name == label);
+            let (tail_present, tail_absent) = known_row_label_facts(ctx, tail, label);
+            (
+                fixed_present || tail_present,
+                !fixed_present && !tail_present && tail_absent,
+            )
+        }
+        InferType::Var(tv) => {
+            let bound_present = ctx.bounds_for_type_var(*tv).is_some_and(|bounds| {
+                bounds.iter().any(|bound| {
+                    matches!(bound,
+                    GenericBound::Row(row) if row.fields.iter().any(|field| field.label == label))
+                })
+            });
+            let decomposed_present = ctx
+                .row_decomposition_for_type_var(*tv)
+                .is_some_and(|(fields, _)| fields.iter().any(|(name, _)| name == label));
+            let decomposed_absent = ctx
+                .row_decomposition_for_type_var(*tv)
+                .and_then(|(_, tail)| tail)
+                .is_some_and(|tail| known_row_label_facts(ctx, &InferType::Var(tail), label).1);
+            let present = bound_present || decomposed_present;
+            (
+                present,
+                !present && (decomposed_absent || ctx.row_excludes_field(*tv, label)),
+            )
+        }
+        _ => (false, false),
+    }
+}
+
+fn infer_row_is_copy(ctx: &InferContext, row: &InferType) -> bool {
+    let assumptions = ctx.current_aspect_assumptions();
+    match row {
+        InferType::Record(fields) => fields.iter().all(|(_, ty)| {
+            ctx.registry().infer_type_satisfies_aspect(
+                ctx.current_module_path(),
+                ty,
+                "Copy",
+                &assumptions,
+            )
+        }),
+        InferType::RowExtend { fields, tail } => {
+            fields.iter().all(|(_, ty)| {
+                ctx.registry().infer_type_satisfies_aspect(
+                    ctx.current_module_path(),
+                    ty,
+                    "Copy",
+                    &assumptions,
+                )
+            }) && infer_row_is_copy(ctx, tail)
+        }
+        InferType::Var(tv) => {
+            let all_fields_copy = ctx.bounds_for_type_var(*tv).is_some_and(|bounds| {
+                bounds.iter().any(|bound| {
+                    matches!(bound, GenericBound::AllFields { aspects, .. } if aspects.iter().any(|aspect| aspect == "Copy"))
+                })
+            });
+            all_fields_copy
+                || ctx
+                    .row_decomposition_for_type_var(*tv)
+                    .is_some_and(|(fields, tail)| {
+                        fields.iter().all(|(_, ty)| {
+                            ctx.registry().infer_type_satisfies_aspect(
+                                ctx.current_module_path(),
+                                ty,
+                                "Copy",
+                                &assumptions,
+                            )
+                        }) && tail.is_some_and(|tail| infer_row_is_copy(ctx, &InferType::Var(tail)))
+                    })
+        }
+        _ => false,
     }
 }
 

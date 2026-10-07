@@ -274,21 +274,9 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
             fields,
             field_spans,
             rest,
+            rest_binding,
             span,
-        } => TypedPattern::Record {
-            fields: fields
-                .iter()
-                .enumerate()
-                .map(|(i, f)| {
-                    (
-                        f.clone(),
-                        field_spans.get(i).and_then(|s| ctx.local_binding_at(s)),
-                    )
-                })
-                .collect(),
-            rest: *rest,
-            span: span.clone(),
-        },
+        } => lower_record_pattern(fields, field_spans, *rest, rest_binding.as_ref(), span, ctx),
         Pattern::Tuple(pats, span) => TypedPattern::Tuple(
             pats.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
             span.clone(),
@@ -300,6 +288,34 @@ fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> TypedPattern {
                 .map(|(name, rest_span)| (name.clone(), ctx.local_binding_at(rest_span))),
             span: span.clone(),
         },
+    }
+}
+
+fn lower_record_pattern(
+    fields: &[String],
+    field_spans: &[Span],
+    rest: bool,
+    rest_binding: Option<&(String, Span)>,
+    span: &Span,
+    ctx: &ConstructCtx,
+) -> TypedPattern {
+    TypedPattern::Record {
+        fields: fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                (
+                    field.clone(),
+                    field_spans
+                        .get(index)
+                        .and_then(|field_span| ctx.local_binding_at(field_span)),
+                )
+            })
+            .collect(),
+        rest_binding: rest_binding
+            .map(|(name, rest_span)| (name.clone(), ctx.local_binding_at(rest_span))),
+        rest,
+        span: span.clone(),
     }
 }
 
@@ -626,10 +642,13 @@ pub(super) fn construct_pattern_bindings(
         Pattern::Struct { name, fields, .. } => {
             bind_struct_pattern_fields(name, fields, scrutinee_ty, ctx)?;
         }
-        Pattern::Record { fields, .. } => {
-            let Type::Record(record_fields) = scrutinee_ty else {
-                return Err(MetelError::internal("record pattern on non-record type"));
-            };
+        Pattern::Record {
+            fields,
+            rest_binding,
+            span,
+            ..
+        } => {
+            let record_fields = record_pattern_fields(scrutinee_ty, span, ctx)?;
             for field in fields {
                 let field_ty = record_fields
                     .iter()
@@ -639,6 +658,14 @@ pub(super) fn construct_pattern_bindings(
                         MetelError::internal(format!("missing record field `{field}`"))
                     })?;
                 ctx.bind(field, field_ty);
+            }
+            if let Some((rest_name, _)) = rest_binding {
+                let remaining = record_fields
+                    .iter()
+                    .filter(|(name, _)| !fields.contains(name))
+                    .cloned()
+                    .collect();
+                ctx.bind(rest_name, Type::Record(remaining));
             }
         }
         Pattern::Array {
@@ -659,6 +686,47 @@ pub(super) fn construct_pattern_bindings(
         }
     }
     Ok(())
+}
+
+fn record_pattern_fields(
+    scrutinee_ty: &Type,
+    span: &Span,
+    ctx: &ConstructCtx,
+) -> Result<Vec<(String, Type)>, MetelError> {
+    match scrutinee_ty {
+        Type::Record(fields) => Ok(fields.clone()),
+        Type::Named(name, args, nominal_id) => {
+            let id = nominal_id
+                .get()
+                .or_else(|| ctx.registry.resolve_type_id(ctx.current_module, name))
+                .ok_or_else(|| MetelError::internal("missing nominal record identity"))?;
+            let raw_fields = ctx
+                .registry
+                .raw_struct_env()
+                .get(&id)
+                .ok_or_else(|| MetelError::internal("missing nominal record fields"))?;
+            let mut remap = super::Substitution::new();
+            if let Some(params) = ctx.registry.raw_struct_type_params().get(&id) {
+                for (&param, arg) in params.iter().zip(args) {
+                    remap.bind(param, super::type_to_infer(arg));
+                }
+            }
+            raw_fields
+                .iter()
+                .map(|field| {
+                    Ok((
+                        field.name.clone(),
+                        super::infer_type_to_type(&remap.apply(&field.ty), span)?,
+                    ))
+                })
+                .collect()
+        }
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            "record rest pattern requires a record value",
+            span,
+        )),
+    }
 }
 
 pub(super) fn extract_type_args_from_type(ty: &Type) -> Vec<Type> {

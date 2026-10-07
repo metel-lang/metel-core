@@ -1443,7 +1443,43 @@ pub(super) fn collect_fun_row_exclusions(
     fun: &FunDecl,
     generic_map: &HashMap<String, TypeVar>,
 ) -> HashMap<TypeVar, Vec<String>> {
-    fun.where_clause
+    let mut exclusions: HashMap<TypeVar, Vec<String>> = HashMap::new();
+    for param in &fun.generics {
+        let Some(&tv) = generic_map.get(&param.name) else {
+            continue;
+        };
+        for row in param
+            .bounds
+            .iter()
+            .filter(|bound| bound.polarity == Polarity::Negative)
+            .filter_map(Bound::row_bound)
+        {
+            exclusions
+                .entry(tv)
+                .or_default()
+                .extend(row.fields.iter().map(|field| field.label.clone()));
+        }
+    }
+    if let Some(where_clause) = &fun.where_clause {
+        for constraint in &where_clause.constraints {
+            let Some(&tv) = generic_map.get(&constraint.name) else {
+                continue;
+            };
+            for row in constraint
+                .bounds
+                .iter()
+                .filter(|bound| bound.polarity == Polarity::Negative)
+                .filter_map(Bound::row_bound)
+            {
+                exclusions
+                    .entry(tv)
+                    .or_default()
+                    .extend(row.fields.iter().map(|field| field.label.clone()));
+            }
+        }
+    }
+    for (tv, labels) in fun
+        .where_clause
         .iter()
         .flat_map(|wc| wc.row_equations.iter())
         .filter_map(|equation| {
@@ -1455,10 +1491,13 @@ pub(super) fn collect_fun_row_exclusions(
                     .fields
                     .iter()
                     .map(|(label, _)| label.clone())
-                    .collect(),
+                    .collect::<Vec<_>>(),
             ))
         })
-        .collect()
+    {
+        exclusions.entry(tv).or_default().extend(labels);
+    }
+    exclusions
 }
 
 pub(super) fn infer_program(

@@ -1,0 +1,9 @@
+fun bad<row R>(r: { ..R }) -> i64 {
+    match (r) {
+        { id, ..rest } => id // ERROR[T0012]
+    }
+}
+
+fun main() -> i64 {
+    bad({ other = 1 })
+}

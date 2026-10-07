@@ -184,8 +184,11 @@ fn collect_closure_expr_uses(
                 collect_closure_expr_uses(item, bound, reads, writes, spans);
             }
         }
-        Expr::RecordLiteral { fields, .. } => {
+        Expr::RecordLiteral { fields, spread, .. } => {
             for (_, value) in fields {
+                collect_closure_expr_uses(value, bound, reads, writes, spans);
+            }
+            if let Some((value, _, _)) = spread {
                 collect_closure_expr_uses(value, bound, reads, writes, spans);
             }
         }
@@ -318,9 +321,18 @@ fn collect_pattern_bindings(
             }
         }
         crate::data::ast::Pattern::EnumVariant { fields, .. }
-        | crate::data::ast::Pattern::Struct { fields, .. }
-        | crate::data::ast::Pattern::Record { fields, .. } => {
+        | crate::data::ast::Pattern::Struct { fields, .. } => {
             bound.extend(fields.iter().cloned());
+        }
+        crate::data::ast::Pattern::Record {
+            fields,
+            rest_binding,
+            ..
+        } => {
+            bound.extend(fields.iter().cloned());
+            if let Some((name, _)) = rest_binding {
+                bound.insert(name.clone());
+            }
         }
         crate::data::ast::Pattern::Wildcard(_) | crate::data::ast::Pattern::Literal(_, _) => {}
     }
@@ -902,7 +914,11 @@ pub(super) fn construct_expr(
             let ty = Type::Tuple(typed.iter().map(|e| e.ty().clone()).collect());
             Ok(TypedExpr::Tuple(typed, ty, span.clone()))
         }
-        Expr::RecordLiteral { fields, span } => {
+        Expr::RecordLiteral {
+            fields,
+            spread,
+            span,
+        } => {
             let expected_record = match expected_ty {
                 Some(Type::Record(fields)) => Some(fields),
                 _ => None,
@@ -917,19 +933,60 @@ pub(super) fn construct_expr(
                 });
                 typed_fields.push((name.clone(), construct_expr(expr, hint, ctx)?));
             }
-            let ty = expected_record.map_or_else(
-                || {
-                    Type::Record(
-                        typed_fields
+            let typed_spread = spread
+                .as_ref()
+                .map(|(expr, index, _)| Ok((Box::new(construct_expr(expr, None, ctx)?), *index)))
+                .transpose()?;
+            let mut result_fields = if let Some((spread, _)) = &typed_spread {
+                match spread.ty() {
+                    Type::Record(fields) | Type::Residual { fields, .. } => fields.clone(),
+                    Type::Named(name, args, nominal_id) => {
+                        let id = nominal_id
+                            .get()
+                            .or_else(|| ctx.registry.resolve_type_id(ctx.current_module, name));
+                        let raw_fields = id
+                            .and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                            .ok_or_else(|| {
+                            MetelError::internal(format!(
+                                "missing fields for record spread `{name}`"
+                            ))
+                        })?;
+                        let mut remap = Substitution::new();
+                        if let Some(params) =
+                            id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
+                        {
+                            for (&param, arg) in params.iter().zip(args) {
+                                remap.bind(param, type_to_infer(arg));
+                            }
+                        }
+                        raw_fields
                             .iter()
-                            .map(|(name, expr)| (name.clone(), expr.ty().clone()))
-                            .collect(),
-                    )
-                },
+                            .map(|field| {
+                                Ok((
+                                    field.name.clone(),
+                                    infer_type_to_type(&remap.apply(&field.ty), span)?,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, MetelError>>()?
+                    }
+                    _ => Vec::new(),
+                }
+            } else {
+                Vec::new()
+            };
+            result_fields.extend(
+                typed_fields
+                    .iter()
+                    .map(|(name, expr)| (name.clone(), expr.ty().clone())),
+            );
+            result_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            let ty = expected_record.map_or_else(
+                || Type::Record(result_fields),
                 |expected_fields| Type::Record(expected_fields.clone()),
             );
             Ok(TypedExpr::RecordLiteral {
                 fields: typed_fields,
+                spread: typed_spread,
                 ty,
                 span: span.clone(),
             })
@@ -1969,6 +2026,7 @@ pub(super) fn construct_expr(
             };
             Ok(TypedExpr::RecordLiteral {
                 fields: projected_fields,
+                spread: None,
                 ty,
                 span: span.clone(),
             })

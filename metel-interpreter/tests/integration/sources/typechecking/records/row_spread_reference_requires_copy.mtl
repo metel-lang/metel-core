@@ -1,0 +1,5 @@
+fun bad(r: &{ data: String }) -> { data: String } {
+    { ..r } // ERROR[T0033]
+}
+
+fun main() {}

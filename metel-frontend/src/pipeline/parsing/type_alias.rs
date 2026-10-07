@@ -925,8 +925,11 @@ impl Expander<'_> {
                     self.walk_expr(e)?;
                 }
             }
-            Expr::RecordLiteral { fields, .. } => {
+            Expr::RecordLiteral { fields, spread, .. } => {
                 for (_, e) in fields {
+                    self.walk_expr(e)?;
+                }
+                if let Some((e, _, _)) = spread {
                     self.walk_expr(e)?;
                 }
             }

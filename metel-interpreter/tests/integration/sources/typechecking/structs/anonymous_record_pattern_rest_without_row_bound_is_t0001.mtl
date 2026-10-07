@@ -1,9 +1,0 @@
-// #646's row-bound rest support is scoped to a row-bounded generic type parameter --
-// a concrete anonymous record scrutinee (no row bound at all) still has no open-row
-// support, since `unify`'s InferType::Record arm is exact-match only.
-fun main() {
-    let p := { x = 1.0, y = 2.0 };
-    match (p) {
-        { x, .. } => println("x is ${x}"),
-    }
-}

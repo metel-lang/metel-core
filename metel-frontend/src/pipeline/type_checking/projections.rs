@@ -897,7 +897,16 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            Expr::RecordLiteral { fields, .. } | Expr::StructLiteral { fields, .. } => {
+            Expr::RecordLiteral { fields, spread, .. } => {
+                for (_, value) in fields {
+                    self.expr(value, generics, self_allowed, self_target, local_types)?;
+                }
+                if let Some((value, _, _)) = spread {
+                    self.expr(value, generics, self_allowed, self_target, local_types)?;
+                }
+                Ok(())
+            }
+            Expr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
                     self.expr(value, generics, self_allowed, self_target, local_types)?;
                 }

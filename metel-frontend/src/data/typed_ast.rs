@@ -391,6 +391,8 @@ pub enum TypedExpr {
     Array(Vec<TypedExpr>, Type, Span),
     RecordLiteral {
         fields: Vec<(String, TypedExpr)>,
+        /// Optional typed spread and its insertion position among `fields`.
+        spread: Option<(Box<TypedExpr>, usize)>,
         ty: Type,
         span: Span,
     },
@@ -734,6 +736,8 @@ pub enum TypedPattern {
     /// introduces (ADR-0054 / #1052).
     Record {
         fields: Vec<(String, Option<LocalId>)>,
+        /// The name and lexical identity of the owned anonymous remainder binding.
+        rest_binding: Option<(String, Option<LocalId>)>,
         rest: bool,
         span: Span,
     },

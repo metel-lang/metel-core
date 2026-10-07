@@ -319,9 +319,11 @@ capture_list = { "[" ~ (capture_item ~ ("," ~ capture_item)* ~ ","?)? ~ "]" }
 capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "(" ~ ")" | ident }
 
 struct_literal = { type_path ~ "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
-record_lit = { "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
+record_lit = { "{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
 record_projection_expr = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 field_init     = { ident ~ ("=" ~ expr)? }
+record_initializer = { record_spread | field_init }
+record_spread = { ".." ~ expr }
 
 path_expr = { path_root ~ ("::" ~ ident)* }
 type_path = { path_root ~ ("::" ~ ident)* }
@@ -346,8 +348,10 @@ rest_pat        = { ".." ~ ident }
 // the fields not named, so an external pattern can skip private fields it isn't
 // allowed to name. Always last, never followed by a trailing comma.
 record_rest     = { ".." }
+record_rest_binding = { ".." ~ ident }
+record_field_pat_list = { ident ~ ("," ~ ident)* ~ ("," ~ (record_rest_binding | record_rest))? ~ ","? | record_rest_binding | record_rest }
 field_pat_list  = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }
-record_pattern  = { "{" ~ field_pat_list ~ "}" }
+record_pattern  = { "{" ~ record_field_pat_list ~ "}" }
 enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ field_pat_list ~ "}")?           // qualified: Enum::Variant, optional fields
                   | ident ~ "{" ~ field_pat_list ~ "}" }                           // RFC-0107: bare fieldful variant (Some { value })
 literal_pattern = { float_lit_suffixed | float_lit | int_lit_suffixed | int_lit | string_lit | char_lit | bool_lit }

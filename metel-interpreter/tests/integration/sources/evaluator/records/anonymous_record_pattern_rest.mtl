@@ -1,0 +1,7 @@
+// RFC-0178: bare `..` remains a discard-only rest pattern on concrete records.
+fun main() {
+    let p := { x = 1.0, y = 2.0 };
+    match (p) {
+        { x, .. } => println("x is ${x}"),
+    }
+}

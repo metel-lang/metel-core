@@ -786,11 +786,18 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
         }),
         Expr::Tuple(es, s) => Expr::Tuple(es.iter().map(go).collect(), s.clone()),
         Expr::Array(es, s) => Expr::Array(es.iter().map(go).collect(), s.clone()),
-        Expr::RecordLiteral { fields, span } => Expr::RecordLiteral {
+        Expr::RecordLiteral {
+            fields,
+            spread,
+            span,
+        } => Expr::RecordLiteral {
             fields: fields
                 .iter()
                 .map(|(name, expr)| (name.clone(), go(expr)))
                 .collect(),
+            spread: spread.as_ref().map(|(expr, index, spread_span)| {
+                (Box::new(go(expr)), *index, spread_span.clone())
+            }),
             span: span.clone(),
         },
         Expr::RepeatArray(e, n, s) => Expr::RepeatArray(Box::new(go(e)), *n, s.clone()),

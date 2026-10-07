@@ -444,10 +444,13 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
             elaborate_block(body, cx);
         }
         TypedExpr::Match(m) => elaborate_match(m, cx),
-        TypedExpr::StructLiteral { fields, .. } | TypedExpr::RecordLiteral { fields, .. } => {
+        TypedExpr::StructLiteral { fields, .. } => {
             for (_, e) in fields.iter_mut() {
                 elaborate_expr(e, cx);
             }
+        }
+        TypedExpr::RecordLiteral { fields, spread, .. } => {
+            elaborate_record_literal(fields, spread, cx);
         }
         TypedExpr::Return(r) => {
             if let Some(v) = &mut r.value {
@@ -464,6 +467,19 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
         | TypedExpr::Literal(..)
         | TypedExpr::Ident(..)
         | TypedExpr::Path { .. } => {}
+    }
+}
+
+fn elaborate_record_literal(
+    fields: &mut [(String, TypedExpr)],
+    spread: &mut Option<(Box<TypedExpr>, usize)>,
+    cx: &ElabCtx<'_>,
+) {
+    for (_, expr) in fields {
+        elaborate_expr(expr, cx);
+    }
+    if let Some((expr, _)) = spread {
+        elaborate_expr(expr, cx);
     }
 }
 

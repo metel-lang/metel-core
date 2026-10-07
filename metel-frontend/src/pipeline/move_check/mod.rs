@@ -803,7 +803,10 @@ impl<'a> Checker<'a> {
                     self.observe_expr(item, current_module, state);
                 }
             }
-            TypedExpr::RecordLiteral { fields, .. } | TypedExpr::StructLiteral { fields, .. } => {
+            TypedExpr::RecordLiteral { fields, spread, .. } => {
+                self.consume_record_literal(fields, spread.as_ref(), current_module, state);
+            }
+            TypedExpr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
                     self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
                 }
@@ -910,6 +913,26 @@ impl<'a> Checker<'a> {
                 }
                 self.reach_loop_exit(state);
                 state.diverged = true;
+            }
+        }
+    }
+
+    fn consume_record_literal(
+        &mut self,
+        fields: &[(String, TypedExpr)],
+        spread: Option<&(Box<TypedExpr>, usize)>,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        let spread_index = spread.as_ref().map_or(usize::MAX, |(_, index)| *index);
+        for index in 0..=fields.len() {
+            if index == spread_index
+                && let Some((value, _)) = spread
+            {
+                self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
+            }
+            if let Some((_, value)) = fields.get(index) {
+                self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
             }
         }
     }
@@ -1437,22 +1460,27 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            TypedPattern::Record { fields, .. } => {
-                for (field, _local) in fields {
-                    let child = place
-                        .clone()
-                        .with_projection(Projection::field(field.clone()));
-                    self.consume_place(
-                        &child,
-                        root_ty,
-                        use_span,
-                        current_module,
-                        state,
-                        MoveCause::Other,
-                    );
-                    state.bind(field);
-                }
+            TypedPattern::Record {
+                rest_binding: Some(_),
+                ..
+            } => {
+                self.apply_record_rest_binding_move(
+                    pattern,
+                    place,
+                    root_ty,
+                    use_span,
+                    current_module,
+                    state,
+                );
             }
+            TypedPattern::Record { fields, .. } => self.apply_record_field_moves(
+                fields,
+                place,
+                root_ty,
+                use_span,
+                current_module,
+                state,
+            ),
             TypedPattern::Struct { fields, .. } => {
                 for (field, id, _local) in fields {
                     let child = place
@@ -1503,6 +1531,62 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn apply_record_rest_binding_move(
+        &mut self,
+        pattern: &TypedPattern,
+        place: &Place,
+        root_ty: &Type,
+        use_span: &Span,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        let TypedPattern::Record {
+            fields,
+            rest_binding: Some((rest, _)),
+            ..
+        } = pattern
+        else {
+            unreachable!("rest binding helper only receives record rest patterns")
+        };
+        self.consume_place(
+            place,
+            root_ty,
+            use_span,
+            current_module,
+            state,
+            MoveCause::Other,
+        );
+        for (field, _) in fields {
+            state.bind(field);
+        }
+        state.bind(rest);
+    }
+
+    fn apply_record_field_moves(
+        &mut self,
+        fields: &[(String, Option<crate::identity::LocalId>)],
+        place: &Place,
+        root_ty: &Type,
+        use_span: &Span,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        for (field, _) in fields {
+            let child = place
+                .clone()
+                .with_projection(Projection::field(field.clone()));
+            self.consume_place(
+                &child,
+                root_ty,
+                use_span,
+                current_module,
+                state,
+                MoveCause::Other,
+            );
+            state.bind(field);
+        }
+    }
+
     fn observe_pattern_bindings(pattern: &TypedPattern, state: &mut FlowState) {
         match pattern {
             TypedPattern::Binding(name, _, _) => state.bind(name),
@@ -1511,9 +1595,16 @@ impl<'a> Checker<'a> {
                     Self::observe_pattern_bindings(item, state);
                 }
             }
-            TypedPattern::Record { fields, .. } => {
+            TypedPattern::Record {
+                fields,
+                rest_binding,
+                ..
+            } => {
                 for (field, _local) in fields {
                     state.bind(field);
+                }
+                if let Some((rest, _)) = rest_binding {
+                    state.bind(rest);
                 }
             }
             TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
@@ -2595,6 +2686,24 @@ impl FreeRootCollector {
         }
     }
 
+    fn expr_record_literal(
+        &mut self,
+        fields: &[(String, TypedExpr)],
+        spread: Option<&(Box<TypedExpr>, usize)>,
+    ) {
+        let spread_index = spread.as_ref().map_or(usize::MAX, |(_, index)| *index);
+        for index in 0..=fields.len() {
+            if index == spread_index
+                && let Some((value, _)) = spread
+            {
+                self.expr(value);
+            }
+            if let Some((_, value)) = fields.get(index) {
+                self.expr(value);
+            }
+        }
+    }
+
     fn expr(&mut self, expr: &TypedExpr) {
         match expr {
             TypedExpr::Ident(name, _, ty, _) => self.capture_if_free(name, ty),
@@ -2603,7 +2712,10 @@ impl FreeRootCollector {
                     self.expr(item);
                 }
             }
-            TypedExpr::RecordLiteral { fields, .. } | TypedExpr::StructLiteral { fields, .. } => {
+            TypedExpr::RecordLiteral { fields, spread, .. } => {
+                self.expr_record_literal(fields, spread.as_ref());
+            }
+            TypedExpr::StructLiteral { fields, .. } => {
                 for (_, value) in fields {
                     self.expr(value);
                 }
@@ -2641,21 +2753,7 @@ impl FreeRootCollector {
                 self.expr(object);
                 self.expr(index);
             }
-            TypedExpr::Match(m) => {
-                self.expr(&m.scrutinee);
-                for arm in &m.arms {
-                    self.scope_stack.push(HashSet::new());
-                    bind_pattern_names(
-                        &arm.pattern,
-                        self.scope_stack.last_mut().expect("scope exists"),
-                    );
-                    if let Some(guard) = &arm.guard {
-                        self.expr(guard);
-                    }
-                    self.block(&arm.body);
-                    self.scope_stack.pop();
-                }
-            }
+            TypedExpr::Match(m) => self.expr_match(m),
             TypedExpr::If {
                 condition,
                 then_branch,
@@ -2695,6 +2793,22 @@ impl FreeRootCollector {
                 }
             }
             TypedExpr::Literal(..) | TypedExpr::Path { .. } | TypedExpr::Continue(_) => {}
+        }
+    }
+
+    fn expr_match(&mut self, m: &crate::data::typed_ast::TypedMatchExpr) {
+        self.expr(&m.scrutinee);
+        for arm in &m.arms {
+            self.scope_stack.push(HashSet::new());
+            bind_pattern_names(
+                &arm.pattern,
+                self.scope_stack.last_mut().expect("scope exists"),
+            );
+            if let Some(guard) = &arm.guard {
+                self.expr(guard);
+            }
+            self.block(&arm.body);
+            self.scope_stack.pop();
         }
     }
 
@@ -2838,9 +2952,16 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
                 into.insert(field.clone());
             }
         }
-        TypedPattern::Record { fields, .. } => {
+        TypedPattern::Record {
+            fields,
+            rest_binding,
+            ..
+        } => {
             for (field, _local) in fields {
                 into.insert(field.clone());
+            }
+            if let Some((rest, _)) = rest_binding {
+                into.insert(rest.clone());
             }
         }
         TypedPattern::Array { elems, rest, .. } => {

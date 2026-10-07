@@ -375,9 +375,17 @@ impl Walker<'_, '_> {
                     self.resolve_arm(arm);
                 }
             }
-            Expr::StructLiteral { fields, .. } | Expr::RecordLiteral { fields, .. } => {
+            Expr::StructLiteral { fields, .. } => {
                 for (_, v) in fields {
                     self.resolve_expr(v);
+                }
+            }
+            Expr::RecordLiteral { fields, spread, .. } => {
+                for (_, v) in fields {
+                    self.resolve_expr(v);
+                }
+                if let Some((value, _, _)) = spread {
+                    self.resolve_expr(value);
                 }
             }
             Expr::Return(r) => {
@@ -428,11 +436,21 @@ fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
     match pattern {
         Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         Pattern::Binding(name, _) => bind(name),
-        Pattern::EnumVariant { fields, .. }
-        | Pattern::Struct { fields, .. }
-        | Pattern::Record { fields, .. } => {
+        Pattern::EnumVariant { fields, .. } | Pattern::Struct { fields, .. } => {
             for f in fields {
                 bind(f);
+            }
+        }
+        Pattern::Record {
+            fields,
+            rest_binding,
+            ..
+        } => {
+            for f in fields {
+                bind(f);
+            }
+            if let Some((name, _)) = rest_binding {
+                bind(name);
             }
         }
         Pattern::Tuple(elems, _) => {

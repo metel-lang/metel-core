@@ -11,6 +11,7 @@ use super::{
     type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
     type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
 };
+use crate::pipeline::type_checking::type_engine::RowDecompositions;
 use std::collections::HashSet;
 
 // scatter one coherent dispatch table across many small functions with no
@@ -744,6 +745,30 @@ pub(super) fn infer_fun_decl(
     }
     let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
     let row_exclusions = collect_fun_row_exclusions(fun, &generic_map);
+    let mut row_decompositions: RowDecompositions = fun
+        .where_clause
+        .iter()
+        .flat_map(|where_clause| where_clause.row_equations.iter())
+        .filter_map(|equation| {
+            let &source = generic_map.get(equation.var.as_str())?;
+            let tail = equation
+                .tail
+                .var
+                .as_deref()
+                .and_then(|name| generic_map.get(name).copied());
+            let fields = equation
+                .fields
+                .iter()
+                .map(|(label, ty)| {
+                    (
+                        label.clone(),
+                        type_expr_to_infer_with_ctx(ty, &generic_map, ctx),
+                    )
+                })
+                .collect();
+            Some((source, (fields, tail)))
+        })
+        .collect();
     if !assoc_eq_by_var.is_empty() {
         ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var.clone());
     }
@@ -829,6 +854,33 @@ pub(super) fn infer_fun_decl(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    // An open-record parameter is represented by a fresh value type variable
+    // carrying the row-bound kind. Preserve its declared tail as a body-local
+    // decomposition so row facts on `R` (including `!{label}` and `where`
+    // equations) remain available when the parameter value itself is spread
+    // or destructured.
+    for (param, param_ty) in fun.params.iter().zip(&param_types) {
+        let (Some(TypeExpr::OpenRecord(fields, tail)), InferType::Var(source)) =
+            (&param.type_ann, param_ty)
+        else {
+            continue;
+        };
+        let tail_var = tail
+            .var
+            .as_deref()
+            .and_then(|name| generic_map.get(name).copied());
+        let fields = fields
+            .iter()
+            .map(|(label, ty)| {
+                (
+                    label.clone(),
+                    type_expr_to_infer_with_ctx(ty, &generic_map, ctx),
+                )
+            })
+            .collect();
+        row_decompositions.insert(*source, (fields, tail_var));
+    }
+
     // RFC-0037: return-position `impl Aspect`. When the return-type annotation
     // contains `ImplAspect` nodes (top-level or nested in Tuple/Array/etc.),
     // rewrite them into fresh anonymous type-param names, create marker TypeVars
@@ -871,6 +923,7 @@ pub(super) fn infer_fun_decl(
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let saved_neg_tp_bounds = ctx.swap_negative_type_param_bounds(neg_type_var_bounds.clone());
     let saved_row_exclusions = ctx.swap_row_exclusions(row_exclusions);
+    let saved_row_decompositions = ctx.swap_row_decompositions(row_decompositions);
     install_assoc_eq_facts(ctx, &assoc_eq_by_var, &fun.span);
     let saved_projection_tail_constraints =
         ctx.swap_projection_tail_constraints(open_record_projection_tail_constraints);
@@ -893,6 +946,7 @@ pub(super) fn infer_fun_decl(
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
     ctx.swap_row_exclusions(saved_row_exclusions);
+    ctx.swap_row_decompositions(saved_row_decompositions);
     ctx.swap_projection_tail_constraints(saved_projection_tail_constraints);
     ctx.swap_negative_type_param_bounds(saved_neg_tp_bounds);
     ctx.swap_type_param_bounds(saved_tp_bounds);

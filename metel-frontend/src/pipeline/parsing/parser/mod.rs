@@ -1671,9 +1671,23 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
             shift_block_span(body, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::StructLiteral { fields, span, .. } | Expr::RecordLiteral { fields, span } => {
+        Expr::StructLiteral { fields, span, .. } => {
             for (_, expr) in fields {
                 shift_expr_span(expr, base_start, base_line, base_col);
+            }
+            shift_span(span, base_start, base_line, base_col);
+        }
+        Expr::RecordLiteral {
+            fields,
+            spread,
+            span,
+        } => {
+            for (_, expr) in fields {
+                shift_expr_span(expr, base_start, base_line, base_col);
+            }
+            if let Some((expr, _, spread_span)) = spread {
+                shift_expr_span(expr, base_start, base_line, base_col);
+                shift_span(spread_span, base_start, base_line, base_col);
             }
             shift_span(span, base_start, base_line, base_col);
         }
@@ -1843,12 +1857,23 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
         }
         | Pattern::Struct {
             span, field_spans, ..
-        }
-        | Pattern::Record {
-            span, field_spans, ..
         } => {
             for fs in field_spans.iter_mut() {
                 shift_span(fs, base_start, base_line, base_col);
+            }
+            shift_span(span, base_start, base_line, base_col);
+        }
+        Pattern::Record {
+            span,
+            field_spans,
+            rest_binding,
+            ..
+        } => {
+            for fs in field_spans.iter_mut() {
+                shift_span(fs, base_start, base_line, base_col);
+            }
+            if let Some((_, rest_span)) = rest_binding {
+                shift_span(rest_span, base_start, base_line, base_col);
             }
             shift_span(span, base_start, base_line, base_col);
         }
@@ -2135,23 +2160,71 @@ fn parse_record_literal(
 ) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
     let mut fields = vec![];
+    let mut spread = None;
     for p in pair.into_inner() {
-        if p.as_rule() == Rule::field_init {
-            let field_span = Span::of(&p, filename);
-            let mut it = p.into_inner();
-            let name_pair = it
+        if p.as_rule() == Rule::record_initializer {
+            let initializer = p
+                .into_inner()
                 .next()
-                .ok_or_else(|| MetelError::internal("record_lit: expected field name"))?;
-            let name = name_pair.as_str().to_string();
-            let value = match it.next() {
-                Some(expr_pair) => parse_expr(expr_pair, filename)?,
-                None => Expr::Ident(name.clone(), field_span),
-            };
-            fields.push((name, value));
+                .ok_or_else(|| MetelError::internal("record_initializer: missing initializer"))?;
+            if initializer.as_rule() == Rule::record_spread {
+                if spread.is_some() {
+                    return Err(MetelError::parse(
+                        ParseErrorCode::P0001,
+                        "a record literal may contain at most one `..` spread",
+                        &Span::of(&initializer, filename),
+                    ));
+                }
+                let spread_span = Span::of(&initializer, filename);
+                let expr_pair = initializer
+                    .into_inner()
+                    .next()
+                    .ok_or_else(|| MetelError::internal("record_spread: missing expression"))?;
+                spread = Some((
+                    Box::new(parse_expr(expr_pair, filename)?),
+                    fields.len(),
+                    spread_span,
+                ));
+            } else if initializer.as_rule() == Rule::field_init {
+                let field_span = Span::of(&initializer, filename);
+                let mut it = initializer.into_inner();
+                let name_pair = it
+                    .next()
+                    .ok_or_else(|| MetelError::internal("record_lit: expected field name"))?;
+                let name = name_pair.as_str().to_string();
+                let value = match it.next() {
+                    Some(expr_pair) => parse_expr(expr_pair, filename)?,
+                    None => Expr::Ident(name.clone(), field_span),
+                };
+                fields.push((name, value));
+            }
         }
     }
-    sort_record_fields(&mut fields, filename, &span)?;
-    Ok(Expr::RecordLiteral { fields, span })
+    check_record_literal_labels(&fields, filename, &span)?;
+    Ok(Expr::RecordLiteral {
+        fields,
+        spread,
+        span,
+    })
+}
+
+fn check_record_literal_labels(
+    fields: &[(String, Expr)],
+    filename: &str,
+    span: &Span,
+) -> Result<(), MetelError> {
+    let mut labels = std::collections::HashSet::with_capacity(fields.len());
+    for (name, _) in fields {
+        if !labels.insert(name) {
+            return Err(record_duplicate_label_error(
+                name,
+                filename,
+                span,
+                "record literal",
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn parse_record_projection_expr(
@@ -2629,6 +2702,37 @@ fn parse_field_pat_list(
     (fields, field_spans, rest)
 }
 
+type ParsedRecordFieldPatList = (Vec<String>, Vec<Span>, bool, Option<(String, Span)>);
+
+fn parse_record_field_pat_list(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> ParsedRecordFieldPatList {
+    let mut fields = vec![];
+    let mut field_spans = vec![];
+    let mut rest = false;
+    let mut rest_binding = None;
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::ident => {
+                field_spans.push(Span::of(&child, filename));
+                fields.push(child.as_str().to_string());
+            }
+            Rule::record_rest => rest = true,
+            Rule::record_rest_binding => {
+                let name = child.into_inner().next();
+                if let Some(name) = name {
+                    let name_span = Span::of(&name, filename);
+                    rest_binding = Some((name.as_str().to_string(), name_span));
+                    rest = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    (fields, field_spans, rest, rest_binding)
+}
+
 #[allow(clippy::too_many_lines)]
 fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pattern, MetelError> {
     match pair.as_rule() {
@@ -2657,14 +2761,18 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             let span = Span::of(&pair, filename);
             let field_list = pair
                 .into_inner()
-                .find(|p| p.as_rule() == Rule::field_pat_list)
-                .ok_or_else(|| MetelError::internal("record_pattern: missing field_pat_list"))?;
-            let (mut fields, mut field_spans, rest) = parse_field_pat_list(field_list, filename);
+                .find(|p| p.as_rule() == Rule::record_field_pat_list)
+                .ok_or_else(|| {
+                    MetelError::internal("record_pattern: missing record_field_pat_list")
+                })?;
+            let (mut fields, mut field_spans, rest, rest_binding) =
+                parse_record_field_pat_list(field_list, filename);
             sort_record_pattern_fields(&mut fields, &mut field_spans, filename, &span)?;
             Ok(Pattern::Record {
                 fields,
                 field_spans,
                 rest,
+                rest_binding,
                 span,
             })
         }
@@ -3165,25 +3273,6 @@ fn parse_type_expr(
             "type_expr: unexpected rule {r:?}"
         ))),
     }
-}
-
-fn sort_record_fields(
-    fields: &mut [(String, Expr)],
-    filename: &str,
-    span: &Span,
-) -> Result<(), MetelError> {
-    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
-    for pair in fields.windows(2) {
-        if pair[0].0 == pair[1].0 {
-            return Err(record_duplicate_label_error(
-                &pair[0].0,
-                filename,
-                span,
-                "record literal",
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn sort_type_record_fields(

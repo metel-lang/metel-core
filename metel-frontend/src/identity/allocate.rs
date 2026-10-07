@@ -814,7 +814,15 @@ impl Walker<'_> {
                 );
                 self.walk_expr(x);
             }
-            Expr::RecordLiteral { fields, .. } | Expr::StructLiteral { fields, .. } => {
+            Expr::RecordLiteral { fields, spread, .. } => {
+                for (_, v) in fields {
+                    self.walk_expr(v);
+                }
+                if let Some((value, _, _)) = spread {
+                    self.walk_expr(value);
+                }
+            }
+            Expr::StructLiteral { fields, .. } => {
                 for (_, v) in fields {
                     self.walk_expr(v);
                 }
@@ -956,11 +964,6 @@ impl Walker<'_> {
                 fields,
                 field_spans,
                 ..
-            }
-            | Pattern::Record {
-                fields,
-                field_spans,
-                ..
             } => {
                 for (i, f) in fields.iter().enumerate() {
                     // Real per-field spans since metel-core#1052; the sentinel is
@@ -974,6 +977,33 @@ impl Walker<'_> {
                         &span,
                         DefinitionKind::PatternBinding,
                         LexicalSeg::PatternField(f.clone()),
+                    );
+                }
+            }
+            Pattern::Record {
+                fields,
+                field_spans,
+                rest_binding,
+                ..
+            } => {
+                for (i, f) in fields.iter().enumerate() {
+                    let span = field_spans
+                        .get(i)
+                        .cloned()
+                        .unwrap_or_else(|| Span::new(0, 0, "<pattern>"));
+                    self.bind(
+                        f,
+                        &span,
+                        DefinitionKind::PatternBinding,
+                        LexicalSeg::PatternField(f.clone()),
+                    );
+                }
+                if let Some((name, rest_span)) = rest_binding {
+                    self.bind(
+                        name,
+                        rest_span,
+                        DefinitionKind::PatternBinding,
+                        LexicalSeg::PatternField(name.clone()),
                     );
                 }
             }

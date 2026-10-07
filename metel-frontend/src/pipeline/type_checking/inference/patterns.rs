@@ -142,8 +142,25 @@ pub(super) fn infer_pattern(
             fields,
             field_spans: _,
             rest,
+            rest_binding,
             span: pat_span,
         } => {
+            if rest_binding.is_some()
+                && matches!(
+                    scrutinee_ty,
+                    InferType::Reference(_) | InferType::MutReference(_)
+                )
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    "record remainder patterns require an owned scrutinee; borrowing the remainder is not supported",
+                    pat_span,
+                ));
+            }
+            let remainder_ty = rest_binding
+                .as_ref()
+                .map(|_| infer_record_remainder(fields, scrutinee_ty, pat_span, ctx))
+                .transpose()?;
             // #646: an abstract, row-bounded generic type parameter (`<record T:
             // { x: f64, .. }>`) has no concrete field count for `unify`'s exact-match
             // `InferType::Record` arm to check against -- resolve it the same way
@@ -215,22 +232,64 @@ pub(super) fn infer_pattern(
                         None => unreachable!("row bound already confirmed present above"),
                     }
                 }
+                if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
+                    ctx.bind_mono(rest_name, rest_ty, false);
+                }
+            } else if rest_binding.is_some() {
+                let record_fields = match &peeled {
+                    InferType::Record(record_fields) => record_fields.clone(),
+                    InferType::Named(name, args, _) => {
+                        nominal_record_fields(name, args, pat_span, ctx)?
+                    }
+                    _ => {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            "record remainder pattern requires a known record decomposition",
+                            pat_span,
+                        ));
+                    }
+                };
+                for field_name in fields {
+                    let Some((_, field_ty)) =
+                        record_fields.iter().find(|(name, _)| name == field_name)
+                    else {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            format!("field `{field_name}` is not known to be present"),
+                            pat_span,
+                        ));
+                    };
+                    ctx.bind_mono(field_name, field_ty.clone(), false);
+                }
+                if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
+                    ctx.bind_mono(rest_name, rest_ty, false);
+                }
             } else if *rest {
-                // Anonymous records unify structurally and exactly today (see
-                // `unify`'s `InferType::Record` arm) -- no notion of "at least
-                // these fields, maybe more" yet. Reject `..` here explicitly
-                // rather than parse it and either silently ignore it or let it
-                // fail later with a confusing "cannot unify" that doesn't name
-                // the real reason. RFC-0032/0034 are about named structs, which
-                // `Pattern::Struct` above already handles; open-row anonymous
-                // record patterns (this arm) are the row-bounded case handled above --
-                // a *concrete* record scrutinee still has no open-row support.
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    "`..` is not yet supported in an anonymous record pattern -- \
-                     name every field, or match a named struct instead",
-                    pat_span,
-                ));
+                let record_fields = match &peeled {
+                    InferType::Record(record_fields) => record_fields.clone(),
+                    InferType::Named(name, args, _) => {
+                        nominal_record_fields(name, args, pat_span, ctx)?
+                    }
+                    _ => {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            "record pattern remainder requires a known record row",
+                            pat_span,
+                        ));
+                    }
+                };
+                for field_name in fields {
+                    let Some((_, field_ty)) =
+                        record_fields.iter().find(|(name, _)| name == field_name)
+                    else {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            format!("field `{field_name}` is not known to be present"),
+                            pat_span,
+                        ));
+                    };
+                    ctx.bind_mono(field_name, field_ty.clone(), false);
+                }
             } else {
                 let field_vars: Vec<(String, InferType)> = fields
                     .iter()
@@ -291,6 +350,272 @@ pub(super) fn infer_pattern(
         }
     }
     Ok(())
+}
+
+fn infer_record_remainder(
+    fields: &[String],
+    scrutinee_ty: &InferType,
+    span: &Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let solved = ctx.solve()?.apply(scrutinee_ty);
+    let facts = collect_remainder_facts(&solved, span, ctx)?;
+    build_remainder_type(fields, &solved, &facts, span, ctx)
+}
+
+struct CollectedRemainderFacts {
+    fields: Vec<(String, InferType)>,
+    tail: Option<InferType>,
+    saw_decomposition: bool,
+}
+
+fn collect_remainder_facts(
+    solved: &InferType,
+    span: &Span,
+    ctx: &mut InferContext,
+) -> Result<CollectedRemainderFacts, MetelError> {
+    let mut known_fields = Vec::new();
+    let mut tail = None;
+    let mut saw_decomposition = false;
+    let mut current = match solved {
+        InferType::Named(name, args, _) => {
+            InferType::Record(nominal_record_fields(name, args, span, ctx)?)
+        }
+        other => other.clone(),
+    };
+    let mut visited = std::collections::HashSet::new();
+    loop {
+        match current {
+            InferType::Record(mut row_fields) => {
+                known_fields.append(&mut row_fields);
+                break;
+            }
+            InferType::RowExtend {
+                mut fields,
+                tail: next,
+            } => {
+                known_fields.append(&mut fields);
+                match *next {
+                    InferType::Var(tv) => {
+                        if !visited.insert(tv) {
+                            tail = Some(InferType::Var(tv));
+                            break;
+                        }
+                        if let Some((mut decomposed, next_tail)) =
+                            ctx.row_decomposition_for_type_var(tv)
+                        {
+                            saw_decomposition = true;
+                            known_fields.append(&mut decomposed);
+                            if let Some(next_tv) = next_tail {
+                                current = InferType::Var(next_tv);
+                                continue;
+                            }
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                "the row facts do not determine the remainder type; name the open tail in a row equation",
+                                span,
+                            ));
+                        }
+                        tail = Some(InferType::Var(tv));
+                        break;
+                    }
+                    other => {
+                        current = other;
+                    }
+                }
+            }
+            InferType::Var(tv) => {
+                if !visited.insert(tv) {
+                    tail = Some(InferType::Var(tv));
+                    break;
+                }
+                if let Some((mut decomposed, next_tail)) = ctx.row_decomposition_for_type_var(tv) {
+                    saw_decomposition = true;
+                    known_fields.append(&mut decomposed);
+                    if let Some(next_tv) = next_tail {
+                        current = InferType::Var(next_tv);
+                        continue;
+                    }
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        "the row facts do not determine the remainder type; name the open tail in a row equation",
+                        span,
+                    ));
+                }
+                known_fields.extend(collect_closed_row_bound_fields(tv, span, ctx)?);
+                break;
+            }
+            other => {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!("record remainder pattern requires a record, got `{other}`"),
+                    span,
+                ));
+            }
+        }
+    }
+    Ok(CollectedRemainderFacts {
+        fields: known_fields,
+        tail,
+        saw_decomposition,
+    })
+}
+
+fn collect_closed_row_bound_fields(
+    tv: TypeVar,
+    span: &Span,
+    ctx: &mut InferContext,
+) -> Result<Vec<(String, InferType)>, MetelError> {
+    let rows = ctx
+        .bounds_for_type_var(tv)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|bound| match bound {
+            GenericBound::Row(row) => Some(row),
+            GenericBound::Aspect(_) | GenericBound::AllFields { .. } => None,
+        })
+        .collect::<Vec<_>>();
+    if rows.iter().any(|row| row.open) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            "the field is known to exist, but the remainder type cannot be determined; add a row decomposition",
+            span,
+        ));
+    }
+    let mut fields = Vec::new();
+    for field in rows.iter().flat_map(|row| &row.fields) {
+        let ty = match resolve_row_bound_field(ctx, tv, &field.label, span) {
+            Some(Ok(ty)) => ty,
+            _ => InferType::Var(ctx.fresh_row_field_var(tv, &field.label)),
+        };
+        if !fields.iter().any(|(name, _)| name == &field.label) {
+            fields.push((field.label.clone(), ty));
+        }
+    }
+    Ok(fields)
+}
+
+fn build_remainder_type(
+    fields: &[String],
+    solved: &InferType,
+    facts: &CollectedRemainderFacts,
+    span: &Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let mut remaining = facts
+        .fields
+        .iter()
+        .filter(|(name, _)| !fields.contains(name))
+        .cloned()
+        .collect::<Vec<_>>();
+    for name in fields {
+        if !known_fields_has_field(&remaining, name)
+            && !facts.fields.iter().any(|(known, _)| known == name)
+        {
+            let is_entitled = match &solved {
+                InferType::Var(tv) => resolve_row_bound_field(ctx, *tv, name, span).is_some(),
+                InferType::RowExtend { tail, .. } => match &**tail {
+                    InferType::Var(tv) => resolve_row_bound_field(ctx, *tv, name, span).is_some(),
+                    _ => false,
+                },
+                _ => false,
+            };
+            let message = if is_entitled {
+                format!(
+                    "field `{name}` is known to exist, but the remainder type cannot be determined; add a row decomposition"
+                )
+            } else {
+                format!("field `{name}` is not known to be present in this record")
+            };
+            return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
+        }
+    }
+    remaining.sort_by(|(left, _), (right, _)| left.cmp(right));
+    Ok(match &facts.tail {
+        Some(tail) if remaining.is_empty() && !facts.saw_decomposition => InferType::RowExtend {
+            fields: vec![],
+            tail: Box::new(tail.clone()),
+        },
+        Some(tail) => InferType::RowExtend {
+            fields: remaining,
+            tail: Box::new(tail.clone()),
+        },
+        None => InferType::Record(remaining),
+    })
+}
+
+pub(super) fn nominal_record_fields(
+    name: &str,
+    args: &[InferType],
+    span: &Span,
+    ctx: &InferContext,
+) -> Result<Vec<(String, InferType)>, MetelError> {
+    use crate::pipeline::type_checking::type_engine::VisibleTypeKind;
+
+    if ctx
+        .registry()
+        .visible_type_kind(ctx.current_module_path(), name)
+        != Some(VisibleTypeKind::Record)
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!(
+                "`{name}` is not a nominal `record`; only anonymous records and `record`s can be decomposed"
+            ),
+            span,
+        ));
+    }
+    let fields = ctx.get_struct_fields(name).ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("cannot determine fields of nominal record `{name}`"),
+            span,
+        )
+    })?;
+    if fields
+        .iter()
+        .any(|field| field.visibility != crate::data::ast::Visibility::Public)
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("cannot decompose nominal record `{name}` because not all fields are public"),
+            span,
+        ));
+    }
+    let params = ctx
+        .get_struct_type_params(name)
+        .cloned()
+        .unwrap_or_default();
+    let mut subst = super::Substitution::new();
+    for (param, arg) in params.iter().zip(args) {
+        subst.bind(*param, arg.clone());
+    }
+    let assumptions = ctx.current_aspect_assumptions();
+    let ty = InferType::Named(
+        name.to_string(),
+        args.to_vec(),
+        crate::data::types::NominalId::NONE,
+    );
+    if ctx.registry().infer_type_satisfies_aspect(
+        ctx.current_module_path(),
+        &ty,
+        "Drop",
+        &assumptions,
+    ) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0012,
+            format!("cannot decompose nominal record `{name}` because it implements `Drop`"),
+            span,
+        ));
+    }
+    Ok(fields
+        .iter()
+        .map(|field| (field.name.clone(), subst.apply(&field.ty)))
+        .collect())
+}
+
+fn known_fields_has_field(fields: &[(String, InferType)], name: &str) -> bool {
+    fields.iter().any(|(known, _)| known == name)
 }
 
 pub(super) fn pattern_span(pattern: &Pattern) -> &Span {

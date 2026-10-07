@@ -1833,6 +1833,17 @@ fn eval_to_value(
     Ok(eval_expr(expr, env, runtime)?.into_value_or_signal())
 }
 
+fn record_value_for_spread(value: Value, span: &Span) -> Result<Value, MetelError> {
+    match value {
+        record @ (Value::Record { .. } | Value::Struct { .. }) => Ok(record),
+        Value::Reference(cell) | Value::MutReference(cell) => Ok(cell.borrow().clone()),
+        Value::FieldReference { root, path } | Value::MutFieldReference { root, path } => {
+            read_path(&root.borrow(), &path, span)
+        }
+        _ => Err(MetelError::internal("record spread was not a record")),
+    }
+}
+
 // ── Environment ───────────────────────────────────────────────────────────────
 
 /// Activation environment — an id-indexed binding frame.
@@ -3843,14 +3854,47 @@ pub fn eval_expr(
             Ok(Signal::Value(Value::Array(Rc::new(RefCell::new(vals)))))
         }
 
-        TypedExpr::RecordLiteral { fields, .. } => {
+        TypedExpr::RecordLiteral {
+            fields,
+            spread,
+            span,
+            ..
+        } => {
             let mut values = HashMap::with_capacity(fields.len());
-            for (name, expr) in fields {
+            let mut spread_value = None;
+            let spread_index = spread.as_ref().map_or(usize::MAX, |(_, index)| *index);
+            for index in 0..=fields.len() {
+                if index == spread_index
+                    && let Some((expr, _)) = spread
+                {
+                    let value = match eval_to_value(expr, env, runtime)? {
+                        ControlFlow::Continue(value) => value,
+                        ControlFlow::Break(signal) => return Ok(signal),
+                    };
+                    spread_value = Some(value);
+                }
+                let Some((name, expr)) = fields.get(index) else {
+                    continue;
+                };
                 let value = match eval_to_value(expr, env, runtime)? {
                     ControlFlow::Continue(value) => value,
                     ControlFlow::Break(signal) => return Ok(signal),
                 };
                 values.insert(name.clone(), value);
+            }
+            if let Some(value) = spread_value {
+                let value = record_value_for_spread(value, span)?;
+                let (Value::Record {
+                    fields: spread_fields,
+                }
+                | Value::Struct {
+                    fields: spread_fields,
+                    ..
+                }) = value
+                else {
+                    return Err(MetelError::internal("record spread was not a record"));
+                };
+                values.extend(spread_fields);
             }
             Ok(Signal::Value(Value::Record { fields: values }))
         }

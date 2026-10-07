@@ -700,6 +700,8 @@ pub enum Expr {
     Array(Vec<Expr>, Span),
     RecordLiteral {
         fields: Vec<(String, Expr)>,
+        /// Optional owned row spread and its insertion position among `fields`.
+        spread: Option<(Box<Expr>, usize, Span)>,
         span: Span,
     },
     RepeatArray(Box<Expr>, u64, Span),
@@ -910,6 +912,8 @@ pub enum Pattern {
         /// See `EnumVariant::field_spans`.
         field_spans: Vec<Span>,
         rest: bool,
+        /// A named, owned remainder binding (`..name`); bare `..` leaves this empty.
+        rest_binding: Option<(String, Span)>,
         span: Span,
     },
     Tuple(Vec<Pattern>, Span),

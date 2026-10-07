@@ -267,8 +267,11 @@ fn normalize_expr(
             }
             Ok(())
         }
-        Expr::RecordLiteral { fields, .. } => {
+        Expr::RecordLiteral { fields, spread, .. } => {
             for (_, expr) in fields {
+                normalize_expr(expr, scope, current_module, module_names, symbols)?;
+            }
+            if let Some((expr, _, _)) = spread {
                 normalize_expr(expr, scope, current_module, module_names, symbols)?;
             }
             Ok(())

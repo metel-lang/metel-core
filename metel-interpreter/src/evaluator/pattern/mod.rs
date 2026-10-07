@@ -162,25 +162,43 @@ pub(super) fn match_pattern(
         // names -- the runtime value for a row-bounded generic parameter (`<record T:
         // { x: f64, .. }>`) is an ordinary `Value::Record` like any other, so the same
         // subset-match `Pattern::Struct` already does above applies here verbatim.
-        TypedPattern::Record { fields, rest, .. } => match value {
-            Value::Record {
+        TypedPattern::Record {
+            fields,
+            rest,
+            rest_binding,
+            ..
+        } => {
+            let (Value::Record {
                 fields: record_fields,
-            } => {
-                if !rest && record_fields.len() != fields.len() {
-                    return false;
-                }
-                for (field_name, local) in fields {
-                    match record_fields.get(field_name) {
-                        Some(v) => {
-                            out.push((field_name.clone(), *local, v.clone()));
-                        }
-                        None => return false,
-                    }
-                }
-                true
             }
-            _ => false,
-        },
+            | Value::Struct {
+                fields: record_fields,
+                ..
+            }) = value
+            else {
+                return false;
+            };
+            if !rest && record_fields.len() != fields.len() {
+                return false;
+            }
+            for (field_name, local) in fields {
+                match record_fields.get(field_name) {
+                    Some(v) => {
+                        out.push((field_name.clone(), *local, v.clone()));
+                    }
+                    None => return false,
+                }
+            }
+            if let Some((name, local)) = rest_binding {
+                let remainder = record_fields
+                    .iter()
+                    .filter(|(name, _)| !fields.iter().any(|(field, _)| field == *name))
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect();
+                out.push((name.clone(), *local, Value::Record { fields: remainder }));
+            }
+            true
+        }
 
         TypedPattern::Array { elems, rest, .. } => {
             match value {

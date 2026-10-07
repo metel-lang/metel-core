@@ -1,0 +1,9 @@
+fun bad<record T: { id: i64, .. }>(r: T) -> i64 {
+    match (r) {
+        { id, ..rest } => id // ERROR[T0012]
+    }
+}
+
+fun main() -> i64 {
+    bad({ id = 1, other = 2 })
+}
