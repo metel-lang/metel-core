@@ -1,0 +1,8 @@
+fun keep_visible_field(value: { discarded: String, kept: i64 }) -> i64 {
+    let { discarded: _, kept } := value;
+    kept
+}
+
+fun main() -> i64 {
+    keep_visible_field({ discarded = "not bound", kept = 42 })
+}

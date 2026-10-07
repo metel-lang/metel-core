@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.variables.record-pattern-bindings.legality-1"]
