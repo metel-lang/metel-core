@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.variables.record-pattern-bindings.legality-1", "spec.expressions.record-rest-patterns.legality-1", "spec.types.generics.open-rows.legality-4"]

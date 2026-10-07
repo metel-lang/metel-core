@@ -1,0 +1,7 @@
+fun take<row R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
+    let { x: _, ..rest } := a;
+    rest
+}
+fun main() {
+    println(take({ x = 1, z = true }, { y = 2, z = 8 }).z); // ERROR[T0001]
+}

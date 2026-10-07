@@ -1804,10 +1804,28 @@ fn backfill_row_remainders(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    for (i, remainder) in scheme.row_remainders.iter().enumerate() {
-        let Some((r_pos, removed)) = remainder else {
-            continue;
-        };
+    // Quantifier order is not dependency order. A chain of n equations needs
+    // at most n passes, including intermediates absent from the signature.
+    for _ in 0..scheme.row_remainders.len() {
+        backfill_row_remainders_pass(scheme, renaming, subst, span, registry, current_module)?;
+    }
+    Ok(())
+}
+
+fn backfill_row_remainders_pass(
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    subst: &mut Substitution,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for (i, (r_pos, removed)) in scheme
+        .row_remainders
+        .iter()
+        .enumerate()
+        .flat_map(|(index, equations)| equations.iter().map(move |equation| (index, equation)))
+    {
         let (Some(&rest_orig), Some(&r_orig)) = (
             scheme.quantified_vars.get(i),
             scheme.quantified_vars.get(*r_pos),

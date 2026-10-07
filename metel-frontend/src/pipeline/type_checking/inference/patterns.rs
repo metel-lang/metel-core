@@ -187,6 +187,9 @@ pub(super) fn infer_pattern(
                         }
                         match resolve_row_bound_field(ctx, tv, field_name, pat_span) {
                             Some(Ok(_)) => {}
+                            _ if collect_remainder_facts(&peeled, pat_span, ctx).is_ok_and(
+                                |facts| facts.fields.iter().any(|(name, _)| name == field_name),
+                            ) => {}
                             Some(Err(_)) | None => {
                                 return Err(MetelError::type_error(
                                     TypeErrorCode::T0012,
@@ -221,7 +224,27 @@ pub(super) fn infer_pattern(
             }
             .filter(|rows| !rows.is_empty());
 
-            if let Some(row_bounds) = row_bounds {
+            if let Some((rest_name, _)) = rest_binding {
+                let facts = collect_remainder_facts(&peeled, pat_span, ctx)?;
+                for field_name in fields {
+                    let field_ty = facts
+                        .fields
+                        .iter()
+                        .find(|(name, _)| name == field_name)
+                        .map(|(_, ty)| ty.clone())
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                format!("field `{field_name}` is not known to be present"),
+                                pat_span,
+                            )
+                        })?;
+                    ctx.bind_mono(field_name, field_ty, mutable);
+                }
+                if let Some(rest_ty) = remainder_ty {
+                    ctx.bind_mono(rest_name, rest_ty, mutable);
+                }
+            } else if let Some(row_bounds) = row_bounds {
                 let InferType::Var(tv) = &peeled else {
                     unreachable!("row_bounds is only Some when peeled is a Var")
                 };
@@ -288,45 +311,7 @@ pub(super) fn infer_pattern(
                 if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
                     ctx.bind_mono(rest_name, rest_ty, mutable);
                 }
-            } else if rest_binding.is_some() {
-                let record_fields = match &peeled {
-                    InferType::Record(record_fields) => record_fields.clone(),
-                    InferType::Named(name, args, _) => {
-                        nominal_record_fields(name, args, pat_span, ctx)?
-                    }
-                    _ => {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0012,
-                            "record remainder pattern requires a known record decomposition",
-                            pat_span,
-                        ));
-                    }
-                };
-                for field_name in fields {
-                    let Some((_, field_ty)) =
-                        record_fields.iter().find(|(name, _)| name == field_name)
-                    else {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0012,
-                            format!("field `{field_name}` is not known to be present"),
-                            pat_span,
-                        ));
-                    };
-                    ctx.bind_mono(field_name, field_ty.clone(), mutable);
-                }
-                for field_name in ignored_fields {
-                    if !record_fields.iter().any(|(name, _)| name == field_name) {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0012,
-                            format!("field `{field_name}` is not known to be present"),
-                            pat_span,
-                        ));
-                    }
-                }
-                if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
-                    ctx.bind_mono(rest_name, rest_ty, mutable);
-                }
-            } else if *rest {
+            } else if *rest || matches!(&peeled, InferType::Named(..)) {
                 let record_fields = match &peeled {
                     InferType::Record(record_fields) => record_fields.clone(),
                     InferType::Named(name, args, _) => {
@@ -340,6 +325,13 @@ pub(super) fn infer_pattern(
                         ));
                     }
                 };
+                if !*rest && record_fields.len() != named_fields.len() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        "record pattern must name every field or include a remainder",
+                        pat_span,
+                    ));
+                }
                 for field_name in fields {
                     let Some((_, field_ty)) =
                         record_fields.iter().find(|(name, _)| name == field_name)
@@ -515,7 +507,13 @@ fn collect_remainder_facts(
                         span,
                     ));
                 }
-                known_fields.extend(collect_closed_row_bound_fields(tv, span, ctx)?);
+                if saw_decomposition {
+                    // A named tail is an opaque row, not an empty closed record.
+                    // Presence-only bounds on that tail do not enumerate it.
+                    tail = Some(InferType::Var(tv));
+                } else {
+                    known_fields.extend(collect_closed_row_bound_fields(tv, span, ctx)?);
+                }
                 break;
             }
             other => {

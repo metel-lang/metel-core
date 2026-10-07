@@ -2,8 +2,7 @@
 // generic into the target (`Session<..R>`), whatever the impl calls it, and its
 // methods dispatch for every instantiation. With a `where R = { .., ..Rest }`
 // equation the method's result row is derived from the receiver's. The
-// derivation case is guarded -- its body is `panic` -- so it is type-checked,
-// not run.
+// derived and reverse-extension bodies are executed, including an empty tail.
 
 record Session<row R> { public id: i64, public data: { ..R } }
 
@@ -17,7 +16,18 @@ extend<row Q> Session<..Q> {
 }
 
 extend<row R, row Rest> Session<..R> where R = { token: String, ..Rest } {
-    fun authenticate(self) -> Session<..Rest> { panic("unimplemented") }
+    fun authenticate(self) -> Session<..Rest> {
+        let { id, data } := self;
+        let { token: _, ..rest } := data;
+        Session { id = id, data = rest }
+    }
+}
+
+extend<row R: !{token}> Session<..R> {
+    fun with_token(self, token: String) -> Session<{ token: String, ..R }> {
+        let { id, data } := self;
+        Session { id = id, data = { token = token, ..data } }
+    }
 }
 
 fun main() {
@@ -29,11 +39,16 @@ fun main() {
     let bare: Session<{ extra: i64 }> := Session { id = 3, data = { extra = 1 } };
     assert(bare.ident() == 3);
 
-    if (false) {
-        let r := s.authenticate();
-        assert(r.data.extra == 2);
-        let annotated: Session<{ extra: i64 }> := s.authenticate();
-        assert(annotated.id == 7);
-    }
+    let r := s.authenticate();
+    assert(r.data.extra == 2);
+    assert(r.id == 7);
+    let annotated: Session<{ extra: i64 }> := bare.with_token("new").authenticate();
+    assert(annotated.id == 3);
+    assert(annotated.data.extra == 1);
+    let empty: Session<{}> := Session { id = 9, data = {} };
+    let empty_again: Session<{}> := empty.with_token("empty").authenticate();
+    assert(empty_again.id == 9);
+    let owned := Session { id = 11, data = { name = "Ada" } };
+    assert(owned.with_token("owned").authenticate().data.name == "Ada");
     println("ok");
 }

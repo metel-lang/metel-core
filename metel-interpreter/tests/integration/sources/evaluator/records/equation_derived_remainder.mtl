@@ -1,0 +1,57 @@
+fun strip<row R, row Rest>(d: { ..R }) -> { ..Rest }
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := d;
+    rest
+}
+
+fun strip_extra<row R, row Rest>(d: { ..R }) -> { user: i64, ..Rest }
+where R = { token: String, user: i64, ..Rest } {
+    let var { token: _, ..rest } := d;
+    rest.user := rest.user + 1;
+    rest
+}
+
+fun strip_two<row R, row Mid, row Rest>(d: { ..R }) -> { ..Rest }
+where R = { token: String, ..Mid }, Mid = { user: i64, ..Rest } {
+    let { token: _, user: _, ..rest } := d;
+    rest
+}
+
+fun take<row R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
+    let { x: _, ..rest } := a;
+    rest
+}
+
+record Box<row R> { public data: { ..R } }
+record Credentials { public token: String, public name: String }
+extend<row R> Box<..R> {
+    fun strip<row Rest>(self) -> { ..Rest }
+    where R = { token: String, ..Rest } {
+        let { token: _, ..rest } := self.data;
+        rest
+    }
+    fun from_arg<row Q, row Rest>(self, d: { id: i64, ..Q }) -> { ..Rest }
+    where Q = { token: String, ..Rest } {
+        let { id: _, token: _, ..rest } := d;
+        rest
+    }
+    fun add<row Q: !{token}>(self, d: { ..Q }) -> { token: String, ..Q } {
+        { token = "new", ..d }
+    }
+}
+
+fun main() {
+    assert(strip({ token = "t", user = 3 }).user == 3);
+    assert(strip({ token = "t", owned = "kept" }).owned == "kept");
+    assert(strip(Credentials { token = "t", name = "Ada" }).name == "Ada");
+    let empty: {} := strip({ token = "only" });
+    assert(strip_extra({ token = "t", user = 3, active = true }).active);
+    assert(strip_extra({ token = "t", user = 3 }).user == 4);
+    assert(strip_two({ token = "t", user = 3, active = true }).active);
+    assert(take({ x = 1, z = true }, { y = 2, z = false }).z);
+    let b := Box { data = { token = "t", x = true } };
+    assert(b.strip().x);
+    assert(b.from_arg({ id = 1, token = "t", y = true }).y);
+    assert(b.add({ z = 5 }).z == 5);
+    println("ok");
+}

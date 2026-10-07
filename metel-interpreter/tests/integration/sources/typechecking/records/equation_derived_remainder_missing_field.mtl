@@ -1,0 +1,8 @@
+fun strip_two<row R, row Mid, row Rest>(d: { ..R }) -> { ..Rest }
+where R = { token: String, ..Mid }, Mid = { user: i64, ..Rest } {
+    let { token: _, user: _, ..rest } := d;
+    rest
+}
+fun main() {
+    strip_two({ token = "t", active = true }); // ERROR[T0012]
+}

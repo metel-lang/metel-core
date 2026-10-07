@@ -908,6 +908,18 @@ fn contains_type_var(ty: &InferType) -> bool {
 #[allow(clippy::too_many_lines)]
 // arch-implements: ["arch.type-inference.requirement-6"]
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
+    // A row with no added fields is its tail. Normalize before variable
+    // binding so `{ ..R } = R` does not spuriously fail the occurs check.
+    if let InferType::RowExtend { fields, tail } = a
+        && fields.is_empty()
+    {
+        return unify(tail, b);
+    }
+    if let InferType::RowExtend { fields, tail } = b
+        && fields.is_empty()
+    {
+        return unify(a, tail);
+    }
     match (a, b) {
         // Never is the bottom type — it coerces to any type.
         (InferType::Never, _) | (_, InferType::Never) => Ok(Substitution::new()),
@@ -1694,12 +1706,13 @@ pub struct TypeScheme {
     /// can be taken by reference, where narrowing needs no `Copy` restriction.
     pub open_row_params: Vec<bool>,
     /// RFC-0121 §2 (row decomposition): index-aligned with `quantified_vars`.
-    /// `Some((r_pos, removed))` marks the i-th quantified var as the `Rest` of a
+    /// Each `(r_pos, removed)` marks the i-th quantified var as the `Rest` of a
     /// `where R = { removed.., ..Rest }` equation: once a call has resolved the
     /// `r_pos`-th var (`R`) to a closed record, `Rest` is that record minus the
     /// `removed` labels. Backfilled at instantiation, like `assoc_projections`.
-    /// Empty when the function has no decomposition equation.
-    pub row_remainders: Vec<Option<(usize, Vec<String>)>>,
+    /// Multiple entries retain equality requirements when several parameters
+    /// share one tail. Empty when the function has no decomposition equation.
+    pub row_remainders: Vec<Vec<(usize, Vec<String>)>>,
     pub ty: InferType,
 }
 
@@ -1772,22 +1785,46 @@ impl TypeScheme {
 
     /// Record each `where R = { labels.., ..Rest }` equation on the scheme:
     /// `by_rest` maps the `Rest` var to its `R` var and the labels the equation
-    /// removes. Vars that are not quantified here are skipped.
+    /// removes. Intermediate sources in a derivation chain are quantified even
+    /// when they do not appear directly in the function type.
     #[must_use]
     pub fn with_row_remainders(
         mut self,
-        by_rest: &std::collections::HashMap<TypeVar, (TypeVar, Vec<String>)>,
+        by_rest: &std::collections::HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>>,
     ) -> Self {
         if by_rest.is_empty() {
             return self;
+        }
+        loop {
+            let mut missing: Vec<_> = by_rest
+                .iter()
+                .flat_map(|(rest, sources)| sources.iter().map(move |(source, _)| (rest, source)))
+                .filter(|(rest, source)| {
+                    self.quantified_vars.contains(rest) || self.quantified_vars.contains(source)
+                })
+                .flat_map(|(rest, source)| [*rest, *source])
+                .filter(|var| !self.quantified_vars.contains(var))
+                .collect();
+            missing.sort();
+            missing.dedup();
+            if missing.is_empty() {
+                break;
+            }
+            self.quantified_vars.extend(missing);
         }
         self.row_remainders = self
             .quantified_vars
             .iter()
             .map(|rest| {
-                let (r, labels) = by_rest.get(rest)?;
-                let r_pos = self.quantified_vars.iter().position(|v| v == r)?;
-                Some((r_pos, labels.clone()))
+                by_rest
+                    .get(rest)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|(r, labels)| {
+                        let r_pos = self.quantified_vars.iter().position(|v| v == r)?;
+                        Some((r_pos, labels.clone()))
+                    })
+                    .collect()
             })
             .collect();
         self
@@ -1933,6 +1970,7 @@ pub fn generalize_with_names(
 /// fresh type variable from `gen`. Called once per use site.
 // arch-implements: ["arch.type-inference.requirement-1"]
 pub fn instantiate(scheme: &TypeScheme, type_var_gen: &mut TypeVarGenerator) -> InferType {
+    reserve_scheme_variables(scheme, type_var_gen);
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
         subst.bind(var, InferType::Var(type_var_gen.fresh()));
@@ -1946,6 +1984,7 @@ pub fn instantiate_with_renaming(
     scheme: &TypeScheme,
     type_var_gen: &mut TypeVarGenerator,
 ) -> (InferType, HashMap<TypeVar, TypeVar>) {
+    reserve_scheme_variables(scheme, type_var_gen);
     let mut renaming = HashMap::with_capacity(scheme.quantified_vars.len());
     let mut subst = Substitution::new();
     for &var in &scheme.quantified_vars {
@@ -1954,6 +1993,21 @@ pub fn instantiate_with_renaming(
         renaming.insert(var, fresh);
     }
     (subst.apply(&scheme.ty), renaming)
+}
+
+fn reserve_scheme_variables(scheme: &TypeScheme, type_var_gen: &mut TypeVarGenerator) {
+    // Imported schemes may retain registry IDs ahead of this module's generator.
+    // Renaming into that same range can create a permutation cycle in `apply`.
+    let highest = scheme
+        .quantified_vars
+        .iter()
+        .copied()
+        .chain(free_vars(&scheme.ty))
+        .map(|var| var.0)
+        .max();
+    if let Some(highest) = highest {
+        type_var_gen.counter = type_var_gen.counter.max(highest + 1);
+    }
 }
 
 // ── Enum environment ─────────────────────────────────────────────────────────
@@ -3888,6 +3942,12 @@ impl TypeDefinitionRegistry {
     ) -> Option<Vec<(String, InferType)>> {
         match arg {
             InferType::Record(fields) | InferType::Residual { fields, .. } => Some(fields.clone()),
+            InferType::RowExtend { fields, tail } => {
+                let mut fields = fields.clone();
+                fields.extend(self.row_condition_fields(current_module, tail)?);
+                fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                Some(fields)
+            }
             InferType::Named(name, args, _) => {
                 let (id, _, templates) = self.projection_struct_fields(current_module, name)?;
                 let mut subst = Substitution::new();
@@ -5750,7 +5810,22 @@ impl InferContext {
 
     #[must_use]
     pub fn row_decomposition_for_type_var(&self, tv: TypeVar) -> Option<RowDecomposition> {
-        self.current_row_decompositions.get(&tv).cloned()
+        self.current_row_decompositions
+            .get(&tv)
+            .cloned()
+            .or_else(|| {
+                let resolved = self.cached_subst.apply(&InferType::Var(tv));
+                self.current_row_decompositions
+                    .iter()
+                    .find_map(|(candidate, decomposition)| {
+                        let aliases_own_tail = decomposition.1.is_some_and(|tail| {
+                            self.cached_subst.apply(&InferType::Var(tail)) == resolved
+                        });
+                        (self.cached_subst.apply(&InferType::Var(*candidate)) == resolved
+                            && !aliases_own_tail)
+                            .then(|| decomposition.clone())
+                    })
+            })
     }
 
     /// Whether `field` is absent by a row-decomposition fact for `tv`.
@@ -6302,10 +6377,12 @@ impl InferContext {
                 self.tag_declared_var_name(fresh, name.clone());
             }
         }
-        for (i, remainder) in scheme.row_remainders.iter().enumerate() {
-            let Some((r_pos, removed)) = remainder else {
-                continue;
-            };
+        for (i, (r_pos, removed)) in scheme
+            .row_remainders
+            .iter()
+            .enumerate()
+            .flat_map(|(index, equations)| equations.iter().map(move |equation| (index, equation)))
+        {
             if let (Some(rest), Some(r)) = (
                 scheme.quantified_vars.get(i).and_then(|v| renaming.get(v)),
                 scheme
@@ -6391,12 +6468,15 @@ impl InferContext {
     /// Fire every pending `Rest` derivation whose `R` has resolved to a closed record,
     /// to a fixpoint (a derivation can resolve the `R` of another).
     fn resolve_pending_row_remainders(&mut self) -> Result<(), MetelError> {
+        let current_module = self.current_module_path().to_vec();
         loop {
             let pending = std::mem::take(&mut self.pending_row_remainders);
             let mut progressed = false;
             for p in pending {
                 let subst = Rc::make_mut(&mut self.cached_subst);
-                let InferType::Record(fields) = subst.apply(&InferType::Var(p.r)) else {
+                let source = subst.apply(&InferType::Var(p.r));
+                let Some(fields) = self.registry.row_condition_fields(&current_module, &source)
+                else {
                     self.pending_row_remainders.push(p);
                     continue;
                 };
@@ -6877,6 +6957,52 @@ pub struct TypeCtx {
     /// Empty (never `None`) for the move-checker's own reconstruction, which
     /// has no `symbols` to resolve against regardless.
     pub current_module: Vec<String>,
+}
+
+#[cfg(test)]
+mod row_remainder_tests {
+    use super::{
+        InferType, TypeVar, TypeVarGenerator, generalize, instantiate_with_renaming, unify,
+    };
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn empty_row_extension_unifies_with_its_own_tail() {
+        let tail = InferType::Var(TypeVar(0));
+        let row = InferType::RowExtend {
+            fields: vec![],
+            tail: Box::new(tail.clone()),
+        };
+        assert!(unify(&row, &tail).is_ok());
+        assert!(unify(&tail, &row).is_ok());
+    }
+
+    #[test]
+    fn equation_chain_quantifies_intermediate_sources() {
+        let source = TypeVar(0);
+        let middle = TypeVar(1);
+        let rest = TypeVar(2);
+        let ty = InferType::fun(vec![InferType::Var(source)], InferType::Var(rest));
+        let equations = HashMap::from([
+            (middle, vec![(source, vec!["token".to_string()])]),
+            (rest, vec![(middle, vec!["user".to_string()])]),
+        ]);
+        let scheme = generalize(ty, &HashSet::new()).with_row_remainders(&equations);
+        assert!(scheme.quantified_vars.contains(&middle));
+        assert_eq!(scheme.row_remainders.iter().flatten().count(), 2);
+    }
+
+    #[test]
+    fn imported_scheme_renaming_does_not_overlap_source_variables() {
+        let ty = InferType::fun(
+            vec![InferType::Var(TypeVar(22))],
+            InferType::Var(TypeVar(21)),
+        );
+        let scheme = generalize(ty, &HashSet::new());
+        let mut generator = TypeVarGenerator::with_counter(21);
+        let (_, renaming) = instantiate_with_renaming(&scheme, &mut generator);
+        assert!(renaming.values().all(|var| var.0 > 22));
+    }
 }
 
 #[cfg(test)]

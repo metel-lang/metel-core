@@ -195,6 +195,20 @@ InferContext {
 
 **`current_type_params` invariant:** set to the enclosing generic function's `name → TypeVar` map for the duration of `infer_fun_decl` / `infer_impl_method` body inference, and restored to the caller's map afterward via `swap_type_params`. Empty at top level and inside non-generic functions. All type annotations inside a function body (`let`, `var`, `for`-init, closure params) must resolve through `ann_to_infer(ann, ctx)` rather than the bare `type_expr_to_infer(ann)` so that param names resolve to their TypeVars instead of `Type::Named`.
 
+**Row decomposition facts:** function and impl-method body scopes install typed
+`where` equations and open-parameter decompositions, together with their negative
+row bounds. A named open-parameter tail is recorded as a remainder derivation
+from the parameter's value type, so it remains available at calls even when the
+body only destructures it. Intermediate rows are quantified with the scheme;
+construction backfills chains independently of quantifier order. Following a
+decomposition must retain its final opaque tail;
+presence-only bounds do not enumerate that tail. Unification treats `{ ..R }`
+as `R` before variable binding, avoiding a false occurs check on this identity.
+Every source of a shared row tail remains a separate derivation, so two
+parameters cannot silently infer incompatible rows for the same `R`. Scheme
+instantiation reserves IDs beyond the scheme's own variables before allocating
+its fresh copies; imported registry IDs must not overlap the renaming range.
+
 `poly_env` takes precedence over `mono_env` in `ctx.lookup()`. Poly entries are automatically instantiated with fresh type variables on each lookup (let-polymorphism).
 
 ### Constraint Emission

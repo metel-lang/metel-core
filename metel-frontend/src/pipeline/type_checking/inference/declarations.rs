@@ -738,7 +738,14 @@ pub(super) fn infer_fun_decl(
     // at its call sites.
     ctx.register_fun_open_row_params(
         fun.name.clone(),
-        open_record_param_vars.values().copied().collect(),
+        open_record_param_vars
+            .iter()
+            .filter(|(index, _)| {
+                !matches!(&fun.params[**index].type_ann,
+            Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+            })
+            .map(|(_, var)| *var)
+            .collect(),
     );
     if !open_record_projection_tail_constraints.is_empty() {
         ctx.register_fun_projection_tail_constraints(
@@ -876,7 +883,7 @@ pub(super) fn infer_fun_decl(
             .var
             .as_deref()
             .and_then(|name| generic_map.get(name).copied());
-        let fields = fields
+        let fields: Vec<_> = fields
             .iter()
             .map(|(label, ty)| {
                 (
@@ -1138,7 +1145,7 @@ pub(super) fn infer_fun_decl(
     // Remapped through `partial_subst` like the maps above. A `Rest` the body has
     // unified with `R` (generics are not rigid) is no longer a separate var, so
     // there is nothing left to derive and the entry is dropped.
-    let mut row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = fun
+    let mut row_remainders: HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>> = fun
         .where_clause
         .iter()
         .flat_map(|wc| wc.row_equations.iter())
@@ -1159,7 +1166,25 @@ pub(super) fn infer_fun_decl(
                 (rest, (r, labels))
             })
         })
-        .collect();
+        .fold(HashMap::new(), |mut map, (rest, source)| {
+            map.entry(rest).or_default().push(source);
+            map
+        });
+    for (index, &source) in &open_record_param_vars {
+        if let Some(TypeExpr::OpenRecord(fields, tail)) = &fun.params[*index].type_ann
+            && let Some(&remainder) = tail.var.as_ref().and_then(|name| generic_map.get(name))
+            && let (InferType::Var(source), InferType::Var(remainder)) = (
+                partial_subst.apply(&InferType::Var(source)),
+                partial_subst.apply(&InferType::Var(remainder)),
+            )
+            && source != remainder
+        {
+            row_remainders.entry(remainder).or_default().push((
+                source,
+                fields.iter().map(|(label, _)| label.clone()).collect(),
+            ));
+        }
+    }
     // A generic call inside this body may have imposed the same equation without
     // spelling it in this declaration.  Retain it on the generalized scheme so a
     // later generic caller receives the typed fact as well.  Concrete equations
@@ -1175,22 +1200,34 @@ pub(super) fn infer_fun_decl(
         if source != remainder {
             row_remainders
                 .entry(remainder)
-                .or_insert((source, fact.removed));
+                .or_default()
+                .push((source, fact.removed));
         }
     }
     let open_row_params: HashSet<TypeVar> = open_record_param_vars
-        .values()
+        .iter()
+        .filter(|(index, _)| {
+            !matches!(&fun.params[**index].type_ann,
+            Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+        })
         .filter_map(
-            |orig_tv| match partial_subst.apply(&InferType::Var(*orig_tv)) {
+            |(_, orig_tv)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
                 InferType::Var(final_tv) => Some(final_tv),
                 _ => None,
             },
         )
         .collect();
-    let scheme = scheme
-        .with_record_kinds(&type_var_record_kinds)
+    let mut scheme = scheme
         .with_row_remainders(&row_remainders)
+        .with_record_kinds(&type_var_record_kinds)
+        .with_bounds(&scheme_bounds)
+        .with_neg_bounds(&scheme_neg_bounds)
         .with_open_row_params(&open_row_params);
+    scheme.param_names = scheme
+        .quantified_vars
+        .iter()
+        .map(|var| names_by_var.get(var).cloned().unwrap_or_default())
+        .collect();
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -1374,7 +1411,7 @@ pub(super) fn infer_impl_method(
     // position, whatever the impl calls it; a row generic the target doesn't splice
     // (`Rest`) is an extra var, pinned at a call by its decomposition equation.
     // The equation also bounds `R`, exactly as it does on a free function.
-    let mut impl_row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = HashMap::new();
+    let mut impl_row_remainders: HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>> = HashMap::new();
     // The same Row bounds, kept apart: `struct_bounds` is moved into the context for
     // the body, but the scheme built afterwards needs them too.
     let mut impl_row_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
@@ -1433,10 +1470,10 @@ pub(super) fn infer_impl_method(
                 .and_then(|name| generic_map.get(name))
                 && rest_tv != r_tv
             {
-                impl_row_remainders.insert(
-                    rest_tv,
-                    (r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()),
-                );
+                impl_row_remainders
+                    .entry(rest_tv)
+                    .or_default()
+                    .push((r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()));
             }
         }
     }
@@ -1694,6 +1731,80 @@ pub(super) fn infer_impl_method(
     method_own_tvars.extend(anonymous_row_vars.iter().copied());
 
     let method_assoc_eq = collect_fun_assoc_eq_constraints(method, &generic_map);
+    for equation in method
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.row_equations)
+    {
+        if let Some((&source, &remainder)) = generic_map.get(&equation.var).zip(
+            equation
+                .tail
+                .var
+                .as_ref()
+                .and_then(|name| generic_map.get(name)),
+        ) && source != remainder
+        {
+            impl_row_remainders.entry(remainder).or_default().push((
+                source,
+                equation
+                    .fields
+                    .iter()
+                    .map(|(label, _)| label.clone())
+                    .collect(),
+            ));
+        }
+    }
+    let mut negative_bounds = method_own_neg_bounds.clone();
+    for (tv, bounds) in struct_tvars_ordered.iter().zip(&impl_neg_bounds) {
+        negative_bounds
+            .entry(*tv)
+            .or_default()
+            .extend(bounds.iter().cloned());
+    }
+    let mut row_decompositions = RowDecompositions::new();
+    for equation in ib
+        .where_clause
+        .iter()
+        .chain(method.where_clause.iter())
+        .flat_map(|clause| &clause.row_equations)
+    {
+        let Some(&source) = generic_map.get(&equation.var) else {
+            continue;
+        };
+        let tail = equation
+            .tail
+            .var
+            .as_ref()
+            .and_then(|name| generic_map.get(name).copied());
+        let fields = equation
+            .fields
+            .iter()
+            .map(|(label, ty)| te_to_infer(ty, ctx).map(|ty| (label.clone(), ty)))
+            .collect::<Result<Vec<_>, _>>()?;
+        row_decompositions.insert(source, (fields, tail));
+    }
+    for (param, param_ty) in method.params.iter().zip(&param_types) {
+        let (Some(TypeExpr::OpenRecord(fields, tail)), InferType::Var(source)) =
+            (&param.type_ann, param_ty)
+        else {
+            continue;
+        };
+        let tail = tail
+            .var
+            .as_ref()
+            .and_then(|name| generic_map.get(name).copied());
+        let fields = fields
+            .iter()
+            .map(|(label, ty)| te_to_infer(ty, ctx).map(|ty| (label.clone(), ty)))
+            .collect::<Result<Vec<_>, _>>()?;
+        if let Some(tail) = tail {
+            impl_row_remainders.entry(tail).or_default().push((
+                *source,
+                fields.iter().map(|(label, _)| label.clone()).collect(),
+            ));
+        }
+        row_decompositions.insert(*source, (fields, tail));
+    }
     let mut method_row_exclusions = collect_fun_row_exclusions(method, &generic_map);
     for equation in ib
         .where_clause
@@ -1726,7 +1837,9 @@ pub(super) fn infer_impl_method(
         }
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
+        let saved_negative_bounds = ctx.swap_negative_type_param_bounds(negative_bounds);
         let saved_row_exclusions = ctx.swap_row_exclusions(method_row_exclusions);
+        let saved_row_decompositions = ctx.swap_row_decompositions(row_decompositions);
         install_assoc_eq_facts(ctx, &method_assoc_eq, &method.span);
         let saved_row_field_vars = ctx.swap_row_field_vars();
         let saved_ret = ctx.push_return_type(ret_ty.clone());
@@ -1740,7 +1853,9 @@ pub(super) fn infer_impl_method(
         ctx.pop_return_type(saved_ret);
         ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_row_exclusions(saved_row_exclusions);
+        ctx.swap_row_decompositions(saved_row_decompositions);
         ctx.swap_type_param_bounds(saved_tp_bounds);
+        ctx.swap_negative_type_param_bounds(saved_negative_bounds);
         ctx.swap_type_params(saved_type_params);
         ctx.flow_exit_body(saved_flow);
         ctx.pop_scope();
@@ -1887,14 +2002,18 @@ pub(super) fn infer_impl_method(
         }
         // RFC-0121 §2: same as the registry-built scheme -- an impl equation's `R` is
         // row-bounded, so it must be record-kinded for the bound to be checked.
-        for (r_tv, _) in impl_row_remainders.values() {
+        for (r_tv, _) in impl_row_remainders.values().flatten() {
             if let InferType::Var(r) = partial_subst.apply(&InferType::Var(*r_tv)) {
                 record_kinds_by_var.insert(r, true);
             }
         }
         let open_row_vars: std::collections::HashSet<TypeVar> = open_param_vars
-            .values()
-            .map(|tv| match partial_subst.apply(&InferType::Var(*tv)) {
+            .iter()
+            .filter(|(index, _)| {
+                !matches!(&method.params[**index].type_ann,
+                Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+            })
+            .map(|(_, tv)| match partial_subst.apply(&InferType::Var(*tv)) {
                 InferType::Var(v) => v,
                 _ => *tv,
             })
@@ -1906,8 +2025,9 @@ pub(super) fn infer_impl_method(
             .with_open_row_params(&open_row_vars);
         // RFC-0121 §2: remap the impl's `Rest` derivations through the solved
         // substitution; a `Rest` the body unified with `R` is no longer separate.
-        let mut row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = impl_row_remainders
+        let mut row_remainders: HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>> = impl_row_remainders
             .iter()
+            .flat_map(|(rest, sources)| sources.iter().map(move |source| (rest, source)))
             .filter_map(|(rest_tv, (r_tv, labels))| {
                 let (InferType::Var(rest), InferType::Var(r)) = (
                     partial_subst.apply(&InferType::Var(*rest_tv)),
@@ -1917,7 +2037,10 @@ pub(super) fn infer_impl_method(
                 };
                 (rest != r).then(|| (rest, (r, labels.clone())))
             })
-            .collect();
+            .fold(HashMap::new(), |mut map, (rest, source)| {
+                map.entry(rest).or_default().push(source);
+                map
+            });
         for fact in propagated_row_remainders {
             let (InferType::Var(source), InferType::Var(remainder)) = (
                 partial_subst.apply(&InferType::Var(fact.source)),
@@ -1928,10 +2051,15 @@ pub(super) fn infer_impl_method(
             if source != remainder {
                 row_remainders
                     .entry(remainder)
-                    .or_insert((source, fact.removed));
+                    .or_default()
+                    .push((source, fact.removed));
             }
         }
         scheme = scheme.with_row_remainders(&row_remainders);
+        scheme = scheme
+            .with_bounds(&by_var)
+            .with_neg_bounds(&by_neg_var)
+            .with_record_kinds(&record_kinds_by_var);
         let scheme = if body_assoc_log.is_empty() {
             scheme
         } else {

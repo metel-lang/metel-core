@@ -1,0 +1,6 @@
+record Pair<row R> { public id: i64, public data: { ..R } }
+fun incomplete<row R>(p: Pair<..R>) -> i64 {
+    let { id } := p; // ERROR[T0012]
+    id
+}
+fun main() { println(incomplete(Pair { id = 1, data = {} })); }

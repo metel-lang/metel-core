@@ -1073,7 +1073,7 @@ fn register_generic_impl_method_schemes(
     // The impl's `where R = { labels.., ..Rest }` equations: a Row bound on `R`
     // and a remainder for `Rest`, exactly as for a free function.
     let mut impl_row_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
-    let mut impl_row_remainders: HashMap<TypeVar, (TypeVar, Vec<String>)> = HashMap::new();
+    let mut impl_row_remainders: HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>> = HashMap::new();
     for eq in ib
         .where_clause
         .iter()
@@ -1107,10 +1107,10 @@ fn register_generic_impl_method_schemes(
             .and_then(|name| type_gen_map.get(name))
             && rest_tv != r_tv
         {
-            impl_row_remainders.insert(
-                rest_tv,
-                (r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()),
-            );
+            impl_row_remainders
+                .entry(rest_tv)
+                .or_default()
+                .push((r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()));
         }
     }
     // RFC-0036: compute impl-level bounds from the impl block's generics + where clause.
@@ -1170,6 +1170,30 @@ fn register_generic_impl_method_schemes(
             quantified.push(tv);
             param_names.push(g.name.clone());
         }
+        let mut method_row_remainders = impl_row_remainders.clone();
+        for equation in method
+            .where_clause
+            .iter()
+            .flat_map(|clause| &clause.row_equations)
+        {
+            if let Some((&source, &remainder)) = gen_map.get(&equation.var).zip(
+                equation
+                    .tail
+                    .var
+                    .as_ref()
+                    .and_then(|name| gen_map.get(name)),
+            ) && source != remainder
+            {
+                method_row_remainders.entry(remainder).or_default().push((
+                    source,
+                    equation
+                        .fields
+                        .iter()
+                        .map(|(label, _)| label.clone())
+                        .collect(),
+                ));
+            }
+        }
         let mut anonymous_row_vars = Vec::new();
         // #746: the scheme's own `.bounds`/`.neg_bounds` (used for call-site
         // checking, e.g. `f.describe(bad_arg)`) previously only carried the
@@ -1179,6 +1203,25 @@ fn register_generic_impl_method_schemes(
         // across methods but not mutating them keeps other methods in the
         // same impl block from seeing a bound that isn't theirs.
         let open_rows = desugar_method_open_row_params(method, type_var_gen);
+        for (index, &source) in &open_rows.param_vars {
+            if let Some(TypeExpr::OpenRecord(fields, tail)) = &method.params[*index].type_ann
+                && let Some(&remainder) = tail.var.as_ref().and_then(|name| gen_map.get(name))
+            {
+                method_row_remainders.entry(remainder).or_default().push((
+                    source,
+                    fields.iter().map(|(label, _)| label.clone()).collect(),
+                ));
+            }
+        }
+        let narrowing_rows = open_rows
+            .param_vars
+            .iter()
+            .filter(|(index, _)| {
+                !matches!(&method.params[**index].type_ann,
+                Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+            })
+            .map(|(_, var)| *var)
+            .collect();
         open_rows.quantify(&mut quantified, &mut param_names);
         let mut method_by_var = open_rows.merged_bounds(&by_var);
         for (tv, bounds) in &impl_row_bounds {
@@ -1263,8 +1306,8 @@ fn register_generic_impl_method_schemes(
         .with_bounds(&method_by_var)
         .with_neg_bounds(&method_by_neg_var)
         .with_record_kinds(&method_record_kinds)
-        .with_open_row_params(&open_rows.vars)
-        .with_row_remainders(&impl_row_remainders);
+        .with_open_row_params(&narrowing_rows)
+        .with_row_remainders(&method_row_remainders);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
