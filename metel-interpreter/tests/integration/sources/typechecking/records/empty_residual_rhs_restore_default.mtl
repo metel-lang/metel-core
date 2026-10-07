@@ -1,0 +1,7 @@
+fun main() {
+    var r := { left = "l", right = "r" };
+    let left := r.left;
+    r.left := r.right;
+    assert(r.left == "r");
+    let missing := r.right; // ERROR[T0003]
+}

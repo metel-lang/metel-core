@@ -1,0 +1,8 @@
+struct Pair { left: String, right: String }
+fun main() {
+    var p := Pair { left = "l", right = "r" };
+    let l := p.left;
+    let r := p.right;
+    p.left := "back";
+    let missing := p.right; // ERROR[T0003]
+}

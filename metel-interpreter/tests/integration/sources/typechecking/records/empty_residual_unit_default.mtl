@@ -1,0 +1,6 @@
+fun take(x: ()) {}
+fun main() {
+    let r := { value = "owned" };
+    let value := r.value;
+    take(r); // ERROR[T0001]
+}

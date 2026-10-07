@@ -1,0 +1,9 @@
+[options]
+move_check = true
+spec = ["spec.ownership.narrowing.legality-3"]
+error = ["T0001"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 7

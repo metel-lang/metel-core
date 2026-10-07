@@ -1,0 +1,8 @@
+struct A { value: String }
+struct B { value: String }
+fun take(x: B.{}) {}
+fun main() {
+    let a := A { value = "owned" };
+    let value := a.value;
+    take(a); // ERROR[T0001]
+}
