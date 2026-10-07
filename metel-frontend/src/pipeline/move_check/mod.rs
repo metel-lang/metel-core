@@ -1477,8 +1477,12 @@ impl<'a> Checker<'a> {
                     state,
                 );
             }
-            TypedPattern::Record { fields, .. } => self.apply_record_field_moves(
+            TypedPattern::Record {
                 fields,
+                ignored_fields,
+                ..
+            } => self.apply_record_field_moves(
+                (fields, ignored_fields),
                 place,
                 root_ty,
                 use_span,
@@ -1568,13 +1572,14 @@ impl<'a> Checker<'a> {
 
     fn apply_record_field_moves(
         &mut self,
-        fields: &[(String, Option<crate::identity::LocalId>)],
+        record_fields: (&[(String, Option<crate::identity::LocalId>)], &[String]),
         place: &Place,
         root_ty: &Type,
         use_span: &Span,
         current_module: &[String],
         state: &mut FlowState,
     ) {
+        let (fields, ignored_fields) = record_fields;
         for (field, _) in fields {
             let child = place
                 .clone()
@@ -1588,6 +1593,19 @@ impl<'a> Checker<'a> {
                 MoveCause::Other,
             );
             state.bind(field);
+        }
+        for field in ignored_fields {
+            let child = place
+                .clone()
+                .with_projection(Projection::field(field.clone()));
+            self.consume_place(
+                &child,
+                root_ty,
+                use_span,
+                current_module,
+                state,
+                MoveCause::Other,
+            );
         }
     }
 

@@ -2707,7 +2707,13 @@ fn parse_field_pat_list(
     (fields, field_spans, rest)
 }
 
-type ParsedRecordFieldPatList = (Vec<String>, Vec<Span>, bool, Option<(String, Span)>);
+type ParsedRecordFieldPatList = (
+    Vec<String>,
+    Vec<Span>,
+    Vec<String>,
+    bool,
+    Option<(String, Span)>,
+);
 
 fn parse_record_field_pat_list(
     pair: pest::iterators::Pair<Rule>,
@@ -2715,13 +2721,23 @@ fn parse_record_field_pat_list(
 ) -> ParsedRecordFieldPatList {
     let mut fields = vec![];
     let mut field_spans = vec![];
+    let mut ignored_fields = vec![];
     let mut rest = false;
     let mut rest_binding = None;
     for child in pair.into_inner() {
         match child.as_rule() {
-            Rule::ident => {
-                field_spans.push(Span::of(&child, filename));
-                fields.push(child.as_str().to_string());
+            Rule::record_field_pat => {
+                let ignored = child.as_str().contains(':');
+                let field = child
+                    .into_inner()
+                    .next()
+                    .expect("record_field_pat always contains an identifier");
+                if ignored {
+                    ignored_fields.push(field.as_str().to_string());
+                } else {
+                    field_spans.push(Span::of(&field, filename));
+                    fields.push(field.as_str().to_string());
+                }
             }
             Rule::record_rest => rest = true,
             Rule::record_rest_binding => {
@@ -2735,7 +2751,7 @@ fn parse_record_field_pat_list(
             _ => {}
         }
     }
-    (fields, field_spans, rest, rest_binding)
+    (fields, field_spans, ignored_fields, rest, rest_binding)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -2770,12 +2786,32 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .ok_or_else(|| {
                     MetelError::internal("record_pattern: missing record_field_pat_list")
                 })?;
-            let (mut fields, mut field_spans, rest, rest_binding) =
+            let (mut fields, mut field_spans, mut ignored_fields, rest, rest_binding) =
                 parse_record_field_pat_list(field_list, filename);
             sort_record_pattern_fields(&mut fields, &mut field_spans, filename, &span)?;
+            ignored_fields.sort();
+            if let Some(duplicate) = ignored_fields
+                .windows(2)
+                .find(|pair| pair[0] == pair[1])
+                .map(|pair| pair[0].as_str())
+                .or_else(|| {
+                    ignored_fields
+                        .iter()
+                        .find(|label| fields.contains(label))
+                        .map(String::as_str)
+                })
+            {
+                return Err(record_duplicate_label_error(
+                    duplicate,
+                    filename,
+                    &span,
+                    "record pattern",
+                ));
+            }
             Ok(Pattern::Record {
                 fields,
                 field_spans,
+                ignored_fields,
                 rest,
                 rest_binding,
                 span,

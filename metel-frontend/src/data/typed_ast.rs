@@ -742,6 +742,8 @@ pub enum TypedPattern {
     /// introduces (ADR-0054 / #1052).
     Record {
         fields: Vec<(String, Option<LocalId>)>,
+        /// Present labels discarded with `field: _`, with no local identity.
+        ignored_fields: Vec<String>,
         /// The name and lexical identity of the owned anonymous remainder binding.
         rest_binding: Option<(String, Option<LocalId>)>,
         rest: bool,

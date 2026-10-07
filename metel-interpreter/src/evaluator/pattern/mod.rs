@@ -164,6 +164,7 @@ pub(super) fn match_pattern(
         // subset-match `Pattern::Struct` already does above applies here verbatim.
         TypedPattern::Record {
             fields,
+            ignored_fields,
             rest,
             rest_binding,
             ..
@@ -178,7 +179,13 @@ pub(super) fn match_pattern(
             else {
                 return false;
             };
-            if !rest && record_fields.len() != fields.len() {
+            if !rest && record_fields.len() != fields.len() + ignored_fields.len() {
+                return false;
+            }
+            if ignored_fields
+                .iter()
+                .any(|field| !record_fields.contains_key(field))
+            {
                 return false;
             }
             for (field_name, local) in fields {
@@ -192,7 +199,10 @@ pub(super) fn match_pattern(
             if let Some((name, local)) = rest_binding {
                 let remainder = record_fields
                     .iter()
-                    .filter(|(name, _)| !fields.iter().any(|(field, _)| field == *name))
+                    .filter(|(name, _)| {
+                        !fields.iter().any(|(field, _)| field == *name)
+                            && !ignored_fields.contains(name)
+                    })
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();
                 out.push((name.clone(), *local, Value::Record { fields: remainder }));

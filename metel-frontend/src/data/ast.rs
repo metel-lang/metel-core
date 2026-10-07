@@ -920,6 +920,9 @@ pub enum Pattern {
         fields: Vec<String>,
         /// See `EnumVariant::field_spans`.
         field_spans: Vec<Span>,
+        /// Labels explicitly discarded with `field: _`; they are required to
+        /// exist and count as named fields, but introduce no local binding.
+        ignored_fields: Vec<String>,
         rest: bool,
         /// A named, owned remainder binding (`..name`); bare `..` leaves this empty.
         rest_binding: Option<(String, Span)>,

@@ -141,6 +141,7 @@ pub(super) fn infer_pattern(
         }
         Pattern::Record {
             fields,
+            ignored_fields,
             field_spans: _,
             rest,
             rest_binding,
@@ -158,9 +159,44 @@ pub(super) fn infer_pattern(
                     pat_span,
                 ));
             }
+            let named_fields: Vec<String> = fields.iter().chain(ignored_fields).cloned().collect();
+            // A remainder binding needs a decomposition, but field presence is a
+            // separate requirement: diagnose an unproven selected field first.
+            // Otherwise an unconstrained row reports only that its remainder is
+            // indeterminate, hiding the actionable missing-presence error.
+            let peeled = peel_all_references(&ctx.solve()?.apply(scrutinee_ty));
+            if rest_binding.is_some() {
+                let row_tail = match &peeled {
+                    InferType::Var(tv) => Some((*tv, Vec::<String>::new())),
+                    InferType::RowExtend { fields, tail } => match tail.as_ref() {
+                        InferType::Var(tv) => {
+                            Some((*tv, fields.iter().map(|(label, _)| label.clone()).collect()))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                if let Some((tv, already_known)) = row_tail {
+                    for field_name in &named_fields {
+                        if already_known.iter().any(|label| label == field_name) {
+                            continue;
+                        }
+                        match resolve_row_bound_field(ctx, tv, field_name, pat_span) {
+                            Some(Ok(_)) => {}
+                            Some(Err(_)) | None => {
+                                return Err(MetelError::type_error(
+                                    TypeErrorCode::T0012,
+                                    format!("field `{field_name}` is not known to be present"),
+                                    pat_span,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
             let remainder_ty = rest_binding
                 .as_ref()
-                .map(|_| infer_record_remainder(fields, scrutinee_ty, pat_span, ctx))
+                .map(|_| infer_record_remainder(&named_fields, scrutinee_ty, pat_span, ctx))
                 .transpose()?;
             // #646: an abstract, row-bounded generic type parameter (`<record T:
             // { x: f64, .. }>`) has no concrete field count for `unify`'s exact-match
@@ -169,7 +205,6 @@ pub(super) fn infer_pattern(
             // falling into that unify path (which would either reject a legitimate
             // row-bound match or, worse, silently demand fields the bound never
             // promised).
-            let peeled = peel_all_references(&ctx.solve()?.apply(scrutinee_ty));
             let row_bounds = if let InferType::Var(tv) = &peeled {
                 ctx.bounds_for_type_var(*tv).map(|bounds| {
                     bounds
@@ -211,7 +246,7 @@ pub(super) fn infer_pattern(
                         .collect();
                     let missing: Vec<&str> = bound_fields
                         .iter()
-                        .filter(|name| !fields.iter().any(|f| f == *name))
+                        .filter(|name| !named_fields.iter().any(|f| f == *name))
                         .copied()
                         .collect();
                     if !missing.is_empty() {
@@ -229,7 +264,20 @@ pub(super) fn infer_pattern(
                 for field_name in fields {
                     match resolve_row_bound_field(ctx, *tv, field_name, pat_span) {
                         Some(Ok(field_ty)) => ctx.bind_mono(field_name, field_ty, mutable),
-                        Some(Err(e)) => return Err(e),
+                        Some(Err(error)) => return Err(error),
+                        None => unreachable!("row bound already confirmed present above"),
+                    }
+                }
+                for field_name in ignored_fields {
+                    match resolve_row_bound_field(ctx, *tv, field_name, pat_span) {
+                        Some(Ok(_)) => {}
+                        Some(Err(_)) => {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0012,
+                                format!("field `{field_name}` is not known to be present"),
+                                pat_span,
+                            ));
+                        }
                         None => unreachable!("row bound already confirmed present above"),
                     }
                 }
@@ -262,6 +310,15 @@ pub(super) fn infer_pattern(
                     };
                     ctx.bind_mono(field_name, field_ty.clone(), mutable);
                 }
+                for field_name in ignored_fields {
+                    if !record_fields.iter().any(|(name, _)| name == field_name) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            format!("field `{field_name}` is not known to be present"),
+                            pat_span,
+                        ));
+                    }
+                }
                 if let (Some((rest_name, _)), Some(rest_ty)) = (rest_binding, remainder_ty) {
                     ctx.bind_mono(rest_name, rest_ty, mutable);
                 }
@@ -291,8 +348,17 @@ pub(super) fn infer_pattern(
                     };
                     ctx.bind_mono(field_name, field_ty.clone(), mutable);
                 }
+                for field_name in ignored_fields {
+                    if !record_fields.iter().any(|(name, _)| name == field_name) {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0012,
+                            format!("field `{field_name}` is not known to be present"),
+                            pat_span,
+                        ));
+                    }
+                }
             } else {
-                let field_vars: Vec<(String, InferType)> = fields
+                let field_vars: Vec<(String, InferType)> = named_fields
                     .iter()
                     .map(|name| (name.clone(), ctx.fresh_var()))
                     .collect();
@@ -302,7 +368,9 @@ pub(super) fn infer_pattern(
                     pat_span.clone(),
                 );
                 for (name, ty) in field_vars {
-                    ctx.bind_mono(&name, ty, mutable);
+                    if fields.contains(&name) {
+                        ctx.bind_mono(&name, ty, mutable);
+                    }
                 }
             }
         }

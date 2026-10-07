@@ -350,7 +350,8 @@ rest_pat        = { ".." ~ ident }
 // allowed to name. Always last, never followed by a trailing comma.
 record_rest     = { ".." }
 record_rest_binding = { ".." ~ ident }
-record_field_pat_list = { ident ~ ("," ~ ident)* ~ ("," ~ (record_rest_binding | record_rest))? ~ ","? | record_rest_binding | record_rest }
+record_field_pat = { ident ~ (":" ~ "_")? }
+record_field_pat_list = { record_field_pat ~ ("," ~ record_field_pat)* ~ ("," ~ (record_rest_binding | record_rest))? ~ ","? | record_rest_binding | record_rest }
 field_pat_list  = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }
 record_pattern  = { "{" ~ record_field_pat_list ~ "}" }
 enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ field_pat_list ~ "}")?           // qualified: Enum::Variant, optional fields

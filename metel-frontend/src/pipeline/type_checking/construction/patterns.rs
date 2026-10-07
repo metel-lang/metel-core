@@ -273,10 +273,19 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
         Pattern::Record {
             fields,
             field_spans,
+            ignored_fields,
             rest,
             rest_binding,
             span,
-        } => lower_record_pattern(fields, field_spans, *rest, rest_binding.as_ref(), span, ctx),
+        } => lower_record_pattern(
+            fields,
+            field_spans,
+            ignored_fields,
+            *rest,
+            rest_binding.as_ref(),
+            span,
+            ctx,
+        ),
         Pattern::Tuple(pats, span) => TypedPattern::Tuple(
             pats.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
             span.clone(),
@@ -294,6 +303,7 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
 fn lower_record_pattern(
     fields: &[String],
     field_spans: &[Span],
+    ignored_fields: &[String],
     rest: bool,
     rest_binding: Option<&(String, Span)>,
     span: &Span,
@@ -312,6 +322,7 @@ fn lower_record_pattern(
                 )
             })
             .collect(),
+        ignored_fields: ignored_fields.to_vec(),
         rest_binding: rest_binding
             .map(|(name, rest_span)| (name.clone(), ctx.local_binding_at(rest_span))),
         rest,
@@ -645,6 +656,7 @@ pub(super) fn construct_pattern_bindings(
         }
         Pattern::Record {
             fields,
+            ignored_fields,
             rest_binding,
             span,
             ..
@@ -664,10 +676,17 @@ pub(super) fn construct_pattern_bindings(
                     ctx.bind(field, field_ty);
                 }
             }
+            for field in ignored_fields {
+                if !record_fields.iter().any(|(name, _)| name == field) {
+                    return Err(MetelError::internal(format!(
+                        "missing discarded record field `{field}`"
+                    )));
+                }
+            }
             if let Some((rest_name, _)) = rest_binding {
                 let remaining = record_fields
                     .iter()
-                    .filter(|(name, _)| !fields.contains(name))
+                    .filter(|(name, _)| !fields.contains(name) && !ignored_fields.contains(name))
                     .cloned()
                     .collect();
                 if mutable {

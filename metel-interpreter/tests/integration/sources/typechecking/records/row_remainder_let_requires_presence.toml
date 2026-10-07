@@ -1,0 +1,9 @@
+[options]
+spec = ["spec.declarations.variables.record-pattern-bindings.legality-1", "spec.expressions.record-rest-patterns.legality-1"]
+error = ["T0012"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+line = 2
+col = 9
