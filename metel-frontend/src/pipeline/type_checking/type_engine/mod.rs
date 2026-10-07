@@ -3663,6 +3663,43 @@ impl TypeDefinitionRegistry {
         self.symbolic_named_aspects.insert(name, aspects);
     }
 
+    pub(crate) fn type_contains_symbolic_parameters(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Named(name, args, _) => {
+                self.symbolic_named_aspects.contains_key(name)
+                    || args
+                        .iter()
+                        .any(|arg| self.type_contains_symbolic_parameters(arg))
+            }
+            Type::Tuple(items) => items
+                .iter()
+                .any(|item| self.type_contains_symbolic_parameters(item)),
+            Type::Record(fields) => fields
+                .iter()
+                .any(|(_, field)| self.type_contains_symbolic_parameters(field)),
+            Type::Residual { brand, fields } => {
+                self.symbolic_named_aspects.contains_key(brand)
+                    || fields
+                        .iter()
+                        .any(|(_, field)| self.type_contains_symbolic_parameters(field))
+            }
+            Type::Array(inner)
+            | Type::SizedArray(inner, _)
+            | Type::Reference(inner)
+            | Type::MutReference(inner) => self.type_contains_symbolic_parameters(inner),
+            Type::Fun(params, ret, ..) => {
+                params
+                    .iter()
+                    .any(|param| self.type_contains_symbolic_parameters(param))
+                    || self.type_contains_symbolic_parameters(ret)
+            }
+            Type::Dyn { type_args, .. } => type_args
+                .iter()
+                .any(|arg| self.type_contains_symbolic_parameters(arg)),
+            _ => false,
+        }
+    }
+
     pub fn register_array_impl_bounds(
         &mut self,
         aspect: &str,
@@ -7002,6 +7039,35 @@ mod row_remainder_tests {
         let mut generator = TypeVarGenerator::with_counter(21);
         let (_, renaming) = instantiate_with_renaming(&scheme, &mut generator);
         assert!(renaming.values().all(|var| var.0 > 22));
+    }
+}
+
+#[cfg(test)]
+mod symbolic_narrowing_tests {
+    use super::{Type, TypeDefinitionRegistry};
+    use crate::data::types::NominalId;
+    use std::collections::HashSet;
+
+    #[test]
+    fn unbounded_symbolic_fields_remain_abstract_through_wrappers() {
+        let mut registry = TypeDefinitionRegistry::new();
+        registry.register_symbolic_named_aspects("Witness".into(), HashSet::new());
+        let witness = Type::Named("Witness".into(), vec![], NominalId::NONE);
+        let types = [
+            witness.clone(),
+            Type::Named("Box".into(), vec![witness.clone()], NominalId::NONE),
+            Type::Record(vec![("field".into(), witness.clone())]),
+            Type::Reference(Box::new(Type::Array(Box::new(witness)))),
+            Type::Residual {
+                brand: "Witness".into(),
+                fields: vec![],
+            },
+        ];
+        for ty in types {
+            assert!(registry.type_contains_symbolic_parameters(&ty));
+        }
+        assert!(!registry.type_contains_symbolic_parameters(&Type::Str));
+        assert!(!registry.type_contains_symbolic_parameters(&Type::Record(vec![])));
     }
 }
 

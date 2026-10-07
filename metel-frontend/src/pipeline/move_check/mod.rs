@@ -56,6 +56,14 @@ pub enum MoveViolationKind {
 /// are not narrowed, so the ordinary partial-move rule applies.
 #[must_use]
 fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Type) -> bool {
+    // An empty row satisfies the field test vacuously, but cannot resurrect a
+    // binding subsequently moved as a whole.
+    if state
+        .moved_record_for_descendant_use(&Place::new(root.to_string()))
+        .is_some()
+    {
+        return false;
+    }
     let present: Vec<&str> = match ty {
         Type::Residual { fields, .. } | Type::Record(fields) => {
             fields.iter().map(|(name, _)| name.as_str()).collect()
@@ -2129,6 +2137,11 @@ fn type_ctx_with_symbolic_aspect_methods(
 ) -> TypeCtx {
     let mut enriched = type_ctx.clone();
     let mut method_gen = crate::pipeline::type_checking::symbolic_aspect_method_generator();
+    for placeholder in generic_env.placeholders.keys() {
+        enriched
+            .registry
+            .register_symbolic_named_aspects(placeholder.clone(), HashSet::new());
+    }
     for (placeholder, aspects) in &generic_env.symbolic_aspects {
         enriched
             .registry
@@ -2209,6 +2222,12 @@ fn type_ctx_with_symbolic_row_fields(type_ctx: &TypeCtx, generic_env: &GenericMo
     let mut enriched = type_ctx.clone();
     for (placeholder, fields) in &generic_env.row_fields {
         let owner = enriched.registry.local_placeholder_id(placeholder);
+        for field in fields.iter().filter(|field| field.ty.is_none()) {
+            enriched.registry.register_symbolic_named_aspects(
+                format!("{placeholder}__field_{}", field.label),
+                HashSet::new(),
+            );
+        }
         let field_entries = fields
             .iter()
             .map(|field| FieldEntry {
@@ -2275,9 +2294,6 @@ fn symbolic_aspect_assumptions(
                     .filter_map(GenericBound::from_ast)
                     .filter_map(|bound| bound.aspect_name().map(ToOwned::to_owned))
                     .collect();
-                if assoc_aspects.is_empty() {
-                    continue;
-                }
                 let projection = format!("{symbolic_name}::{}", assoc_decl.name);
                 let entry = symbolic_aspects.entry(projection.clone()).or_default();
                 let previous_len = entry.len();

@@ -1,0 +1,6 @@
+fun main() {
+    let r := { left = "l", right = "r" };
+    let x := r.left;
+    let y := r.right;
+    println(r.left); // ERROR[T0003]
+}

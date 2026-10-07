@@ -2665,10 +2665,26 @@ fn infer_field_assign_type(
     }
     let peeled = peel_all_references(&obj_ty);
     if let InferType::Record(fields) = &peeled {
+        // A direct write can restore an anonymous record's removed label; the
+        // binding's original row supplies its type, not the narrowed read row.
+        let declared_field = if let Expr::Ident(name, _) = object {
+            ctx.lookup_mono_raw(name).and_then(|declared| {
+                let InferType::Record(declared_fields) = ctx.apply_cached_subst(&declared) else {
+                    return None;
+                };
+                declared_fields
+                    .into_iter()
+                    .find(|(name, _)| name == field)
+                    .map(|(_, ty)| ty)
+            })
+        } else {
+            None
+        };
         return fields
             .iter()
             .find(|(name, _)| name == field)
             .map(|(_, ty)| ty.clone())
+            .or(declared_field)
             .ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0003,

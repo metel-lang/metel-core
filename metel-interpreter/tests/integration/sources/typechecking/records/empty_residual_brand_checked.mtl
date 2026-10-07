@@ -1,0 +1,7 @@
+struct S { a: String }
+fun anonymous(r: {}) {}
+fun main() {
+    let s := S { a = "a" };
+    let x := s.a;
+    anonymous(s); // ERROR[T0001]
+}

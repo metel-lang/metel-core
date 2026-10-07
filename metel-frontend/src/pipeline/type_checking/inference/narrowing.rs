@@ -61,7 +61,7 @@ impl InferContext {
                     })
                     .cloned()
                     .collect();
-                if remaining.len() == fields.len() || remaining.is_empty() {
+                if remaining.len() == fields.len() {
                     return None;
                 }
                 remaining.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -221,7 +221,7 @@ fn filter_row(
         .filter(|(name, _)| !moved_labels.contains(name.as_str()))
         .cloned()
         .collect();
-    if remaining.len() == fields.len() || remaining.is_empty() {
+    if remaining.len() == fields.len() {
         return None;
     }
     if full_len == Some(remaining.len()) {

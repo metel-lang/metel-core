@@ -169,7 +169,10 @@ fn record_move_of_place(ctx: &mut ConstructCtx, place: &Place, leaf: &TypedExpr)
         return;
     }
     // The moved leaf must be non-`Copy` for a move to happen at all.
-    if is_copy(ctx, leaf.ty()) {
+    // Symbolic move-analysis witnesses are still abstract, just like unsolved
+    // inference variables. Narrowing them can prevent construction of the very
+    // invalid use the move checker needs to diagnose.
+    if is_copy(ctx, leaf.ty()) || ctx.registry.type_contains_symbolic_parameters(leaf.ty()) {
         return;
     }
     // The root must be a plain owned binding of a struct or anonymous record. A
@@ -216,9 +219,7 @@ fn narrow_named(
         .filter(|(name, _)| !moved_labels.contains(name.as_str()))
         .cloned()
         .collect();
-    if remaining.len() == row.len() || remaining.is_empty() {
-        // Nothing narrowed, or the whole value is gone (move_check reports the
-        // latter as a use of a moved value).
+    if remaining.len() == row.len() {
         return None;
     }
     remaining.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -244,7 +245,7 @@ fn narrow_residual(
         .filter(|(name, _)| !moved_labels.contains(name.as_str()))
         .cloned()
         .collect();
-    if remaining.len() == fields.len() || remaining.is_empty() {
+    if remaining.len() == fields.len() {
         return None;
     }
     remaining.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -272,7 +273,7 @@ fn narrow_record(fields: &[(String, Type)], moved: &[Projection]) -> Option<Type
         .filter(|(name, _)| !moved_labels.contains(name.as_str()))
         .cloned()
         .collect();
-    if remaining.len() == fields.len() || remaining.is_empty() {
+    if remaining.len() == fields.len() {
         return None;
     }
     Some(Type::Record(remaining))

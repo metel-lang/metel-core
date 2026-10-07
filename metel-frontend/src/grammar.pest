@@ -407,7 +407,7 @@ open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," 
                     | "{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
                     | "{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }
-record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
+record_projection_type = { type_path ~ ".{" ~ (ident ~ ("," ~ ident)* ~ ","?)? ~ "}" }
 // RFC-0121 installment 2: a struct's own residual-projection tail
 // (`Handle.{ fd, ..R }` / `Handle.{ .. }`) -- same `fun_decl_param`-only
 // restriction as `open_record_type` above, and the same reason.

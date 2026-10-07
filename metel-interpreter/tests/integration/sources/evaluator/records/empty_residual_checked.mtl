@@ -1,0 +1,37 @@
+struct Pair { left: String, right: String }
+record NamedPair { public left: String, public right: String }
+struct Zero {}
+fun empty_pair(p: Pair.{}) -> Pair.{} { p }
+fun empty_named(p: NamedPair.{}) -> NamedPair.{} { p }
+fun empty_record(r: {}) -> {} { r }
+fun full_pair(p: Pair) -> String { p.left }
+fun main() {
+    var p := Pair { left = "l", right = "r" };
+    let l := p.left;
+    let r := p.right;
+    p.left := "restored";
+    p.right := "again";
+    assert(full_pair(p) == "restored");
+    var a := { left = "l", right = "r" };
+    let al := a.left;
+    let ar := a.right;
+    let ae: {} := empty_record(a);
+    a.left := "back";
+    a.right := "also";
+    assert(a.left == "back");
+    let n := NamedPair { left = "l", right = "r" };
+    let nl := n.left;
+    let nr := n.right;
+    let ne: NamedPair.{} := empty_named(n);
+    let q := Pair { left = "q", right = "s" };
+    let ql := q.left;
+    let qr := q.right;
+    let qe: Pair.{} := empty_pair(q);
+    let qe_again: Pair.{} := empty_pair(qe);
+    let copied := { text = "gone", count = 7 };
+    let text := copied.text;
+    assert(copied.count == 7);
+    let zero: Zero := Zero {};
+    let normalized: Zero.{} := zero;
+    println("ok");
+}

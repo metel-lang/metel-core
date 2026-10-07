@@ -102,7 +102,7 @@ pub enum Type {
     /// naming *every* field the struct declares normalizes back to plain `Named`
     /// instead of constructing this variant (RFC-0137 §3's own worked example: a
     /// full-width projection is still just the struct, not a distinct form) -- so a
-    /// `Residual`'s `fields` is always a strict, non-empty subset of the brand's own
+    /// `Residual`'s `fields` is always a strict (possibly empty) subset of the brand's own
     /// declared row.
     Residual {
         brand: String,

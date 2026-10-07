@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.ownership.narrowing.legality-3", "spec.ownership.narrowing.legality-4", "spec.ownership.widening.dynamics-1"]
+
+[expect]
+status = "success"

@@ -484,6 +484,26 @@ functions report the concrete type since neither has a real impl to point at yet
 
 ---
 
+### Empty row narrowing
+
+Both passes retain empty rows after moving every non-`Copy` field: an anonymous
+record becomes `Record([])`, while a nominal value becomes a same-brand
+`Residual { fields: [] }`. This is independent of the optional move checker.
+`Name.{}` in type position names that empty residual; full-width normalization
+still preserves a nominal declaration that genuinely has no fields.
+
+Field reassignment widens from empty using the original binding row, not the
+narrowed read row. The move checker's legal narrowed-value exemption must first
+exclude a whole-binding move; otherwise empty rows bypass ownership checking
+vacuously. See ADR-0059 and metel-core#1398.
+
+Registered move-analysis placeholders remain abstract for narrowing, including
+when nested in field types. This matches inference's hold-unresolved rule and
+allows the move checker to diagnose generic ownership errors rather than skip
+an unconstructable witness body. Known concrete fields still narrow normally.
+
+---
+
 ## Known Limitations
 
 ### `as` Cast — Via `From<S>` Aspect (v0.4)

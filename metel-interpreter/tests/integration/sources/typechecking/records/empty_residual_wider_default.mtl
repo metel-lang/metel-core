@@ -1,0 +1,7 @@
+struct S { a: String }
+fun full(s: S) {}
+fun main() {
+    let s := S { a = "a" };
+    let x := s.a;
+    full(s); // ERROR[T0001]
+}
