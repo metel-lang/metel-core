@@ -1,0 +1,18 @@
+aspect Transform<A, B> {
+    fun transform(&self, value: A) -> B;
+    fun again(&self, value: A) -> B { self.transform(value) }
+    fun identity<T>(&self, value: T) -> T { value }
+}
+struct Doubler {}
+extend Doubler: Transform<i64, i64> {
+    fun transform(&self, value: i64) -> i64 { value * 2 }
+}
+type Transformer<A, B> := dyn Transform<A, B>;
+fun main() {
+    let concrete := Doubler {};
+    assert(concrete.again(6) == 12);
+    assert(concrete.identity("static generic") == "static generic");
+    let object: Transformer<i64, i64> := concrete;
+    assert(object.transform(7) == 14);
+    assert(object.again(8) == 16);
+}

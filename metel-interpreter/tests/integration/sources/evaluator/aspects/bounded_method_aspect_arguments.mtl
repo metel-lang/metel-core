@@ -1,0 +1,21 @@
+aspect Transform<A, B> {
+    fun transform(&self, value: A) -> B;
+    fun again(&self, value: A) -> B { self.transform(value) }
+    fun identity<T>(&self, value: T) -> T { value }
+}
+struct Doubler {}
+extend Doubler: Transform<i64, i64> {
+    fun transform(&self, value: i64) -> i64 { value * 2 }
+}
+fun generic<T: Transform<i64, i64>>(value: &T, input: i64) -> i64 {
+    let kept: String := value.identity("kept");
+    value.again(input)
+}
+struct Wrapped<T: Transform<i64, i64>> { value: T }
+extend<T> Wrapped<T> {
+    fun apply(&self, value: i64) -> i64 { self.value.again(value) }
+}
+fun main() {
+    assert(generic(&Doubler {}, 6) == 12);
+    assert(Wrapped { value = Doubler {} }.apply(7) == 14);
+}

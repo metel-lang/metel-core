@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0035"
+contains = "no row-conditional implementation matches"
+[options]
+error = ["T0035"]
+spec = ["spec.types.generics.row-conditional-impls.legality-1"]

@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.declarations.type-aliases.legality-1", "spec.declarations.aspects.dyn-aspect.legality-3", "spec.declarations.aspects.dyn-aspect.legality-6", "spec.declarations.aspects.default-methods.dynamics-1"]

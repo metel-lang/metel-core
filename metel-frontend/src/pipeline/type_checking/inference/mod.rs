@@ -1498,10 +1498,12 @@ pub(super) fn collect_fun_row_exclusions(
             .filter(|bound| bound.polarity == Polarity::Negative)
             .filter_map(Bound::row_bound)
         {
-            exclusions
-                .entry(tv)
-                .or_default()
-                .extend(row.fields.iter().map(|field| field.label.clone()));
+            exclusions.entry(tv).or_default().extend(
+                row.fields
+                    .iter()
+                    .filter(|field| field.ty.is_none())
+                    .map(|field| field.label.clone()),
+            );
         }
     }
     if let Some(where_clause) = &fun.where_clause {
@@ -1515,10 +1517,12 @@ pub(super) fn collect_fun_row_exclusions(
                 .filter(|bound| bound.polarity == Polarity::Negative)
                 .filter_map(Bound::row_bound)
             {
-                exclusions
-                    .entry(tv)
-                    .or_default()
-                    .extend(row.fields.iter().map(|field| field.label.clone()));
+                exclusions.entry(tv).or_default().extend(
+                    row.fields
+                        .iter()
+                        .filter(|field| field.ty.is_none())
+                        .map(|field| field.label.clone()),
+                );
             }
         }
     }
@@ -1930,6 +1934,7 @@ fn canonical_generic_bound(bound: &Bound, env: &SignatureEnv) -> String {
 }
 
 mod declarations;
+pub(super) use declarations::collect_aspect_type_arguments;
 use declarations::{infer_decl, rewrite_impl_aspect_returns, type_expr_contains_impl_aspect};
 
 mod narrowing;
@@ -2333,6 +2338,12 @@ fn constrain_with_read_copy(
     declared: InferType,
     span: Span,
 ) -> InferType {
+    // Erasure is a declared-type boundary, not just a coercion check: retaining
+    // the concrete initializer would expose methods absent from the dyn vtable.
+    if contains_dyn_erasure(&declared) {
+        ctx.add_constraint(actual, declared.clone(), span);
+        return declared;
+    }
     // Note the `Var(_)` arm here is deliberately left inspecting the *raw* `declared`.
     // Substituting it was tried and fixed nothing: where `declared` is still a variable
     // — the closure's own return type while its body's tail is being constrained — the
@@ -2560,6 +2571,7 @@ fn infer_enum_variant_literal(
 
 fn infer_struct_literal(
     struct_name: String,
+    symbol_id: Option<crate::identity::symbols::SymbolId>,
     fields: &[(String, Expr)],
     span: &Span,
     ctx: &mut InferContext,
@@ -2657,14 +2669,42 @@ fn infer_struct_literal(
     // constructed from this literal (including through a `-> extends Aspect`
     // opaque-return reveal) dispatch its methods by identity instead of by a
     // bare name that can collide across modules.
-    let type_id = ctx
+    let type_id = symbol_id.or_else(|| {
+        ctx.registry()
+            .resolve_type_id(ctx.current_module_path(), &struct_name)
+    });
+    let canonical_name = ctx
         .registry()
-        .resolve_type_id(ctx.current_module_path(), &struct_name);
+        .canonicalize_type_name(ctx.current_module_path(), &struct_name)
+        .unwrap_or(struct_name);
     Ok(InferType::Named(
-        struct_name,
+        canonical_name,
         type_args,
         crate::data::types::NominalId(type_id),
     ))
+}
+
+fn contains_dyn_erasure(ty: &InferType) -> bool {
+    match ty {
+        InferType::Dyn { .. } => true,
+        InferType::Reference(inner)
+        | InferType::MutReference(inner)
+        | InferType::Array(inner)
+        | InferType::SizedArray(inner, _) => contains_dyn_erasure(inner),
+        InferType::Tuple(items) | InferType::Named(_, items, _) => {
+            items.iter().any(contains_dyn_erasure)
+        }
+        InferType::Record(fields) | InferType::Residual { fields, .. } => {
+            fields.iter().any(|(_, ty)| contains_dyn_erasure(ty))
+        }
+        InferType::RowExtend { fields, tail } => {
+            fields.iter().any(|(_, ty)| contains_dyn_erasure(ty)) || contains_dyn_erasure(tail)
+        }
+        InferType::Fun(params, ret, ..) => {
+            params.iter().any(contains_dyn_erasure) || contains_dyn_erasure(ret)
+        }
+        InferType::Var(_) | InferType::Concrete(_) | InferType::Never => false,
+    }
 }
 
 /// Walk an lvalue chain to the root identifier for mutability checking.

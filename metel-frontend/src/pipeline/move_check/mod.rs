@@ -221,6 +221,7 @@ struct GenericMoveEnv {
     placeholders: HashMap<String, TypeVar>,
     assumptions: AspectAssumptions,
     symbolic_aspects: HashMap<String, HashSet<String>>,
+    associated_types: HashMap<(String, String), HashMap<String, Type>>,
     /// metel-core#1226: a quantified var's `<record T: { field: Type, .. }>`
     /// row bound, by the var's own placeholder name. See
     /// `type_ctx_with_symbolic_row_fields`.
@@ -638,6 +639,22 @@ impl<'a> Checker<'a> {
             &generic_env.placeholders,
             &generic_env.assumptions,
         );
+        for (index, bindings) in scheme.assoc_eq_constraints.iter().enumerate() {
+            let placeholder = generic_placeholder_name(*scheme.quantified_vars.get(index)?);
+            for (aspect, associated, expected) in bindings {
+                let expected = subst.apply(expected);
+                let expected =
+                    infer_to_type(&crate::pipeline::type_checking::substitute_named_generics(
+                        &expected,
+                        &named_samples,
+                    ))?;
+                generic_env
+                    .associated_types
+                    .entry((placeholder.clone(), aspect.clone()))
+                    .or_default()
+                    .insert(associated.clone(), expected);
+            }
+        }
         let InferType::Fun(params, ..) = &scheme.ty else {
             return None;
         };
@@ -2085,7 +2102,9 @@ impl<'a> Checker<'a> {
             // peeled type *is* the pointee.
             Projection::Deref => Some(peeled.clone()),
             Projection::Field { name: field, id } => match peeled {
-                Type::Record(fields) => fields
+                Type::Record(fields)
+                | Type::OpenRecord { fields, .. }
+                | Type::Residual { fields, .. } => fields
                     .iter()
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
@@ -2297,9 +2316,15 @@ fn type_ctx_with_symbolic_aspect_methods(
     let mut enriched = type_ctx.clone();
     let mut method_gen = crate::pipeline::type_checking::symbolic_aspect_method_generator();
     for placeholder in generic_env.placeholders.keys() {
+        enriched.registry.local_placeholder_id(placeholder);
         enriched
             .registry
             .register_symbolic_named_aspects(placeholder.clone(), HashSet::new());
+    }
+    for ((placeholder, aspect), bindings) in &generic_env.associated_types {
+        enriched
+            .registry
+            .register_impl_assoc_types(&[], placeholder, aspect, bindings.clone());
     }
     for (placeholder, aspects) in &generic_env.symbolic_aspects {
         enriched

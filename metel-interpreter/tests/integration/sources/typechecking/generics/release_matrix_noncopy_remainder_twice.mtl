@@ -1,0 +1,7 @@
+fun duplicate_rest<row R, row Rest>(value: { ..R }) -> ({ ..Rest }, { ..Rest })
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value;
+    let first := rest;
+    (first, rest) // ERROR[T0019]
+}
+fun main() {}

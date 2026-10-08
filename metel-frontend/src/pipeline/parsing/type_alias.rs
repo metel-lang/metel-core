@@ -1158,7 +1158,7 @@ fn zip_params<'t>(
     params.into_iter().zip(args.iter()).collect()
 }
 
-/// A copy of `body` with every bare `Named(param, [])` replaced by its bound type.
+/// Substitute both ordinary parameters and row splices in an alias target.
 fn subst_params(body: &TypeExpr, subst: &HashMap<&str, &TypeExpr>) -> TypeExpr {
     let mut out = body.clone();
     subst_params_in_place(&mut out, subst);
@@ -1173,8 +1173,33 @@ fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
         *te = (*replacement).clone();
         return;
     }
+    if let TypeExpr::RowArg(tail) = te
+        && let Some(name) = &tail.var
+        && let Some(replacement) = subst.get(name.as_str())
+    {
+        *te = (*replacement).clone();
+        return;
+    }
     for child in children_mut(te) {
         subst_params_in_place(child, subst);
+    }
+    if let TypeExpr::OpenRecord(fields, tail) = te
+        && let Some(name) = &tail.var
+        && let Some(replacement) = subst.get(name.as_str())
+    {
+        match replacement {
+            TypeExpr::Record(rest) => {
+                fields.extend(rest.iter().cloned());
+                *te = TypeExpr::Record(std::mem::take(fields));
+            }
+            TypeExpr::OpenRecord(rest, rest_tail) => {
+                fields.extend(rest.iter().cloned());
+                *te = TypeExpr::OpenRecord(std::mem::take(fields), rest_tail.clone());
+            }
+            TypeExpr::RowArg(rest_tail) => tail.var.clone_from(&rest_tail.var),
+            TypeExpr::Named(name, args) if args.is_empty() => tail.var = Some(name.clone()),
+            _ => {}
+        }
     }
 }
 

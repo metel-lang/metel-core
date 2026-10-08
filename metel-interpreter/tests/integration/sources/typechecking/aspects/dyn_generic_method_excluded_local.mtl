@@ -1,0 +1,10 @@
+aspect Mapper { fun identity<T>(&self, value: T) -> T; fun ordinary(&self) -> i64; }
+struct Item {}
+extend Item: Mapper {
+    fun identity<T>(&self, value: T) -> T { value }
+    fun ordinary(&self) -> i64 { 1 }
+}
+fun main() {
+    let value: dyn Mapper := Item {};
+    value.identity(1); // ERROR[T0003]
+}

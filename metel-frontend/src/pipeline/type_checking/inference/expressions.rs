@@ -7,11 +7,11 @@ use super::{
     infer_propagate_error, infer_struct_literal, infer_to_type_for_from, infer_tuple_assign_type,
     infer_type_name, infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
-    signature_type_expr_to_infer, type_expr_to_infer_with_generics, type_to_infer,
+    signature_type_expr_to_infer, type_to_infer,
 };
 use crate::pipeline::type_checking::type_engine::{
-    ArrayMethodSchemeVariant, GenericMethodEntailment, RowConditionCheck, RowConditionFailure,
-    RowConstraint, TypeScheme, row_bound_failures,
+    ArrayMethodSchemeVariant, GenericMethodEntailment, RowConditionCheck, TypeScheme,
+    negative_row_bound_failures, row_bound_failures,
 };
 
 fn check_explicit_closure_captures(
@@ -1204,6 +1204,7 @@ pub(super) fn infer_expr(
                     })
                 {
                     let assumptions = ctx.current_aspect_assumptions();
+                    let (positive_bounds, negative_bounds) = ctx.resolved_method_bounds();
                     let Some((scheme, receiver_tvars, _)) = record_candidates
                         .iter()
                         .rev()
@@ -1215,8 +1216,8 @@ pub(super) fn infer_expr(
                                 std::slice::from_ref(&peeled_recv),
                                 GenericMethodEntailment {
                                     aspect_assumptions: &assumptions,
-                                    bounds: ctx.type_param_bounds(),
-                                    negative_bounds: ctx.negative_type_param_bounds(),
+                                    bounds: &positive_bounds,
+                                    negative_bounds: &negative_bounds,
                                     generic_vars: ctx.type_params(),
                                 },
                             )
@@ -1284,6 +1285,7 @@ pub(super) fn infer_expr(
                         .map(|name| (name.to_string(), *tv))
                 });
                 let assumptions = ctx.current_aspect_assumptions();
+                let (positive_bounds, negative_bounds) = ctx.resolved_method_bounds();
                 // An inherited aspect default is checked with `Self: Aspect`
                 // in scope. Its receiver may already have been constrained to
                 // a nominal generic target, but that does not erase the aspect
@@ -1314,8 +1316,8 @@ pub(super) fn infer_expr(
                             &recv_type_args,
                             GenericMethodEntailment {
                                 aspect_assumptions: &assumptions,
-                                bounds: ctx.type_param_bounds(),
-                                negative_bounds: ctx.negative_type_param_bounds(),
+                                bounds: &positive_bounds,
+                                negative_bounds: &negative_bounds,
                                 generic_vars: ctx.type_params(),
                             },
                         )
@@ -1470,6 +1472,15 @@ pub(super) fn infer_expr(
                     })?;
 
                 let aspect_generics = ctx.aspect_generics(aspect).cloned().unwrap_or_default();
+                if !method_def.generics.is_empty() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!(
+                            "generic method `{method}` is excluded from `dyn {aspect}` dispatch"
+                        ),
+                        span,
+                    ));
+                }
                 let alias_types: HashMap<String, InferType> = aspect_generics
                     .iter()
                     .cloned()
@@ -1567,6 +1578,19 @@ pub(super) fn infer_expr(
                         for gp in &method_def.generics {
                             method_generic_map.insert(gp.name.clone(), ctx.fresh_type_var_raw());
                         }
+                        let aspect_arguments = ctx.aspect_type_arguments_for(*tv, aspect_name);
+                        let alias_types = ctx
+                            .aspect_generics(aspect_name)
+                            .into_iter()
+                            .flatten()
+                            .cloned()
+                            .zip(aspect_arguments)
+                            .collect();
+                        let signature_env = SignatureEnv {
+                            generic_vars: method_generic_map,
+                            alias_types,
+                            self_ty: InferType::Var(*tv),
+                        };
                         // Resolve return type: Self → the TypeVar itself. A bare
                         // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
                         // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
@@ -1590,9 +1614,7 @@ pub(super) fn infer_expr(
                                         n,
                                     ))
                                 }
-                                other => {
-                                    type_expr_to_infer_with_generics(other, &method_generic_map)
-                                }
+                                other => signature_type_expr_to_infer(other, &signature_env),
                             },
                         );
 
@@ -1624,8 +1646,7 @@ pub(super) fn infer_expr(
 
                         for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                             if let Some(ann) = &param.type_ann {
-                                let param_ty =
-                                    type_expr_to_infer_with_generics(ann, &method_generic_map);
+                                let param_ty = signature_type_expr_to_infer(ann, &signature_env);
                                 ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
                             }
                         }
@@ -1709,7 +1730,10 @@ pub(super) fn infer_expr(
             ))
         }
         Expr::StructLiteral {
-            path, fields, span, ..
+            path,
+            fields,
+            symbol_id,
+            span,
         } => {
             if path.len() == 2 {
                 infer_enum_variant_literal(
@@ -1734,7 +1758,14 @@ pub(super) fn infer_expr(
                     .last()
                     .ok_or_else(|| MetelError::internal("empty path in struct literal"))?
                     .clone();
-                infer_struct_literal(struct_name, fields, span, ctx, fun_generalizations)
+                infer_struct_literal(
+                    struct_name,
+                    *symbol_id,
+                    fields,
+                    span,
+                    ctx,
+                    fun_generalizations,
+                )
             }
         }
         Expr::RecordProjection {
@@ -2306,6 +2337,7 @@ fn row_candidate_failure_message(
     receiver_args: &[InferType],
     ctx: &InferContext,
 ) -> Option<String> {
+    let (_, negative_bounds) = ctx.resolved_method_bounds();
     let mut alternatives = Vec::new();
     let mut saw_rejected = false;
     let mut every_candidate_rejected = true;
@@ -2340,10 +2372,7 @@ fn row_candidate_failure_message(
                     requirements.push(requirement);
                     let candidate_failures = if let InferType::Var(tv) = receiver {
                         let available = if forbidden {
-                            ctx.negative_type_param_bounds()
-                                .get(tv)
-                                .cloned()
-                                .unwrap_or_default()
+                            negative_bounds.get(tv).cloned().unwrap_or_default()
                         } else {
                             ctx.bounds_for_type_var(*tv).unwrap_or_default()
                         };
@@ -2404,37 +2433,6 @@ fn row_candidate_failure_message(
         "no row-conditional implementation matches {receiver_description}; {}",
         alternatives.join("; ")
     ))
-}
-
-/// Negative row facts describe excluded field patterns, not exact rows. An
-/// untyped exclusion is stronger than a typed one, while a typed exclusion
-/// does not establish that the label is absent at every type.
-fn negative_row_bound_failures(
-    actual: &[GenericBound],
-    required: &RowConstraint,
-) -> Vec<RowConditionFailure> {
-    let mut failures = Vec::new();
-    for needed in &required.fields {
-        let entailed = actual
-            .iter()
-            .filter_map(|bound| match bound {
-                GenericBound::Row(row) => {
-                    row.fields.iter().find(|field| field.label == needed.label)
-                }
-                _ => None,
-            })
-            .any(|field| {
-                field.ty.is_none()
-                    || field.ty.as_ref().map(|ty| format!("{ty:?}"))
-                        == needed.ty.as_ref().map(|ty| format!("{ty:?}"))
-            });
-        if !entailed {
-            failures.push(RowConditionFailure::MissingLabel {
-                label: needed.label.clone(),
-            });
-        }
-    }
-    failures
 }
 
 struct RecordMethodCall<'a> {

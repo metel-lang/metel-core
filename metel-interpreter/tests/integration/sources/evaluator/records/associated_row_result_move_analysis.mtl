@@ -1,0 +1,13 @@
+aspect Source { type Item; fun take(self) -> Item; }
+record Holder<T> { public value: T }
+extend<T> Holder<T>: Source {
+    type Item := T;
+    fun take(self) -> T { self.value }
+}
+fun empty_from<S: Source<Item = { token: String }>>(source: S) -> {} {
+    let { token: _, ..rest } := source.take();
+    rest
+}
+fun main() {
+    let empty: {} := empty_from(Holder { value = { token = "owned" } });
+}

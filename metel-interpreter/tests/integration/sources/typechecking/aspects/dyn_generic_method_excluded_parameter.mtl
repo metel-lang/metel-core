@@ -1,0 +1,5 @@
+aspect Mapper { fun identity<T>(&self, value: T) -> T; fun ordinary(&self) -> i64; }
+fun rejected(value: &dyn Mapper) {
+    value.identity(1); // ERROR[T0003]
+}
+fun main() {}

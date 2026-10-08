@@ -1,0 +1,8 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "a declared type parameter is opaque inside its own definition"
+
+[options]
+error = ["T0001"]
+spec = ["spec.types.generics.rigid-type-parameters.legality-1", "spec.declarations.type-aliases.legality-1"]

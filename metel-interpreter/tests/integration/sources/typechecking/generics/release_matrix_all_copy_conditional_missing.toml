@@ -1,0 +1,8 @@
+[expect]
+status = "typecheck_error"
+code = "T0035"
+contains = "conditional implementation requirements are not entailed"
+
+[options]
+error = ["T0035"]
+spec = ["spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.generics.rigid-type-parameters.legality-2", "spec.types.generics.row-conditional-impls.legality-3"]

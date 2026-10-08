@@ -1,0 +1,31 @@
+record Packet<row R> { public data: { ..R } }
+type EmptyRow := {};
+type EmptyPacket := Packet<{}>;
+type Envelope<T> := (T, i64);
+fun same<row R>(value: Envelope<{ ..R }>) -> Envelope<{ ..R }> { value }
+fun copy_twice<row R>(value: { ..R }) -> Envelope<({ ..R }, { ..R })>
+where all R: Copy { ((value, value), 11) }
+fun strip<row R, row Rest>(value: Packet<..R>) -> Packet<..Rest>
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value.data;
+    Packet { data = rest }
+}
+fun identity<T>(value: Envelope<T>) -> Envelope<T> { value }
+aspect Carrier { fun pass<T>(self, value: Envelope<T>) -> Envelope<T>; }
+struct Courier {}
+extend Courier: Carrier { fun pass<T>(self, value: Envelope<T>) -> Envelope<T> { value } }
+fun main() {
+    let wrapped := same(({ text = "owned", count = 2 }, 3));
+    let value := wrapped.0;
+    assert(value.count == 2);
+    assert(value.text == "owned");
+    let pair := copy_twice({ count = 5 });
+    assert(pair.0.0.count + pair.0.1.count == 10);
+    let empty_pair := copy_twice({});
+    let empty: EmptyRow := empty_pair.0.0;
+    let stripped := strip(Packet { data = { token = "gone", text = "kept" } });
+    assert(stripped.data.text == "kept");
+    let stripped_empty: EmptyPacket := strip(Packet { data = { token = "gone" } });
+    let envelope := Courier {}.pass(identity((stripped_empty, 9)));
+    assert(envelope.1 == 9);
+}

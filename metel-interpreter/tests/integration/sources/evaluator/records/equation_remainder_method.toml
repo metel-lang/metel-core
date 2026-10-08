@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.rigid-type-parameters.legality-2", "spec.types.generics.row-conditional-impls.legality-1"]

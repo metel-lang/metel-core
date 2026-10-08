@@ -839,8 +839,10 @@ fn nested_fun_axes_match_at(a: &InferType, b: &InferType, fun_depth: usize) -> b
         )
         | (InferType::Reference(a), InferType::Reference(b))
         | (InferType::MutReference(a), InferType::MutReference(b)) => same(a, b),
-        (InferType::Named(an, as_, ..), InferType::Named(bn, bs, ..)) => {
-            an == bn && as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| same(a, b))
+        (InferType::Named(an, as_, aid), InferType::Named(bn, bs, bid)) => {
+            nominal_heads_match(an, aid, bn, bid)
+                && as_.len() == bs.len()
+                && as_.iter().zip(bs).all(|(a, b)| same(a, b))
         }
         (
             InferType::Residual {
@@ -1049,8 +1051,8 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             unify_seq(&mut subst, t1, t2)?;
             Ok(subst)
         }
-        (InferType::Named(n1, args1, ..), InferType::Named(n2, args2, ..)) => {
-            if n1 != n2 || args1.len() != args2.len() {
+        (InferType::Named(n1, args1, id1), InferType::Named(n2, args2, id2)) => {
+            if !nominal_heads_match(n1, id1, n2, id2) || args1.len() != args2.len() {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             let mut subst = Substitution::new();
@@ -1157,6 +1159,18 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
             )))
         }
         _ => Err(MetelError::internal(format!("cannot unify {a} with {b}"))),
+    }
+}
+
+fn nominal_heads_match(
+    left: &str,
+    left_id: &crate::data::types::NominalId,
+    right: &str,
+    right_id: &crate::data::types::NominalId,
+) -> bool {
+    match (left_id.get(), right_id.get()) {
+        (Some(left), Some(right)) => left == right,
+        _ => left == right,
     }
 }
 
@@ -2070,6 +2084,7 @@ pub type AssocEqConstraints = HashMap<TypeVar, Vec<(String, String, InferType)>>
 pub type RowDecomposition = (Vec<(String, InferType)>, Option<TypeVar>);
 /// Body-local decompositions keyed by the row variable they describe.
 pub type RowDecompositions = HashMap<TypeVar, RowDecomposition>;
+pub type AspectTypeArguments = HashMap<(TypeVar, String), Vec<InferType>>;
 #[derive(Debug, Clone)]
 pub enum GenericBound {
     Aspect(String),
@@ -2292,6 +2307,36 @@ pub fn row_bound_failures(
         .fields
         .sort_by(|left, right| left.label.cmp(&right.label));
     row_bound_entailment_failures(&known, required)
+}
+
+/// Exclusions describe absent field patterns, not a row's exact field set.
+#[must_use]
+pub fn negative_row_bound_failures(
+    actual: &[GenericBound],
+    required: &RowConstraint,
+) -> Vec<RowConditionFailure> {
+    required
+        .fields
+        .iter()
+        .filter_map(|needed| {
+            let entailed = actual
+                .iter()
+                .filter_map(|bound| match bound {
+                    GenericBound::Row(row) => {
+                        row.fields.iter().find(|field| field.label == needed.label)
+                    }
+                    _ => None,
+                })
+                .any(|field| {
+                    field.ty.is_none()
+                        || field.ty.as_ref().map(|ty| format!("{ty:?}"))
+                            == needed.ty.as_ref().map(|ty| format!("{ty:?}"))
+                });
+            (!entailed).then(|| RowConditionFailure::MissingLabel {
+                label: needed.label.clone(),
+            })
+        })
+        .collect()
 }
 
 impl From<&RowBound> for RowConstraint {
@@ -2706,6 +2751,7 @@ pub struct TypeDefinitionRegistry {
     /// Key: type `SymbolId`. Value: one Vec<String> per type param (same order as
     /// `struct_type_params`), each containing the aspect names that param must satisfy.
     type_param_bounds: HashMap<SymbolId, Vec<Vec<GenericBound>>>,
+    type_param_aspect_arguments: HashMap<SymbolId, AspectTypeArguments>,
     /// Negative per-type-param aspect bounds (`T: !Aspect`) for generic structs and enums.
     /// Key: type `SymbolId`. Value: one Vec<String> per type param, each containing the
     /// aspect names that param must NOT satisfy (RFC-0072, issue #243).
@@ -3151,6 +3197,7 @@ impl TypeDefinitionRegistry {
             array_method_scheme_variants: HashMap::new(),
             generic_method_schemes_by_span: HashMap::new(),
             type_param_bounds: HashMap::new(),
+            type_param_aspect_arguments: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
             type_param_record_kinds: HashMap::new(),
             type_param_row_kinds: HashMap::new(),
@@ -3436,6 +3483,24 @@ impl TypeDefinitionRegistry {
 
     pub fn register_struct_generic_names(&mut self, owner: SymbolId, param_names: Vec<String>) {
         self.struct_generic_names.insert(owner, param_names);
+    }
+
+    pub fn register_type_param_aspect_arguments(
+        &mut self,
+        owner: SymbolId,
+        arguments: AspectTypeArguments,
+    ) {
+        self.type_param_aspect_arguments.insert(owner, arguments);
+    }
+
+    #[must_use]
+    pub fn type_param_aspect_arguments_for(
+        &self,
+        module: &[String],
+        name: &str,
+    ) -> Option<&AspectTypeArguments> {
+        self.type_param_aspect_arguments
+            .get(&self.resolve_type_key_broad(module, name)?)
     }
 
     #[must_use]
@@ -4518,10 +4583,7 @@ impl TypeDefinitionRegistry {
                         GenericBound::Aspect(aspect) => declared_negative.iter().any(
                             |candidate| matches!(candidate, GenericBound::Aspect(name) if name == aspect),
                         ),
-                        GenericBound::Row(required) => declared_negative.iter().any(|candidate| {
-                            matches!(candidate, GenericBound::Row(actual)
-                                if row_bound_entails(actual, required))
-                        }),
+                        GenericBound::Row(required) => negative_row_bound_failures(declared_negative, required).is_empty(),
                         GenericBound::AllFields {
                             aspects,
                             except,
@@ -5212,7 +5274,7 @@ impl TypeDefinitionRegistry {
         aspect: &str,
         bindings: HashMap<String, Type>,
     ) {
-        let Some(target_id) = self.resolve_type_position_id(current_module, target) else {
+        let Some(target_id) = self.resolve_type_key(current_module, target) else {
             return;
         };
         self.impl_assoc_types
@@ -5231,7 +5293,7 @@ impl TypeDefinitionRegistry {
         aspect: &str,
         assoc_name: &str,
     ) -> Option<&Type> {
-        let target_id = self.resolve_type_position_id(current_module, target)?;
+        let target_id = self.resolve_type_key(current_module, target)?;
         self.impl_assoc_types
             .get(&(target_id, aspect.to_string()))?
             .get(assoc_name)
@@ -5353,6 +5415,11 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.struct_generic_names {
             self.struct_generic_names
+                .entry(*k)
+                .or_insert_with(|| v.clone());
+        }
+        for (k, v) in &other.type_param_aspect_arguments {
+            self.type_param_aspect_arguments
                 .entry(*k)
                 .or_insert_with(|| v.clone());
         }
@@ -5635,6 +5702,8 @@ pub struct InferContext {
     /// `TypeVar` → aspect names for the current generic function's bounded type params.
     /// Parallel to `current_type_params`; swapped in/out alongside it.
     current_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
+    /// Concrete or enclosing-generic arguments of the body's declared aspect bounds.
+    current_aspect_type_arguments: AspectTypeArguments,
     /// Negative bounds for the current generic body, kept separate so a
     /// negative row condition is never mistaken for a positive row fact.
     current_negative_type_param_bounds: HashMap<TypeVar, Vec<GenericBound>>,
@@ -5773,6 +5842,7 @@ impl InferContext {
             registry,
             current_type_params: HashMap::new(),
             current_type_param_bounds: HashMap::new(),
+            current_aspect_type_arguments: HashMap::new(),
             current_negative_type_param_bounds: HashMap::new(),
             current_row_exclusions: HashMap::new(),
             current_row_decompositions: HashMap::new(),
@@ -5993,9 +6063,10 @@ impl InferContext {
     /// parameters of the generic definition being checked (RFC-0173).
     #[must_use]
     pub fn declared_type_param_name(&self, tv: TypeVar) -> Option<&str> {
-        self.current_type_params
-            .iter()
-            .find_map(|(name, &var)| (var == tv).then_some(name.as_str()))
+        let resolved = self.cached_subst.apply(&InferType::Var(tv));
+        self.current_type_params.iter().find_map(|(name, &var)| {
+            (self.cached_subst.apply(&InferType::Var(var)) == resolved).then_some(name.as_str())
+        })
     }
 
     /// Install a new type-param map for the duration of a generic function body.
@@ -6123,6 +6194,34 @@ impl InferContext {
         &self.current_type_params
     }
 
+    pub fn enter_aspect_type_arguments(
+        &mut self,
+        arguments: AspectTypeArguments,
+    ) -> AspectTypeArguments {
+        let saved = self.current_aspect_type_arguments.clone();
+        self.current_aspect_type_arguments.extend(arguments);
+        saved
+    }
+
+    pub fn restore_aspect_type_arguments(&mut self, saved: AspectTypeArguments) {
+        self.current_aspect_type_arguments = saved;
+    }
+
+    #[must_use]
+    pub fn aspect_type_arguments_for(&self, tv: TypeVar, aspect: &str) -> Vec<InferType> {
+        let resolved = self.cached_subst.apply(&InferType::Var(tv));
+        self.current_aspect_type_arguments
+            .iter()
+            .find(|((candidate, name), _)| {
+                name == aspect && self.cached_subst.apply(&InferType::Var(*candidate)) == resolved
+            })
+            .map_or_else(Vec::new, |(_, args)| {
+                args.iter()
+                    .map(|arg| self.cached_subst.apply(arg))
+                    .collect()
+            })
+    }
+
     /// Returns the aspect names required by a type-param `TypeVar` in the current
     /// function scope. Bounds are tracked out-of-band from the types themselves,
     /// so after unification the active representative may differ from the `TypeVar`
@@ -6203,12 +6302,55 @@ impl InferContext {
         &self.current_negative_type_param_bounds
     }
 
+    #[must_use]
+    pub fn resolved_method_bounds(
+        &self,
+    ) -> (
+        HashMap<TypeVar, Vec<GenericBound>>,
+        HashMap<TypeVar, Vec<GenericBound>>,
+    ) {
+        let rekey = |facts: &HashMap<TypeVar, Vec<GenericBound>>| {
+            let mut resolved: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
+            for (&tv, bounds) in facts {
+                if let InferType::Var(representative) = self.cached_subst.apply(&InferType::Var(tv))
+                {
+                    resolved
+                        .entry(representative)
+                        .or_default()
+                        .extend(bounds.iter().cloned());
+                }
+            }
+            resolved
+        };
+        let positive = rekey(&self.current_type_param_bounds);
+        let mut negative = rekey(&self.current_negative_type_param_bounds);
+        for (&tv, labels) in &self.current_row_exclusions {
+            if let InferType::Var(representative) = self.cached_subst.apply(&InferType::Var(tv)) {
+                negative
+                    .entry(representative)
+                    .or_default()
+                    .push(GenericBound::Row(RowConstraint {
+                        fields: labels
+                            .iter()
+                            .map(|label| RowConstraintField {
+                                label: label.clone(),
+                                ty: None,
+                            })
+                            .collect(),
+                        open: false,
+                    }));
+            }
+        }
+        (positive, negative)
+    }
+
     /// The positive aspect assumptions available to the generic body currently
     /// being inferred.  Conditional-impl selection uses these rather than trying
     /// to resolve an opaque declared parameter as a concrete type.
     #[must_use]
     pub fn current_aspect_assumptions(&self) -> AspectAssumptions {
-        self.current_type_param_bounds
+        let mut assumptions: AspectAssumptions = self
+            .current_type_param_bounds
             .iter()
             .map(|(tv, bounds)| {
                 let aspects = bounds
@@ -6218,7 +6360,14 @@ impl InferContext {
                     .collect();
                 (*tv, aspects)
             })
-            .collect()
+            .collect();
+        for (tv, bounds) in self.resolved_method_bounds().0 {
+            let entry = assumptions.entry(tv).or_default();
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                entry.insert(aspect.to_string());
+            }
+        }
+        assumptions
     }
 
     /// Swap in empty projection state for a new function/method body, returning the old state.

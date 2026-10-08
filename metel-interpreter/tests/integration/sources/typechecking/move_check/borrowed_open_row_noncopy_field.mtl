@@ -1,0 +1,4 @@
+fun rejected<row R>(value: &{ token: String, ..R }) -> String {
+    value.token // ERROR[T0019]
+}
+fun main() {}

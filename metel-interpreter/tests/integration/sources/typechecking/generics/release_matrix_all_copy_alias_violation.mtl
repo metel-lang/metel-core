@@ -1,0 +1,5 @@
+type Pair<T> := (T, T);
+fun duplicate<row R>(value: { ..R }) -> Pair<{ ..R }> where all R: Copy {
+    (value, value)
+}
+fun main() { duplicate({ text = "owned" }); } // ERROR[T0012]

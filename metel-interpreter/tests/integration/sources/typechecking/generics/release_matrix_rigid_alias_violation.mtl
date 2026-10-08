@@ -1,0 +1,3 @@
+type Envelope<T> := (T, i64);
+fun collapse<T>(value: Envelope<T>) -> Envelope<i64> { value } // ERROR[T0001]
+fun main() {}

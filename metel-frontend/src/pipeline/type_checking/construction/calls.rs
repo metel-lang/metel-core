@@ -1801,7 +1801,11 @@ pub(super) fn instantiate_scheme_for_call(
         // later against the constructed argument with full module-visibility
         // context and raises T0012 if it doesn't.
         let s = unify(&applied, &arg_infer).map_err(|_| {
-            MetelError::type_error(TypeErrorCode::T0001, "argument type mismatch", span)
+            MetelError::type_error(
+                TypeErrorCode::T0001,
+                format!("argument type mismatch: expected `{applied}`, got `{arg_infer}`"),
+                span,
+            )
         })?;
         subst = subst.compose(&s);
     }

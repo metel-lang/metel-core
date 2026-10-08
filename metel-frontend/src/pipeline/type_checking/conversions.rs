@@ -209,7 +209,11 @@ fn type_expr_to_infer_in_context(
                     let id = assoc_ctx
                         .and_then(|ctx| {
                             ctx.registry
-                                .resolve_type_id(ctx.current_module, &resolved_name)
+                                .resolve_type_id(ctx.current_module, name)
+                                .or_else(|| {
+                                    ctx.registry
+                                        .resolve_type_id(ctx.current_module, &resolved_name)
+                                })
                         })
                         .map_or(
                             crate::data::types::NominalId::NONE,

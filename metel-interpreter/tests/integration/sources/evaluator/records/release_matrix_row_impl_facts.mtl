@@ -1,0 +1,31 @@
+record Session<row R> { public id: i64, public data: { ..R } }
+extend<row R: { token: String, .. }> Session<..R> {
+    fun kind(self) -> i64 { 1 }
+}
+extend<row R: !{ token }> Session<..R> {
+    fun kind(self) -> i64 { 2 }
+}
+aspect Mark { fun mark(&self) -> i64; }
+extend<row R> { ..R }: Mark where all R: Copy {
+    fun mark(&self) -> i64 { 7 }
+}
+fun marked<row R>(value: &{ ..R }) -> i64 where all R: Copy {
+    value.mark()
+}
+fun remove_token<row R, row Rest>(session: Session<..R>) -> Session<..Rest>
+where R = { token: String, ..Rest } {
+    let { id, data } := session;
+    let { token: _, ..rest } := data;
+    let cleared: Session<..Rest> := Session { id = id, data = rest };
+    cleared
+}
+fun has_token<row R: { token: String, .. }>(session: Session<..R>) -> i64 {
+    session.kind()
+}
+fun main() {
+    assert(has_token(Session { id = 3, data = { token = "t", text = "owned" } }) == 1);
+    assert(remove_token(Session { id = 3, data = { token = "t" } }).kind() == 2);
+    assert(remove_token(Session { id = 5, data = { token = "t", text = "kept" } }).kind() == 2);
+    assert(marked(&{}) == 7);
+    assert(marked(&{ count = 4, flag = true }) == 7);
+}

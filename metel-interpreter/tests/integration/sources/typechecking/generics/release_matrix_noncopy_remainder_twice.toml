@@ -1,0 +1,9 @@
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "use of moved value `rest`"
+
+[options]
+move_check = true
+error = ["T0019"]
+spec = ["spec.ownership.values-move-by-default.legality-1", "spec.types.generics.rigid-type-parameters.legality-1", "spec.declarations.variables.record-pattern-bindings.legality-1"]

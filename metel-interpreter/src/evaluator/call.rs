@@ -68,7 +68,7 @@ pub(super) fn generic_definition_disagrees(name: &str, error: MetelError) -> Met
             InternalErrorCode::I0010,
             format!(
                 "generic definition `{name}` and construction disagree; the definition was \
-                 accepted but reconstruction rejected its body"
+                 accepted but reconstruction rejected its body: {error}"
             ),
         )
     } else {

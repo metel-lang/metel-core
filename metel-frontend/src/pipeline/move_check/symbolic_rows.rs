@@ -27,6 +27,22 @@ pub(super) fn row_samples(
             rows.extend([target, *source]);
         }
     }
+    // An open-row parameter has an anonymous record-kinded value variable,
+    // distinct from its declared tail. Borrowed rows are not in
+    // `open_row_params` (that table governs by-value narrowing), but still
+    // need their structural field entitlements during reconstruction. An
+    // impl on a structural row records the same value variable as `Self`.
+    rows.extend(
+        scheme
+            .quantified_vars
+            .iter()
+            .enumerate()
+            .filter_map(|(index, _)| {
+                let name = scheme.param_names.get(index).map_or("", String::as_str);
+                (scheme.record_kinds.get(index) == Some(&true) && matches!(name, "" | "Self"))
+                    .then_some(index)
+            }),
+    );
     rows.extend(
         scheme
             .open_row_params

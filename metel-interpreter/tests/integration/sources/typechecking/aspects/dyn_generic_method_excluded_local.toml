@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "generic method `identity` is excluded from `dyn Mapper` dispatch"
+[options]
+error = ["T0003"]
+spec = ["spec.declarations.aspects.dyn-aspect.legality-3"]

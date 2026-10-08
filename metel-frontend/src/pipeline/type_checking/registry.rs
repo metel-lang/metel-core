@@ -580,6 +580,14 @@ fn register_program_decls(
                     sd.kind == StructKind::Record,
                 );
                 registry.register_struct_type_params(sym, type_params);
+                registry.register_type_param_aspect_arguments(
+                    sym,
+                    super::inference::collect_aspect_type_arguments(
+                        sd.generics.iter(),
+                        sd.where_clause.iter(),
+                        &gen_map,
+                    ),
+                );
                 registry.register_struct_generic_names(
                     sym,
                     sd.generics.iter().map(|g| g.name.clone()).collect(),
@@ -635,6 +643,14 @@ fn register_program_decls(
                     registry.register_struct_generic_names(
                         sym,
                         ed.generics.iter().map(|g| g.name.clone()).collect(),
+                    );
+                    registry.register_type_param_aspect_arguments(
+                        sym,
+                        super::inference::collect_aspect_type_arguments(
+                            ed.generics.iter(),
+                            ed.where_clause.iter(),
+                            &gen_map,
+                        ),
                     );
                 }
                 if let Some(sym) = enum_sym {

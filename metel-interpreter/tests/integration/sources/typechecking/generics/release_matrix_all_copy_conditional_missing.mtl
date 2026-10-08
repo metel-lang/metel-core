@@ -1,0 +1,6 @@
+aspect Mark { fun mark(&self) -> i64; }
+extend<row R> { ..R }: Mark where all R: Copy {
+    fun mark(&self) -> i64 { 7 }
+}
+fun unchecked<row R>(value: &{ ..R }) -> i64 { value.mark() } // ERROR[T0035]
+fun main() {}

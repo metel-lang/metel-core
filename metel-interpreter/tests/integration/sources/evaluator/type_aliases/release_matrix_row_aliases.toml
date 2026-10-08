@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.declarations.type-aliases.legality-1", "spec.declarations.records.legality-1", "spec.types.generics.open-rows.legality-1", "spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.generics.rigid-type-parameters.legality-1"]

@@ -1,0 +1,8 @@
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "use of moved value `source`"
+[options]
+move_check = true
+error = ["T0019"]
+spec = ["spec.ownership.values-move-by-default.legality-1"]

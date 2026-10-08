@@ -1,0 +1,5 @@
+fun collapse<T>(value: { payload: T }) -> i64 {
+    let { payload, ..rest } := value;
+    payload // ERROR[T0001]
+}
+fun main() {}

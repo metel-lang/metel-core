@@ -13,7 +13,7 @@ use super::{
     type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
     type_expr_to_infer_with_self, type_to_infer,
 };
-use crate::pipeline::type_checking::type_engine::RowDecompositions;
+use crate::pipeline::type_checking::type_engine::{AspectTypeArguments, RowDecompositions};
 use std::collections::HashSet;
 
 // scatter one coherent dispatch table across many small functions with no
@@ -638,6 +638,75 @@ fn install_assoc_eq_facts(
     }
 }
 
+pub(in crate::pipeline::type_checking) fn collect_aspect_type_arguments<'a>(
+    generics: impl Iterator<Item = &'a crate::data::ast::GenericParam>,
+    clauses: impl Iterator<Item = &'a crate::data::ast::WhereClause>,
+    generic_map: &HashMap<String, TypeVar>,
+) -> AspectTypeArguments {
+    let mut arguments = AspectTypeArguments::new();
+    let mut collect = |name: &str, bounds: &[crate::data::ast::Bound]| {
+        let Some(&tv) = generic_map.get(name) else {
+            return;
+        };
+        for bound in bounds {
+            if bound.polarity != Polarity::Positive {
+                continue;
+            }
+            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(aspect, args)) = &bound.head
+            else {
+                continue;
+            };
+            arguments.insert(
+                (tv, aspect.clone()),
+                args.iter()
+                    .map(|arg| type_expr_to_infer_with_generics(arg, generic_map))
+                    .collect(),
+            );
+        }
+    };
+    for generic in generics {
+        collect(&generic.name, &generic.bounds);
+    }
+    for clause in clauses {
+        for constraint in &clause.constraints {
+            collect(&constraint.name, &constraint.bounds);
+        }
+    }
+    arguments
+}
+
+fn inherited_aspect_type_arguments(
+    target: &str,
+    generic_map: &HashMap<String, TypeVar>,
+    ctx: &InferContext,
+) -> AspectTypeArguments {
+    let mut remap = Substitution::new();
+    if let (Some(params), Some(names)) = (
+        ctx.get_struct_type_params(target),
+        ctx.struct_generic_names_for(target),
+    ) {
+        for (&param, name) in params.iter().zip(names) {
+            if let Some(&argument) = generic_map.get(name) {
+                remap.bind(param, InferType::Var(argument));
+            }
+        }
+    }
+    ctx.registry()
+        .type_param_aspect_arguments_for(ctx.current_module_path(), target)
+        .into_iter()
+        .flatten()
+        .filter_map(|((param, aspect), args)| {
+            let InferType::Var(argument) = remap.apply(&InferType::Var(*param)) else {
+                return None;
+            };
+            Some((
+                (argument, aspect.clone()),
+                args.iter().map(|arg| remap.apply(arg)).collect(),
+            ))
+        })
+        .collect()
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -944,6 +1013,11 @@ pub(super) fn infer_fun_decl(
     let orig_name_map: HashMap<TypeVar, String> =
         generic_map.iter().map(|(n, &tv)| (tv, n.clone())).collect();
     let saved_type_params = ctx.swap_type_params(generic_map.clone());
+    let saved_aspect_arguments = ctx.enter_aspect_type_arguments(collect_aspect_type_arguments(
+        fun.generics.iter(),
+        fun.where_clause.iter(),
+        &generic_map,
+    ));
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let saved_neg_tp_bounds = ctx.swap_negative_type_param_bounds(neg_type_var_bounds.clone());
     let saved_row_exclusions = ctx.swap_row_exclusions(row_exclusions);
@@ -975,6 +1049,7 @@ pub(super) fn infer_fun_decl(
     ctx.swap_negative_type_param_bounds(saved_neg_tp_bounds);
     ctx.swap_type_param_bounds(saved_tp_bounds);
     ctx.swap_type_params(saved_type_params);
+    ctx.restore_aspect_type_arguments(saved_aspect_arguments);
     // Capture the projection log recorded during this function's body BEFORE restoring.
     let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
@@ -1850,6 +1925,13 @@ pub(super) fn infer_impl_method(
                 p.mutable || matches!(p.receiver, Some(crate::data::ast::ReceiverKind::RefMut));
             ctx.bind_mono(&p.name, pt.clone(), is_mutable);
         }
+        let mut aspect_arguments = inherited_aspect_type_arguments(target_name, &generic_map, ctx);
+        aspect_arguments.extend(collect_aspect_type_arguments(
+            ib.generics.iter().chain(method.generics.iter()),
+            ib.where_clause.iter().chain(method.where_clause.iter()),
+            &generic_map,
+        ));
+        let saved_aspect_arguments = ctx.enter_aspect_type_arguments(aspect_arguments);
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
         let saved_negative_bounds = ctx.swap_negative_type_param_bounds(negative_bounds);
@@ -1872,6 +1954,7 @@ pub(super) fn infer_impl_method(
         ctx.swap_type_param_bounds(saved_tp_bounds);
         ctx.swap_negative_type_param_bounds(saved_negative_bounds);
         ctx.swap_type_params(saved_type_params);
+        ctx.restore_aspect_type_arguments(saved_aspect_arguments);
         ctx.flow_exit_body(saved_flow);
         ctx.pop_scope();
     }

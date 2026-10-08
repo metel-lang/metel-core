@@ -1,0 +1,14 @@
+record Session<row R> { public data: { ..R } }
+extend<row R: !{ token }> Session<..R> {
+    fun cleared(&self) -> i64 { 2 }
+}
+fun strip<row R, row Rest>(session: Session<..R>) -> i64
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := session.data;
+    let cleared: Session<..Rest> := Session { data = rest };
+    cleared.cleared()
+}
+fun main() {
+    assert(strip(Session { data = { token = "gone" } }) == 2);
+    assert(strip(Session { data = { token = "gone", kept = "here" } }) == 2);
+}

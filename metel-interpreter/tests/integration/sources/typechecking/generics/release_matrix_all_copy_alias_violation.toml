@@ -1,0 +1,9 @@
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "field `text` of type `String` does not implement `Copy`"
+
+[options]
+move_check = true
+error = ["T0012"]
+spec = ["spec.types.generics.field-wise-row-constraints.legality-1", "spec.declarations.type-aliases.legality-1"]

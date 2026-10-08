@@ -1094,7 +1094,10 @@ pub(super) fn construct_expr(
             // satisfies.
             if matches!(
                 peel_type_references(typed_receiver.ty()),
-                Type::Record(_) | Type::Residual { .. }
+                Type::Record(_)
+                    | Type::Residual { .. }
+                    | Type::OpenRecord { .. }
+                    | Type::SymbolicRow { .. }
             ) && !ctx
                 .registry
                 .record_method_scheme_variants_for(method)
@@ -1403,7 +1406,7 @@ pub(super) fn construct_expr(
                 )?
             } else {
                 let type_name = resolved_path.last().unwrap();
-                let type_id = ctx.registry.resolve_type_id(ctx.current_module, type_name);
+                let type_id = symbol_id.or_else(|| ctx.type_symbol_id(type_name));
                 if let Some(type_params) =
                     type_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
                 {
@@ -1539,6 +1542,10 @@ pub(super) fn construct_expr(
             // bare name is not sufficient to recover its record kind (#1307).
             let ty = match ty {
                 Type::Named(name, args, _) => {
+                    let name = ctx
+                        .registry
+                        .canonicalize_type_name(ctx.current_module, &name)
+                        .unwrap_or(name);
                     Type::Named(name, args, crate::data::types::NominalId(type_id))
                 }
                 other => other,

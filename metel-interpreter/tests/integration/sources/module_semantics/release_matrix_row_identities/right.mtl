@@ -1,0 +1,9 @@
+public record RightPacket<row R> { public data: { ..R } }
+public aspect RightRead { fun read(&self) -> i64; }
+extend<row R: { count: i64, .. }> RightPacket<..R>: RightRead {
+    fun read(&self) -> i64 { self.data.count + 100 }
+}
+public fun inspect_right<row R: { count: i64, .. }>(packet: &RightPacket<..R>) -> i64 {
+    packet.read()
+}
+public fun identity_right<row R>(packet: RightPacket<..R>) -> RightPacket<..R> { packet }

@@ -1,0 +1,6 @@
+import left::Packet as Left;
+import right::Packet as Right;
+fun consume(value: Left<{ count: i64 }>) -> i64 { value.data.count }
+fun main() {
+    consume(Right { data = { count = 4 } }); // ERROR[T0001]
+}

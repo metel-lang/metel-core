@@ -1,0 +1,6 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+[options]
+error = ["T0001"]
+spec = ["spec.declarations.records.legality-1"]

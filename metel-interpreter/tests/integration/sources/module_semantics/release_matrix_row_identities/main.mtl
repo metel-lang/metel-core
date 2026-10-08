@@ -1,0 +1,21 @@
+import left::LeftPacket;
+import left::LeftRead;
+import left::inspect_left;
+import left::identity_left;
+import right::RightPacket;
+import right::RightRead;
+import right::inspect_right;
+import right::identity_right;
+
+fun main() {
+    let left := identity_left(LeftPacket { data = { count = 4, text = "left" } });
+    let right := identity_right(RightPacket { data = { count = 4, text = "right" } });
+    assert(inspect_left(&left) == 4);
+    assert(inspect_right(&right) == 104);
+    let left_dyn: dyn LeftRead := left;
+    let right_dyn: dyn RightRead := right;
+    assert(left_dyn.read() == 4);
+    assert(right_dyn.read() == 104);
+    let empty_left: LeftPacket<{}> := identity_left(LeftPacket { data = {} });
+    let empty_right: RightPacket<{}> := identity_right(RightPacket { data = {} });
+}
