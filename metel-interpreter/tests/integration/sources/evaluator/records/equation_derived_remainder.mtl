@@ -51,7 +51,9 @@ fun main() {
     assert(take({ x = 1, z = true }, { y = 2, z = false }).z);
     let b := Box { data = { token = "t", x = true } };
     assert(b.strip().x);
-    assert(b.from_arg({ id = 1, token = "t", y = true }).y);
-    assert(b.add({ z = 5 }).z == 5);
+    let from_arg_box := Box { data = { token = "t", x = true } };
+    assert(from_arg_box.from_arg({ id = 1, token = "t", y = true }).y);
+    let add_box := Box { data = { token = "t", x = true } };
+    assert(add_box.add({ z = 5 }).z == 5);
     println("ok");
 }

@@ -53,6 +53,14 @@ fn main() {
             continue;
         };
         let report = move_check::collect_graph_violations(&typed);
+        for body in &report.unchecked_generic_bodies {
+            if !body.span.filename.starts_with("<embedded std::") {
+                println!(
+                    "unchecked_generic_body={}:{}:{}:{}",
+                    body.span.filename, body.span.line, body.span.col, body.reason
+                );
+            }
+        }
         let mut user_violations = Vec::new();
         for violation in report.violations {
             if violation.use_span.filename.starts_with("<embedded std::") {

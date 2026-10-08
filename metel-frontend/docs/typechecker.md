@@ -525,6 +525,11 @@ types rather than inventing erased type arguments. See ADR-0061.
 
 ### Symbolic rows in ownership analysis
 
+Destructuring declarations observe a place initializer, then let the pattern
+account for its consumption (whole-row for a rest binding, field-wise otherwise).
+Temporary initializers still consume their inputs during evaluation; treating
+tuple or array literals as mere observations would leave owned elements usable.
+
 Ownership reconstruction uses `Type::SymbolicRow` for an unknown row tail and
 `Type::OpenRecord` for its known head. These are resolved witnesses, not inference
 variables or runtime type forms. Conversions, spreads and rest patterns retain

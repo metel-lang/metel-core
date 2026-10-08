@@ -1,0 +1,7 @@
+fun consume<row R>(value: { ..R }) {}
+fun main() {
+    let source := { token = "gone", owned = "kept" };
+    let { token: _, ..rest } := source;
+    assert(rest.owned == "kept");
+    consume(source); // ERROR[T0019]
+}

@@ -285,7 +285,16 @@ impl<'a> Checker<'a> {
                 state.bind_typed(&let_decl.name, let_decl.value.ty());
             }
             TypedDecl::LetPattern { pattern, value, .. } => {
-                self.consume_expr(value, current_module, state);
+                // Place consumption belongs to the pattern; consuming it here
+                // first makes a rest binding report its own move as reuse.
+                // Temporaries still consume their inputs during evaluation.
+                if matches!(pattern, TypedPattern::Record { .. })
+                    && place_from_expr(value).is_some()
+                {
+                    self.observe_expr(value, current_module, state);
+                } else {
+                    self.consume_expr(value, current_module, state);
+                }
                 self.apply_pattern_moves(pattern, value, current_module, state);
             }
             TypedDecl::Mut(mut_decl) => {

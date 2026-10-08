@@ -502,6 +502,20 @@ let again := take(r);
 }
 
 #[test]
+fn destructuring_temporary_consumes_its_non_copy_inputs() {
+    assert_has_violation(
+        r#"
+fun main() {
+    let owned := "owned";
+    let { pair } := { pair = (owned, "other") };
+    println(owned);
+}
+"#,
+        "owned",
+    );
+}
+
+#[test]
 fn tuple_pattern_partial_move_of_drop_prefix_is_reported() {
     assert_has_violation(
         r#"
