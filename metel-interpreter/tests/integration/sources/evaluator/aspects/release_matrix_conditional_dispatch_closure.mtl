@@ -1,0 +1,12 @@
+record Notice { public title: String, public priority: i64 }
+aspect Summary { fun summary(&self) -> String; }
+
+extend<row R: { title: String, .. }> { ..R }: Summary {
+    fun summary(&self) -> String { self.title.clone() }
+}
+
+fun main() {
+    let notice := Notice { title = "captured dispatch", priority = 2 };
+    let callback := [notice] once || { notice.summary() };
+    assert(callback() == "captured dispatch");
+}
