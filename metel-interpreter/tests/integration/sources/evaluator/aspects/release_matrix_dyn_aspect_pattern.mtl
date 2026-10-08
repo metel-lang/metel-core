@@ -1,0 +1,20 @@
+record Message { public text: String }
+aspect Render { fun render(&self) -> String; }
+extend Message: Render {
+    fun render(&self) -> String { self.text.clone() }
+}
+
+type Renderable := dyn Render;
+enum Display { Item { renderable: Renderable }, Empty }
+
+fun render(display: Display) -> String {
+    match (display) {
+        Display::Item { renderable } => renderable.render(),
+        Display::Empty => "empty",
+    }
+}
+
+fun main() {
+    let display := Display::Item { renderable = Message { text = "matched" } };
+    assert(render(display) == "matched");
+}
