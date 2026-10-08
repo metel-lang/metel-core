@@ -276,27 +276,43 @@ fn sidecar_path(fixture_path: &Path) -> Option<PathBuf> {
 fn parse_sidecar(path: &Path) -> PartialConfig {
     let contents = fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read sidecar {}: {e}", path.display()));
+    let table: toml::Table = contents
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid TOML in sidecar {}: {e}", path.display()));
     let mut partial = PartialConfig::default();
-    let mut section = String::new();
 
-    for raw_line in contents.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
+    for (name, value) in &table {
+        match value {
+            toml::Value::Table(section) => {
+                for (key, raw) in section {
+                    apply_sidecar_key(&mut partial, name, key, raw, path);
+                }
+            }
+            raw => apply_sidecar_key(&mut partial, "", name, raw, path),
         }
+    }
 
-        if line.starts_with('[') && line.ends_with(']') {
-            section = line[1..line.len() - 1].trim().to_string();
-            continue;
-        }
+    partial
+}
 
-        let (key, value) = line
-            .split_once('=')
-            .unwrap_or_else(|| panic!("invalid sidecar line in {}: `{line}`", path.display()));
-        let key = key.trim();
-        let value = parse_scalar(value.trim());
+/// Applies one `key = value` of a sidecar's `section` (`""` for top level).
+/// Values come from a real TOML parse, so arrays may span lines and carry
+/// comments and trailing commas.
+fn apply_sidecar_key(
+    partial: &mut PartialConfig,
+    section: &str,
+    key: &str,
+    raw: &toml::Value,
+    path: &Path,
+) {
+    let value = match raw {
+        toml::Value::Array(_) => String::new(),
+        scalar => scalar_text(scalar, key, path),
+    };
+    let list = || list_text(raw, key, path);
 
-        match section.as_str() {
+    {
+        match section {
             "" => match key {
                 "runner" => partial.runner = Some(parse_runner(&value)),
                 "prelude" => partial.prelude = Some(parse_prelude(&value)),
@@ -307,16 +323,16 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             },
             "options" => match key {
                 "move_check" => partial.move_check = Some(parse_bool(&value)),
-                "rfc" => partial.rfc = Some(parse_rfc_list(&value, path)),
-                "spec" => partial.spec = Some(parse_spec_list(&value, path)),
+                "rfc" => partial.rfc = Some(parse_rfc_list(list(), path)),
+                "spec" => partial.spec = Some(parse_spec_list(list(), path)),
                 "skip" => partial.skip = Some(value),
                 "spec_title" => {
                     let trimmed = value.trim();
                     partial.spec_title = (!trimmed.is_empty()).then(|| trimmed.to_string());
                 }
-                "error" => partial.error = Some(parse_error_code_list(&value, path)),
+                "error" => partial.error = Some(parse_error_code_list(list(), path)),
                 "arch_verifies" => {
-                    partial.arch_verifies = Some(parse_arch_verifies_list(&value, path));
+                    partial.arch_verifies = Some(parse_arch_verifies_list(list(), path));
                 }
                 other => panic!(
                     "unknown options sidecar key `{other}` in {}",
@@ -337,7 +353,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                         panic!("invalid integer for `col` in {}: {e}", path.display())
                     }))
                 }
-                "warnings" => partial.warnings = Some(parse_list(&value)),
+                "warnings" => partial.warnings = Some(list()),
                 other => panic!("unknown expect sidecar key `{other}` in {}", path.display()),
             },
             "program" => match key {
@@ -367,7 +383,7 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
                 }
                 "has_module_paths" => {
                     partial.graph_has_module_paths = Some(
-                        parse_list(&value)
+                        list()
                             .into_iter()
                             .map(|path| path.split("::").map(|seg| seg.to_string()).collect())
                             .collect(),
@@ -378,16 +394,37 @@ fn parse_sidecar(path: &Path) -> PartialConfig {
             other => panic!("unknown sidecar section `[{other}]` in {}", path.display()),
         }
     }
-
-    partial
 }
 
-fn parse_scalar(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
-        trimmed[1..trimmed.len() - 1].to_string()
-    } else {
-        trimmed.to_string()
+fn scalar_text(value: &toml::Value, key: &str, path: &Path) -> String {
+    match value {
+        toml::Value::String(text) => text.clone(),
+        toml::Value::Integer(number) => number.to_string(),
+        toml::Value::Boolean(flag) => flag.to_string(),
+        toml::Value::Float(number) => number.to_string(),
+        other => panic!(
+            "expected a scalar for `{key}` in {}, got `{other}`",
+            path.display()
+        ),
+    }
+}
+
+fn list_text(value: &toml::Value, key: &str, path: &Path) -> Vec<String> {
+    match value {
+        toml::Value::Array(items) => items
+            .iter()
+            .map(|item| match item {
+                toml::Value::String(text) => text.clone(),
+                other => panic!(
+                    "expected a list of strings for `{key}` in {}, found `{other}`",
+                    path.display()
+                ),
+            })
+            .collect(),
+        other => panic!(
+            "expected a list for `{key}` in {}, got `{other}`",
+            path.display()
+        ),
     }
 }
 
@@ -504,8 +541,7 @@ fn extract_annotation(line: &str, marker: &str) -> Option<String> {
 /// (a different RFC, Lifetime Anchors) -- found the hard way when a
 /// migration first cited the wrong one and this validator accepted it
 /// anyway, because it only allowed the letter suffix on the section half.
-fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
-    let citations = parse_list(raw);
+fn parse_rfc_list(citations: Vec<String>, path: &Path) -> Vec<String> {
     for citation in &citations {
         let lower = citation.to_ascii_lowercase();
         let (id, section) = match lower.split_once('§') {
@@ -558,8 +594,7 @@ fn parse_rfc_list(raw: &str, path: &Path) -> Vec<String> {
 /// leaked into the visible rendered heading) rather than rejecting it --
 /// worse than a build failure, since nothing would flag it -- so the
 /// grammar avoids the character entirely and uses `.` as every separator.
-fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
-    let citations = parse_list(raw);
+fn parse_spec_list(citations: Vec<String>, path: &Path) -> Vec<String> {
     for citation in &citations {
         let valid = (|| {
             let rest = citation.strip_prefix("spec.")?;
@@ -613,8 +648,7 @@ fn parse_spec_list(raw: &str, path: &Path) -> Vec<String> {
 /// the exact grammar `generate_architecture_evidence.py`'s `ID` regex
 /// expects, since that script reads this key straight from the `.toml`
 /// source rather than through this harness.
-fn parse_arch_verifies_list(raw: &str, path: &Path) -> Vec<String> {
-    let citations = parse_list(raw);
+fn parse_arch_verifies_list(citations: Vec<String>, path: &Path) -> Vec<String> {
     for citation in &citations {
         let valid = (|| {
             let rest = citation.strip_prefix("arch.")?;
@@ -648,8 +682,7 @@ fn parse_arch_verifies_list(raw: &str, path: &Path) -> Vec<String> {
 /// citations use (metel-core#981: different axis, different grammar, kept
 /// visually and structurally distinct). One uppercase letter, exactly four
 /// digits, nothing else.
-fn parse_error_code_list(raw: &str, path: &Path) -> Vec<String> {
-    let codes = parse_list(raw);
+fn parse_error_code_list(codes: Vec<String>, path: &Path) -> Vec<String> {
     for code in &codes {
         let bytes = code.as_bytes();
         let valid = bytes.len() == 5
@@ -664,21 +697,6 @@ fn parse_error_code_list(raw: &str, path: &Path) -> Vec<String> {
         }
     }
     codes
-}
-
-fn parse_list(raw: &str) -> Vec<String> {
-    let trimmed = raw.trim();
-    if !(trimmed.starts_with('[') && trimmed.ends_with(']')) {
-        panic!("expected list value, got `{trimmed}`");
-    }
-    let inner = &trimmed[1..trimmed.len() - 1];
-    if inner.trim().is_empty() {
-        return Vec::new();
-    }
-    inner
-        .split(',')
-        .map(|item| parse_scalar(item.trim()))
-        .collect()
 }
 
 #[cfg(test)]
@@ -710,5 +728,40 @@ mod tests {
             &sources().join("evaluator/closures/33_closure.mtl"),
         );
         assert_eq!(cfg.options.spec_title, None);
+    }
+
+    #[test]
+    fn sidecar_lists_may_span_lines_and_carry_comments() {
+        let path = std::env::temp_dir().join(format!(
+            "metel-sidecar-multiline-{}.toml",
+            std::process::id()
+        ));
+        fs::write(
+            &path,
+            "[options]\n\
+             spec = [\n    \"spec.types.generics.open-rows.legality-1\", # a comment\n    \"spec.types.generics.open-rows.legality-2\",\n]\n\
+             rfc = [ \"rfc-0121\" ,\n        \"rfc-0123§1\" ]\n\
+             [expect]\n\
+             status = \"success\"\n\
+             warnings = [\n    \"one, with a comma\",\n]\n",
+        )
+        .unwrap();
+        let partial = parse_sidecar(&path);
+        fs::remove_file(&path).ok();
+        assert_eq!(
+            partial.spec,
+            Some(vec![
+                "spec.types.generics.open-rows.legality-1".to_string(),
+                "spec.types.generics.open-rows.legality-2".to_string(),
+            ])
+        );
+        assert_eq!(
+            partial.rfc,
+            Some(vec!["rfc-0121".to_string(), "rfc-0123§1".to_string()])
+        );
+        assert_eq!(
+            partial.warnings,
+            Some(vec!["one, with a comma".to_string()])
+        );
     }
 }

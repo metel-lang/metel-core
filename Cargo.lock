@@ -237,6 +237,7 @@ dependencies = [
  "metel-frontend",
  "serde",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
