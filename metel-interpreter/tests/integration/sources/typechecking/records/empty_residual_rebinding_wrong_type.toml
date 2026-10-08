@@ -1,0 +1,6 @@
+[options]
+error = ["T0001"]
+spec = ["spec.ownership.widening.legality-1"]
+[expect]
+status = "typecheck_error"
+code = "T0001"

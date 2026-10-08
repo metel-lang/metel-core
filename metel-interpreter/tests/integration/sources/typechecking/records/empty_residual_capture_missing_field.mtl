@@ -1,0 +1,6 @@
+struct Pair { left: String, right: String }
+fun invalid(empty: Pair.{}) -> String {
+    let callback := [empty] once || -> String { empty.left }; // ERROR[T0003]
+    callback()
+}
+fun main() {}

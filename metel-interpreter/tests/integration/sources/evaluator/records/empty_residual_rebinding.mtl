@@ -1,0 +1,42 @@
+struct Pair { left: String, right: String }
+type Callback := once || -> Pair;
+
+fun empty() -> Pair.{} {
+    let pair := Pair { left = "old", right = "gone" };
+    let left := pair.left;
+    let right := pair.right;
+    pair
+}
+
+fun rebuild(empty: Pair.{}) -> Pair {
+    var restored := empty;
+    restored.left := "new";
+    restored.right := "back";
+    restored
+}
+
+fun captured(empty: Pair.{}) -> Pair {
+    let callback: Callback := [empty] once || {
+        var restored := empty;
+        restored.left := "new";
+        restored.right := "back";
+        restored
+    };
+    callback()
+}
+
+fun written(empty: Pair.{}) -> Pair {
+    let callback := [empty] once || -> Pair {
+        var restored := empty;
+        restored.left := "new";
+        restored.right := "back";
+        restored
+    };
+    callback()
+}
+
+fun main() {
+    assert(rebuild(empty()).right == "back");
+    assert(captured(empty()).left == "new");
+    assert(written(empty()).right == "back");
+}

@@ -310,7 +310,7 @@ impl<'a> ConstructCtx<'a> {
         let name = name.into();
         // RFC-0137 slice 2: register the binding for move-triggered narrowing
         // before it lands in `env`, so a shadowing rebind resets its move state.
-        self.flow_bind(&name, &ty);
+        let ty = self.flow_bind(&name, ty);
         self.env.last_mut().unwrap().insert(name.clone(), ty);
         self.mut_env.last_mut().unwrap().insert(name, is_mutable);
     }

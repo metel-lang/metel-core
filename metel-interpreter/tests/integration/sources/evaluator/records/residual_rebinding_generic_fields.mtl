@@ -1,0 +1,11 @@
+struct Box<T> { value: T, text: String }
+fun main() {
+    let box: Box<i64> := Box { value = 3, text = "x" };
+    let text := box.text;
+    var rebound := box;
+    assert(rebound.value == 3);
+    let other: Box<String> := Box { value = "owned", text = "x" };
+    let other_text := other.text;
+    var other_rebound := other;
+    assert(other_rebound.value == "owned");
+}

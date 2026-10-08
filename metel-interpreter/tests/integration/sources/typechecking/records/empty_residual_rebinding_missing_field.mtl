@@ -1,0 +1,7 @@
+struct Pair { left: String, right: String }
+fun rebuild(empty: Pair.{}) -> Pair {
+    var restored := empty;
+    restored.left := "new";
+    restored // ERROR[T0001]
+}
+fun main() {}

@@ -1,0 +1,6 @@
+struct Pair { left: String, right: String }
+fun invalid(empty: Pair.{}) {
+    var restored := empty;
+    restored.left := 3; // ERROR[T0001]
+}
+fun main() {}

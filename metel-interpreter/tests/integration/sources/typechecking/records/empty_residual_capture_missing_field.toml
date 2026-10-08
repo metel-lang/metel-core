@@ -1,0 +1,6 @@
+[options]
+error = ["T0003"]
+spec = ["spec.ownership.narrowing.legality-4", "spec.functions.closures.legality-7"]
+[expect]
+status = "typecheck_error"
+code = "T0003"

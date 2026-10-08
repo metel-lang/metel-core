@@ -2057,7 +2057,7 @@ pub(super) fn infer_expr(
                     | crate::data::ast::CaptureSpec::SharedRef { name, .. }
                     | crate::data::ast::CaptureSpec::MutRef { name, .. } => (name, true),
                 };
-                if let Some(ty) = ctx.lookup(name) {
+                if let Some(ty) = ctx.narrowed_infertype(name).or_else(|| ctx.lookup(name)) {
                     ctx.bind_mono(name, ty, mutable);
                 }
             }

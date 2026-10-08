@@ -6681,6 +6681,7 @@ impl InferContext {
         // RFC-0137 slice 2: a fresh binding starts with clean move state; a
         // rebind of the same name resets it (shadow-aware, via `FlowState`).
         self.flow.bind(&name);
+        let ty = self.prepare_residual_binding(&name, ty);
         self.mono_env
             .last_mut()
             .unwrap()

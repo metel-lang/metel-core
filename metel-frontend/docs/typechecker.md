@@ -507,6 +507,13 @@ when nested in field types. This matches inference's hold-unresolved rule and
 allows the move checker to diagnose generic ownership errors rather than skip
 an unconstructable witness body. Known concrete fields still narrow normally.
 
+Initially residual nominal bindings seed their missing fields into the same
+typechecker flow state as local partial moves, with the full non-generic brand as
+the underlying binding type. Assignments can then restore fields after parameter
+passing, rebinding and capture. These are type-level absences, not ownership
+diagnostic move sites. Generic residuals retain their concrete surviving field
+types rather than inventing erased type arguments. See ADR-0061.
+
 ---
 
 ### Symbolic rows in ownership analysis

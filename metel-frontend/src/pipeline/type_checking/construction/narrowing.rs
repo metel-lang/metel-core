@@ -40,8 +40,42 @@ impl ConstructCtx<'_> {
 
     /// Register a binding for narrowing. Called from `bind_with_mutability`, so
     /// every `let` / `var` / pattern / parameter binding flows through here.
-    pub(super) fn flow_bind(&mut self, name: &str, ty: &Type) {
-        self.flow.bind_typed(name, ty);
+    pub(super) fn flow_bind(&mut self, name: &str, ty: Type) -> Type {
+        if let Type::Residual { brand, .. } = &ty
+            && self
+                .registry
+                .resolve_type_id(self.current_module, brand)
+                .and_then(|id| self.registry.struct_type_params_by_id(id))
+                .is_some_and(|parameters| !parameters.is_empty())
+        {
+            self.flow.bind_typed(name, &ty);
+            return ty;
+        }
+        if let Type::Residual { brand, fields } = &ty
+            && let Some(full) = self.resolve_struct_row(brand, &[])
+        {
+            let declared = Type::Named(
+                brand.clone(),
+                Vec::new(),
+                crate::data::types::NominalId::from(
+                    self.registry.resolve_type_id(self.current_module, brand),
+                ),
+            );
+            self.flow.bind_typed(name, &declared);
+            for (label, _) in full {
+                if !fields.iter().any(|(present, _)| present == &label) {
+                    self.flow.record_move(
+                        Place::new(name.to_owned()).with_projection(Projection::field(label)),
+                        crate::data::ast::Span::new(0, 0, ""),
+                        MoveCause::Other,
+                        "residual-field".into(),
+                    );
+                }
+            }
+            return declared;
+        }
+        self.flow.bind_typed(name, &ty);
+        ty
     }
 
     /// The current type of `name` once move-triggered narrowing is applied, or

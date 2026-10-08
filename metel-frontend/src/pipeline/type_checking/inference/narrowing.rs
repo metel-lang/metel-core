@@ -17,6 +17,47 @@ use crate::ownership::place::{Place, Projection, from_expr as place_from_expr};
 use crate::pipeline::type_checking::type_engine::{AspectAssumptions, InferContext, InferType};
 
 impl InferContext {
+    pub(crate) fn prepare_residual_binding(&mut self, name: &str, ty: InferType) -> InferType {
+        let resolved = self.apply_cached_subst(&ty);
+        let InferType::Residual { brand, fields } = &resolved else {
+            return ty;
+        };
+        let id = self
+            .registry()
+            .resolve_type_id(self.current_module_path(), brand);
+        // Residuals do not carry erased nominal arguments. Never replace their
+        // surviving concrete field types with a generic declaration's raw variables.
+        if id
+            .and_then(|id| self.registry().struct_type_params_by_id(id))
+            .is_some_and(|parameters| !parameters.is_empty())
+        {
+            return ty;
+        }
+        let Some(full) = self.resolve_infer_struct_row(brand, &[]) else {
+            return ty;
+        };
+        // Absences imported with a residual must participate in the same joins
+        // and reinitialization as absences produced by local partial moves.
+        for (label, _) in full {
+            if !fields.iter().any(|(present, _)| present == &label) {
+                self.flow_mut().record_move(
+                    Place::new(name.to_owned()).with_projection(Projection::field(label)),
+                    crate::data::ast::Span::new(0, 0, ""),
+                    MoveCause::Other,
+                    "residual-field".into(),
+                );
+            }
+        }
+        InferType::Named(
+            brand.clone(),
+            Vec::new(),
+            crate::data::types::NominalId::from(
+                self.registry()
+                    .resolve_type_id(self.current_module_path(), brand),
+            ),
+        )
+    }
+
     /// The current type of `name` once move-triggered narrowing is applied, or
     /// `None` to fall back to the ordinary `mono_env` lookup.
     pub(crate) fn narrowed_infertype(&self, name: &str) -> Option<InferType> {
