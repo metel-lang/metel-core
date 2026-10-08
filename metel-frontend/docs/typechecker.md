@@ -301,7 +301,12 @@ substitution is never mutated.
 ### Responsibility and retained overlap
 
 Inference owns constraint generation, eager structural lookup needed to continue
-inference, and closure return-type decisions. Construction owns typed-AST shape,
+inference, closure return-type decisions, and explicit capture-list completeness.
+The pure AST free-use walker is shared with construction: generic bodies defer
+construction, but a missing capture must be rejected before any call, not become
+an `I0010` during reconstruction. Only bindings below the inference environment's
+module scope require capture items; module-level declarations do not.
+Construction owns typed-AST shape,
 concrete call instantiation, coercion nodes, runtime method-dispatch metadata, pattern
 bindings, and exhaustiveness diagnostics. Lowering is a pre-pass and does not infer or
 construct typed nodes.
@@ -503,6 +508,20 @@ allows the move checker to diagnose generic ownership errors rather than skip
 an unconstructable witness body. Known concrete fields still narrow normally.
 
 ---
+
+### Symbolic rows in ownership analysis
+
+Ownership reconstruction uses `Type::SymbolicRow` for an unknown row tail and
+`Type::OpenRecord` for its known head. These are resolved witnesses, not inference
+variables or runtime type forms. Conversions, spreads and rest patterns retain
+the tail's identity and declared field-wise/negative facts. Only an actual closed
+bound proves an empty tail; unknown tails are not vacuously `Copy`.
+
+Remainder equations retain known fields in both directions. Specialization replays
+those equations before defaulting unresolved scalar variables to `Never`.
+Regression tests require no generic-body skip warning and pair successful `Copy`
+forwarding with a genuine move violation when that bound is absent. See
+[ADR-0060](../../docs/architecture/decisions/adr-0060-symbolic-row-ownership-witnesses.md).
 
 ## Known Limitations
 

@@ -17,6 +17,7 @@ use crate::pipeline::type_checking::type_engine::{
     TypeVar, TypeVarGenerator, generalize_with_names, unify,
 };
 
+mod closure_uses;
 mod construction;
 mod conversions;
 mod handoff;

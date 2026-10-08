@@ -1,0 +1,17 @@
+fun add<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+    { ..r, token = "secret" }
+}
+
+fun forward<row R: !{token}>(r: { ..R }) -> i64 where all R: Copy {
+    let callback := [r] once || {
+        let added := add(r);
+        let copied := r;
+        7
+    };
+    callback()
+}
+
+fun main() {
+    assert(forward({ n = 1 }) == 7);
+    assert(forward({}) == 7);
+}

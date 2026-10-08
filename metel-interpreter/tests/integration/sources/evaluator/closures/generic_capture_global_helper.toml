@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.functions.closures.legality-6", "spec.functions.closures.legality-7", "spec.types.generics.rigid-type-parameters.dynamics-1"]

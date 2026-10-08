@@ -50,7 +50,8 @@ impl From<Option<crate::identity::symbols::SymbolId>> for NominalId {
 }
 
 /// Resolved types — produced by the type checker, consumed by the evaluator.
-/// No type variables exist here; generics have been monomorphised.
+/// No type variables exist here; runtime generics have been monomorphised.
+/// Ownership reconstruction may retain resolved symbolic row witnesses.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Boolean,
@@ -75,6 +76,20 @@ pub enum Type {
     // ─────────────────────────────────────────────────────────────────────────
     Tuple(Vec<Type>),
     Record(Vec<(String, Type)>),
+    /// Ownership reconstruction retains an abstract row tail instead of pretending
+    /// its unknown fields are absent. Runtime specializations normalize to Record.
+    OpenRecord {
+        fields: Vec<(String, Type)>,
+        tail: Box<Type>,
+    },
+    /// A resolved ownership-only identity for unknown row fields. This is not a
+    /// unification variable and must never be used as a concrete runtime type.
+    SymbolicRow {
+        name: String,
+        field_aspects: Vec<String>,
+        excluded_labels: Vec<String>,
+        forbidden_fields: Vec<(String, Option<Type>)>,
+    },
     Array(Box<Type>),
     SizedArray(Box<Type>, u64),
     Reference(Box<Type>),
@@ -154,6 +169,24 @@ pub fn default_fun_type(params: Vec<Type>, ret: Type) -> Type {
 }
 
 impl Type {
+    #[must_use]
+    pub fn with_row_tail(fields: Vec<(String, Type)>, tail: Option<Box<Type>>) -> Self {
+        match tail {
+            Some(tail) if fields.is_empty() => *tail,
+            Some(tail) => Self::OpenRecord { fields, tail },
+            None => Self::Record(fields),
+        }
+    }
+
+    #[must_use]
+    pub fn row_tail(&self) -> Option<&Type> {
+        match self {
+            Self::OpenRecord { tail, .. } => Some(tail),
+            Self::SymbolicRow { .. } => Some(self),
+            _ => None,
+        }
+    }
+
     /// Returns true if this is any integer type (signed or unsigned, any width).
     #[must_use]
     pub fn is_integer(&self) -> bool {
@@ -221,6 +254,8 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, " }}")
             }
+            Type::OpenRecord { fields, tail } => fmt_open_record(f, fields, tail),
+            Type::SymbolicRow { name, .. } => write!(f, "{name}"),
             Type::Array(t) => write!(f, "[{t}]"),
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
@@ -281,6 +316,18 @@ impl std::fmt::Display for Type {
             }
         }
     }
+}
+
+fn fmt_open_record(
+    f: &mut std::fmt::Formatter<'_>,
+    fields: &[(String, Type)],
+    tail: &Type,
+) -> std::fmt::Result {
+    write!(f, "{{ ")?;
+    for (name, ty) in fields {
+        write!(f, "{name}: {ty}, ")?;
+    }
+    write!(f, "..{tail} }}")
 }
 
 #[cfg(test)]

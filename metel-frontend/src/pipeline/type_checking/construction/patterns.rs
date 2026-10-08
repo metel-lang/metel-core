@@ -689,10 +689,12 @@ pub(super) fn construct_pattern_bindings(
                     .filter(|(name, _)| !fields.contains(name) && !ignored_fields.contains(name))
                     .cloned()
                     .collect();
+                let rest_ty =
+                    Type::with_row_tail(remaining, scrutinee_ty.row_tail().cloned().map(Box::new));
                 if mutable {
-                    ctx.bind_mut(rest_name, Type::Record(remaining));
+                    ctx.bind_mut(rest_name, rest_ty);
                 } else {
-                    ctx.bind(rest_name, Type::Record(remaining));
+                    ctx.bind(rest_name, rest_ty);
                 }
             }
         }
@@ -722,7 +724,8 @@ fn record_pattern_fields(
     ctx: &ConstructCtx,
 ) -> Result<Vec<(String, Type)>, MetelError> {
     match scrutinee_ty {
-        Type::Record(fields) => Ok(fields.clone()),
+        Type::Record(fields) | Type::OpenRecord { fields, .. } => Ok(fields.clone()),
+        Type::SymbolicRow { .. } => Ok(Vec::new()),
         Type::Named(name, args, nominal_id) => {
             let id = nominal_id
                 .get()

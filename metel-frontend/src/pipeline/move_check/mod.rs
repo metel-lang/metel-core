@@ -14,6 +14,8 @@ use crate::pipeline::type_checking::type_engine::{
 };
 use crate::pipeline::type_checking::type_expr_to_infer;
 
+mod symbolic_rows;
+
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
 
 #[derive(Debug, Clone)]
@@ -418,7 +420,8 @@ impl<'a> Checker<'a> {
         let scheme = crate::pipeline::type_checking::repair_scheme_with_source_generics(
             raw_scheme, generics,
         );
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
+        let Some((arg_types, generic_env)) =
+            Self::generic_sample_args(&scheme, &type_ctx.registry, generics)
         else {
             self.record_skipped_generic_body(
                 span,
@@ -490,7 +493,8 @@ impl<'a> Checker<'a> {
             self.record_skipped_generic_body(&method.span, "type context was unavailable");
             return;
         };
-        let Some((arg_types, generic_env)) = Self::generic_sample_args(&scheme, &type_ctx.registry)
+        let Some((arg_types, generic_env)) =
+            Self::generic_sample_args(&scheme, &type_ctx.registry, &source_generics)
         else {
             self.record_skipped_generic_body(
                 &method.span,
@@ -535,6 +539,7 @@ impl<'a> Checker<'a> {
     fn generic_sample_args(
         scheme: &TypeScheme,
         registry: &TypeDefinitionRegistry,
+        generics: &[GenericParam],
     ) -> Option<(Vec<Type>, GenericMoveEnv)> {
         let mut subst = Substitution::new();
         let mut generic_env = GenericMoveEnv::default();
@@ -582,6 +587,18 @@ impl<'a> Checker<'a> {
                 }
             }
             subst.bind(*var, type_to_infer(&sample));
+        }
+        let row_samples = symbolic_rows::row_samples(scheme, generics, &named_samples)?;
+        for (var, sample) in row_samples {
+            subst.bind(var, type_to_infer(&sample));
+            if let Some(index) = scheme
+                .quantified_vars
+                .iter()
+                .position(|candidate| *candidate == var)
+                && let Some(name) = scheme.param_names.get(index)
+            {
+                named_samples.insert(name.clone(), type_to_infer(&sample));
+            }
         }
         generic_env.symbolic_aspects = symbolic_aspect_assumptions(
             registry,
@@ -2373,6 +2390,11 @@ fn type_to_infer_under_generic_env(
     placeholders: &HashMap<String, TypeVar>,
 ) -> InferType {
     match ty {
+        Type::OpenRecord { fields, tail } => InferType::RowExtend {
+            fields: infer_row_fields_under_generic_env(fields, placeholders),
+            tail: Box::new(type_to_infer_under_generic_env(tail, placeholders)),
+        },
+        Type::SymbolicRow { .. } => InferType::Concrete(ty.clone()),
         Type::Boolean
         | Type::Str
         | Type::Char
@@ -2466,6 +2488,21 @@ fn type_to_infer_under_generic_env(
     }
 }
 
+fn infer_row_fields_under_generic_env(
+    fields: &[(String, Type)],
+    placeholders: &HashMap<String, TypeVar>,
+) -> Vec<(String, InferType)> {
+    fields
+        .iter()
+        .map(|(name, ty)| {
+            (
+                name.clone(),
+                type_to_infer_under_generic_env(ty, placeholders),
+            )
+        })
+        .collect()
+}
+
 /// Convert an `InferType` to a `Type`, or `None` if any part of it is still an unresolved
 /// inference variable.
 ///
@@ -2503,8 +2540,11 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
                 .collect::<Option<Vec<_>>>()?,
         )),
         InferType::RowExtend { fields, tail } => {
-            let Type::Record(mut tail_fields) = infer_to_type(tail)? else {
-                return None;
+            let (mut tail_fields, open_tail) = match infer_to_type(tail)? {
+                Type::Record(fields) => (fields, None),
+                Type::OpenRecord { fields, tail } => (fields, Some(tail)),
+                tail @ Type::SymbolicRow { .. } => (Vec::new(), Some(Box::new(tail))),
+                _ => return None,
             };
             let mut fields = fields
                 .iter()
@@ -2512,7 +2552,7 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
                 .collect::<Option<Vec<_>>>()?;
             fields.append(&mut tail_fields);
             fields.sort_by(|(left, _), (right, _)| left.cmp(right));
-            Some(Type::Record(fields))
+            Some(Type::with_row_tail(fields, open_tail))
         }
         InferType::Array(inner) => infer_to_type(inner).map(|inner| Type::Array(Box::new(inner))),
         InferType::SizedArray(inner, len) => {

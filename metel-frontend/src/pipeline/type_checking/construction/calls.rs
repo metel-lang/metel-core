@@ -1095,7 +1095,10 @@ fn structural_fields_for_row_check(
     span: &Span,
 ) -> Option<Vec<(String, Type)>> {
     match concrete {
-        Type::Record(fields) | Type::Residual { fields, .. } => Some(fields.clone()),
+        Type::Record(fields) | Type::OpenRecord { fields, .. } | Type::Residual { fields, .. } => {
+            Some(fields.clone())
+        }
+        Type::SymbolicRow { .. } => Some(Vec::new()),
         Type::Named(name, args, ..) => {
             let (id, _, _) = registry.projection_struct_fields(current_module, name)?;
             // `struct_type_params_by_id` has no entry at all for a non-generic
@@ -1146,6 +1149,9 @@ pub(super) fn check_record_kind_requirement(
         ));
     }
     if !record_kind {
+        return Ok(());
+    }
+    if matches!(concrete, Type::OpenRecord { .. } | Type::SymbolicRow { .. }) {
         return Ok(());
     }
     // RFC-0120 §3's eligibility rule (restated from RFC-0137 §3): visibility to
@@ -1391,6 +1397,64 @@ fn check_all_fields(
 
 /// Check one concrete type against a set of required bounds. Aspect bounds are
 /// checked against the impl registry; row bounds are handled structurally.
+fn check_symbolic_row_entitlements(
+    concrete: &Type,
+    bounds: &[GenericBound],
+    negative: bool,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+    generic_types_by_name: &HashMap<String, Type>,
+) -> Result<(), MetelError> {
+    let Some(Type::SymbolicRow {
+        field_aspects,
+        excluded_labels,
+        forbidden_fields,
+        ..
+    }) = concrete.row_tail()
+    else {
+        return Ok(());
+    };
+    for bound in bounds {
+        let holds = match bound {
+            GenericBound::AllFields { aspects, .. } => {
+                aspects.iter().all(|aspect| field_aspects.contains(aspect))
+            }
+            GenericBound::Row(row) if negative => {
+                let mut holds = true;
+                for field in &row.fields {
+                    let ty = field
+                        .ty
+                        .as_ref()
+                        .map(|annotation| {
+                            resolve_row_field_type(
+                                annotation,
+                                generic_types_by_name,
+                                span,
+                                registry,
+                                current_module,
+                            )
+                        })
+                        .transpose()?;
+                    holds &= excluded_labels.contains(&field.label)
+                        || forbidden_fields.contains(&(field.label.clone(), ty));
+                }
+                holds
+            }
+            GenericBound::Row(row) => row.open,
+            GenericBound::Aspect(_) => true,
+        };
+        if !holds {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!("symbolic row `{concrete}` does not grant required bound `{bound}`"),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)] // threads registry + module + generic map through bound checking
 #[allow(clippy::too_many_lines)] // structural/reference Copy diagnostics extend the central bound checker
 pub(super) fn check_type_satisfies_bounds(
@@ -1403,6 +1467,15 @@ pub(super) fn check_type_satisfies_bounds(
     current_module: &[String],
     generic_types_by_name: &HashMap<String, Type>,
 ) -> Result<(), MetelError> {
+    check_symbolic_row_entitlements(
+        concrete,
+        bounds,
+        false,
+        span,
+        registry,
+        current_module,
+        generic_types_by_name,
+    )?;
     check_record_kind_requirement(
         concrete,
         bounds,
@@ -1503,7 +1576,7 @@ pub(super) fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
-        Type::Record(_) => {
+        Type::Record(_) | Type::OpenRecord { .. } | Type::SymbolicRow { .. } => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
                     return Err(MetelError::type_error(
@@ -1546,6 +1619,15 @@ pub(super) fn check_type_does_not_satisfy_bound(
     current_module: &[String],
     generic_types_by_name: &HashMap<String, Type>,
 ) -> Result<(), MetelError> {
+    check_symbolic_row_entitlements(
+        concrete,
+        neg_bounds,
+        true,
+        span,
+        registry,
+        current_module,
+        generic_types_by_name,
+    )?;
     check_record_kind_requirement(
         concrete,
         neg_bounds,
@@ -1796,7 +1878,7 @@ pub(super) fn instantiate_scheme_for_call(
 ///
 /// An `R` whose fields aren't structurally known here (still a type variable, or
 /// not a record) leaves `Rest` alone, same as `check_width_subtyping`'s skip.
-fn backfill_row_remainders(
+pub(super) fn backfill_row_remainders(
     scheme: &TypeScheme,
     renaming: &HashMap<TypeVar, TypeVar>,
     subst: &mut Substitution,
@@ -1848,7 +1930,10 @@ fn backfill_row_remainders_pass(
             .filter(|(label, _)| !removed.contains(label))
             .collect();
         remaining.sort_by(|a, b| a.0.cmp(&b.0));
-        let derived = type_to_infer(&Type::Record(remaining));
+        let derived = type_to_infer(&Type::with_row_tail(
+            remaining,
+            r_ty.row_tail().cloned().map(Box::new),
+        ));
         let s = type_engine::unify(&subst.apply(&InferType::Var(fresh_rest)), &derived).map_err(
             |_| {
                 MetelError::type_error(

@@ -1,0 +1,14 @@
+fun add<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+    { ..r, token = "secret" }
+}
+
+fun forward<row R: !{token}>(r: { ..R }) -> i64 {
+    let callback := [r] once || {
+        let added := add(r);
+        let again := r; // ERROR[T0019]
+        7
+    };
+    callback()
+}
+
+fun main() {}

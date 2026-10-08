@@ -1,0 +1,13 @@
+fun helper() -> i64 { 4 }
+
+fun use_helper<T>(value: T) -> i64 {
+    let n := 3;
+    let explicit := [n] || -> i64 { helper() + n };
+    let implicit := || -> i64 { helper() + n };
+    explicit() + implicit()
+}
+
+fun main() {
+    assert(use_helper(1) == 14);
+    assert(use_helper("owned") == 14);
+}

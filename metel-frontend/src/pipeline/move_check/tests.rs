@@ -108,6 +108,82 @@ fn move_warnings_for_source(source: &str) -> Vec<String> {
 
 // arch-verifies: ["arch.move-check.requirement-1"]
 #[test]
+fn symbolic_row_forwarding_closure_is_checked_without_skipping() {
+    let source = r#"
+fun add<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+    { ..r, token = "secret" }
+}
+fun test<row R: !{token}>(r: { ..R }) -> i64 where all R: Copy {
+    let f := [r] once || {
+        let added := add(r);
+        let copy := r;
+        7
+    };
+    f()
+}
+fun main() { assert(test({ n = 1 }) == 7); assert(test({}) == 7); }
+"#;
+    assert_no_violations(source);
+    let warnings = move_warnings_for_source(source);
+    assert!(
+        warnings.is_empty(),
+        "symbolic rows must not skip ownership: {warnings:#?}"
+    );
+}
+
+// arch-verifies: ["arch.move-check.requirement-1"]
+#[test]
+fn symbolic_row_without_all_copy_is_still_move_only() {
+    assert_has_violation(
+        r#"
+fun add<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+    { ..r, token = "secret" }
+}
+
+fun test<row R: !{token}>(r: { ..R }) -> i64 {
+    let f := [r] once || {
+        let added := add(r);
+        let again := r;
+        7
+    };
+    f()
+}
+fun main() {}
+"#,
+        "r",
+    );
+}
+
+#[test]
+fn symbolic_row_known_copy_head_and_unknown_tail_are_distinct() {
+    let source = r#"
+fun duplicate<row R: { count: i64, .. }>(r: { ..R }) -> i64 where all R: Copy {
+    let copy := r;
+    let again := r;
+    7
+}
+fun main() { assert(duplicate({ count = 3, flag = true }) == 7); }
+"#;
+    assert_no_violations(source);
+    assert!(move_warnings_for_source(source).is_empty());
+}
+
+#[test]
+fn symbolic_row_closed_bound_has_no_unknown_tail() {
+    let source = r#"
+fun duplicate<row R: { count: i64 }>(r: { ..R }) -> i64 {
+    let copy := r;
+    let again := r;
+    7
+}
+fun main() { assert(duplicate({ count = 3 }) == 7); }
+"#;
+    assert_no_violations(source);
+    assert!(move_warnings_for_source(source).is_empty());
+}
+
+// arch-verifies: ["arch.move-check.requirement-1"]
+#[test]
 fn unchecked_generic_body_is_reported_to_compiler_callers() {
     let warnings = move_warnings_for_source(
         r#"

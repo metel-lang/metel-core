@@ -1,0 +1,9 @@
+[options]
+spec = ["spec.functions.closures.legality-7", "spec.types.generics.rigid-type-parameters.dynamics-1"]
+error = ["T0026"]
+
+[expect]
+status = "typecheck_error"
+code = "T0026"
+line = 4
+contains = "`id` is captured but not listed"

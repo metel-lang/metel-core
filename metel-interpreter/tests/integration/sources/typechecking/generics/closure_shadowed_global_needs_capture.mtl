@@ -1,0 +1,9 @@
+fun helper() -> i64 { 4 }
+
+fun invalid<T>(value: T) -> i64 {
+    let helper := 3;
+    let callback := [value] once || { helper }; // ERROR[T0026]
+    0
+}
+
+fun main() {}

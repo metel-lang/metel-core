@@ -526,20 +526,26 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
                 .collect::<Result<Vec<_>, MetelError>>()?,
         )),
         InferType::RowExtend { fields, tail } => {
-            let Type::Record(mut tail_fields) = infer_type_to_type(tail, span)? else {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer open-row remainder; add a type annotation",
-                    span,
-                ));
-            };
+            let resolved_tail = infer_type_to_type(tail, span)?;
             let mut resolved_fields: Vec<_> = fields
                 .iter()
                 .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
                 .collect::<Result<_, MetelError>>()?;
+            let (mut tail_fields, open_tail) = match resolved_tail {
+                Type::Record(fields) => (fields, None),
+                Type::OpenRecord { fields, tail } => (fields, Some(tail)),
+                tail @ Type::SymbolicRow { .. } => (Vec::new(), Some(Box::new(tail))),
+                _ => {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        "cannot infer open-row remainder; add a type annotation",
+                        span,
+                    ));
+                }
+            };
             resolved_fields.append(&mut tail_fields);
             resolved_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
-            Ok(Type::Record(resolved_fields))
+            Ok(Type::with_row_tail(resolved_fields, open_tail))
         }
         InferType::Array(t) => Ok(Type::Array(Box::new(infer_type_to_type(t, span)?))),
         InferType::SizedArray(t, n) => {

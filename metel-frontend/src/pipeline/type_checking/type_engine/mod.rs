@@ -2549,6 +2549,13 @@ pub fn type_to_infer(ty: &Type) -> InferType {
                 .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
                 .collect(),
         ),
+        Type::OpenRecord { fields, tail } => InferType::RowExtend {
+            fields: fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
+                .collect(),
+            tail: Box::new(type_to_infer(tail)),
+        },
         Type::Reference(t) => InferType::Reference(Box::new(type_to_infer(t))),
         Type::MutReference(t) => InferType::MutReference(Box::new(type_to_infer(t))),
         Type::Fun(ps, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
@@ -3650,7 +3657,10 @@ impl TypeDefinitionRegistry {
     /// residual, or a nominal `record` (never a `struct`).
     fn is_record_kinded(&self, current_module: &[String], ty: &InferType) -> bool {
         match ty {
-            InferType::Record(_) | InferType::Residual { .. } => true,
+            InferType::Record(_)
+            | InferType::Residual { .. }
+            | InferType::RowExtend { .. }
+            | InferType::Concrete(Type::SymbolicRow { .. }) => true,
             InferType::Named(name, ..) => matches!(
                 self.visible_type_kind(current_module, name),
                 Some(VisibleTypeKind::Record)
@@ -3677,6 +3687,7 @@ impl TypeDefinitionRegistry {
             Type::Record(fields) => fields
                 .iter()
                 .any(|(_, field)| self.type_contains_symbolic_parameters(field)),
+            Type::OpenRecord { .. } | Type::SymbolicRow { .. } => true,
             Type::Residual { brand, fields } => {
                 self.symbolic_named_aspects.contains_key(brand)
                     || fields
@@ -3849,6 +3860,20 @@ impl TypeDefinitionRegistry {
         except: &[String],
         assumptions: &AspectAssumptions,
     ) -> bool {
+        if let InferType::Concrete(Type::SymbolicRow { field_aspects, .. }) = arg {
+            return aspects.iter().all(|aspect| field_aspects.contains(aspect));
+        }
+        if let InferType::RowExtend { fields, tail } = arg {
+            return fields
+                .iter()
+                .filter(|(label, _)| !except.contains(label))
+                .all(|(_, ty)| {
+                    aspects.iter().all(|aspect| {
+                        self.infer_type_satisfies_aspect(current_module, ty, aspect, assumptions)
+                    })
+                })
+                && self.all_fields_hold(current_module, tail, aspects, except, assumptions);
+        }
         let Some(fields) = self.row_condition_fields(current_module, arg) else {
             return false;
         };
@@ -3892,6 +3917,57 @@ impl TypeDefinitionRegistry {
     /// unbounded generic parameter); it does not count as satisfying either
     /// a positive or negative condition.
     #[must_use]
+    fn symbolic_row_condition_check(
+        &self,
+        current_module: &[String],
+        arg: &InferType,
+        row: &RowConstraint,
+        forbidden: bool,
+    ) -> Option<RowConditionCheck> {
+        if let InferType::Concrete(Type::SymbolicRow {
+            excluded_labels,
+            forbidden_fields,
+            ..
+        }) = arg
+        {
+            if forbidden
+                && row.fields.iter().all(|field| {
+                    excluded_labels.contains(&field.label)
+                        || forbidden_fields.iter().any(|(label, ty)| {
+                            label == &field.label
+                                && ty.as_ref().is_some_and(|ty| {
+                                    field.ty.as_ref().is_some_and(|expected| {
+                                        type_to_infer(ty)
+                                            == super::registry::type_expr_to_infer_for_registry(
+                                                expected,
+                                                &HashMap::new(),
+                                                self,
+                                                current_module,
+                                            )
+                                    })
+                                })
+                        })
+                })
+            {
+                return Some(RowConditionCheck::Satisfied);
+            }
+            return Some(if !forbidden && row.open && row.fields.is_empty() {
+                RowConditionCheck::Satisfied
+            } else {
+                RowConditionCheck::Unknown
+            });
+        }
+        if let InferType::RowExtend { tail, .. } = arg
+            && !row.open
+            && !forbidden
+            && matches!(tail.as_ref(), InferType::Concrete(Type::SymbolicRow { .. }))
+        {
+            return Some(RowConditionCheck::Unknown);
+        }
+        None
+    }
+
+    #[must_use]
     pub fn row_condition_check(
         &self,
         current_module: &[String],
@@ -3899,9 +3975,34 @@ impl TypeDefinitionRegistry {
         row: &RowConstraint,
         forbidden: bool,
     ) -> RowConditionCheck {
+        if let Some(result) = self.symbolic_row_condition_check(current_module, arg, row, forbidden)
+        {
+            return result;
+        }
+        if let InferType::RowExtend { tail, .. } = arg
+            && matches!(
+                self.row_condition_check(current_module, tail, row, true),
+                RowConditionCheck::Unknown
+            )
+            && (forbidden || !row.open)
+        {
+            return RowConditionCheck::Unknown;
+        }
         let Some(fields) = self.row_condition_fields(current_module, arg) else {
             return RowConditionCheck::Unknown;
         };
+        if !forbidden
+            && let InferType::RowExtend { tail, .. } = arg
+            && let InferType::Concrete(Type::SymbolicRow {
+                excluded_labels, ..
+            }) = tail.as_ref()
+            && row.fields.iter().any(|required| {
+                !fields.iter().any(|(label, _)| label == &required.label)
+                    && !excluded_labels.contains(&required.label)
+            })
+        {
+            return RowConditionCheck::Unknown;
+        }
         let mut failures = Vec::new();
         let field_matches = |required: &RowConstraintField, actual: &InferType| {
             required.ty.as_ref().is_none_or(|expected| {
@@ -3978,6 +4079,7 @@ impl TypeDefinitionRegistry {
         arg: &InferType,
     ) -> Option<Vec<(String, InferType)>> {
         match arg {
+            InferType::Concrete(Type::SymbolicRow { .. }) => Some(Vec::new()),
             InferType::Record(fields) | InferType::Residual { fields, .. } => Some(fields.clone()),
             InferType::RowExtend { fields, tail } => {
                 let mut fields = fields.clone();
@@ -4051,6 +4153,11 @@ impl TypeDefinitionRegistry {
         aspect_name: &str,
         assumptions: &AspectAssumptions,
     ) -> bool {
+        if let InferType::Concrete(Type::SymbolicRow { field_aspects, .. }) = ty
+            && aspect_name == "Copy"
+        {
+            return field_aspects.iter().any(|aspect| aspect == "Copy");
+        }
         if let InferType::Var(var) = ty {
             return assumptions
                 .get(var)
@@ -4124,7 +4231,14 @@ impl TypeDefinitionRegistry {
                 }
                 false
             }
-            InferType::RowExtend { .. } | InferType::Var(_) | InferType::Never => false,
+            InferType::RowExtend { fields, tail } => {
+                aspect_name == "Copy"
+                    && fields.iter().all(|(_, ty)| {
+                        self.infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions)
+                    })
+                    && self.infer_type_satisfies_aspect(current_module, tail, "Copy", assumptions)
+            }
+            InferType::Var(_) | InferType::Never => false,
             InferType::SizedArray(elem, _) => {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
@@ -6658,6 +6772,19 @@ impl InferContext {
     pub fn has_binding(&self, name: &str) -> bool {
         self.poly_env.iter().any(|sc| sc.contains_key(name))
             || self.mono_env.iter().any(|sc| sc.contains_key(name))
+    }
+
+    #[must_use]
+    pub fn has_local_binding(&self, name: &str) -> bool {
+        self.poly_env
+            .iter()
+            .skip(1)
+            .any(|scope| scope.contains_key(name))
+            || self
+                .mono_env
+                .iter()
+                .skip(1)
+                .any(|scope| scope.contains_key(name))
     }
 
     /// Look up a name. Polymorphic bindings are automatically instantiated with

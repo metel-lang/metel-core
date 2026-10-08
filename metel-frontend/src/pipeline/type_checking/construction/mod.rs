@@ -319,6 +319,13 @@ impl<'a> ConstructCtx<'a> {
         self.env.iter().rev().find_map(|s| s.get(name))
     }
 
+    fn has_local_binding(&self, name: &str) -> bool {
+        self.env
+            .iter()
+            .skip(1)
+            .any(|scope| scope.contains_key(name))
+    }
+
     fn is_mutable(&self, name: &str) -> bool {
         self.mut_env
             .iter()
@@ -1178,6 +1185,15 @@ pub(super) fn construct_generic_body(
         subst = subst.compose(&s);
     }
 
+    calls::backfill_row_remainders(
+        scheme,
+        &renaming,
+        &mut subst,
+        span,
+        &type_ctx.registry,
+        &type_ctx.current_module,
+    )?;
+
     // Fill any still-unresolved type vars with Never (not Unit) so
     // `infer_type_to_type` does not error during construction. `unify` treats
     // `Never` as the bottom type and no-ops instead of binding (see `unify`'s
@@ -1654,6 +1670,17 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
                 .map(|(name, ty)| (name.clone(), type_to_type_expr(ty)))
                 .collect(),
         ),
+        Type::OpenRecord { fields, tail } => TypeExpr::OpenRecord(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_type_expr(ty)))
+                .collect(),
+            crate::data::ast::RowTail {
+                var: Some(tail.to_string()),
+                span: Span::new(0, 0, ""),
+            },
+        ),
+        Type::SymbolicRow { name, .. } => named(name),
         Type::Array(item) => TypeExpr::Array(Box::new(type_to_type_expr(item))),
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
         Type::Reference(item) => TypeExpr::Reference(Box::new(type_to_type_expr(item))),

@@ -14,6 +14,39 @@ use crate::pipeline::type_checking::type_engine::{
     RowConstraint, TypeScheme, row_bound_failures,
 };
 
+fn check_explicit_closure_captures(
+    captures: &[crate::data::ast::CaptureSpec],
+    params: &[crate::data::ast::Param],
+    body: &crate::data::ast::Block,
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
+    use super::super::closure_uses::{capture_name, collect_closure_body_uses};
+
+    if captures.is_empty() {
+        return Ok(());
+    }
+    let mut bound = params.iter().map(|param| param.name.clone()).collect();
+    let mut reads = std::collections::BTreeSet::new();
+    let mut writes = std::collections::BTreeSet::new();
+    let mut spans = HashMap::new();
+    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes, &mut spans);
+    // Generic bodies defer construction, so capture-list completeness must not
+    // depend on reaching construction with a particular caller's type arguments.
+    for name in reads.union(&writes) {
+        if ctx.has_local_binding(name)
+            && !captures.iter().any(|capture| capture_name(capture) == name)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0026,
+                format!("`{name}` is captured but not listed"),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Enforce RFC-0173 D6(2) for the direct parameter-passing shape.  General
 /// unification still relates the two signatures; this check supplies the one
 /// fact unification must not invent: that a declared argument grants every
@@ -1994,6 +2027,7 @@ pub(super) fn infer_expr(
             span,
             ..
         } => {
+            check_explicit_closure_captures(captures, params, body, span, ctx)?;
             let param_types: Vec<InferType> = params
                 .iter()
                 .map(|p| {

@@ -1,0 +1,22 @@
+type Callback := once || -> i64;
+fun invoke(f: Callback) -> i64 { f() }
+
+fun transition<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+    { ..r, token = "secret" }
+}
+
+fun copied_tail<row R: !{token}>(r: { id: i64, ..R }) -> i64 where all R: Copy {
+    let { id, ..rest } := r;
+    let copy := rest;
+    let callback := [copy, id] once || {
+        let extended := transition(copy);
+        let { token, ..again } := extended;
+        id + token.len() as i64
+    };
+    invoke(callback)
+}
+
+fun main() {
+    assert(copied_tail({ id = 3, count = 7 }) == 9);
+    assert(copied_tail({ id = 5 }) == 11);
+}
