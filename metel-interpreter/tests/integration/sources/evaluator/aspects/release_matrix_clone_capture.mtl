@@ -1,0 +1,11 @@
+record Ledger { public id: i64, public memo: String, public count: i64 }
+type LedgerAlias := Ledger;
+
+fun main() {
+    let original: LedgerAlias := Ledger { id = 4, memo = "keep", count = 6 };
+    let copied := original.clone();
+    let memo := copied.memo;
+    let callback := [copied] once || { copied.id + copied.count };
+    assert(memo == "keep");
+    assert(callback() == 10);
+}
