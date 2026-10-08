@@ -1,0 +1,9 @@
+[options]
+move_check = true
+error = ["T0001"]
+spec = ["spec.ownership.widening.dynamics-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 6

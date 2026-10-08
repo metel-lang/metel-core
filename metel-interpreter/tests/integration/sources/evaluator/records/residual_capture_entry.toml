@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.ownership.narrowing.legality-4", "spec.ownership.widening.dynamics-1", "spec.functions.closures.dynamics-5"]

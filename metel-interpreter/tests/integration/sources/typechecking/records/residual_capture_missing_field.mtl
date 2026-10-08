@@ -1,0 +1,6 @@
+struct Pair { left: String, right: String }
+fun main() {
+    let pair := Pair { left = "gone", right = "kept" };
+    let left := pair.left;
+    let callback := [pair] once || -> String { pair.left }; // ERROR[T0003]
+}

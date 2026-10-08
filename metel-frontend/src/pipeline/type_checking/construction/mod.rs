@@ -575,6 +575,25 @@ impl<'a> ConstructCtx<'a> {
             .collect()
     }
 
+    fn owned_capture_types(
+        &self,
+        captures: &[crate::data::ast::CaptureSpec],
+    ) -> Vec<(String, Type)> {
+        use crate::data::ast::CaptureSpec;
+        captures
+            .iter()
+            .filter_map(|capture| match capture {
+                CaptureSpec::Owned { name, .. } => self
+                    .narrowed_type(name)
+                    .or_else(|| self.lookup(name).cloned())
+                    .map(|ty| (name.clone(), ty)),
+                CaptureSpec::Clone { .. }
+                | CaptureSpec::SharedRef { .. }
+                | CaptureSpec::MutRef { .. } => None,
+            })
+            .collect()
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }

@@ -500,6 +500,8 @@ pub enum TypedExpr {
         /// Lexical identity of the enclosing-scope binding each capture names
         /// (ADR-0054 / metel-core#1052), parallel to `captures`.
         capture_ids: Vec<Option<LocalId>>,
+        /// Owned source types at closure creation, before body restoration.
+        owned_capture_types: Vec<(String, Type)>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
         params: Vec<Param>,
@@ -520,6 +522,8 @@ pub enum TypedExpr {
         captures: Vec<CaptureSpec>,
         /// See `Closure::capture_ids`.
         capture_ids: Vec<Option<LocalId>>,
+        /// See `Closure::owned_capture_types`.
+        owned_capture_types: Vec<(String, Type)>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
         params: Vec<Param>,

@@ -1,0 +1,13 @@
+struct Pair { left: String, right: String }
+fun take(value: Pair.{}) {}
+fun main() {
+    var pair := Pair { left = "old", right = "gone" };
+    let left := pair.left;
+    let right := pair.right;
+    take(pair);
+    let callback := [pair] once var || -> Pair { // ERROR[T0019]
+        pair.left := "new";
+        pair.right := "back";
+        pair
+    };
+}

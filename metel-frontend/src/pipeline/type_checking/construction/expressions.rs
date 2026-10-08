@@ -1863,6 +1863,7 @@ pub(super) fn construct_expr(
             } else {
                 crate::data::types::UseMultiplicity::Move
             };
+            let owned_capture_types = ctx.owned_capture_types(&effective_captures);
             ctx.push_scope();
             ctx.enter_closure(
                 captures
@@ -1903,6 +1904,7 @@ pub(super) fn construct_expr(
             );
             Ok(TypedExpr::Closure {
                 capture_ids: ctx.capture_local_ids(&effective_captures),
+                owned_capture_types,
                 captures: effective_captures,
                 call_multiplicity: effective_multiplicity,
                 call_mutation: effective_mutation,

@@ -366,6 +366,13 @@ alternative (tagging `Value` itself).
 
 ### Closure Body Expected Type
 
+Owned capture source types are recorded before entering the closure body, using
+the current narrowed type rather than its original declaration. Both typed and
+let-polymorphic closure nodes carry these entry facts. Ownership analysis consumes
+explicit owned captures from that snapshot, not from body reads after possible
+restoration, and also checks unused or shadowed captures. See
+[ADR-0062](../../docs/architecture/decisions/adr-0062-owned-capture-entry-types.md).
+
 `Expr::Closure` construction passes `return_type.as_ref().map(|_| &ret_ty)` as the `expected_tail_ty` for `construct_block`. This is necessary so that enum variant literals with unmentioned type params (e.g. `Result::Ok { value }` in a `fun() -> Result<T,E>`) can resolve the unbound type argument from the annotation hint rather than failing with T0002. Closures without an explicit return annotation pass `None`.
 
 ### Exhaustive Match Checking

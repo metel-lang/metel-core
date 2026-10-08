@@ -903,20 +903,32 @@ impl<'a> Checker<'a> {
             ),
             TypedExpr::Loop { body, .. } => self.observe_loop_expr(body, current_module, state),
             TypedExpr::Closure {
-                params, body, span, ..
-            } => self.observe_closure_expr(params, body, span, current_module, state),
+                params,
+                body,
+                owned_capture_types,
+                span,
+                ..
+            } => self.observe_closure_expr(
+                params,
+                body,
+                owned_capture_types,
+                span,
+                current_module,
+                state,
+            ),
             TypedExpr::GenericClosure {
                 name,
                 params,
                 body,
+                owned_capture_types,
                 span,
                 ..
             } => {
                 if let Some(name) = name {
                     self.observe_generic_closure_expr(
                         name,
-                        params,
-                        body,
+                        (params, body),
+                        owned_capture_types,
                         span,
                         current_module,
                         state,
@@ -1109,13 +1121,16 @@ impl<'a> Checker<'a> {
         &mut self,
         params: &[crate::data::ast::Param],
         body: &TypedBlock,
+        owned_capture_types: &[(String, Type)],
         span: &Span,
         current_module: &[String],
         state: &mut FlowState,
     ) {
+        self.capture_owned_closure(owned_capture_types, span, state);
         self.capture_closure(
             body,
             params.iter().map(|param| param.name.as_str()),
+            owned_capture_types,
             span,
             state,
         );
@@ -1134,18 +1149,21 @@ impl<'a> Checker<'a> {
     fn observe_generic_closure_expr(
         &mut self,
         name: &str,
-        params: &[crate::data::ast::Param],
-        body: &crate::data::ast::Block,
+        closure_body: (&[crate::data::ast::Param], &crate::data::ast::Block),
+        owned_capture_types: &[(String, Type)],
         span: &Span,
         current_module: &[String],
         state: &mut FlowState,
     ) {
+        let (params, body) = closure_body;
+        self.capture_owned_closure(owned_capture_types, span, state);
         if let Some((typed_body, generic_env)) =
             self.construct_generic_body_for_move(name, &[], params, body, span)
         {
             self.capture_closure(
                 &typed_body,
                 params.iter().map(|param| param.name.as_str()),
+                owned_capture_types,
                 span,
                 state,
             );
@@ -1671,10 +1689,31 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn capture_owned_closure(
+        &mut self,
+        owned_capture_types: &[(String, Type)],
+        span: &Span,
+        state: &mut FlowState,
+    ) {
+        // Explicit owned captures initialize the environment even if unused or
+        // shadowed in the body, or if generic body reconstruction is skipped.
+        for (name, ty) in owned_capture_types {
+            self.consume_place(
+                &Place::new(name.clone()),
+                ty,
+                span,
+                &[],
+                state,
+                MoveCause::Other,
+            );
+        }
+    }
+
     fn capture_closure<'names>(
         &mut self,
         body: &TypedBlock,
         params: impl Iterator<Item = &'names str>,
+        owned_capture_types: &[(String, Type)],
         span: &Span,
         state: &mut FlowState,
     ) {
@@ -1682,6 +1721,9 @@ impl<'a> Checker<'a> {
         let captures = collect_free_roots_from_typed_block(body, &locals);
         for capture in captures {
             let CapturedRoot { name, ty } = capture;
+            if owned_capture_types.iter().any(|(owned, _)| owned == &name) {
+                continue;
+            }
             locals.insert(name.clone());
             let capture_place = Place::new(name.clone());
             let Some(capture_ty) = ty.or_else(|| state.binding_type(&name).cloned()) else {

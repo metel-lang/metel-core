@@ -5,6 +5,55 @@ use crate::pipeline::path_normalization::NormalizedModuleGraph;
 use crate::pipeline::type_checking::{CheckGraphReport, CorePrelude, check_graph_with_report};
 use std::rc::Rc;
 
+#[test]
+fn owned_capture_type_is_snapshotted_before_body_restoration() {
+    let typed = typecheck_source(
+        "capture_entry.mtl",
+        r#"
+struct Pair { left: String, right: String }
+fun make() -> once var || -> Pair {
+    var pair := Pair { left = "old", right = "gone" };
+    let left := pair.left;
+    let right := pair.right;
+    [pair] once var || -> Pair {
+        pair.left := "new";
+        pair.right := "back";
+        pair
+    }
+}
+fun main() {}
+"#,
+    )
+    .report;
+    let fun = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "make" => Some(fun),
+            _ => None,
+        })
+        .expect("make is present");
+    let FunBody::Typed(body) = &fun.body else {
+        panic!("make has a typed body");
+    };
+    let TypedExpr::Closure {
+        owned_capture_types,
+        body,
+        ..
+    } = body.tail.as_deref().unwrap()
+    else {
+        panic!("make returns a closure");
+    };
+    assert!(
+        matches!(&owned_capture_types[0].1, Type::Residual { fields, .. } if fields.is_empty())
+    );
+    assert!(
+        matches!(body.tail.as_deref().unwrap().ty(), Type::Named(name, ..) if name.ends_with("Pair"))
+    );
+}
+
 /// The non-comment lines of every `pipeline/type_checking/construction*` source
 /// file — excluding this test module itself, which quotes the very API names
 /// these checks forbid (as string literals in its own assertions).
