@@ -1,0 +1,20 @@
+record User { public id: i64, public name: String, public count: i64 }
+type UserAlias := User;
+type Callback := once || -> i64;
+
+fun clone_head<row R>(value: { id: i64, ..R }) -> { id: i64, ..R }
+where all R: Clone {
+    value.clone()
+}
+
+fun main() {
+    let user: UserAlias := User { id = 3, name = "moved", count = 5 };
+    let name := user.name;
+    let residual := clone_head(user);
+    assert(name == "moved");
+    assert(residual.id + residual.count == 8);
+    let callback: Callback := [residual] once || {
+        residual.id + residual.count
+    };
+    assert(callback() == 8);
+}

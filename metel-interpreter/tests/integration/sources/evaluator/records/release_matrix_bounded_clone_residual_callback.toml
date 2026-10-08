@@ -1,0 +1,4 @@
+[options]
+skip = "LIMIT-TYPE-INFERENCE-011 -- metel-core#1420"
+move_check = true
+spec = ["spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.generics.open-rows.legality-3", "spec.declarations.type-aliases.legality-1", "spec.functions.closures.dynamics-5", "spec.ownership.narrowing.legality-4"]
