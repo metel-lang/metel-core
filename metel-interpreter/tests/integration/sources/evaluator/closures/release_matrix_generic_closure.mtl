@@ -1,0 +1,9 @@
+fun make_clone<T: Clone>(value: T) -> once || -> T {
+    let owned := value.clone();
+    [owned] once || { owned.clone() }
+}
+
+fun main() {
+    let callback := make_clone("generic closure".to_string());
+    assert(callback() == "generic closure");
+}
