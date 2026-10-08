@@ -1,4 +1,5 @@
 struct Pair { left: String, right: String }
+type Empty := Pair.{};
 type Callback := once || -> Pair;
 
 fun empty() -> Pair.{} {
@@ -15,7 +16,7 @@ fun rebuild(empty: Pair.{}) -> Pair {
     restored
 }
 
-fun captured(empty: Pair.{}) -> Pair {
+fun captured(empty: Empty) -> Pair {
     let callback: Callback := [empty] once || {
         var restored := empty;
         restored.left := "new";
