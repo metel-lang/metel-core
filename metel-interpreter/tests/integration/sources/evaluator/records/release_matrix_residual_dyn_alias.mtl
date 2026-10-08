@@ -1,0 +1,19 @@
+record Item { public name: String, public token: String }
+aspect Describe { fun describe(&self) -> String; }
+extend<row R: { name: String, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { self.name.clone() }
+}
+type View := dyn Describe;
+type Callback := once || -> String;
+fun display(value: &View) -> String { value.describe() }
+
+fun main() {
+    let item := Item { name = "kept", token = "discarded" };
+    let token := item.token;
+    let object: View := item;
+    assert(display(&object) == "kept");
+    let callback: Callback := [object] once || { object.describe() };
+    assert(callback() == "kept");
+    let anonymous: View := { name = "anonymous" };
+    assert(display(&anonymous) == "anonymous");
+}

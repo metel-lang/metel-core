@@ -1,0 +1,22 @@
+record Batch { public samples: [i64; 3], public label: String }
+type Samples := [i64; 3];
+type Sum := once || -> i64;
+
+fun sum_head<row R>(value: { samples: Samples, ..R }) -> i64 where all R: Copy {
+    var total := 0;
+    for (sample in value.samples) { total := total + sample; }
+    total
+}
+
+fun main() {
+    let batch := Batch { samples = [1, 2, 3], label = "batch" };
+    let { label, ..rest } := batch;
+    assert(label == "batch");
+    let copied := rest.clone();
+    let callback: Sum := [copied] once || { sum_head(copied) };
+    assert(callback() == 6);
+    assert(sum_head({ samples = rest.samples, extra = true }) == 6);
+    match (rest.samples) {
+        [first, second, third] => assert(first + second + third == 6),
+    }
+}

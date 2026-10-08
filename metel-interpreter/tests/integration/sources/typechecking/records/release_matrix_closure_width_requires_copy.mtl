@@ -1,0 +1,9 @@
+type Callback := once || -> i64;
+fun head<row R>(value: { id: i64, ..R }) -> i64 { value.id }
+fun rejected<row R>(value: { id: i64, ..R }) -> i64 {
+    let callback: Callback := [value] once || {
+        head(value) // ERROR[T0033]
+    };
+    callback()
+}
+fun main() {}

@@ -1,0 +1,18 @@
+public record Packet<row R> { public id: i64, public data: { ..R } }
+public type EmptyPacket := Packet<{}>;
+public type Callback := once || -> i64;
+
+public fun make<row R>(id: i64, data: { ..R }) -> Packet<..R> {
+    Packet { id = id, data = data }
+}
+
+public fun strip<row R, row Rest>(packet: Packet<..R>) -> Packet<..Rest>
+where R = { token: String, ..Rest } {
+    let { id, data } := packet;
+    let { token: _, ..rest } := data;
+    Packet { id = id, data = rest }
+}
+
+public fun callback(packet: EmptyPacket) -> Callback {
+    [packet] once || -> i64 { packet.id }
+}

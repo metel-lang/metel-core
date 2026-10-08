@@ -1,0 +1,25 @@
+fun clone_row<row R>(value: &{ ..R }) -> { ..R } where all R: Clone {
+    value.clone()
+}
+
+fun copy_head<row R>(value: { id: i64, ..R }) -> i64 where all R: Copy {
+    value.id
+}
+
+record CopyRow { public id: i64, public count: i64 }
+type CopyAlias := CopyRow;
+
+fun main() {
+    let original := { name = "owned", count = 4 };
+    let cloned := clone_row(&original);
+    let { name, ..tail } := cloned;
+    assert(name == "owned");
+    assert(tail.count == 4);
+    assert(original.name == "owned");
+    let empty := clone_row(&{});
+    let with_id := { ..empty, id = 8 };
+    assert(copy_head(with_id) == 8);
+    let copied: CopyAlias := CopyRow { id = 3, count = 7 };
+    assert(copy_head(copied) == 3);
+    assert(copied.count == 7);
+}

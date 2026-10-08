@@ -1,0 +1,14 @@
+import helper::make;
+import helper::strip;
+import helper::callback;
+import helper::EmptyPacket;
+import helper::Callback;
+
+fun main() {
+    let empty: EmptyPacket := strip(make(7, { token = "gone" }));
+    let run: Callback := callback(empty);
+    assert(run() == 7);
+    let with_tail := strip(make(9, { token = "gone", samples = [1, 2] }));
+    assert(with_tail.id == 9);
+    assert(with_tail.data.samples[1] == 2);
+}

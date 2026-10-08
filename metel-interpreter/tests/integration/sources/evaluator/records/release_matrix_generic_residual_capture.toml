@@ -1,0 +1,4 @@
+[options]
+skip = "LIMIT-TYPE-CONSTRUCTION-004 -- metel-core#1411"
+move_check = true
+spec = ["spec.functions.closures.dynamics-5", "spec.ownership.narrowing.legality-4", "spec.types.generics.rigid-type-parameters.legality-1"]

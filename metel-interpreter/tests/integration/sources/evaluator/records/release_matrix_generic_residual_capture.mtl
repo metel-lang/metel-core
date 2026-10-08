@@ -1,0 +1,9 @@
+struct Pair { left: String, right: String }
+fun main() {
+    var pair := Pair { left = "gone", right = "kept" };
+    let left := pair.left;
+    let repair := [pair] once |extra| { (pair.right, extra) };
+    let result := repair(7);
+    assert(result.0 == "kept");
+    assert(result.1 == 7);
+}

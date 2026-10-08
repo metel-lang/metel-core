@@ -1,0 +1,37 @@
+record Pair { public left: String, public right: String }
+type PairAlias := Pair;
+type Restore := once var || -> PairAlias;
+
+aspect State { fun state(&self) -> i64; }
+extend<row R: { right: String, .. }> { ..R }: State {
+    fun state(&self) -> i64 { 1 }
+}
+extend<row R: !{ right }> { ..R }: State {
+    fun state(&self) -> i64 { 0 }
+}
+
+fun main() {
+    var pair: PairAlias := Pair { left = "left", right = "right" };
+    assert(pair.state() == 1);
+    let left := pair.left;
+    let partial := pair.clone();
+    assert(partial.right == "right");
+    assert(pair.state() == 1);
+    let right := pair.right;
+    assert(pair.state() == 0);
+    let empty: Pair.{} := pair.clone();
+    assert(empty.state() == 0);
+    let restore: Restore := [pair] once var || -> PairAlias {
+        pair.left := "restored";
+        pair.right := "again";
+        assert(pair.state() == 1);
+        pair
+    };
+    match (restore()) {
+        { left, ..rest } => {
+            assert(left == "restored");
+            assert(rest.right == "again");
+            assert(rest.state() == 1);
+        },
+    }
+}
