@@ -1,0 +1,9 @@
+runner = "full_pipeline"
+prelude = "default"
+
+[options]
+move_check = true
+spec = ["spec.functions.closures.dynamics-5", "spec.modules.imports.legality-2"]
+
+[expect]
+status = "success"

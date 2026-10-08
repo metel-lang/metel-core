@@ -107,6 +107,26 @@ pub struct MoveCheckReport {
     pub unchecked_generic_bodies: Vec<UncheckedGenericBody>,
 }
 
+#[derive(Clone, Copy)]
+struct GenericClosureMove<'a> {
+    name: &'a str,
+    params: &'a [crate::data::ast::Param],
+    body: &'a crate::data::ast::Block,
+    capture_types: &'a [(String, Type)],
+    owned_capture_types: &'a [(String, Type)],
+    span: &'a Span,
+}
+
+#[derive(Clone, Copy)]
+struct PlaceConsumption<'a> {
+    place: &'a Place,
+    root_ty: &'a Type,
+    narrowed_whole_ty: Option<&'a Type>,
+    use_span: &'a Span,
+    current_module: &'a [String],
+    cause: MoveCause,
+}
+
 #[derive(Debug, Clone)]
 pub struct UncheckedGenericBody {
     pub span: Span,
@@ -396,7 +416,7 @@ impl<'a> Checker<'a> {
         current_module: &[String],
     ) {
         if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, generics, params, body, span)
+            self.construct_generic_body_for_move(name, generics, params, body, span, &[])
         {
             let mut fn_state = FlowState::default();
             fn_state.push_scope();
@@ -417,6 +437,7 @@ impl<'a> Checker<'a> {
         params: &[crate::data::ast::Param],
         body: &crate::data::ast::Block,
         span: &Span,
+        capture_types: &[(String, Type)],
     ) -> Option<(TypedBlock, GenericMoveEnv)> {
         let Some(type_ctx) = self.type_ctx.as_ref() else {
             self.record_skipped_generic_body(span, "type context was unavailable");
@@ -449,7 +470,10 @@ impl<'a> Checker<'a> {
             body,
             span,
             &symbolic_type_ctx,
-            None,
+            crate::pipeline::type_checking::GenericBodyOptions {
+                expected_ret: None,
+                capture_types,
+            },
         ) {
             Ok(typed_body) => Some((typed_body, generic_env)),
             Err(error) => {
@@ -522,7 +546,7 @@ impl<'a> Checker<'a> {
             body,
             &method.span,
             &symbolic_type_ctx,
-            None,
+            crate::pipeline::type_checking::GenericBodyOptions::default(),
         ) {
             Ok(typed_body) => {
                 let mut fn_state = FlowState::default();
@@ -929,16 +953,21 @@ impl<'a> Checker<'a> {
                 name,
                 params,
                 body,
+                capture_types,
                 owned_capture_types,
                 span,
                 ..
             } => {
                 if let Some(name) = name {
                     self.observe_generic_closure_expr(
-                        name,
-                        (params, body),
-                        owned_capture_types,
-                        span,
+                        GenericClosureMove {
+                            name,
+                            params,
+                            body,
+                            capture_types,
+                            owned_capture_types,
+                            span,
+                        },
                         current_module,
                         state,
                     );
@@ -1157,17 +1186,21 @@ impl<'a> Checker<'a> {
 
     fn observe_generic_closure_expr(
         &mut self,
-        name: &str,
-        closure_body: (&[crate::data::ast::Param], &crate::data::ast::Block),
-        owned_capture_types: &[(String, Type)],
-        span: &Span,
+        closure: GenericClosureMove<'_>,
         current_module: &[String],
         state: &mut FlowState,
     ) {
-        let (params, body) = closure_body;
+        let GenericClosureMove {
+            name,
+            params,
+            body,
+            capture_types,
+            owned_capture_types,
+            span,
+        } = closure;
         self.capture_owned_closure(owned_capture_types, span, state);
         if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, &[], params, body, span)
+            self.construct_generic_body_for_move(name, &[], params, body, span, capture_types)
         {
             self.capture_closure(
                 &typed_body,
@@ -1179,7 +1212,14 @@ impl<'a> Checker<'a> {
             let mut closure_state = FlowState::default();
             closure_state.push_scope();
             for captured in collect_free_roots_from_typed_block(&typed_body, &HashSet::new()) {
-                closure_state.bind(&captured.name);
+                if let Some((_, ty)) = capture_types
+                    .iter()
+                    .find(|(name, _)| name == &captured.name)
+                {
+                    closure_state.bind_typed(&captured.name, ty);
+                } else {
+                    closure_state.bind(&captured.name);
+                }
             }
             for (param, ty) in params.iter().zip(&generic_env.arg_types) {
                 closure_state.bind_typed(&param.name, ty);
@@ -1223,12 +1263,18 @@ impl<'a> Checker<'a> {
                     // the binding-time type in `state` — so `consume_place` sees
                     // a `Residual` / narrower `Record` and does not flag a legal
                     // use of a narrowed binding (metel-core#950).
-                    let use_ty = if place.projections().is_empty() {
-                        expr.ty().clone()
-                    } else {
-                        root_ty.clone()
-                    };
-                    self.consume_place(&place, &use_ty, expr.span(), current_module, state, cause);
+                    let narrowed_whole_ty = place.projections().is_empty().then_some(expr.ty());
+                    self.consume_place_with_narrowed_type(
+                        PlaceConsumption {
+                            place: &place,
+                            root_ty: &root_ty,
+                            narrowed_whole_ty,
+                            use_span: expr.span(),
+                            current_module,
+                            cause,
+                        },
+                        state,
+                    );
                 }
             }
             return;
@@ -1707,13 +1753,21 @@ impl<'a> Checker<'a> {
         // Explicit owned captures initialize the environment even if unused or
         // shadowed in the body, or if generic body reconstruction is skipped.
         for (name, ty) in owned_capture_types {
-            self.consume_place(
-                &Place::new(name.clone()),
-                ty,
-                span,
-                &[],
+            let place = Place::new(name.clone());
+            let root_ty = state
+                .binding_type(name)
+                .cloned()
+                .unwrap_or_else(|| ty.clone());
+            self.consume_place_with_narrowed_type(
+                PlaceConsumption {
+                    place: &place,
+                    root_ty: &root_ty,
+                    narrowed_whole_ty: Some(ty),
+                    use_span: span,
+                    current_module: &[],
+                    cause: MoveCause::Other,
+                },
                 state,
-                MoveCause::Other,
             );
         }
     }
@@ -1758,29 +1812,66 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
         cause: MoveCause,
     ) {
+        self.consume_place_with_narrowed_type(
+            PlaceConsumption {
+                place,
+                root_ty,
+                narrowed_whole_ty: None,
+                use_span,
+                current_module,
+                cause,
+            },
+            state,
+        );
+    }
+
+    fn consume_place_with_narrowed_type(
+        &mut self,
+        usage: PlaceConsumption<'_>,
+        state: &mut FlowState,
+    ) {
+        let PlaceConsumption {
+            place,
+            root_ty,
+            narrowed_whole_ty,
+            use_span,
+            current_module,
+            cause,
+        } = usage;
         let place_ty = self
             .type_of_place(root_ty, place, current_module)
             .unwrap_or_else(|| root_ty.clone());
-        if state.is_borrowed_array_element(place) && !self.is_copy(current_module, &place_ty) {
+        let place_ty = narrowed_whole_ty.unwrap_or(&place_ty);
+        if state.is_borrowed_array_element(place) && !self.is_copy(current_module, place_ty) {
             self.report_illegal_move(
                 place,
                 use_span.clone(),
-                type_bucket(&place_ty),
+                type_bucket(place_ty),
                 MoveViolationKind::BorrowedArrayElementMove,
             );
             return;
         }
-        if let Some(kind) = self.illegal_move_kind(place, root_ty, &place_ty, current_module) {
-            self.report_illegal_move(place, use_span.clone(), type_bucket(&place_ty), kind);
+        if let Some(kind) = self.illegal_move_kind(place, root_ty, place_ty, current_module) {
+            self.report_illegal_move(place, use_span.clone(), type_bucket(place_ty), kind);
             return;
         }
         // For a bare whole-value use, `place_ty` here is the type construction
         // stamped on the use expression — a `Type::Residual` / narrower `Record`
         // when the binding narrowed. Pass it so a legal use of a narrowed value
         // is not flagged as a partial-move violation (metel-core#950).
-        let narrowed = place.projections().is_empty().then_some(&place_ty);
-        self.check_place_use_before_move(place, use_span, state, narrowed);
-        self.record_move_if_needed(place, &place_ty, use_span, current_module, state, cause);
+        self.check_place_use_before_move(place, use_span, state, narrowed_whole_ty);
+
+        // A branded residual with no remaining fields still represents the
+        // consumed remainder of a non-Copy nominal value. Its empty field set
+        // must not erase the move from the binding's flow state.
+        if place.projections().is_empty()
+            && matches!(place_ty, Type::Residual { fields, .. } if fields.is_empty())
+            && !self.is_copy(current_module, root_ty)
+        {
+            state.record_move(place.clone(), use_span.clone(), cause, type_bucket(root_ty));
+            return;
+        }
+        self.record_move_if_needed(place, place_ty, use_span, current_module, state, cause);
     }
 
     fn check_place_use_before_move(

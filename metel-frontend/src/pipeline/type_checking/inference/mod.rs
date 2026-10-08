@@ -395,7 +395,7 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
         param_types.push(
             open_record_param_vars
                 .get(&index)
-                .map_or_else(|| te_to_infer(ann), |tv| InferType::Var(*tv)),
+                .map_or_else(|| te_to_infer(ann), |tv| open_record_param_type(ann, *tv)),
         );
     }
     let ret_ty = match &fun.return_type {
@@ -408,7 +408,16 @@ fn native_fun_ty(fun: &FunDecl, ctx: &mut InferContext) -> Result<NativeFunTyRes
         neg_bounds: neg_bounds_by_var,
         record_kinds: record_kinds_by_var,
         assoc_eq: assoc_eq_by_var,
-        open_row_params: open_record_param_vars.values().copied().collect(),
+        open_row_params: open_record_param_vars
+            .iter()
+            .filter(|(index, _)| {
+                !matches!(
+                    fun.params[**index].type_ann,
+                    Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
+                )
+            })
+            .map(|(_, var)| *var)
+            .collect(),
     })
 }
 
@@ -918,11 +927,18 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     .enumerate()
                     .map(|(i, p)| {
                         if let Some(&tv) = open_record_param_vars.get(&i) {
-                            InferType::Var(tv)
+                            p.type_ann.as_ref().map_or_else(
+                                || InferType::Var(tv),
+                                |ann| open_record_param_type(ann, tv),
+                            )
                         } else if matches!(
                             p.type_ann,
                             Some(TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. })
-                        ) {
+                        ) || p
+                            .type_ann
+                            .as_ref()
+                            .is_some_and(|ann| open_record_row_tail(ann).is_some())
+                        {
                             // `collect_open_record_param_vars` above failed (a
                             // malformed row variable reference) and its error
                             // was swallowed for this provisional pass -- never
@@ -1305,82 +1321,82 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
     let mut projection_tail_constraints = HashMap::new();
     let mut consumed_field_wise = vec![];
     for (i, param) in fun.params.iter().enumerate() {
-        match &param.type_ann {
-            Some(TypeExpr::OpenRecord(fields, tail)) => {
-                check_row_var(tail, &fun.generics)?;
-                let decomposed =
-                    resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
-                let tv = fresh_type_var();
-                let row = RowConstraint {
-                    fields: fields
-                        .iter()
-                        .cloned()
-                        .chain(decomposed.clone())
-                        .map(|(label, ty)| RowConstraintField {
-                            label,
-                            ty: Some(ty),
-                        })
-                        .collect(),
-                    open: true,
-                };
-                let explicit: Vec<String> = fields.iter().map(|(label, _)| label.clone()).collect();
-                let mut param_bounds = vec![GenericBound::Row(row)];
-                param_bounds.extend(field_wise_bounds(
-                    tail,
-                    &explicit,
-                    &decomposed,
-                    fun.where_clause.as_ref(),
-                    &mut consumed_field_wise,
-                )?);
-                bounds.insert(tv, param_bounds);
-                record_kinds.insert(tv, true);
-                param_vars.insert(i, tv);
+        let Some(annotation) = &param.type_ann else {
+            continue;
+        };
+        if let Some((fields, tail)) = open_record_row_tail(annotation) {
+            check_row_var(tail, &fun.generics)?;
+            let decomposed =
+                resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
+            let tv = fresh_type_var();
+            let row = RowConstraint {
+                fields: fields
+                    .iter()
+                    .cloned()
+                    .chain(decomposed.clone())
+                    .map(|(label, ty)| RowConstraintField {
+                        label,
+                        ty: Some(ty),
+                    })
+                    .collect(),
+                open: true,
+            };
+            let explicit: Vec<String> = fields.iter().map(|(label, _)| label.clone()).collect();
+            let mut param_bounds = vec![GenericBound::Row(row)];
+            param_bounds.extend(field_wise_bounds(
+                tail,
+                &explicit,
+                &decomposed,
+                fun.where_clause.as_ref(),
+                &mut consumed_field_wise,
+            )?);
+            bounds.insert(tv, param_bounds);
+            record_kinds.insert(tv, true);
+            param_vars.insert(i, tv);
+        } else if let TypeExpr::OpenRecordProjection {
+            path, fields, tail, ..
+        } = annotation
+        {
+            check_row_var(tail, &fun.generics)?;
+            // A `where R = { label: T, .. }` equation on this tail names fields the
+            // residual must also carry, exactly as for a record tail above: fold
+            // them in so they are required at the call and count as kept by the
+            // width-subtyping check.
+            let decomposed =
+                resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
+            let projection_decomposed = decomposed.clone();
+            let tv = fresh_type_var();
+            let row = RowConstraint {
+                fields: fields
+                    .iter()
+                    .map(|label| RowConstraintField {
+                        label: label.clone(),
+                        ty: None,
+                    })
+                    .chain(
+                        decomposed
+                            .into_iter()
+                            .map(|(label, ty)| RowConstraintField {
+                                label,
+                                ty: Some(ty),
+                            }),
+                    )
+                    .collect(),
+                open: true,
+            };
+            let brand = path.last().cloned().unwrap_or_default();
+            let field_wise = field_wise_bounds(
+                tail,
+                fields,
+                &projection_decomposed,
+                fun.where_clause.as_ref(),
+                &mut consumed_field_wise,
+            )?;
+            if !field_wise.is_empty() {
+                bounds.insert(tv, field_wise);
             }
-            Some(TypeExpr::OpenRecordProjection {
-                path, fields, tail, ..
-            }) => {
-                check_row_var(tail, &fun.generics)?;
-                // A `where R = { label: T, .. }` equation on this tail names fields the
-                // residual must also carry, exactly as for a record tail above: fold
-                // them in so they are required at the call and count as kept by the
-                // width-subtyping check.
-                let decomposed =
-                    resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
-                let projection_decomposed = decomposed.clone();
-                let tv = fresh_type_var();
-                let row = RowConstraint {
-                    fields: fields
-                        .iter()
-                        .map(|label| RowConstraintField {
-                            label: label.clone(),
-                            ty: None,
-                        })
-                        .chain(
-                            decomposed
-                                .into_iter()
-                                .map(|(label, ty)| RowConstraintField {
-                                    label,
-                                    ty: Some(ty),
-                                }),
-                        )
-                        .collect(),
-                    open: true,
-                };
-                let brand = path.last().cloned().unwrap_or_default();
-                let field_wise = field_wise_bounds(
-                    tail,
-                    fields,
-                    &projection_decomposed,
-                    fun.where_clause.as_ref(),
-                    &mut consumed_field_wise,
-                )?;
-                if !field_wise.is_empty() {
-                    bounds.insert(tv, field_wise);
-                }
-                projection_tail_constraints.insert(tv, (brand, row));
-                param_vars.insert(i, tv);
-            }
-            _ => {}
+            projection_tail_constraints.insert(tv, (brand, row));
+            param_vars.insert(i, tv);
         }
     }
     check_field_wise_consumed(fun, &consumed_field_wise)?;
@@ -1390,6 +1406,34 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
         record_kinds,
         projection_tail_constraints,
     ))
+}
+
+/// Return the structural open-row annotation beneath any shared or mutable
+/// reference wrappers. The fresh parameter variable represents the referred-to
+/// record; callers preserve the wrapper in the function's actual parameter type.
+pub(super) fn open_record_row_tail(
+    annotation: &TypeExpr,
+) -> Option<(&[(String, TypeExpr)], &RowTail)> {
+    match annotation {
+        TypeExpr::OpenRecord(fields, tail) => Some((fields, tail)),
+        TypeExpr::Reference(inner) | TypeExpr::MutReference(inner) => open_record_row_tail(inner),
+        _ => None,
+    }
+}
+
+/// Replace an open-row annotation by its fresh row-bounded parameter variable,
+/// retaining reference wrappers around the underlying record.
+pub(super) fn open_record_param_type(annotation: &TypeExpr, var: TypeVar) -> InferType {
+    match annotation {
+        TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. } => InferType::Var(var),
+        TypeExpr::Reference(inner) => {
+            InferType::Reference(Box::new(open_record_param_type(inner, var)))
+        }
+        TypeExpr::MutReference(inner) => {
+            InferType::MutReference(Box::new(open_record_param_type(inner, var)))
+        }
+        _ => unreachable!("only an open-row annotation has a desugared parameter variable"),
+    }
 }
 
 /// Collect equality constraints (`Aspect<AssocType = ConcreteType>`, RFC-0082 §4)

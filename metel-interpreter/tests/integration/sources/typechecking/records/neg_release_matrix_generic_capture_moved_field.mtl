@@ -1,0 +1,6 @@
+struct Pair { left: String, right: String }
+fun bad() {
+    var pair := Pair { left = "moved", right = "kept" };
+    let left := pair.left;
+    let read := [pair] once || -> String { pair.left }; // ERROR[T0003]
+}

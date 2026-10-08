@@ -1,0 +1,7 @@
+import helper::make_message;
+import helper::MessageCallback;
+
+fun main() {
+    let callback: MessageCallback := make_message("from helper");
+    assert(callback() == "from helper");
+}

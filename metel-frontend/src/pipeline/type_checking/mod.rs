@@ -28,6 +28,12 @@ mod projections;
 pub(crate) use conversions::type_expr_to_infer;
 pub use overload::core_native_symbol;
 mod registry;
+
+#[derive(Clone, Copy, Default)]
+pub struct GenericBodyOptions<'a> {
+    pub expected_ret: Option<&'a crate::data::types::Type>,
+    pub capture_types: &'a [(String, crate::data::types::Type)],
+}
 pub mod type_engine;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
@@ -1242,17 +1248,9 @@ pub fn construct_generic_body(
     body: &crate::data::ast::Block,
     span: &crate::data::ast::Span,
     type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
-    expected_ret: Option<&crate::data::types::Type>,
+    options: GenericBodyOptions<'_>,
 ) -> Result<crate::data::typed_ast::TypedBlock, MetelError> {
-    construction::construct_generic_body(
-        scheme,
-        params,
-        arg_types,
-        body,
-        span,
-        type_ctx,
-        expected_ret,
-    )
+    construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx, options)
 }
 
 pub(crate) fn symbolic_aspect_method_type(

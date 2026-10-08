@@ -2549,6 +2549,13 @@ pub fn type_to_infer(ty: &Type) -> InferType {
                 .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
                 .collect(),
         ),
+        Type::Residual { brand, fields } => InferType::Residual {
+            brand: brand.clone(),
+            fields: fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), type_to_infer(ty)))
+                .collect(),
+        },
         Type::OpenRecord { fields, tail } => InferType::RowExtend {
             fields: fields
                 .iter()
@@ -2590,6 +2597,7 @@ pub struct GenericMethodEntailment<'a> {
     pub aspect_assumptions: &'a AspectAssumptions,
     pub bounds: &'a HashMap<TypeVar, Vec<GenericBound>>,
     pub negative_bounds: &'a HashMap<TypeVar, Vec<GenericBound>>,
+    pub generic_vars: &'a HashMap<String, TypeVar>,
 }
 
 /// One aspect declaration, indexed in `TypeDefinitionRegistry::aspects` under its bare
@@ -3661,8 +3669,10 @@ impl TypeDefinitionRegistry {
             | InferType::Residual { .. }
             | InferType::RowExtend { .. }
             | InferType::Concrete(Type::SymbolicRow { .. }) => true,
-            InferType::Named(name, ..) => matches!(
-                self.visible_type_kind(current_module, name),
+            InferType::Named(name, _, id) => matches!(
+                id.get()
+                    .and_then(|symbol| self.visible_type_kind_by_id(symbol))
+                    .or_else(|| self.visible_type_kind(current_module, name)),
                 Some(VisibleTypeKind::Record)
             ),
             _ => false,
@@ -4496,12 +4506,13 @@ impl TypeDefinitionRegistry {
                         GenericBound::AllFields {
                             aspects,
                             except,
-                        } => declared.iter().any(|candidate| {
-                            matches!(candidate, GenericBound::AllFields {
-                                aspects: declared_aspects,
-                                except: declared_except,
-                            } if declared_aspects == aspects && declared_except == except)
-                        }),
+                        } => self.all_fields_bound_entailed(
+                            current_module,
+                            aspects,
+                            except,
+                            declared,
+                            entailment,
+                        ),
                     });
                     let negative_entailed = neg_bounds.iter().all(|bound| match bound {
                         GenericBound::Aspect(aspect) => declared_negative.iter().any(
@@ -5041,6 +5052,65 @@ impl TypeDefinitionRegistry {
         })
     }
 
+    /// A record-target impl's field-wise requirement on the whole receiver can
+    /// follow from the same requirement on an open tail plus typed facts for
+    /// the receiver's explicitly named fields. Those fixed fields are exactly
+    /// the exclusions carried by `all R: Aspect` on a `{ fixed, ..R }` bound.
+    fn all_fields_bound_entailed(
+        &self,
+        current_module: &[String],
+        aspects: &[String],
+        except: &[String],
+        declared: &[GenericBound],
+        entailment: GenericMethodEntailment<'_>,
+    ) -> bool {
+        declared.iter().any(|bound| {
+            let GenericBound::AllFields {
+                aspects: declared_aspects,
+                except: declared_except,
+            } = bound
+            else {
+                return false;
+            };
+            // Keep RFC-0173 D6's exact field-wise forwarding rule: a bound
+            // for a different aspect set does not imply this one.
+            if declared_aspects != aspects {
+                return false;
+            }
+            declared_except
+                .iter()
+                .filter(|label| !except.contains(label))
+                .all(|label| {
+                    let field_type = declared.iter().find_map(|bound| {
+                        let GenericBound::Row(row) = bound else {
+                            return None;
+                        };
+                        row.fields
+                            .iter()
+                            .find(|field| &field.label == label)
+                            .and_then(|field| field.ty.as_ref())
+                    });
+                    let Some(field_type) = field_type else {
+                        return false;
+                    };
+                    let field_type = super::registry::type_expr_to_infer_for_registry(
+                        field_type,
+                        entailment.generic_vars,
+                        self,
+                        current_module,
+                    );
+                    aspects.iter().all(|aspect| {
+                        self.infer_type_satisfies_aspect(
+                            current_module,
+                            &field_type,
+                            aspect,
+                            entailment.aspect_assumptions,
+                        )
+                    })
+                })
+        })
+    }
+
     #[must_use]
     pub fn aspect_generics(&self, name: &str) -> Option<&Vec<String>> {
         self.aspect_entry(name).map(|e| &e.generics)
@@ -5254,6 +5324,12 @@ impl TypeDefinitionRegistry {
         for (k, v) in &other.struct_env {
             self.struct_env.entry(*k).or_insert_with(|| v.clone());
         }
+        // Record-vs-struct kind is needed for cross-module structural record
+        // impl lookup just as the field table is. Imported nominal records must
+        // remain eligible for record-target impls (including std::core's
+        // field-wise Clone blanket impl).
+        self.record_structs
+            .extend(other.record_structs.iter().copied());
         for (k, v) in &other.struct_decl_modules {
             self.struct_decl_modules
                 .entry(*k)

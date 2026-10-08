@@ -27,8 +27,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::data::ast::{
     AssignTarget, Block, Bound, BoundHead, Decl, Expr, ForInit, GenericParam, ImportDecl,
-    ImportTree, Param, PathRoot, Program, Span, Stmt, TypeAliasDecl, TypeExpr, Visibility,
-    WhereClause,
+    ImportPath, ImportTree, Param, PathRoot, Program, Span, Stmt, TypeAliasDecl, TypeExpr,
+    Visibility, WhereClause,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::pipeline::name_resolution::name_resolver::canonical_path;
@@ -48,6 +48,7 @@ struct RawAlias {
 /// A type alias whose target is fully expanded — no remaining alias references.
 #[derive(Clone)]
 struct Alias {
+    home: ModKey,
     params: Vec<String>,
     target: TypeExpr,
     span: Span,
@@ -88,6 +89,25 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
         .map(|m| m.module_path.clone())
         .collect();
 
+    let local_type_names: HashMap<ModKey, HashSet<String>> = graph
+        .modules
+        .iter()
+        .map(|module| {
+            let names = module
+                .program
+                .decls
+                .iter()
+                .filter_map(|decl| match decl {
+                    Decl::Struct(decl) => Some(decl.name.clone()),
+                    Decl::Enum(decl) => Some(decl.name.clone()),
+                    Decl::Aspect(decl) => Some(decl.name.clone()),
+                    _ => None,
+                })
+                .collect();
+            (module.module_path.clone(), names)
+        })
+        .collect();
+
     // 2. Per-module import scope — which external alias names are in view.
     let mut import_scopes: HashMap<ModKey, ImportScope> = HashMap::new();
     for m in &graph.modules {
@@ -120,6 +140,9 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
             raw: &raw,
             import_scopes: &import_scopes,
             resolved: &resolved,
+            local_type_names: &local_type_names,
+            synthetic_imports: Vec::new(),
+            synthetic_type_names: HashMap::new(),
         };
         ex.walk_program(&mut m.program)?;
         prune_erased_alias_paths(
@@ -129,6 +152,7 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
             &import_scopes,
             &path_aliases,
         );
+        m.program.imports.extend(ex.synthetic_imports);
     }
     Ok(())
 }
@@ -425,6 +449,7 @@ fn resolve_alias(
     expand_refs(&mut target, home, &local, raw, import_scopes, chain, memo)?;
     chain.remove(key);
     let alias = Alias {
+        home: home.clone(),
         params: raw_alias.params.clone(),
         target,
         span: raw_alias.span.clone(),
@@ -492,6 +517,7 @@ pub(crate) fn substitute_type_names_in_block(
             (
                 (*name).to_string(),
                 Alias {
+                    home: vec![],
                     params: vec![],
                     target: (*target).clone(),
                     span: span.clone(),
@@ -502,12 +528,16 @@ pub(crate) fn substitute_type_names_in_block(
     let raw = HashMap::new();
     let import_scopes = HashMap::new();
     let resolved = HashMap::new();
+    let local_type_names = HashMap::new();
     let mut ex = Expander {
         current: vec![],
         scopes: vec![frame],
         raw: &raw,
         import_scopes: &import_scopes,
         resolved: &resolved,
+        local_type_names: &local_type_names,
+        synthetic_imports: Vec::new(),
+        synthetic_type_names: HashMap::new(),
     };
     ex.walk_block(block)
 }
@@ -521,6 +551,63 @@ struct Expander<'a> {
     raw: &'a HashMap<ModKey, HashMap<String, RawAlias>>,
     import_scopes: &'a HashMap<ModKey, ImportScope>,
     resolved: &'a HashMap<AliasKey, Alias>,
+    local_type_names: &'a HashMap<ModKey, HashSet<String>>,
+    synthetic_imports: Vec<ImportDecl>,
+    synthetic_type_names: HashMap<(ModKey, String), String>,
+}
+
+impl Expander<'_> {
+    fn import_alias_for_type(&mut self, home: &[String], type_name: &str, span: &Span) -> String {
+        let key = (home.to_vec(), type_name.to_string());
+        if let Some(local_name) = self.synthetic_type_names.get(&key) {
+            return local_name.clone();
+        }
+        let local_name = format!("__metel_alias_dependency_{}", self.synthetic_imports.len());
+        let mut segments = home.to_vec();
+        segments.push(type_name.to_string());
+        let mut path = ImportTree::Name {
+            name: segments.pop().expect("type name appended above"),
+            alias: Some(local_name.clone()),
+        };
+        for name in segments.into_iter().rev() {
+            path = ImportTree::Path {
+                name,
+                tree: Box::new(path),
+            };
+        }
+        self.synthetic_imports.push(ImportDecl {
+            path: ImportPath {
+                root: PathRoot::Root,
+                tree: path,
+            },
+            span: span.clone(),
+        });
+        self.synthetic_type_names.insert(key, local_name.clone());
+        local_name
+    }
+
+    fn qualify_alias_local_types(
+        &mut self,
+        te: &mut TypeExpr,
+        home: &[String],
+        type_names: &HashSet<String>,
+        span: &Span,
+    ) {
+        for child in children_mut(te) {
+            self.qualify_alias_local_types(child, home, type_names, span);
+        }
+        let TypeExpr::Named(name, _) = te else {
+            return;
+        };
+        let type_name = name.clone();
+        if type_name.contains("::") || !type_names.contains(&type_name) {
+            return;
+        }
+        let local_name = self.import_alias_for_type(home, &type_name, span);
+        if let TypeExpr::Named(name, _) = te {
+            *name = local_name;
+        }
+    }
 }
 
 impl Expander<'_> {
@@ -546,7 +633,7 @@ impl Expander<'_> {
     }
 
     /// Substitute alias references throughout a single type expression.
-    fn subst_type(&self, te: &mut TypeExpr) -> Result<(), MetelError> {
+    fn subst_type(&mut self, te: &mut TypeExpr) -> Result<(), MetelError> {
         for child in children_mut(te) {
             self.subst_type(child)?;
         }
@@ -568,8 +655,14 @@ impl Expander<'_> {
             return Ok(());
         };
         check_arity(name, alias.params.len(), args.len(), &alias.span)?;
+        let mut target = alias.target.clone();
+        if alias.home != self.current
+            && let Some(type_names) = self.local_type_names.get(&alias.home).cloned()
+        {
+            self.qualify_alias_local_types(&mut target, &alias.home, &type_names, &alias.span);
+        }
         let subst = zip_params(alias.params.iter().map(String::as_str), args);
-        *te = subst_params(&alias.target, &subst);
+        *te = subst_params(&target, &subst);
         Ok(())
     }
 
@@ -716,7 +809,7 @@ impl Expander<'_> {
         Ok(())
     }
 
-    fn walk_params(&self, params: &mut [Param]) -> Result<(), MetelError> {
+    fn walk_params(&mut self, params: &mut [Param]) -> Result<(), MetelError> {
         for p in params {
             if let Some(t) = &mut p.type_ann {
                 self.subst_type(t)?;
@@ -725,7 +818,7 @@ impl Expander<'_> {
         Ok(())
     }
 
-    fn walk_generics(&self, generics: &mut [GenericParam]) -> Result<(), MetelError> {
+    fn walk_generics(&mut self, generics: &mut [GenericParam]) -> Result<(), MetelError> {
         for g in generics {
             for b in &mut g.bounds {
                 self.walk_bound(b)?;
@@ -734,7 +827,7 @@ impl Expander<'_> {
         Ok(())
     }
 
-    fn walk_where(&self, wc: &mut WhereClause) -> Result<(), MetelError> {
+    fn walk_where(&mut self, wc: &mut WhereClause) -> Result<(), MetelError> {
         for c in &mut wc.constraints {
             for b in &mut c.bounds {
                 self.walk_bound(b)?;
@@ -743,7 +836,7 @@ impl Expander<'_> {
         Ok(())
     }
 
-    fn walk_bound(&self, b: &mut Bound) -> Result<(), MetelError> {
+    fn walk_bound(&mut self, b: &mut Bound) -> Result<(), MetelError> {
         match &mut b.head {
             BoundHead::Aspect(te) => self.subst_type(te)?,
             BoundHead::Row(row) => {
@@ -803,6 +896,7 @@ impl Expander<'_> {
             frame.insert(
                 name.clone(),
                 Alias {
+                    home: self.current.clone(),
                     params: ta.generics.iter().map(|g| g.name.clone()).collect(),
                     target,
                     span: ta.span.clone(),

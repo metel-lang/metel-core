@@ -594,6 +594,23 @@ impl<'a> ConstructCtx<'a> {
             .collect()
     }
 
+    fn capture_types(&self, captures: &[crate::data::ast::CaptureSpec]) -> Vec<(String, Type)> {
+        captures
+            .iter()
+            .filter_map(|capture| {
+                let name = match capture {
+                    crate::data::ast::CaptureSpec::Owned { name, .. }
+                    | crate::data::ast::CaptureSpec::SharedRef { name, .. }
+                    | crate::data::ast::CaptureSpec::MutRef { name, .. }
+                    | crate::data::ast::CaptureSpec::Clone { name, .. } => name,
+                };
+                self.narrowed_type(name)
+                    .or_else(|| self.lookup(name).cloned())
+                    .map(|ty| (name.clone(), ty))
+            })
+            .collect()
+    }
+
     fn push_return_type(&mut self, ty: Option<Type>) -> Option<Type> {
         std::mem::replace(&mut self.current_return_ty, ty)
     }
@@ -1157,7 +1174,7 @@ pub(super) fn construct_generic_body(
     body: &crate::data::ast::Block,
     span: &crate::data::ast::Span,
     type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
-    expected_ret: Option<&crate::data::types::Type>,
+    options: crate::pipeline::type_checking::GenericBodyOptions<'_>,
 ) -> Result<crate::data::typed_ast::TypedBlock, crate::data::error::MetelError> {
     use super::conversions::{infer_type_to_type, type_to_infer};
     use crate::pipeline::type_checking::type_engine::{
@@ -1198,7 +1215,7 @@ pub(super) fn construct_generic_body(
     // construction, which arg_types alone can never carry for a no-argument call).
     // Unification failures here are skipped for the same "good enough substitution"
     // reason as the argument loop above.
-    if let Some(expected) = expected_ret
+    if let Some(expected) = options.expected_ret
         && let Ok(s) = type_engine::unify(&subst.apply(&ret_infertype), &type_to_infer(expected))
     {
         subst = subst.compose(&s);
@@ -1299,6 +1316,9 @@ pub(super) fn construct_generic_body(
 
     ctx.push_scope();
     let saved_flow = ctx.flow_enter_body();
+    for (name, ty) in options.capture_types {
+        ctx.bind(name.clone(), ty.clone());
+    }
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
         let concrete_ty = infer_type_to_type(&subst.apply(param_it), span)
             .unwrap_or(crate::data::types::Type::Unit);

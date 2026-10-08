@@ -1217,6 +1217,7 @@ pub(super) fn infer_expr(
                                     aspect_assumptions: &assumptions,
                                     bounds: ctx.type_param_bounds(),
                                     negative_bounds: ctx.negative_type_param_bounds(),
+                                    generic_vars: ctx.type_params(),
                                 },
                             )
                         })
@@ -1315,6 +1316,7 @@ pub(super) fn infer_expr(
                                 aspect_assumptions: &assumptions,
                                 bounds: ctx.type_param_bounds(),
                                 negative_bounds: ctx.negative_type_param_bounds(),
+                                generic_vars: ctx.type_params(),
                             },
                         )
                     })

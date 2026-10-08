@@ -23,8 +23,9 @@ pub(super) fn record_clone(
         .first()
         .ok_or_else(|| MetelError::internal("record clone: expected a receiver"))?;
     match receiver {
-        Value::Record { fields } => Ok(Value::Record {
+        Value::Record { fields, type_id } => Ok(Value::Record {
             fields: clone_fields(fields, span, runtime)?,
+            type_id: *type_id,
         }),
         Value::Struct {
             name,

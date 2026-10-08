@@ -8,9 +8,14 @@ where all R: Clone {
 }
 
 fun main() {
+    let row_clone := clone_head({ id = 9 });
+    assert(row_clone.id == 9);
+    let row_clone_with_tail := clone_head({ id = 3, count = 5 });
+    assert(row_clone_with_tail.id + row_clone_with_tail.count == 8);
+
     let user: UserAlias := User { id = 3, name = "moved", count = 5 };
     let name := user.name;
-    let residual := clone_head(user);
+    let residual := user.clone();
     assert(name == "moved");
     assert(residual.id + residual.count == 8);
     let callback: Callback := [residual] once || {

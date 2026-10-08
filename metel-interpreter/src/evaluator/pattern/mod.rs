@@ -169,15 +169,12 @@ pub(super) fn match_pattern(
             rest_binding,
             ..
         } => {
-            let (Value::Record {
-                fields: record_fields,
-            }
-            | Value::Struct {
-                fields: record_fields,
-                ..
-            }) = value
-            else {
-                return false;
+            let (record_fields, record_type_id) = match value {
+                Value::Record { fields, type_id }
+                | Value::Struct {
+                    fields, type_id, ..
+                } => (fields, *type_id),
+                _ => return false,
             };
             if !rest && record_fields.len() != fields.len() + ignored_fields.len() {
                 return false;
@@ -205,7 +202,14 @@ pub(super) fn match_pattern(
                     })
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();
-                out.push((name.clone(), *local, Value::Record { fields: remainder }));
+                out.push((
+                    name.clone(),
+                    *local,
+                    Value::Record {
+                        fields: remainder,
+                        type_id: record_type_id,
+                    },
+                ));
             }
             true
         }

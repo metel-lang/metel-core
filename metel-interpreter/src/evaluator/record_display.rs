@@ -39,7 +39,7 @@ fn display_string(
     if let Some(text) = value_to_display_string(&value) {
         return Ok(text);
     }
-    if let Value::Record { fields } = &value {
+    if let Value::Record { fields, .. } = &value {
         return fields_string(None, fields.iter(), span, runtime);
     }
     // any other type: its own `Display` impl, found by the value

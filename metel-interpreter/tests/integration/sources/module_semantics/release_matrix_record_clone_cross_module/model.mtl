@@ -1,0 +1,1 @@
+public record Packet { public id: i64, public name: String }

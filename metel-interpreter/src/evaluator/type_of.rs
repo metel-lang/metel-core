@@ -39,7 +39,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::U64(_) => Type::U64,
         Value::F32(_) => Type::F32,
         Value::Tuple(elems) => Type::Tuple(elems.iter().map(go).collect()),
-        Value::Record { fields } => {
+        Value::Record { fields, .. } => {
             let mut items: Vec<(String, Type)> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
             items.sort_by(|(left, _), (right, _)| left.cmp(right));

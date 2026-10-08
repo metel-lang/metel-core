@@ -92,6 +92,9 @@ pub enum Value {
     Array(Rc<RefCell<Vec<Value>>>),
     Record {
         fields: HashMap<String, Value>,
+        /// Nominal identity retained when a record-kind value is narrowed to a
+        /// structural remainder. Anonymous records carry no identity.
+        type_id: Option<SymbolId>,
     },
     Struct {
         name: String,
@@ -141,8 +144,9 @@ pub enum Value {
     /// the concrete value plus a `(type_id, aspect_id)` pair standing in for the
     /// vtable pointer (RFC-0008 slice 2's own design call: reuse
     /// `RuntimeRegistry::get_aspect_method_by_id`'s existing `(type_id, aspect_id)`
-    /// lookup instead of a separately-generated vtable). `type_id` is the wrapped
-    /// value's *concrete* type, resolved once at coercion time; `aspect_id` is the
+    /// lookup instead of a separately-generated vtable). `type_id` is present for
+    /// nominal values and absent for structural values; `concrete_type` retains
+    /// the latter's compile-time receiver shape for row/pattern dispatch. `aspect_id` is the
     /// principal aspect the value was coerced to (§9 UQ1: at most one
     /// method-bearing aspect). `aspect_name`/`type_args` duplicate what `aspect_id`
     /// already identifies (same redundancy `Struct`/`Enum` already keep between
@@ -153,7 +157,8 @@ pub enum Value {
     /// generic function's body is reconstructed from a runtime argument (#286).
     DynAspect {
         data: Rc<RefCell<Value>>,
-        type_id: SymbolId,
+        type_id: Option<SymbolId>,
+        concrete_type: crate::data::types::Type,
         aspect_id: SymbolId,
         aspect_name: String,
         type_args: Vec<crate::data::types::Type>,
@@ -1058,10 +1063,14 @@ impl RuntimeRegistry {
             Value::Struct { type_id, name, .. } | Value::Enum { type_id, name, .. } => {
                 type_id.or_else(|| self.type_id_for_name(name))
             }
+            Value::Record {
+                type_id: Some(type_id),
+                ..
+            } => Some(*type_id),
             // A `dyn Aspect` fat pointer dispatches as its *wrapped* concrete type,
             // not as some synthetic "DynAspect" type — `type_id` was resolved once,
             // at coercion time, from the concrete value it wraps (RFC-0008 §2/§6).
-            Value::DynAspect { type_id, .. } => Some(*type_id),
+            Value::DynAspect { type_id, .. } => *type_id,
             _ => runtime_type_name(value).and_then(|name| self.type_id_for_name(name)),
         }
     }
@@ -1164,6 +1173,9 @@ pub struct ClosureValue {
     /// installed in the id-indexed frame under this key. `None` where identity
     /// allocation had nothing to stamp.
     pub capture_ids: Vec<Option<LocalId>>,
+    /// Static capture types snapped at closure creation. Generic closure bodies
+    /// are reconstructed per call and need the lexical bindings' narrowed types.
+    pub capture_types: Vec<(String, crate::data::types::Type)>,
     pub params: Vec<Param>,
     /// Structural [`LocalId`] of each parameter binding, positionally aligned
     /// with `params` (metel-core#1052b). `None` where identity allocation had
@@ -1207,6 +1219,7 @@ fn deep_clone_value(v: Value) -> Value {
                 name: closure.name.clone(),
                 captures: closure.captures.clone(),
                 capture_ids: closure.capture_ids.clone(),
+                capture_types: closure.capture_types.clone(),
                 params: closure.params.clone(),
                 param_ids: closure.param_ids.clone(),
                 body: closure.body.clone(),
@@ -1227,11 +1240,12 @@ fn deep_clone_value(v: Value) -> Value {
             Value::Array(Rc::new(RefCell::new(cloned)))
         }
         Value::Tuple(items) => Value::Tuple(items.into_iter().map(deep_clone_value).collect()),
-        Value::Record { fields } => Value::Record {
+        Value::Record { fields, type_id } => Value::Record {
             fields: fields
                 .into_iter()
                 .map(|(k, v)| (k, deep_clone_value(v)))
                 .collect(),
+            type_id,
         },
         Value::Struct {
             name,
@@ -1273,7 +1287,7 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
         cur = match (seg, cur) {
             (
                 PathSegment::Field(f),
-                Value::Record { fields }
+                Value::Record { fields, .. }
                 | Value::Struct { fields, .. }
                 | Value::Enum { fields, .. },
             ) => fields.get(f.as_str()).cloned().ok_or_else(|| {
@@ -1345,7 +1359,9 @@ fn write_path(
     match (&path[0], root) {
         (
             PathSegment::Field(f),
-            Value::Record { fields } | Value::Struct { fields, .. } | Value::Enum { fields, .. },
+            Value::Record { fields, .. }
+            | Value::Struct { fields, .. }
+            | Value::Enum { fields, .. },
         ) => {
             let child = fields.get_mut(f.as_str()).ok_or_else(|| {
                 MetelError::internal_with_code(
@@ -1598,6 +1614,7 @@ fn structural_method_callable(
         name: Some(method.name.clone()),
         captures: vec![],
         capture_ids: vec![],
+        capture_types: vec![],
         params: method.params.clone(),
         param_ids: method.param_ids.clone(),
         body,
@@ -2366,6 +2383,7 @@ fn run_passes(
                     name: Some(f.name.clone()),
                     captures: vec![],
                     capture_ids: vec![],
+                    capture_types: vec![],
                     params: f.params.clone(),
                     param_ids: f.param_ids.clone(),
                     body,
@@ -2407,6 +2425,7 @@ fn run_passes(
                                 name: Some(method.name.clone()),
                                 captures: vec![],
                                 capture_ids: vec![],
+                                capture_types: vec![],
                                 params: method.params.clone(),
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
@@ -2422,6 +2441,7 @@ fn run_passes(
                                     name: Some(method.name.clone()),
                                     captures: vec![],
                                     capture_ids: vec![],
+                                    capture_types: vec![],
                                     params: method.params.clone(),
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
@@ -2511,6 +2531,7 @@ fn run_passes(
                                 name: Some(method.name.clone()),
                                 captures: vec![],
                                 capture_ids: vec![],
+                                capture_types: vec![],
                                 params: method.params.clone(),
                                 param_ids: method.param_ids.clone(),
                                 body: ClosureBody::Typed(b.clone()),
@@ -2526,6 +2547,7 @@ fn run_passes(
                                     name: Some(method.name.clone()),
                                     captures: vec![],
                                     capture_ids: vec![],
+                                    capture_types: vec![],
                                     params: method.params.clone(),
                                     param_ids: method.param_ids.clone(),
                                     body: ClosureBody::Untyped(b.clone()),
@@ -2695,7 +2717,7 @@ fn run_main(
                     b,
                     &dummy,
                     &type_ctx,
-                    None,
+                    crate::pipeline::type_checking::GenericBodyOptions::default(),
                 )
                 .map_err(|error| call::generic_definition_disagrees("main", error))
                 .and_then(|typed| eval_block(&typed, env, runtime)),
@@ -2742,6 +2764,7 @@ fn build_and_set_nested_fun(
         name: Some(f.name.clone()),
         captures: vec![],
         capture_ids: vec![],
+        capture_types: vec![],
         params: f.params.clone(),
         param_ids: f.param_ids.clone(),
         body,
@@ -3442,6 +3465,33 @@ fn eval_method_call_expr(
                 runtime.get_aspect_method_by_id(tid, *aspect_id, method, &receiver_target_type_args)
             })
             .or_else(|| {
+                let Value::DynAspect {
+                    data,
+                    type_id: None,
+                    concrete_type,
+                    ..
+                } = &recv_type_view
+                else {
+                    return None;
+                };
+                match concrete_type {
+                    crate::data::types::Type::Record(_)
+                    | crate::data::types::Type::Residual { .. } => runtime
+                        .get_record_aspect_method(
+                            Some(*aspect_id),
+                            method,
+                            &ReceiverTypeArgs {
+                                names: vec![],
+                                tys: vec![concrete_type.clone()],
+                                prefer: None,
+                            },
+                        ),
+                    _ => runtime_type_pattern(&data.borrow()).and_then(|pattern| {
+                        runtime.get_pattern_aspect_method_by_id(&pattern, *aspect_id, method)
+                    }),
+                }
+            })
+            .or_else(|| {
                 // Structural receivers (arrays/tuples/etc.) have no type_id, so
                 // `resolve_value_type_id` above is always `None` for them --
                 // check the pattern-keyed aspect table instead (issue #272).
@@ -3879,6 +3929,7 @@ pub fn eval_expr(
         TypedExpr::RecordLiteral {
             fields,
             spread,
+            ty,
             span,
             ..
         } => {
@@ -3908,6 +3959,7 @@ pub fn eval_expr(
                 let value = record_value_for_spread(value, span)?;
                 let (Value::Record {
                     fields: spread_fields,
+                    ..
                 }
                 | Value::Struct {
                     fields: spread_fields,
@@ -3918,7 +3970,14 @@ pub fn eval_expr(
                 };
                 values.extend(spread_fields);
             }
-            Ok(Signal::Value(Value::Record { fields: values }))
+            let type_id = match ty {
+                crate::data::types::Type::Named(_, _, id) => id.get(),
+                _ => None,
+            };
+            Ok(Signal::Value(Value::Record {
+                fields: values,
+                type_id,
+            }))
         }
 
         TypedExpr::RepeatArray(elem, n, _, _) => {
@@ -4380,15 +4439,27 @@ pub fn eval_expr(
                 ControlFlow::Continue(value) => value,
                 ControlFlow::Break(signal) => return Ok(signal),
             };
-            let type_id = runtime.resolve_value_type_id(&value).ok_or_else(|| {
-                MetelError::internal("dyn Aspect coercion: value has no resolvable concrete type")
-            })?;
+            let type_id = runtime.resolve_value_type_id(&value);
+            if type_id.is_none()
+                && !matches!(
+                    inner.ty(),
+                    crate::data::types::Type::Record(_)
+                        | crate::data::types::Type::Residual { .. }
+                        | crate::data::types::Type::Array(_)
+                        | crate::data::types::Type::Tuple(_)
+                )
+            {
+                return Err(MetelError::internal(
+                    "dyn Aspect coercion: value has no resolvable concrete type",
+                ));
+            }
             let crate::data::types::Type::Dyn { aspect, type_args } = ty else {
                 unreachable!("TypedExpr::DynCoerce::ty is always Type::Dyn")
             };
             Ok(Signal::Value(Value::DynAspect {
                 data: Rc::new(RefCell::new(value)),
                 type_id,
+                concrete_type: inner.ty().clone(),
                 aspect_id: *aspect_id,
                 aspect_name: aspect.clone(),
                 type_args: type_args.clone(),
@@ -4449,7 +4520,7 @@ pub fn eval_expr(
             if let Some(deref) = deref_value(&val, span)? {
                 val = deref;
             }
-            let (Value::Record { fields }
+            let (Value::Record { fields, .. }
             | Value::Struct { fields, .. }
             | Value::Enum { fields, .. }) = &val
             else {
@@ -4515,6 +4586,7 @@ pub fn eval_expr(
                     name: None,
                     captures: captures.clone(),
                     capture_ids: capture_ids.clone(),
+                    capture_types: vec![],
                     params: params.clone(),
                     param_ids: param_ids.clone(),
                     body: ClosureBody::Typed(body.clone()),
@@ -4532,6 +4604,7 @@ pub fn eval_expr(
             name,
             captures,
             capture_ids,
+            capture_types,
             call_mutation,
             params,
             param_ids,
@@ -4545,6 +4618,7 @@ pub fn eval_expr(
                     name: name.clone(),
                     captures: captures.clone(),
                     capture_ids: capture_ids.clone(),
+                    capture_types: capture_types.clone(),
                     params: params.clone(),
                     param_ids: param_ids.clone(),
                     body: ClosureBody::Untyped(body.clone()),
@@ -4920,7 +4994,8 @@ mod architecture_evidence_tests {
     fn dyn_aspect_value_rebuilds_its_dyn_type_without_exposing_the_concrete_value() {
         let value = Value::DynAspect {
             data: Rc::new(RefCell::new(Value::I64(5))),
-            type_id: SymbolId(10),
+            type_id: Some(SymbolId(10)),
+            concrete_type: crate::data::types::Type::I64,
             aspect_id: SymbolId(11),
             aspect_name: "Counter".to_string(),
             type_args: vec![],

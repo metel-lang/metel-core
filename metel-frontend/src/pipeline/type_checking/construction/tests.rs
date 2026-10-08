@@ -221,7 +221,7 @@ fn construct_generic_body_stamps_a_real_local_id() {
         &fun.body,
         &fun.span,
         &type_ctx,
-        None,
+        crate::pipeline::type_checking::GenericBodyOptions::default(),
     )
     .expect("reconstructs for i64 args");
 
@@ -255,7 +255,7 @@ fn construct_generic_body_stamps_a_real_local_id() {
         &fun.body,
         &fun.span,
         &type_ctx,
-        None,
+        crate::pipeline::type_checking::GenericBodyOptions::default(),
     )
     .expect("reconstructs for str args");
     let r_id_str = typed_block_str

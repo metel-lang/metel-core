@@ -10,6 +10,55 @@ use super::{
     type_of,
 };
 
+fn construct_generic_closure_body(
+    scheme: &crate::pipeline::type_checking::type_engine::TypeScheme,
+    params: &[crate::data::ast::Param],
+    arg_types: &[crate::data::types::Type],
+    body: &crate::data::ast::Block,
+    span: &crate::data::ast::Span,
+    type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
+    options: crate::pipeline::type_checking::GenericBodyOptions<'_>,
+) -> Result<crate::data::typed_ast::TypedBlock, MetelError> {
+    crate::pipeline::type_checking::construct_generic_body(
+        scheme, params, arg_types, body, span, type_ctx, options,
+    )
+}
+
+fn static_argument_types(
+    args: &[Value],
+    static_arg_tys: Option<&[crate::data::types::Type]>,
+    type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
+    span: &Span,
+) -> Vec<crate::data::types::Type> {
+    args.iter()
+        .enumerate()
+        .map(|(i, value)| {
+            let runtime_ty = type_of::value_to_type(value, &type_ctx.registry, span);
+            static_arg_tys
+                .and_then(|types| types.get(i))
+                .map_or(runtime_ty.clone(), |static_ty| {
+                    type_of::refine_with_static(&runtime_ty, static_ty)
+                })
+        })
+        .collect()
+}
+
+fn static_method_argument_types(
+    receiver_type: &crate::data::types::Type,
+    args: &[Value],
+    static_receiver_ty: Option<&crate::data::types::Type>,
+    static_arg_tys: Option<&[crate::data::types::Type]>,
+    type_ctx: &crate::pipeline::type_checking::type_engine::TypeCtx,
+    span: &Span,
+) -> Vec<crate::data::types::Type> {
+    let mut arg_types = vec![static_receiver_ty.map_or_else(
+        || receiver_type.clone(),
+        |static_ty| type_of::refine_with_static(receiver_type, static_ty),
+    )];
+    arg_types.extend(static_argument_types(args, static_arg_tys, type_ctx, span));
+    arg_types
+}
+
 /// A generic body has already passed its definition-time check.  If its
 /// construction-time re-check nevertheless produces a type error, that is a
 /// checker disagreement, not an error in the caller's program (RFC-0173 D4).
@@ -159,25 +208,19 @@ fn call_runtime_callable(
                             // a type variable, leaving a nested generic call in this body
                             // unresolvable. The static types were known during
                             // construction and are exact.
-                            let arg_types: Vec<_> = args
-                                .iter()
-                                .enumerate()
-                                .map(|(i, v)| {
-                                    let rt = type_of::value_to_type(v, &type_ctx.registry, span);
-                                    match static_arg_tys.and_then(|t| t.get(i)) {
-                                        Some(st) => type_of::refine_with_static(&rt, st),
-                                        None => rt,
-                                    }
-                                })
-                                .collect();
-                            let tb = crate::pipeline::type_checking::construct_generic_body(
+                            let arg_types =
+                                static_argument_types(args, static_arg_tys, type_ctx, span);
+                            let tb = construct_generic_closure_body(
                                 scheme,
                                 &closure.params,
                                 &arg_types,
                                 b,
                                 span,
                                 type_ctx,
-                                expected_ret,
+                                crate::pipeline::type_checking::GenericBodyOptions {
+                                    expected_ret,
+                                    capture_types: &closure.capture_types,
+                                },
                             )
                             .map_err(|error| {
                                 generic_definition_disagrees(
@@ -327,25 +370,25 @@ pub(super) fn call_method_function(
                             // runtime-derived: dynamic dispatch depends on the runtime
                             // type being at least as precise as the static one, which is
                             // a separate question from the arguments.
-                            let mut arg_types: Vec<_> = vec![match static_receiver_ty {
-                                Some(st) => type_of::refine_with_static(&receiver_type, st),
-                                None => receiver_type.clone(),
-                            }];
-                            arg_types.extend(args.iter().enumerate().map(|(i, v)| {
-                                let rt = type_of::value_to_type(v, &type_ctx.registry, span);
-                                match static_arg_tys.and_then(|t| t.get(i)) {
-                                    Some(st) => type_of::refine_with_static(&rt, st),
-                                    None => rt,
-                                }
-                            }));
-                            let tb = crate::pipeline::type_checking::construct_generic_body(
+                            let arg_types = static_method_argument_types(
+                                &receiver_type,
+                                &args,
+                                static_receiver_ty,
+                                static_arg_tys,
+                                type_ctx,
+                                span,
+                            );
+                            let tb = construct_generic_closure_body(
                                 scheme,
                                 &closure.params,
                                 &arg_types,
                                 b,
                                 span,
                                 type_ctx,
-                                expected_ret,
+                                crate::pipeline::type_checking::GenericBodyOptions {
+                                    expected_ret,
+                                    capture_types: &closure.capture_types,
+                                },
                             )
                             .map_err(|error| {
                                 generic_definition_disagrees(

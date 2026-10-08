@@ -131,7 +131,7 @@ pub(super) fn eval_typed_place_value(
         } => {
             let parent = eval_typed_place_value(object, env, runtime)?;
             match parent {
-                Value::Record { fields }
+                Value::Record { fields, .. }
                 | Value::Struct { fields, .. }
                 | Value::Enum { fields, .. } => fields.get(field).cloned().ok_or_else(|| {
                     MetelError::internal_with_code(

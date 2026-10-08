@@ -61,7 +61,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 .join(", ");
             format!("[{inner}]")
         }
-        Value::Record { fields } => {
+        Value::Record { fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
             pairs.sort_by_key(|(k, _)| k.as_str());
             let inner = pairs

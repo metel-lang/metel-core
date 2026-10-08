@@ -1,0 +1,8 @@
+struct NotClone {}
+
+fun clone_head<row R>(value: { fixed: NotClone, ..R })
+where all R: Clone {
+    value.clone() // ERROR[T0035]
+}
+
+fun main() {}

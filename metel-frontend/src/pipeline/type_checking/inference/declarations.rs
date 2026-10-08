@@ -8,9 +8,10 @@ use super::{
     collect_fun_type_var_record_kinds, collect_negative_fun_type_var_bounds,
     collect_open_record_param_vars, constrain_with_read_copy, dyn_array_elem_ann, free_vars,
     fun_generic_map, generalize, infer_block, infer_dyn_array_literal, infer_expr, infer_stmt,
-    infer_type_to_type, native_fun_ty, primitive_type_from_name, type_expr_to_infer_with_assoc_ctx,
-    type_expr_to_infer_with_ctx, type_expr_to_infer_with_generics,
-    type_expr_to_infer_with_generics_and_self, type_expr_to_infer_with_self, type_to_infer,
+    infer_type_to_type, native_fun_ty, open_record_param_type, primitive_type_from_name,
+    type_expr_to_infer_with_assoc_ctx, type_expr_to_infer_with_ctx,
+    type_expr_to_infer_with_generics, type_expr_to_infer_with_generics_and_self,
+    type_expr_to_infer_with_self, type_to_infer,
 };
 use crate::pipeline::type_checking::type_engine::RowDecompositions;
 use std::collections::HashSet;
@@ -733,16 +734,21 @@ pub(super) fn infer_fun_decl(
     if !type_var_record_kinds.is_empty() {
         ctx.register_fun_record_kinds(fun.name.clone(), type_var_record_kinds.clone());
     }
-    // RFC-0121 §4: every open-row-tailed parameter is taken by value (never
-    // under `&`, by grammar), so each needs the width-subtyping `Copy` check
-    // at its call sites.
+    // RFC-0121 §4: only by-value open-row parameters need the width-subtyping
+    // `Copy` check at their call sites. Borrowed rows retain the same row facts
+    // but do not transfer ownership from the argument.
     ctx.register_fun_open_row_params(
         fun.name.clone(),
         open_record_param_vars
             .iter()
             .filter(|(index, _)| {
-                !matches!(&fun.params[**index].type_ann,
-            Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+                !matches!(
+                    &fun.params[**index].type_ann,
+                    Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
+                ) && !matches!(
+                    &fun.params[**index].type_ann,
+                    Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty()
+                )
             })
             .map(|(_, var)| *var)
             .collect(),
@@ -856,7 +862,11 @@ pub(super) fn infer_fun_decl(
         .enumerate()
         .map(|(i, p)| {
             if let Some(&tv) = open_record_param_vars.get(&i) {
-                Ok(InferType::Var(tv))
+                let ann = p
+                    .type_ann
+                    .as_ref()
+                    .expect("an open-row parameter must have a type annotation");
+                Ok(open_record_param_type(ann, tv))
             } else if let Some(ann) = &p.type_ann {
                 // an anonymous row argument (`b: Builder<..>`) is "any row": a fresh,
                 // nameless type variable, quantified by generalization like any other
@@ -1207,8 +1217,13 @@ pub(super) fn infer_fun_decl(
     let open_row_params: HashSet<TypeVar> = open_record_param_vars
         .iter()
         .filter(|(index, _)| {
-            !matches!(&fun.params[**index].type_ann,
-            Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty())
+            !matches!(
+                fun.params[**index].type_ann,
+                Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
+            ) && !matches!(
+                &fun.params[**index].type_ann,
+                Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty()
+            )
         })
         .filter_map(
             |(_, orig_tv)| match partial_subst.apply(&InferType::Var(*orig_tv)) {

@@ -1,0 +1,9 @@
+import model::Packet;
+import std::core::Clone;
+
+fun main() {
+    let original := Packet { id = 7, name = "cross module" };
+    let copied := original.clone();
+    assert(copied.id == 7);
+    assert(copied.name == "cross module");
+}
