@@ -1295,9 +1295,7 @@ fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), Me
                 TypeErrorCode::T0012,
                 format!(
                     "`all {}` must name the row tail of an open-row parameter \
-                     (`{{ .., ..{}}}`) or the remainder of a `where` decomposition; \
-                     field-wise constraints on other uses of a row are not implemented yet \
-                     (metel-core#1302)",
+                     (`{{ .., ..{}}}`) or the remainder of a `where` decomposition",
                     constraint.var, constraint.var
                 ),
                 &constraint.span,
@@ -2577,6 +2575,21 @@ fn infer_struct_literal(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
+    // Normalization carries imported constructor identities even when it rewrites
+    // an alias to its declared spelling. Unresolved source names must not use the
+    // broad lookup reserved for types carried by values from other modules.
+    let type_id = symbol_id
+        .or_else(|| {
+            ctx.registry()
+                .resolve_type_id(ctx.current_module_path(), &struct_name)
+        })
+        .ok_or_else(|| {
+            MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("unknown struct `{struct_name}`"),
+                span,
+            )
+        })?;
     let struct_decl_module = ctx
         .registry()
         .struct_declaring_module(ctx.current_module_path(), &struct_name)
@@ -2662,17 +2675,6 @@ fn infer_struct_literal(
         .iter()
         .map(|tp| remap[tp].clone())
         .collect();
-    // metel-core#1137: `struct_name` is the literal spelling of a struct literal
-    // written right here in this module's own source, always resolvable from
-    // this module's own scope -- the same reasoning #1129 uses for a written
-    // type annotation. Carrying this through is what lets a value later
-    // constructed from this literal (including through a `-> extends Aspect`
-    // opaque-return reveal) dispatch its methods by identity instead of by a
-    // bare name that can collide across modules.
-    let type_id = symbol_id.or_else(|| {
-        ctx.registry()
-            .resolve_type_id(ctx.current_module_path(), &struct_name)
-    });
     let canonical_name = ctx
         .registry()
         .canonicalize_type_name(ctx.current_module_path(), &struct_name)
@@ -2680,7 +2682,7 @@ fn infer_struct_literal(
     Ok(InferType::Named(
         canonical_name,
         type_args,
-        crate::data::types::NominalId(type_id),
+        crate::data::types::NominalId(Some(type_id)),
     ))
 }
 

@@ -1,0 +1,6 @@
+public record Packet<row R> { public id: i64, public data: { ..R } }
+public type EmptyPacket := Packet<{}>;
+public struct Box<T> { public value: T }
+public type NumericBox := Box<i64>;
+public fun make_packet() -> EmptyPacket { Packet { id = 7, data = {} } }
+public fun make_box() -> NumericBox { Box { value = 9 } }

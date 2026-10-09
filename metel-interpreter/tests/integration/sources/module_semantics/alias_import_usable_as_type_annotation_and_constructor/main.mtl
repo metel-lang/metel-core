@@ -1,7 +1,7 @@
 import lexer::Token as Tok;
 
 fun main() {
-    let a: Tok := Token { value = 1 };
+    let a: Tok := Tok { value = 1 };
     assert(a.value == 1);
     let b := Tok { value = 2 };
     assert(b.value == 2);

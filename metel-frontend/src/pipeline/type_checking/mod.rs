@@ -1011,8 +1011,7 @@ fn check_impl_field_wise_constraints(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
                     "`all {}` on an `extend` must name the row tail of its record target \
-                     (`extend<row {}> {{ ..{} }}: Aspect`); field-wise constraints on other \
-                     impl targets are not implemented yet (metel-core#1302)",
+                     (`extend<row {}> {{ ..{} }}: Aspect`)",
                     constraint.var, constraint.var, constraint.var
                 ),
                 &constraint.span,

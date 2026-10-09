@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.declarations.type-aliases.legality-3", "spec.modules.imports.legality-2"]

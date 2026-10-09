@@ -1,0 +1,6 @@
+import model::EmptyPacket;
+
+fun take(value: EmptyPacket) -> i64 { value.id }
+fun main() {
+    let forbidden := Packet { id = 7, data = {} }; // ERROR[T0003]
+}
