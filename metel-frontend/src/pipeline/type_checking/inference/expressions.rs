@@ -10,8 +10,8 @@ use super::{
     signature_type_expr_to_infer, type_to_infer,
 };
 use crate::pipeline::type_checking::type_engine::{
-    ArrayMethodSchemeVariant, GenericMethodEntailment, RowConditionCheck, TypeScheme,
-    negative_row_bound_failures, row_bound_failures,
+    ArrayMethodSchemeVariant, DefinitionMethodFact, GenericMethodEntailment, RowConditionCheck,
+    TypeScheme, negative_row_bound_failures, row_bound_failures,
 };
 
 fn check_explicit_closure_captures(
@@ -151,6 +151,18 @@ fn check_forwarded_generic_bounds(
         ));
     }
     Ok(())
+}
+
+pub(super) fn infer_expr(
+    expr: &Expr,
+    ctx: &mut InferContext,
+    fun_generalizations: &mut Vec<FunGeneralization>,
+) -> Result<InferType, MetelError> {
+    let ty = infer_expr_inner(expr, ctx, fun_generalizations)?;
+    if ctx.current_return_type().is_some() {
+        ctx.record_definition_expression_type(expr.span().clone(), ty.clone());
+    }
+    Ok(ty)
 }
 
 // Exhaustive match over every AST/type-system variant; splitting it up would
@@ -317,7 +329,7 @@ pub(super) fn infer_stmt(
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
 #[allow(clippy::too_many_lines)]
-pub(super) fn infer_expr(
+fn infer_expr_inner(
     expr: &Expr,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
@@ -652,6 +664,7 @@ pub(super) fn infer_expr(
                 && !scheme.quantified_vars.is_empty()
             {
                 let (callee_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                ctx.record_definition_call_type(span.clone(), callee_ty.clone());
                 let InferType::Fun(params, ret, ..) = callee_ty else {
                     return Err(MetelError::internal(
                         "function scheme is not a function type",
@@ -693,6 +706,7 @@ pub(super) fn infer_expr(
                 }
                 _ => callee_ty,
             };
+            ctx.record_definition_call_type(span.clone(), callee_ty.clone());
             let arg_tys: Vec<InferType> = args
                 .iter()
                 .map(|a| infer_expr(a, ctx, fun_generalizations))
@@ -1060,6 +1074,7 @@ pub(super) fn infer_expr(
                 "access",
             )?;
             let raw_ty = field_entry.ty.clone();
+            ctx.record_definition_nominal_field(span.clone(), field_entry.id);
             // For generic structs, substitute declared type params with the resolved args.
             if let Some(type_params) = resolved_type_params {
                 let mut remap = Substitution::new();
@@ -1680,7 +1695,49 @@ pub(super) fn infer_expr(
                         }
 
                         let ret_var = ctx.fresh_var();
-                        ctx.add_constraint(ret_var.clone(), ret_ty, span.clone());
+                        ctx.add_constraint(ret_var.clone(), ret_ty.clone(), span.clone());
+                        let parameter_types: Option<Vec<_>> = declared_params
+                            .iter()
+                            .map(|param| {
+                                param
+                                    .type_ann
+                                    .as_ref()
+                                    .map(|ann| signature_type_expr_to_infer(ann, &signature_env))
+                            })
+                            .collect();
+                        let receiver_kind =
+                            receiver_kind.unwrap_or(crate::data::ast::ReceiverKind::Value);
+                        // A complete abstract contract must retain every fact that
+                        // made the call legal. Method-generic bounds are not part
+                        // of the handoff yet, so preserving a call such as
+                        // `take<U: Copy>(other: U)` would silently drop `U: Copy`.
+                        // Keep it pending until those instantiated facts are
+                        // retained too.
+                        let method_generics_are_unbounded = method_def
+                            .generics
+                            .iter()
+                            .all(|generic| generic.bounds.is_empty());
+                        if method_generics_are_unbounded
+                            && let (Some(parameter_types), Some(aspect)) = (
+                                parameter_types,
+                                ctx.registry()
+                                    .resolve_type_id(ctx.current_module_path(), aspect_name),
+                            )
+                        {
+                            ctx.record_definition_method_fact(
+                                span.clone(),
+                                DefinitionMethodFact {
+                                    contract: InferType::fun(
+                                        std::iter::once(InferType::Var(*tv))
+                                            .chain(parameter_types)
+                                            .collect(),
+                                        ret_ty.clone(),
+                                    ),
+                                    receiver: receiver_kind,
+                                    aspect,
+                                },
+                            );
+                        }
                         return Ok(ret_var);
                     }
                 }

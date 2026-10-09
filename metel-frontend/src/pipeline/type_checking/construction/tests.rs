@@ -6,6 +6,891 @@ use crate::pipeline::type_checking::{CheckGraphReport, CorePrelude, check_graph_
 use std::rc::Rc;
 
 #[test]
+fn generic_declarations_retain_binder_scoped_abstract_signatures() {
+    use crate::data::abstract_body::AbstractType;
+    use crate::identity::BindingId;
+
+    let typed = typecheck_source(
+        "abstract_signature.mtl",
+        r#"
+fun pick<T, U>(first: T, second: U) -> T { first }
+fun make<V>() -> [V] { [] }
+fun plain(value: i64) -> i64 { value }
+fun main() {}
+"#,
+    )
+    .report;
+    let functions: Vec<_> = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .filter_map(|decl| match decl {
+            TypedDecl::Fun(fun) if matches!(fun.name.as_str(), "pick" | "make" | "plain") => {
+                Some(fun)
+            }
+            _ => None,
+        })
+        .collect();
+    let pick = functions.iter().find(|fun| fun.name == "pick").unwrap();
+    let signature = pick
+        .abstract_signature
+        .as_ref()
+        .expect("unused generic has a signature");
+    assert_eq!(signature.binder, BindingId::Global(pick.def_id.unwrap()));
+    assert_eq!(signature.parameters[0].name.as_deref(), Some("T"));
+    assert_eq!(signature.parameters[1].name.as_deref(), Some("U"));
+    let AbstractType::Function {
+        parameters, result, ..
+    } = &signature.ty
+    else {
+        panic!("function")
+    };
+    assert_eq!(
+        parameters[0],
+        AbstractType::Parameter(signature.parameters[0].id)
+    );
+    assert_eq!(
+        parameters[1],
+        AbstractType::Parameter(signature.parameters[1].id)
+    );
+    assert_eq!(**result, parameters[0]);
+    let make = functions.iter().find(|fun| fun.name == "make").unwrap();
+    let make_signature = make.abstract_signature.as_ref().unwrap();
+    assert_ne!(signature.parameters[0].id, make_signature.parameters[0].id);
+    assert!(
+        functions
+            .iter()
+            .find(|fun| fun.name == "plain")
+            .unwrap()
+            .abstract_signature
+            .is_none()
+    );
+}
+
+#[test]
+fn abstract_signature_retains_aspect_arguments_and_negative_grants() {
+    use crate::data::abstract_body::{AbstractBound, AbstractType};
+    let typed = typecheck_source(
+        "abstract_grants.mtl",
+        r#"
+aspect Transform<A, B> { fun transform(&self, value: A) -> B; }
+struct Token {}
+aspect Sink<A> {}
+fun translate<T: Transform<U, String>, U>(value: &T, input: U) -> String {
+    value.transform(input)
+}
+fun forward<T: !Clone>(value: T) -> T { value }
+fun nominal<T: Sink<Token>>(value: &T) {}
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let signature = find("translate").abstract_signature.as_ref().unwrap();
+    let facts = signature.facts.as_ref().expect("fact environment retained");
+    let AbstractBound::Aspect(aspect) = &facts[0].positive[0] else {
+        panic!("aspect grant")
+    };
+    assert_eq!(aspect.name, "Transform");
+    assert_eq!(
+        aspect.arguments[0],
+        AbstractType::Parameter(signature.parameters[1].id)
+    );
+    assert!(matches!(
+        &aspect.arguments[1],
+        AbstractType::Concrete(Type::Str)
+    ));
+    assert_eq!(
+        aspect.identity,
+        typed
+            .graph
+            .type_registry
+            .resolve_type_id(&[], "Transform")
+            .unwrap()
+    );
+    let forward = find("forward").abstract_signature.as_ref().unwrap();
+    let negative = &forward.facts.as_ref().unwrap()[0].negative;
+    assert!(matches!(&negative[0], AbstractBound::Aspect(aspect) if aspect.name == "Clone"));
+    assert!(forward.facts.as_ref().unwrap()[0].positive.is_empty());
+    assert!(
+        find("nominal")
+            .abstract_signature
+            .as_ref()
+            .unwrap()
+            .facts
+            .is_none(),
+        "unresolved nominal identity cannot be complete facts"
+    );
+}
+
+#[test]
+fn abstract_signature_retains_row_equations_fieldwise_and_associated_equalities() {
+    use crate::data::abstract_body::{AbstractBound, AbstractType};
+    let typed = typecheck_source(
+        "abstract_row_facts.mtl",
+        r#"
+aspect Source { type Item; fun take(&self) -> Item; }
+fun extract<T: Source<Item = i64>>(value: &T) -> i64 { value.take() }
+fun strip<row R, row Rest>(value: { ..R }) -> { ..Rest }
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value;
+    rest
+}
+fun clone_row<row R>(value: &{ ..R }) -> { ..R } where all R: Clone { value.clone() }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let extract = find("extract").abstract_signature.as_ref().unwrap();
+    let equality = &extract.facts.as_ref().unwrap()[0].associated_equalities[0];
+    assert_eq!(equality.aspect.name, "Source");
+    assert_eq!(equality.name, "Item");
+    assert_eq!(equality.ty, AbstractType::Concrete(Type::I64));
+    let strip = find("strip").abstract_signature.as_ref().unwrap();
+    let strip_facts = strip.facts.as_ref().unwrap();
+    let remainder = &strip_facts[1].remainders[0];
+    assert_eq!(remainder.source, strip.parameters[0].id);
+    assert_eq!(remainder.removed, ["token"]);
+    assert!(strip_facts[0].record_kind);
+    assert!(strip_facts[0].positive.iter().any(|bound| matches!(bound,
+        AbstractBound::Row { fields, open: true } if fields.iter().any(|(name, ty)| name == "token" && ty == &Some(AbstractType::Concrete(Type::Str))))));
+    let clone = find("clone_row").abstract_signature.as_ref().unwrap();
+    assert!(clone.facts.as_ref().unwrap().iter().any(|facts| facts.positive.iter().any(|bound|
+        matches!(bound, AbstractBound::AllFields { aspects, .. } if aspects.iter().any(|aspect| aspect.name == "Clone")))));
+}
+
+#[test]
+fn abstract_body_retains_definition_types_and_binding_identities() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractStatement, AbstractType,
+    };
+
+    let typed = typecheck_source(
+        "abstract_body.mtl",
+        r#"
+fun duplicate<T>(value: T) -> (T, T) { let first := value; (first, value) }
+fun forward<row R>(value: { ..R }) -> { ..R } { return value; }
+fun selected<T: Clone>(value: &T) -> T { value.clone() }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let duplicate = find("duplicate");
+    let Some(AbstractBodyPreparation::Typed(body)) = &duplicate.abstract_body else {
+        panic!(
+            "simple generic body was not retained: {:?}",
+            duplicate.abstract_body
+        );
+    };
+    let parameter = &body.parameters[0];
+    assert_eq!(
+        parameter.ty,
+        AbstractType::Parameter(duplicate.abstract_signature.as_ref().unwrap().parameters[0].id)
+    );
+    let AbstractStatement::Bind {
+        binding,
+        value,
+        mutable: false,
+    } = &body.block.statements[0]
+    else {
+        panic!("immutable binding")
+    };
+    assert_ne!(binding.identity, parameter.identity);
+    assert_eq!(binding.ty, parameter.ty);
+    assert!(matches!(value.kind, AbstractExprKind::Binding(id) if id == parameter.identity));
+    let AbstractExprKind::Tuple(items) = &body.block.tail.as_ref().unwrap().kind else {
+        panic!("tuple tail")
+    };
+    assert!(matches!(items[0].kind, AbstractExprKind::Binding(id) if id == binding.identity));
+    assert!(matches!(items[1].kind, AbstractExprKind::Binding(id) if id == parameter.identity));
+    assert_eq!(items[0].ty, parameter.ty);
+    let forward = find("forward");
+    assert!(
+        matches!(
+            &forward.abstract_body,
+            Some(AbstractBodyPreparation::Typed(_))
+        ),
+        "row forwarding: {:?}",
+        forward.abstract_body
+    );
+    assert!(matches!(
+        &find("selected").abstract_body,
+        Some(AbstractBodyPreparation::Typed(_))
+    ));
+}
+
+#[test]
+fn abstract_body_retains_control_flow_without_guessing_coercions() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractStatement,
+    };
+    let typed = typecheck_source(
+        "abstract_control_flow.mtl",
+        r#"
+fun choose<T>(condition: boolean, first: T, second: T) -> T {
+    if (condition) { first } else { second }
+}
+fun wait<T>(condition: boolean, value: T) -> T {
+    while (condition) { loop { break; } }
+    value
+}
+fun exit<T>(value: T) -> T { loop { break value; } }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let Some(AbstractBodyPreparation::Typed(choose)) = &find("choose").abstract_body else {
+        panic!("branch body: {:?}", find("choose").abstract_body)
+    };
+    assert!(matches!(
+        choose.block.tail.as_ref().unwrap().kind,
+        AbstractExprKind::If { .. }
+    ));
+    let Some(AbstractBodyPreparation::Typed(wait)) = &find("wait").abstract_body else {
+        panic!("loop body: {:?}", find("wait").abstract_body)
+    };
+    assert!(matches!(
+        wait.block.statements[0],
+        AbstractStatement::While { .. }
+    ));
+    assert!(
+        matches!(&find("exit").abstract_body, Some(AbstractBodyPreparation::Pending { reason }) if reason.contains("loop coercion"))
+    );
+}
+
+#[test]
+fn abstract_body_retains_aspect_method_dispatch_from_declared_bounds() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractPassingMode, AbstractReceiverMode,
+        AbstractType,
+    };
+    let typed = typecheck_source(
+        "abstract_aspect_method.mtl",
+        r#"
+aspect Transform<A, B> { fun transform(&self, value: A) -> B; }
+aspect Mutate { fun bump(&var self); }
+fun translate<T: Transform<U, String>, U>(value: &T, input: U) -> String { value.transform(input) }
+fun update<T: Mutate>(value: &var T) { value.bump(); }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let method = |name: &str| {
+        let Some(AbstractBodyPreparation::Typed(body)) = &find(name).abstract_body else {
+            panic!("{name}: {:?}", find(name).abstract_body)
+        };
+        match &body.block.tail.as_ref().unwrap().kind {
+            AbstractExprKind::MethodCall(call) => call,
+            other => panic!("method: {other:?}"),
+        }
+    };
+    let call = method("translate");
+    assert_eq!(call.receiver_mode, AbstractReceiverMode::SharedReference);
+    assert_eq!(
+        call.aspect,
+        typed
+            .graph
+            .type_registry
+            .resolve_type_id(&[], "Transform")
+            .unwrap()
+    );
+    assert_eq!(call.arguments[0].mode, AbstractPassingMode::Value);
+    assert!(matches!(call.signature, AbstractType::Function { .. }));
+    let update = find("update");
+    let Some(AbstractBodyPreparation::Typed(body)) = &update.abstract_body else {
+        panic!("update: {:?}", update.abstract_body)
+    };
+    let statement_kind = match &body.block.statements[0] {
+        crate::data::abstract_body::AbstractStatement::Expr(expr) => &expr.kind,
+        other => panic!("statement: {other:?}"),
+    };
+    let AbstractExprKind::MethodCall(call) = statement_kind else {
+        panic!("method call")
+    };
+    assert_eq!(call.receiver_mode, AbstractReceiverMode::MutableReference);
+    assert_eq!(
+        call.aspect,
+        typed
+            .graph
+            .type_registry
+            .resolve_type_id(&[], "Mutate")
+            .unwrap()
+    );
+}
+
+#[test]
+fn abstract_body_does_not_drop_bounded_method_generic_facts() {
+    use crate::data::abstract_body::AbstractBodyPreparation;
+    let typed = typecheck_source(
+        "abstract_bounded_method_generic.mtl",
+        r#"
+aspect GenericSink { fun take<U: Copy>(&self, other: U); }
+fun forward<T: GenericSink, U>(value: T, other: U) -> U { value.take(other); other }
+fun main() {}
+"#,
+    )
+    .report;
+    let forward = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "forward" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        matches!(
+            &forward.abstract_body,
+            Some(AbstractBodyPreparation::Pending { reason })
+                if reason.contains("method dispatch contract")
+        ),
+        "bounded method generic facts must not be discarded: {:?}",
+        forward.abstract_body
+    );
+}
+
+#[test]
+fn abstract_body_retains_open_record_construction_and_spread_position() {
+    use crate::data::abstract_body::{AbstractBodyPreparation, AbstractExprKind, AbstractType};
+    let typed = typecheck_source(
+        "abstract_record_construction.mtl",
+        r#"
+fun add_token<row R: !{token}>(value: { ..R }, token: String) -> { token: String, ..R } {
+    { ..value, token = token }
+}
+fun main() {}
+"#,
+    )
+    .report;
+    let extend = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "add_token" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let Some(AbstractBodyPreparation::Typed(body)) = &extend.abstract_body else {
+        panic!("record construction: {:?}", extend.abstract_body)
+    };
+    let AbstractExprKind::RecordLiteral { fields, spread } =
+        &body.block.tail.as_ref().unwrap().kind
+    else {
+        panic!("expected record literal")
+    };
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].0, "token");
+    let Some((spread, position)) = spread else {
+        panic!("open-row spread was not retained")
+    };
+    assert_eq!(*position, 0);
+    assert!(matches!(spread.ty, AbstractType::Parameter(_)));
+    assert!(matches!(
+        body.block.tail.as_ref().unwrap().ty,
+        AbstractType::OpenRecord { .. }
+    ));
+}
+
+#[test]
+fn abstract_body_retains_nominal_construction_with_instantiated_identity() {
+    use crate::data::abstract_body::{AbstractBodyPreparation, AbstractExprKind, AbstractType};
+    let typed = typecheck_source(
+        "abstract_nominal_construction.mtl",
+        r#"
+struct Packet<T> { payload: T }
+fun wrap<T>(value: T) -> Packet<T> { Packet { payload = value } }
+fun main() {}
+"#,
+    )
+    .report;
+    let wrap = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "wrap" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let Some(AbstractBodyPreparation::Typed(body)) = &wrap.abstract_body else {
+        panic!("nominal construction: {:?}", wrap.abstract_body)
+    };
+    let AbstractExprKind::StructLiteral { fields } = &body.block.tail.as_ref().unwrap().kind else {
+        panic!("expected nominal construction")
+    };
+    assert_eq!(fields[0].0, "payload");
+    let AbstractType::Named {
+        name, arguments, ..
+    } = &body.block.tail.as_ref().unwrap().ty
+    else {
+        panic!("nominal type: {:?}", body.block.tail.as_ref().unwrap().ty)
+    };
+    assert_eq!(name, "Packet");
+    assert!(matches!(arguments[0], AbstractType::Parameter(_)));
+}
+
+#[test]
+fn abstract_body_retains_nominal_residual_projection_source() {
+    use crate::data::abstract_body::{AbstractBodyPreparation, AbstractExprKind, AbstractType};
+    let typed = typecheck_source(
+        "abstract_residual_projection.mtl",
+        r#"
+struct Packet<T> { payload: T, token: String }
+fun project<T>(value: Packet<T>) { let projected := value.{ payload }; }
+fun main() {}
+"#,
+    )
+    .report;
+    let project = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "project" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let Some(AbstractBodyPreparation::Typed(body)) = &project.abstract_body else {
+        panic!("residual projection: {:?}", project.abstract_body)
+    };
+    let crate::data::abstract_body::AbstractStatement::Bind { value, .. } =
+        &body.block.statements[0]
+    else {
+        panic!("expected residual-projection binding")
+    };
+    let AbstractExprKind::RecordProjection { source, fields } = &value.kind else {
+        panic!("expected residual projection")
+    };
+    assert_eq!(fields, &["payload"]);
+    assert!(matches!(source.kind, AbstractExprKind::Binding(_)));
+    assert!(matches!(source.ty, AbstractType::Named { .. }));
+    assert!(matches!(value.ty, AbstractType::Residual { .. }));
+}
+
+#[test]
+fn abstract_body_retains_plain_local_rebinding() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractStatement,
+    };
+    let typed = typecheck_source(
+        "abstract_assignment.mtl",
+        r#"
+fun reset<T>(initial: T, replacement: T) -> T {
+    var value := initial;
+    value := replacement;
+    value
+}
+fun main() {}
+"#,
+    )
+    .report;
+    let reset = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "reset" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let Some(AbstractBodyPreparation::Typed(body)) = &reset.abstract_body else {
+        panic!("assignment: {:?}", reset.abstract_body)
+    };
+    let AbstractStatement::Bind { binding, .. } = &body.block.statements[0] else {
+        panic!("expected initial binding")
+    };
+    let AbstractStatement::Expr(assignment) = &body.block.statements[1] else {
+        panic!("expected assignment statement")
+    };
+    assert!(matches!(
+        assignment.kind,
+        AbstractExprKind::Assign { target, .. } if target == binding.identity
+    ));
+}
+
+#[test]
+fn abstract_body_retains_generic_owned_closure_capture() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractCaptureMode, AbstractExprKind, AbstractStatement,
+    };
+    let typed = typecheck_source(
+        "abstract_closure.mtl",
+        r#"
+fun relay<T>(value: T) {
+    let f := [value] once || { value };
+}
+fun main() {}
+"#,
+    )
+    .report;
+    let relay = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "relay" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let Some(AbstractBodyPreparation::Typed(body)) = &relay.abstract_body else {
+        panic!("closure: {:?}", relay.abstract_body)
+    };
+    let AbstractStatement::Bind { value, .. } = &body.block.statements[0] else {
+        panic!("expected closure binding")
+    };
+    let AbstractExprKind::Closure(closure) = &value.kind else {
+        panic!("expected closure")
+    };
+    assert_eq!(closure.captures.len(), 1);
+    assert_eq!(closure.captures[0].mode, AbstractCaptureMode::Owned);
+    assert!(matches!(
+        closure.body.tail.as_ref().unwrap().kind,
+        AbstractExprKind::Binding(_)
+    ));
+}
+
+#[test]
+fn abstract_body_retains_call_contracts_borrows_and_tuple_places() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractPassingMode, AbstractStatement,
+        AbstractType,
+    };
+    use crate::data::types::{CallMultiplicity, CallMutation, UseMultiplicity};
+    use crate::identity::BindingId;
+    use crate::ownership::place::Projection;
+    let typed = typecheck_source(
+        "abstract_calls.mtl",
+        r#"
+fun pass<T>(value: T) -> T { value }
+fun read<T>(value: &T) -> &T { value }
+fun edit<T>(value: &var T) {}
+fun relay<T>(value: T) -> T { pass(value) }
+fun borrowed<T>(value: &T) -> &T { read(value) }
+fun mutable<T>(value: &var T) { edit(value); }
+fun lend<T>(value: T) { read(&value); }
+fun temporary<T>(value: T, other: i64) { read(&(value, other)); }
+fun first<T, U>(pair: (T, U)) -> T { pair.0 }
+fun read_first<T: Copy, U>(pair: &(T, U)) -> T { pair.0 }
+fun recursive<T>(value: T) -> T { recursive(value) }
+fun invoke_once<T>(f: once |T| -> T, value: T) -> T { f(value) }
+fun invoke_mut<T>(f: var |T| -> T, value: T) -> T { f(value) }
+fun pointer<T>(f: &|T| -> T, value: T) -> T { f(value) }
+fun temp_call<T>(value: T) { read(&pass(value)); }
+fun shadow<T>(f: once |T| -> T, value: T) -> T { let recursive := f; recursive(value) }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let body = |name: &str| match &find(name).abstract_body {
+        Some(AbstractBodyPreparation::Typed(body)) => body,
+        other => panic!("{name} not retained: {other:?}"),
+    };
+    let tail_call = |name: &str| match &body(name).block.tail.as_ref().unwrap().kind {
+        AbstractExprKind::Call(call) => call,
+        other => panic!("call expected: {other:?}"),
+    };
+    let relay = tail_call("relay");
+    assert!(
+        matches!(relay.callee.kind, AbstractExprKind::Binding(BindingId::Global(id)) if id == find("pass").def_id.unwrap())
+    );
+    assert_eq!(relay.arguments[0].mode, AbstractPassingMode::Value);
+    assert_eq!(
+        relay.arguments[0].value.ty,
+        AbstractType::Parameter(
+            find("relay")
+                .abstract_signature
+                .as_ref()
+                .unwrap()
+                .parameters[0]
+                .id
+        )
+    );
+    assert_eq!(
+        tail_call("borrowed").arguments[0].mode,
+        AbstractPassingMode::SharedReference
+    );
+    let statement_call = |name: &str| match &body(name).block.statements[0] {
+        AbstractStatement::Expr(expr) => match &expr.kind {
+            AbstractExprKind::Call(call) => call,
+            other => panic!("call: {other:?}"),
+        },
+        other => panic!("statement: {other:?}"),
+    };
+    assert_eq!(
+        statement_call("mutable").arguments[0].mode,
+        AbstractPassingMode::MutableReference
+    );
+    assert!(matches!(
+        &statement_call("lend").arguments[0].value.kind,
+        AbstractExprKind::Borrow {
+            temporary: false,
+            mutable: false,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &statement_call("temporary").arguments[0].value.kind,
+        AbstractExprKind::Borrow {
+            temporary: true,
+            ..
+        }
+    ));
+    let first = body("first").block.tail.as_ref().unwrap().place().unwrap();
+    assert_eq!(first.binding, body("first").parameters[0].identity);
+    assert_eq!(first.projections, [Projection::TupleIndex(0)]);
+    let borrowed = body("read_first")
+        .block
+        .tail
+        .as_ref()
+        .unwrap()
+        .place()
+        .unwrap();
+    assert_eq!(
+        borrowed.projections,
+        [Projection::Deref, Projection::TupleIndex(0)]
+    );
+    assert!(
+        matches!(tail_call("recursive").callee.kind, AbstractExprKind::Binding(BindingId::Global(id)) if id == find("recursive").def_id.unwrap())
+    );
+    assert!(matches!(
+        tail_call("invoke_once").signature,
+        AbstractType::Function {
+            call: CallMultiplicity::Once,
+            usage: UseMultiplicity::Move,
+            ..
+        }
+    ));
+    assert!(matches!(
+        tail_call("invoke_mut").signature,
+        AbstractType::Function {
+            mutation: CallMutation::Mutating,
+            ..
+        }
+    ));
+    assert!(tail_call("pointer").auto_dereference);
+    let AbstractExprKind::Borrow {
+        value: temporary,
+        temporary: true,
+        ..
+    } = &statement_call("temp_call").arguments[0].value.kind
+    else {
+        panic!("call return stored in temporary")
+    };
+    assert!(matches!(temporary.kind, AbstractExprKind::Call(_)));
+    assert!(
+        matches!(&find("shadow").abstract_body, Some(AbstractBodyPreparation::Pending { reason }) if reason.contains("local generic call target"))
+    );
+}
+
+#[test]
+fn abstract_body_retains_nominal_structural_and_row_granted_field_selections() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractFieldSelection,
+    };
+    use crate::ownership::place::Projection;
+    let typed = typecheck_source(
+        "abstract_fields.mtl",
+        r#"
+struct Box<T> { value: T }
+fun take<T>(box: Box<T>) -> T { box.value }
+fun peek<T: Copy>(box: &Box<T>) -> T { box.value }
+fun known<T>(value: { token: String, item: T }) -> String { value.token }
+fun granted<record R: { token: String, .. }>(value: R) -> String { value.token }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let body = |name: &str| match &find(name).abstract_body {
+        Some(AbstractBodyPreparation::Typed(body)) => body,
+        other => panic!("{name} not retained: {other:?}"),
+    };
+    let field = |name: &str| match &body(name).block.tail.as_ref().unwrap().kind {
+        AbstractExprKind::FieldAccess { selection, .. } => selection,
+        other => panic!("field: {other:?}"),
+    };
+    let AbstractFieldSelection::Nominal {
+        field: selected, ..
+    } = field("take")
+    else {
+        panic!("nominal field")
+    };
+    let owner = typed
+        .graph
+        .type_registry
+        .resolve_type_id(&[], "Box")
+        .unwrap();
+    let expected = typed
+        .graph
+        .type_registry
+        .struct_fields_by_id(owner)
+        .unwrap()[0]
+        .id
+        .unwrap();
+    assert_eq!(*selected, expected, "selected field belongs to {owner:?}");
+    assert!(
+        matches!(field("known"), AbstractFieldSelection::Structural { label } if label == "token")
+    );
+    assert!(
+        matches!(field("granted"), AbstractFieldSelection::Granted { parameter, label } if *parameter == find("granted").abstract_signature.as_ref().unwrap().parameters[0].id && label == "token")
+    );
+    let place = body("peek").block.tail.as_ref().unwrap().place().unwrap();
+    assert_eq!(place.binding, body("peek").parameters[0].identity);
+    assert_eq!(
+        place.projections,
+        [
+            Projection::Deref,
+            Projection::field_with_id("value", Some(expected))
+        ]
+    );
+}
+
+#[test]
+fn abstract_field_selection_preserves_equal_spelled_cross_module_owners() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractFieldSelection,
+    };
+    let typed = typecheck_sources("abstract_modules/main.mtl", "import alpha::take_alpha; import beta::take_beta; fun main() {}", &[
+        ("alpha.mtl", "public struct Box<T> { public value: T } public fun take_alpha<T>(value: Box<T>) -> T { value.value }"),
+        ("beta.mtl", "public struct Box<T> { public value: T } public fun take_beta<T>(value: Box<T>) -> T { value.value }"),
+    ]).report;
+    let selected = |name: &str| {
+        let function = typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap();
+        let Some(AbstractBodyPreparation::Typed(body)) = &function.abstract_body else {
+            panic!("{name}: {:?}", function.abstract_body)
+        };
+        let AbstractExprKind::FieldAccess {
+            selection: AbstractFieldSelection::Nominal { field, .. },
+            ..
+        } = &body.block.tail.as_ref().unwrap().kind
+        else {
+            panic!("nominal field")
+        };
+        *field
+    };
+    let alpha = selected("take_alpha");
+    let beta = selected("take_beta");
+    assert_ne!(alpha, beta);
+    for (module, field) in [("alpha", alpha), ("beta", beta)] {
+        let owner = typed
+            .graph
+            .type_registry
+            .resolve_type_id(&[module.to_string()], "Box")
+            .unwrap();
+        assert_eq!(
+            field,
+            typed
+                .graph
+                .type_registry
+                .struct_fields_by_id(owner)
+                .unwrap()[0]
+                .id
+                .unwrap()
+        );
+    }
+}
+
+#[test]
 fn owned_capture_type_is_snapshotted_before_body_restoration() {
     let typed = typecheck_source(
         "capture_entry.mtl",
@@ -94,9 +979,16 @@ struct TypedFixture {
 }
 
 fn typecheck_source(root: &str, source: &str) -> TypedFixture {
-    use crate::pipeline::parsing::module_loader::{self, InMemorySourceProvider};
+    typecheck_sources(root, source, &[])
+}
 
-    let provider = InMemorySourceProvider::new(root, source);
+fn typecheck_sources(root: &str, source: &str, files: &[(&str, &str)]) -> TypedFixture {
+    use crate::pipeline::parsing::module_loader::{self, MultiFileSourceProvider};
+
+    let mut provider = MultiFileSourceProvider::new(root, source);
+    for (path, source) in files {
+        provider = provider.with_file(*path, *source);
+    }
     let graph =
         module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
     let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");

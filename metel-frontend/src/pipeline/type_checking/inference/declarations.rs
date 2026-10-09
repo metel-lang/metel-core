@@ -643,13 +643,22 @@ pub(in crate::pipeline::type_checking) fn collect_aspect_type_arguments<'a>(
     clauses: impl Iterator<Item = &'a crate::data::ast::WhereClause>,
     generic_map: &HashMap<String, TypeVar>,
 ) -> AspectTypeArguments {
+    collect_polarized_aspect_arguments(generics, clauses, generic_map, Polarity::Positive)
+}
+
+fn collect_polarized_aspect_arguments<'a>(
+    generics: impl Iterator<Item = &'a crate::data::ast::GenericParam>,
+    clauses: impl Iterator<Item = &'a crate::data::ast::WhereClause>,
+    generic_map: &HashMap<String, TypeVar>,
+    polarity: Polarity,
+) -> AspectTypeArguments {
     let mut arguments = AspectTypeArguments::new();
     let mut collect = |name: &str, bounds: &[crate::data::ast::Bound]| {
         let Some(&tv) = generic_map.get(name) else {
             return;
         };
         for bound in bounds {
-            if bound.polarity != Polarity::Positive {
+            if bound.polarity != polarity {
                 continue;
             }
             let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(aspect, args)) = &bound.head
@@ -1018,6 +1027,15 @@ pub(super) fn infer_fun_decl(
         fun.where_clause.iter(),
         &generic_map,
     ));
+    ctx.record_definition_aspect_arguments(
+        fun.span.clone(),
+        collect_polarized_aspect_arguments(
+            fun.generics.iter(),
+            fun.where_clause.iter(),
+            &generic_map,
+            Polarity::Negative,
+        ),
+    );
     let saved_tp_bounds = ctx.swap_type_param_bounds(type_var_bounds.clone());
     let saved_neg_tp_bounds = ctx.swap_negative_type_param_bounds(neg_type_var_bounds.clone());
     let saved_row_exclusions = ctx.swap_row_exclusions(row_exclusions);

@@ -227,6 +227,7 @@ struct GenericMoveEnv {
     /// `type_ctx_with_symbolic_row_fields`.
     row_fields: HashMap<String, Vec<RowConstraintField>>,
     arg_types: Vec<Type>,
+    return_type: Option<Type>,
 }
 
 struct Checker<'a> {
@@ -472,7 +473,7 @@ impl<'a> Checker<'a> {
             span,
             &symbolic_type_ctx,
             crate::pipeline::type_checking::GenericBodyOptions {
-                expected_ret: None,
+                expected_ret: generic_env.return_type.as_ref(),
                 capture_types,
             },
         ) {
@@ -547,7 +548,10 @@ impl<'a> Checker<'a> {
             body,
             &method.span,
             &symbolic_type_ctx,
-            crate::pipeline::type_checking::GenericBodyOptions::default(),
+            crate::pipeline::type_checking::GenericBodyOptions {
+                expected_ret: generic_env.return_type.as_ref(),
+                capture_types: &[],
+            },
         ) {
             Ok(typed_body) => {
                 let mut fn_state = FlowState::default();
@@ -655,7 +659,7 @@ impl<'a> Checker<'a> {
                     .insert(associated.clone(), expected);
             }
         }
-        let InferType::Fun(params, ..) = &scheme.ty else {
+        let InferType::Fun(params, ret, ..) = &scheme.ty else {
             return None;
         };
         let arg_types = params
@@ -669,6 +673,11 @@ impl<'a> Checker<'a> {
             })
             .collect::<Option<Vec<_>>>()?;
         generic_env.arg_types.clone_from(&arg_types);
+        generic_env.return_type =
+            infer_to_type(&crate::pipeline::type_checking::substitute_named_generics(
+                &subst.apply(ret),
+                &named_samples,
+            ));
         Some((arg_types, generic_env))
     }
 
