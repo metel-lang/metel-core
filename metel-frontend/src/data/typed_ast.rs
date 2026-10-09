@@ -148,6 +148,10 @@ pub struct TypedFunDecl {
     #[allow(dead_code)] // kept for future reflection / documentation generation
     pub return_type: Option<TypeExpr>,
     pub body: FunBody,
+    /// ADR-0063 signature handoff. Body operations and declared facts are not yet
+    /// migrated; ownership analysis must not treat this alone as a checked body.
+    pub abstract_signature: Option<crate::data::abstract_body::AbstractSignature>,
+    pub abstract_body: Option<crate::data::abstract_body::AbstractBodyPreparation>,
     /// Lexical identity of a **nested** function's own binding (ADR-0054 /
     /// metel-core#1052). `Some` for a `fun` declared inside another body — the
     /// evaluator keys its deferred-build slot and its references by this id;

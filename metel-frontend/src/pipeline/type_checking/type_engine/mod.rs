@@ -5679,6 +5679,15 @@ impl Default for TypeDefinitionRegistry {
 
 // ── Phase 7: Inference Context ────────────────────────────────────────────────
 
+/// A method contract selected by definition-time inference. The call's span is
+/// only a transient join key; consumers receive the frozen contract instead.
+#[derive(Debug, Clone)]
+pub(crate) struct DefinitionMethodFact {
+    pub contract: InferType,
+    pub receiver: crate::data::ast::ReceiverKind,
+    pub aspect: crate::identity::SymbolId,
+}
+
 /// State threaded through the entire AST walk during type inference.
 ///
 /// Owns the variable generator, both environments, and the accumulated
@@ -5762,6 +5771,13 @@ pub struct InferContext {
     /// Inferred return type for each closure expression, keyed by the closure span.
     /// Pass 2 reuses this so unannotated closures keep their solved return type.
     closure_return_types: HashMap<Span, InferType>,
+    /// Transient provenance joined at handoff; durable abstract operations contain
+    /// resolved types and binding identities, never this span-keyed solver table.
+    definition_expression_types: HashMap<Span, InferType>,
+    definition_call_types: HashMap<Span, InferType>,
+    definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
+    definition_method_facts: HashMap<Span, DefinitionMethodFact>,
+    definition_aspect_arguments: HashMap<Span, (AspectTypeArguments, AspectTypeArguments)>,
     cached_subst: Rc<Substitution>,
     solved_constraint_count: usize,
     /// RFC-0121 §2: `Rest` derivations waiting for their `R` to resolve to a closed
@@ -5857,6 +5873,11 @@ impl InferContext {
             declared_var_names: HashMap::new(),
             opaque_return_vars: HashSet::new(),
             closure_return_types: HashMap::new(),
+            definition_expression_types: HashMap::new(),
+            definition_call_types: HashMap::new(),
+            definition_nominal_fields: HashMap::new(),
+            definition_method_facts: HashMap::new(),
+            definition_aspect_arguments: HashMap::new(),
             cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
             pending_row_remainders: Vec::new(),
@@ -6205,6 +6226,21 @@ impl InferContext {
 
     pub fn restore_aspect_type_arguments(&mut self, saved: AspectTypeArguments) {
         self.current_aspect_type_arguments = saved;
+    }
+
+    pub(crate) fn record_definition_aspect_arguments(
+        &mut self,
+        span: Span,
+        negative: AspectTypeArguments,
+    ) {
+        self.definition_aspect_arguments
+            .insert(span, (self.current_aspect_type_arguments.clone(), negative));
+    }
+
+    pub(crate) fn definition_aspect_arguments(
+        &self,
+    ) -> &HashMap<Span, (AspectTypeArguments, AspectTypeArguments)> {
+        &self.definition_aspect_arguments
     }
 
     #[must_use]
@@ -7227,6 +7263,50 @@ impl InferContext {
 
     pub fn record_closure_return_type(&mut self, span: Span, ty: InferType) {
         self.closure_return_types.insert(span, ty);
+    }
+
+    pub(crate) fn record_definition_expression_type(&mut self, span: Span, ty: InferType) {
+        self.definition_expression_types.insert(span, ty);
+    }
+
+    pub(crate) fn definition_expression_types(&self) -> &HashMap<Span, InferType> {
+        &self.definition_expression_types
+    }
+
+    pub(crate) fn record_definition_call_type(&mut self, span: Span, ty: InferType) {
+        if self.current_return_type.is_some() {
+            self.definition_call_types.insert(span, ty);
+        }
+    }
+
+    pub(crate) fn definition_call_types(&self) -> &HashMap<Span, InferType> {
+        &self.definition_call_types
+    }
+
+    pub(crate) fn record_definition_nominal_field(
+        &mut self,
+        span: Span,
+        field: Option<crate::identity::FieldId>,
+    ) {
+        if self.current_return_type.is_some()
+            && let Some(field) = field
+        {
+            self.definition_nominal_fields.insert(span, field);
+        }
+    }
+
+    pub(crate) fn definition_nominal_fields(&self) -> &HashMap<Span, crate::identity::FieldId> {
+        &self.definition_nominal_fields
+    }
+
+    pub(crate) fn record_definition_method_fact(&mut self, span: Span, fact: DefinitionMethodFact) {
+        if self.current_return_type.is_some() {
+            self.definition_method_facts.insert(span, fact);
+        }
+    }
+
+    pub(crate) fn definition_method_facts(&self) -> &HashMap<Span, DefinitionMethodFact> {
+        &self.definition_method_facts
     }
 
     #[must_use]

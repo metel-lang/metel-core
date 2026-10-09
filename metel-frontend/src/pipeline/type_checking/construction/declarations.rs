@@ -22,6 +22,8 @@ fn method_fun_decl(
         param_ids,
         return_type: method.return_type.clone(),
         body,
+        abstract_signature: None,
+        abstract_body: None,
         local_id: None,
         symbol_id: None,
         def_id: None,
@@ -236,6 +238,8 @@ pub(super) fn construct_fun_decl(
             param_ids: ctx.param_local_ids(&fun.params),
             return_type: fun.return_type.clone(),
             body: FunBody::Native(key),
+            abstract_signature: None,
+            abstract_body: None,
             local_id: ctx.local_binding_at(&fun.span),
             symbol_id,
             def_id: None,
@@ -379,6 +383,44 @@ pub(super) fn construct_fun_decl(
         FunBody::Generic(fun.body.clone())
     };
 
+    let abstract_signature = if scheme.quantified_vars.is_empty() {
+        None
+    } else {
+        let binder = ctx
+            .local_binding_at(&fun.span)
+            .map(crate::identity::BindingId::Local)
+            .or_else(|| {
+                ctx.symbols
+                    .filter(|_| ctx.env.len() == 1)
+                    .and_then(|symbols| {
+                        symbols.get(&(ctx.current_module.to_vec(), fun.name.clone()))
+                    })
+                    .copied()
+                    .map(crate::identity::BindingId::Global)
+            });
+        binder
+            .map(|binder| {
+                super::super::handoff::freeze_declaration_signature(
+                    &scheme,
+                    binder,
+                    fun,
+                    ctx.registry,
+                    ctx.current_module,
+                    ctx.resolved_facts.definition_aspect_arguments(&fun.span),
+                )
+            })
+            .transpose()?
+    };
+
+    let abstract_body = abstract_signature.as_ref().map(|signature| {
+        super::super::handoff::prepare_abstract_body(
+            signature,
+            &scheme,
+            fun,
+            ctx.resolved_facts,
+            ctx.identity,
+        )
+    });
     Ok(TypedDecl::Fun(TypedFunDecl {
         name: fun.name.clone(),
         generics: fun.generics.clone(),
@@ -386,6 +428,8 @@ pub(super) fn construct_fun_decl(
         param_ids: ctx.param_local_ids(&fun.params),
         return_type: fun.return_type.clone(),
         body,
+        abstract_signature,
+        abstract_body,
         local_id: ctx.local_binding_at(&fun.span),
         symbol_id: overload_entry.map(|e| e.symbol_id),
         def_id: None,
@@ -784,6 +828,8 @@ pub(super) fn construct_default_aspect_method(
         params: method.params.clone(),
         return_type: method.return_type.clone(),
         body: FunBody::Typed(typed_block),
+        abstract_signature: None,
+        abstract_body: None,
         local_id: None,
         symbol_id: None,
         def_id: None,

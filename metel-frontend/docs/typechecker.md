@@ -58,7 +58,8 @@ Entry points:
 | `inference/expressions.rs` | The exhaustive expression constraint-emission dispatch |
 | `inference/patterns.rs` | Match and pattern constraint emission, record-row pattern access, and built-in pattern method typing |
 | `inference/lowering.rs` | Pre-inference lowering for `impl Aspect` parameters and associated-type projections |
-| `handoff/mod.rs` | `ResolvedInferenceFacts`, the immutable concrete decisions passed from inference to construction |
+| `handoff/mod.rs` | `ResolvedInferenceFacts`, immutable solved decisions passed from inference to construction |
+| `handoff/abstract_signature/` | Binder-local freezing of generic signatures, retained facts and staged typed bodies (ADR-0063) |
 | `construction/mod.rs` | Pass 2 context, block/statement construction, literals, coercions, and places |
 | `construction/declarations.rs` | Declaration, function, impl, and default-method typed-AST construction |
 | `construction/expressions.rs` | The exhaustive expression typed-AST dispatch |
@@ -330,6 +331,33 @@ When a call site resolves to a polymorphic callee (present in `scheme_env` but n
 3. Returns the concrete `Fun` type for the specific call
 
 ### Polymorphic Function Bodies
+
+ADR-0063 introduces a parallel definition-time handoff under #273. Inference
+records expression types, ordinary instantiated call contracts, selected nominal
+field identities and the active aspect arguments; the final substitution
+is applied before construction freezes legitimate generic variables into
+`AbstractParameterId { binder, index }`. Explicit positions follow source order,
+not solver allocation order. Source spans join temporary tables only; retained
+references use frozen binding identities.
+
+Generic free functions currently retain abstract signatures and parameter facts,
+plus a staged body preparation for bindings and plain rebinding, record/nominal
+construction, nominal residual projections, closures with explicit capture modes,
+control flow, ordinary calls, borrows and field/tuple projections. Call contracts preserve
+parameter passing modes and callable axes; places retain a `BindingId` root and
+the shared ownership projection algebra. Temporary borrows materialize storage
+and remain distinct from borrowing an existing place. Nominal fields carry the
+identity selected by inference; structural and row-granted fields retain their
+typed evidence. A name-keyed generic call contract alone cannot establish the
+contract of a shadowing local callable. Aspect methods selected through a
+declared generic bound retain their instantiated contract, receiver mode and
+resolved aspect identity when their own generic parameters have no declared
+requirements. Calls whose method generics have bounds remain `Pending` until
+their instantiated fact environment is retained too.
+Missing selection/coercion facts or unresolved associated arguments produce
+`Pending`, never invented types or an ownership verdict. The existing generic
+move-check reconstruction remains active until its consumer migration is complete.
+This artifact is not used for runtime evaluation.
 
 Functions with quantified type variables in their scheme are stored as `FunBody::Generic(untyped_block)` rather than `FunBody::Typed(typed_block)`. At each call site the evaluator re-runs the construction pass on the untyped block at the concrete call-site types, producing a `TypedBlock` that is evaluated normally. This is the monomorphization mechanism.
 

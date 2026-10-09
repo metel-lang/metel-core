@@ -169,6 +169,20 @@ fun main() { assert(duplicate({ count = 3, flag = true }) == 7); }
 }
 
 #[test]
+fn return_only_generic_parameter_is_checked_symbolically() {
+    let source = r#"
+fun make<V>() -> [V] { [] }
+fun wrapper<U>() -> [U] {
+    let out: [U] := make();
+    out
+}
+fun main() { let out: [i64] := wrapper(); }
+"#;
+    assert!(move_warnings_for_source(source).is_empty());
+    assert_no_violations(source);
+}
+
+#[test]
 fn symbolic_row_closed_bound_has_no_unknown_tail() {
     let source = r#"
 fun duplicate<row R: { count: i64 }>(r: { ..R }) -> i64 {
