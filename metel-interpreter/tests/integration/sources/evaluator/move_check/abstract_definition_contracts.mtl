@@ -1,0 +1,62 @@
+// Definition-time paths, selected receiver modes, contextual indices and row equations.
+enum Choice<T> { Some { value: T }, None }
+struct Factory { count: i64 }
+extend Factory { fun count() -> i64 { 1 } }
+
+fun empty<T>() -> Choice<T> { Choice::None }
+fun collection<T>(value: T) -> List<T> {
+    var result: List<T> := List::new();
+    result.push(value);
+    result
+}
+fun selected<T>(value: T) -> i64 { Factory::count() }
+fun indexed<T: Copy>(values: [T; 2]) -> T { values[1] }
+fun measured<T>(values: [T; 2]) -> i64 { values.len() + values.len() }
+
+struct Holder<T> { value: T }
+extend<T: Copy> Holder<T> { fun touch(&self) -> i64 { 1 } }
+extend<T: !Copy> Holder<T> { fun touch(self) -> i64 { 2 } }
+fun borrowed<T: Copy>(value: Holder<T>) -> i64 { value.touch() + value.touch() }
+
+fun strip<row R, row Rest>(value: { ..R }) -> { ..Rest }
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value;
+    rest
+}
+fun strip_two<row R, row Mid, row Rest>(value: { ..R }) -> { ..Rest }
+where R = { token: String, ..Mid }, Mid = { count: i64, ..Rest } {
+    let { token: _, count: _, ..rest } := value;
+    rest
+}
+fun alternate<row R, row A, row B>(value: { ..R }) -> { ..B }
+where R = { a: i64, ..A }, R = { b: i64, ..B } {
+    let { b, ..rest } := value;
+    rest
+}
+
+aspect Numbers { type Item: Copy; fun get(self) -> Item; }
+struct NumberSource { value: i64 }
+extend NumberSource: Numbers {
+    type Item := i64;
+    fun get(self) -> i64 { self.value }
+}
+fun copied_item<S: Numbers>(source: S) {
+    let item := source.get();
+    let first := item;
+    let second := item;
+}
+
+fun main() {
+    let absent: Choice<i64> := empty();
+    match (absent) { Choice::None => {}, _ => assert(false) }
+    let values := collection("owned");
+    assert(values.len() == 1);
+    assert(selected("unused") == 1);
+    assert(indexed([3, 7]) == 7);
+    assert(measured(["one", "two"]) == 4);
+    assert(borrowed(Holder { value = 1 }) == 2);
+    assert(strip({ token = "discard", count = 4 }).count == 4);
+    assert(strip_two({ token = "discard", count = 4, kept = "owned" }).kept == "owned");
+    assert(alternate({ a = 3, b = 4, kept = "owned" }).kept == "owned");
+    copied_item(NumberSource { value = 7 });
+}

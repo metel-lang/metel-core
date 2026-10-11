@@ -301,8 +301,17 @@ fun main() {}
         wait.block.statements[0],
         AbstractStatement::While { .. }
     ));
+    let Some(AbstractBodyPreparation::Typed(exit)) = &find("exit").abstract_body else {
+        panic!("value loop body: {:?}", find("exit").abstract_body)
+    };
+    let AbstractExprKind::Loop(body) = &exit.block.tail.as_ref().unwrap().kind else {
+        panic!("value loop operation not retained")
+    };
+    let AbstractStatement::Expr(operation) = &body.statements[0] else {
+        panic!("break operation not retained")
+    };
     assert!(
-        matches!(&find("exit").abstract_body, Some(AbstractBodyPreparation::Pending { reason }) if reason.contains("loop coercion"))
+        matches!(&operation.kind, AbstractExprKind::Break(Some(value)) if value.ty == exit.parameters[0].ty)
     );
 }
 
@@ -347,12 +356,14 @@ fun main() {}
     let call = method("translate");
     assert_eq!(call.receiver_mode, AbstractReceiverMode::SharedReference);
     assert_eq!(
-        call.aspect,
-        typed
-            .graph
-            .type_registry
-            .resolve_type_id(&[], "Transform")
-            .unwrap()
+        call.origin,
+        crate::data::abstract_body::AbstractMethodOrigin::Aspect(
+            typed
+                .graph
+                .type_registry
+                .resolve_type_id(&[], "Transform")
+                .unwrap()
+        )
     );
     assert_eq!(call.arguments[0].mode, AbstractPassingMode::Value);
     assert!(matches!(call.signature, AbstractType::Function { .. }));
@@ -369,12 +380,14 @@ fun main() {}
     };
     assert_eq!(call.receiver_mode, AbstractReceiverMode::MutableReference);
     assert_eq!(
-        call.aspect,
-        typed
-            .graph
-            .type_registry
-            .resolve_type_id(&[], "Mutate")
-            .unwrap()
+        call.origin,
+        crate::data::abstract_body::AbstractMethodOrigin::Aspect(
+            typed
+                .graph
+                .type_registry
+                .resolve_type_id(&[], "Mutate")
+                .unwrap()
+        )
     );
 }
 
@@ -546,6 +559,7 @@ fun reset<T>(initial: T, replacement: T) -> T {
     value := replacement;
     value
 }
+
 fun main() {}
 "#,
     )
@@ -573,6 +587,76 @@ fun main() {}
         assignment.kind,
         AbstractExprKind::Assign { target, .. } if target == binding.identity
     ));
+}
+
+#[test]
+fn abstract_signature_retains_closed_row_parameter_facts() {
+    use crate::data::abstract_body::{AbstractBound, AbstractType};
+    let typed = typecheck_source(
+        "abstract_closed_row.mtl",
+        r#"
+fun duplicate<row R: { count: i64 }>(value: { ..R }) -> i64 {
+    let first := value;
+    let second := value;
+    7
+}
+fun main() {}
+"#,
+    )
+    .report;
+    let fun = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "duplicate" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let signature = fun.abstract_signature.as_ref().unwrap();
+    let AbstractType::Function { parameters, .. } = &signature.ty else {
+        panic!("function")
+    };
+    let AbstractType::Parameter(id) = &parameters[0] else {
+        panic!("row parameter")
+    };
+    let facts = signature
+        .facts
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|facts| facts.parameter == *id)
+        .unwrap();
+    assert!(
+        facts
+            .positive
+            .iter()
+            .any(|bound| matches!(bound, AbstractBound::Row { open: true, .. }))
+    );
+    let declared = signature
+        .facts
+        .as_ref()
+        .unwrap()
+        .iter()
+        .find(|facts| facts.parameter == signature.parameters[0].id)
+        .unwrap();
+    assert!(declared.row_kind);
+    assert!(!facts.row_kind);
+    assert!(
+        declared
+            .positive
+            .iter()
+            .any(|bound| matches!(bound, AbstractBound::Row { open: false, .. })),
+        "{signature:#?}"
+    );
+    assert!(
+        declared
+            .remainders
+            .iter()
+            .any(|remainder| remainder.source == *id && remainder.removed.is_empty()),
+        "{signature:#?}"
+    );
 }
 
 #[test]
@@ -611,10 +695,66 @@ fun main() {}
     };
     assert_eq!(closure.captures.len(), 1);
     assert_eq!(closure.captures[0].mode, AbstractCaptureMode::Owned);
+    assert_eq!(closure.captures[0].ty, body.parameters[0].ty);
     assert!(matches!(
         closure.body.tail.as_ref().unwrap().kind,
         AbstractExprKind::Binding(_)
     ));
+}
+
+#[test]
+fn abstract_body_retains_autodereferenced_assignment_places() {
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractStatement,
+    };
+    use crate::ownership::place::Projection;
+    let typed = typecheck_source(
+        "abstract_projected_assignment.mtl",
+        r#"
+fun tuple<T>(target: &var (T, i64), replacement: T) { target.0 := replacement; }
+fun record_write<T>(target: &var { payload: T }, replacement: T) { target.payload := replacement; }
+fun main() {}
+"#,
+    )
+    .report;
+    let find = |name: &str| {
+        typed
+            .graph
+            .modules
+            .iter()
+            .flat_map(|module| &module.decls)
+            .find_map(|decl| match decl {
+                TypedDecl::Fun(fun) if fun.name == name => Some(fun),
+                _ => None,
+            })
+            .unwrap()
+    };
+    for name in ["tuple", "record_write"] {
+        let fun = find(name);
+        let Some(AbstractBodyPreparation::Typed(body)) = &fun.abstract_body else {
+            panic!("{name}: {:?}", fun.abstract_body)
+        };
+        let AbstractStatement::Expr(assignment) = &body.block.statements[0] else {
+            panic!("expected assignment")
+        };
+        let AbstractExprKind::Assign {
+            target,
+            projections,
+            target_type,
+            ..
+        } = &assignment.kind
+        else {
+            panic!("expected retained assignment")
+        };
+        assert_eq!(*target, body.parameters[0].identity);
+        assert_eq!(*target_type, body.parameters[1].ty);
+        assert_eq!(projections.len(), 2);
+        assert_eq!(projections[0], Projection::Deref);
+        match name {
+            "tuple" => assert_eq!(projections[1], Projection::TupleIndex(0)),
+            _ => assert_eq!(projections[1], Projection::field("payload")),
+        }
+    }
 }
 
 #[test]

@@ -47,9 +47,10 @@ pub mod symbols;
 pub use symbols::SymbolId;
 
 mod lexical_path;
-pub use lexical_path::{LexicalPath, LexicalSeg};
+pub use lexical_path::{InheritedMethodTarget, LexicalPath, LexicalSeg};
 
 mod allocate;
+pub(crate) use allocate::allocate_inherited_body;
 pub use allocate::{
     Allocation, BindingSpans, GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph,
     allocate_module,
@@ -285,6 +286,9 @@ pub struct DefinitionInfo {
 /// The syntactic category of a value definition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DefinitionKind {
+    /// The lexical body binder of an impl-method definition, distinct from
+    /// the group's runtime selection identity.
+    MethodBody,
     /// A function parameter.
     Param,
     /// A closure parameter.

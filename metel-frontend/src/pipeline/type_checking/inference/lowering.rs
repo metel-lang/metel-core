@@ -189,6 +189,38 @@ pub(in crate::pipeline::type_checking) fn lower_program(
     expand_generic_impl_defaults(program, base_registry, current_module_path)
 }
 
+pub(in crate::pipeline::type_checking) fn expanded_definition_sites(
+    source: &Program,
+    lowered: &Program,
+) -> std::collections::HashSet<Span> {
+    fn method_spans(program: &Program) -> impl Iterator<Item = &Span> {
+        program
+            .decls
+            .iter()
+            .filter_map(|decl| match decl {
+                Decl::Impl(implementation) => Some(&implementation.methods),
+                _ => None,
+            })
+            .flatten()
+            .map(|method| &method.span)
+    }
+    let source_spans: std::collections::HashSet<_> = method_spans(source).collect();
+    method_spans(lowered)
+        .filter(|span| !source_spans.contains(span))
+        .cloned()
+        .collect()
+}
+
+pub(in crate::pipeline::type_checking) fn lower_with_definition_sites(
+    program: &Program,
+    registry: &super::super::type_engine::TypeDefinitionRegistry,
+    module: &[String],
+) -> (Program, std::collections::HashSet<Span>) {
+    let lowered = lower_program(program.clone(), registry, module);
+    let sites = expanded_definition_sites(program, &lowered);
+    (lowered, sites)
+}
+
 /// metel-core#1329: write the inherited default methods of an aspect out into a *generic*
 /// impl, as if the author had typed them, so the ordinary generic-impl machinery (method
 /// schemes over the target's parameters, bounds, call-time reconstruction of the body)

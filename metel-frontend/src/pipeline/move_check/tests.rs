@@ -8,6 +8,17 @@ use std::io::Write;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 fn move_violations_for_source(source: &str) -> Vec<MoveViolation> {
+    move_report_for_source(source).violations
+}
+
+fn move_report_for_source(source: &str) -> MoveCheckReport {
+    move_report_for_source_with(source, |_| {})
+}
+
+fn move_report_for_source_with(
+    source: &str,
+    prepare: impl FnOnce(&mut TypedModuleGraph),
+) -> MoveCheckReport {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let path =
@@ -20,19 +31,2854 @@ fn move_violations_for_source(source: &str) -> Vec<MoveViolation> {
     let violations = (|| {
         let graph = module_loader::load_root(&path).expect("load temp fixture");
         let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
+        let members = crate::identity::collect_members_for_graph(&graph, &names);
+        let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized =
             path_normalization::normalize(graph, names).expect("normalize temp fixture");
         coherence::check(&normalized).expect("coherence temp fixture");
-        let typed = type_checking::check_graph(&normalized, &type_checking::CorePrelude::default())
-            .expect("typecheck temp fixture");
-        collect_graph_violations(&typed)
+        let mut typed = type_checking::check_graph_with_report(
+            &normalized,
+            &type_checking::CorePrelude::default(),
+            Some(crate::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typecheck temp fixture")
+        .graph;
+        prepare(&mut typed);
+        let mut report = collect_graph_violations(&typed);
+        report
             .violations
-            .into_iter()
-            .filter(|violation| violation.use_span.filename == path.to_string_lossy())
-            .collect()
+            .retain(|violation| violation.use_span.filename == path.to_string_lossy());
+        report
+            .checked_abstract_generic_bodies
+            .retain(|span| span.filename == path.to_string_lossy());
+        report
     })();
     let _ = std::fs::remove_file(&path);
     violations
+}
+
+#[test]
+fn abstract_ownership_retains_builtin_array_length_and_temporary_inputs() {
+    let report = move_report_for_source_with(
+        r#"
+fun borrowed<T>(values: [T; 2]) -> i64 { values.len() + values.len() }
+fun projected<T>(values: ([T; 2], i64)) -> i64 { values.0.len() + values.0.len() }
+fun temporary<T>(value: T) { let length := [value].len(); value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+}
+
+#[test]
+fn abstract_ownership_checks_inherited_defaults_with_separate_impl_facts() {
+    let report = move_report_for_source_with(
+        r#"
+fun identity<T>(value: T) -> T { value }
+aspect Echo {
+    fun echo<V>(self, value: V) -> V { identity(value) }
+    fun duplicate<V>(self, value: V) { let first := value; let second := value; }
+}
+struct Box<T> { public value: T }
+struct Other<T> { public value: T }
+extend<T> Box<T>: Echo {}
+extend<T> Other<T>: Echo {}
+extend<row R> { ..R }: Echo {}
+aspect Repeat<A> {
+    fun repeat(self, value: A) { let first := value; let second := value; }
+}
+extend<T: Copy> Box<T>: Repeat<T> {}
+extend<T> Other<T>: Repeat<T> {}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        9,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 4, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.binding == "value")
+    );
+}
+
+#[test]
+fn abstract_ownership_retains_equation_destructuring_shapes() {
+    let report = move_report_for_source_with(
+        r#"
+fun strip<row R, row Rest>(value: { ..R }) -> { ..Rest }
+where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value;
+    rest
+}
+fun strip_two<row R, row Mid, row Rest>(value: { ..R }) -> { ..Rest }
+where R = { token: String, ..Mid }, Mid = { count: i64, ..Rest } {
+    let { token: _, count: _, ..rest } := value;
+    rest
+}
+fun alternate<row R, row A, row B>(value: { ..R }) -> { ..B }
+where R = { a: i64, ..A }, R = { b: i64, ..B } {
+    let { b, ..rest } := value;
+    rest
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                for decl in &module.decls {
+                    if let TypedDecl::Fun(fun) = decl
+                        && matches!(fun.name.as_str(), "strip" | "strip_two" | "alternate")
+                    {
+                        assert!(
+                            matches!(
+                                fun.abstract_body,
+                                Some(crate::data::abstract_body::AbstractBodyPreparation::Typed(
+                                    _
+                                ))
+                            ),
+                            "{}: {:?}; {:?}",
+                            fun.name,
+                            fun.abstract_body,
+                            fun.abstract_signature
+                        );
+                    }
+                }
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_body_only_associated_projections() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Source { type Item: Copy; fun get(self) -> Item; }
+aspect OwnedSource { type Item; fun get(self) -> Item; }
+fun copied<S: Source>(source: S) {
+    let item := source.get(); let first := item; let second := item;
+}
+fun consumed<S: OwnedSource>(source: S) {
+    let item := source.get(); let first := item; let second := item;
+}
+fun receiver<S: OwnedSource>(source: S) { source.get(); source.get(); }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_structural_method_remainder_facts() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Strip { fun strip(self); }
+extend<row R, row Rest> { ..R }: Strip where R = { token: String, ..Rest } {
+    fun strip(self) {
+        let { token: _, ..rest } := self;
+        let remainder: { ..Rest } := rest;
+    }
+}
+aspect StripCopy { fun strip_copy(self); }
+extend<row R: Copy, row Rest> { ..R }: StripCopy where R = { count: i64, ..Rest } {
+    fun strip_copy(self) {
+        let { count: _, ..rest } := self;
+        let first := rest;
+    }
+}
+aspect StripTemporary { fun strip_temporary(self); }
+extend<row R, row Rest> { ..R }: StripTemporary where R = { token: String, ..Rest } {
+    fun strip_temporary(self) {
+        let { token: _, ..rest } := identity(self);
+    }
+}
+fun identity<T>(value: T) -> T { value }
+fun safe<record S: !Drop + { token: String }>(value: S) {
+    let { token: _, ..rest } := value;
+}
+fun ambiguous<S: { token: String }>(value: S) {
+    let { token: _, ..rest } := value;
+}
+fun strip_row<row R, row Rest>(value: { ..R }) where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := value;
+    let remainder: { ..Rest } := rest;
+    let first := remainder;
+    let second := remainder;
+}
+fun strip_copy_row<row R: Copy, row Rest>(value: { ..R }) where R = { count: i64, ..Rest } {
+    let { count: _, ..rest } := value;
+    let first := rest;
+    let second := rest;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "remainder");
+    assert_eq!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .filter(|fallback| fallback.reason
+                == "record destructuring requires retained destructor-absence evidence")
+            .count(),
+        4,
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_keeps_aspect_names_when_impl_parameters_are_renamed() {
+    let report = move_report_for_source_with(
+        r#"
+aspect R {}
+aspect EchoBound { fun echo<R>(&self, value: R) -> R; }
+extend<row R: R> { ..R }: EchoBound {
+    fun echo<R>(&self, value: R) -> R { value }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_structural_record_definitions_without_callers() {
+    let report = move_report_for_source_with(
+        r#"
+aspect ReadCount { fun read(&self) -> i64; }
+aspect Consume { fun consume(self); fun other<R>(&self, value: R); }
+aspect Copied { fun copied(self); }
+extend { count: i64 }: ReadCount {
+    fun read(&self) -> i64 { self.count + self.count }
+}
+extend<row R> { ..R }: Consume where R: Copy {
+    fun consume(self) { let first := self; let second := self; }
+    fun other<R>(&self, value: R) { let first := value; let second := value; }
+}
+extend<row R> { ..R }: Copied where all R: Copy {
+    fun copied(self) { let first := self; let second := self; }
+}
+aspect Absent { fun no_token(&self); }
+aspect Caller { fun absent(&self); }
+extend<row Q: !{ token }> { ..Q }: Absent { fun no_token(&self) {} }
+extend<row R> { ..R }: Caller where R: !{ token } {
+    fun absent(&self) { self.no_token(); }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    // Field-wise Copy cannot grant nominal Copy to an arbitrary record receiver.
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_body_only_method_row_equations() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder {}
+extend Holder {
+    fun check<row R: Copy, row Rest>() where R = { count: i64, ..Rest } {
+        let repeat := [] |value: { ..Rest }| { let one := value; let two := value; };
+    }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_method_body_only_parameters() {
+    for bound in ["", ": Copy"] {
+        let source = format!(
+            "struct Marker {{ count: i64 }}\n\
+             extend Marker {{\n\
+                 fun check<T{bound}>() {{\n\
+                     let take := [] |value: T| {{ let one := value; let two := value; }};\n\
+                 }}\n\
+             }}\n\
+             fun main() {{}}"
+        );
+        let report = move_report_for_source_with(&source, |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        });
+        assert_eq!(
+            report.checked_abstract_generic_bodies.len(),
+            1,
+            "{report:#?}"
+        );
+        assert_eq!(
+            report.violations.len(),
+            usize::from(bound.is_empty()),
+            "{report:#?}"
+        );
+    }
+}
+
+#[test]
+fn abstract_ownership_keeps_all_associated_result_origins() {
+    for (first, second) in [("first", "second"), ("second", "first")] {
+        for second_bound in ["", ": Copy", ": Duplicable"] {
+            let source = format!(
+                "import std::core::Copy as Duplicable;\n\
+                 aspect Source {{\n\
+                     type First: Copy; type Second{second_bound};\n\
+                     fun first(&self) -> First; fun second(&self) -> Second;\n\
+                 }}\n\
+                 fun select<S: Source>(source: &S, choose: boolean) {{\n\
+                     let item := if (choose) {{ source.{first}() }} else {{ source.{second}() }};\n\
+                     let one := item; let two := item;\n\
+                 }}\n\
+                 fun main() {{}}"
+            );
+            let report = move_report_for_source_with(&source, |graph| {
+                for module in &mut graph.modules {
+                    module.scheme_env.clear();
+                }
+            });
+            assert_eq!(
+                report.checked_abstract_generic_bodies.len(),
+                1,
+                "{report:#?}"
+            );
+            assert_eq!(
+                report.violations.len(),
+                usize::from(second_bound.is_empty()),
+                "{report:#?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn abstract_ownership_does_not_confuse_associated_copy_bound_identity() {
+    for bound in ["Copy", "!BuiltinCopy"] {
+        let source = format!(
+            "import std::core::Copy as BuiltinCopy;\n\
+             aspect Copy {{}}\n\
+             aspect Source {{ type Item: {bound}; fun get(self) -> Item; }}\n\
+             fun reuse<S: Source>(source: S) {{\n\
+                 let item := source.get(); let first := item; let second := item;\n\
+             }}\n\
+             fun main() {{}}"
+        );
+        let report = move_report_for_source_with(&source, |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        });
+        assert_eq!(
+            report.checked_abstract_generic_bodies.len(),
+            1,
+            "{report:#?}"
+        );
+        assert_eq!(report.violations.len(), 1, "{report:#?}");
+        assert_eq!(report.violations[0].binding, "item", "{report:#?}");
+    }
+}
+
+#[test]
+fn abstract_ownership_retains_expected_type_resolved_unit_variants() {
+    let report = move_report_for_source_with(
+        r#"
+fun unqualified<T>() -> Perhaps<T> { None : Perhaps<T> }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_static_paths_and_unit_variants() {
+    let report = move_report_for_source_with(
+        r#"
+enum Choice<T> { Some { value: T }, None }
+struct Factory { count: i64 }
+extend Factory { fun count() -> i64 { 1 } }
+fun empty<T>() -> Choice<T> { Choice::None }
+fun selected<T>(value: T) -> i64 {
+    let count := Factory::count();
+    let consumed := value;
+    value;
+    count
+}
+fun collection<T>(value: T) -> List<T> {
+    var result: List<T> := List::new();
+    result.push(value);
+    result
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_uses_selected_conditional_receiver_mode() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder<T> { value: T }
+extend<T: Copy> Holder<T> { fun touch(&self) -> i64 { 1 } }
+extend<T: !Copy> Holder<T> { fun touch(self) -> i64 { 2 } }
+fun borrowed<T: Copy>(value: Holder<T>) -> i64 { value.touch() + value.touch() }
+struct Reverse<T> { value: T }
+extend<T: !Copy> Reverse<T> { fun touch(self) -> i64 { 2 } }
+extend<T: Copy> Reverse<T> { fun touch(&self) -> i64 { 1 } }
+fun owned<T: !Copy>(value: Reverse<T>) -> i64 { value.touch() + value.touch() }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report
+            .checked_abstract_generic_bodies
+            .iter()
+            .any(|span| span.line == 5),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .checked_abstract_generic_bodies
+            .iter()
+            .any(|span| span.line == 9),
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 9);
+}
+
+#[test]
+fn abstract_ownership_retains_contextual_literal_array_indices() {
+    let report = move_report_for_source_with(
+        r#"
+fun borrowed<T>(values: [T]) { let selected := &values[0]; }
+fun owned<T: Copy>(values: [T; 2]) -> T { values[1] }
+fun dynamic_empty<T>(values: [T; 0], index: u64) { let selected := &values[index]; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_borrowed_and_guarded_match_bindings_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun borrowed<T>(value: &T) { match (value) { bound => { bound; } } }
+fun guarded<T>(condition: boolean, value: T) {
+    match (value) { bound if condition => {}, _ => {} }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    for reason in [
+        "borrowed match binding move contracts are not yet retained",
+        "match guard flow facts are not yet retained",
+    ] {
+        assert!(
+            report
+                .abstract_body_fallbacks
+                .iter()
+                .any(|fallback| fallback.reason == reason),
+            "{report:#?}"
+        );
+    }
+}
+
+#[test]
+fn abstract_ownership_checks_resolved_match_patterns_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+enum Flag { On, Off }
+fun flag<T>(tag: Flag, unused: T) -> boolean {
+    match (tag) { On => true, Off => false }
+}
+fun literal<T>(tag: i64, first: T, second: T) -> T {
+    match (tag) { 1 => first, _ => second }
+}
+fun bound<T>(value: T) {
+    match (value) { moved => { let consumed := moved; moved; } }
+}
+fun copied<T: Copy>(value: T) {
+    match (value) { moved => { let copied := moved; moved; } }
+    value;
+}
+fun make<T>(value: T) -> Perhaps<T> { Perhaps::Some { value = value } }
+fun payload<T>(value: T) {
+    match (make(value)) { Some { value } => { let consumed := value; value; }, None => {} }
+}
+fun temporary<T>(value: T) {
+    match ((value, 0)) { moved => { let consumed := moved; } }
+    value;
+}
+fun temporary_array<T>(value: T) {
+    match ([value]) { _ => {} }
+    value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        8,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 4, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_boolean_matches_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(condition: boolean, first: T, second: T) -> T {
+    match (condition) { true => first, false => second }
+}
+fun repeated<T>(condition: boolean, value: T) {
+    match (condition) { true => { let first := value; }, false => {} }
+    value;
+}
+fun copied<T: Copy>(condition: boolean, value: T) {
+    match (condition) { true => { let first := value; }, _ => {} }
+    value;
+}
+fun returned<T>(condition: boolean, value: T) {
+    match (condition) { true => { let first := value; return; }, false => {} }
+    value;
+}
+fun restored<T>(condition: boolean, original: T, replacement: T) -> T {
+    var value := original;
+    let moved := value;
+    match (condition) { true => { value := replacement; }, _ => { value := replacement; } }
+    value
+}
+fun consumed<T>(value: T) -> boolean { true }
+fun scrutinee_effect<T>(value: T) {
+    match (consumed(value)) { true => {}, _ => {} }
+    value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        7,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_noncopy_temporary_indices_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun temporary<T>(value: T) { let first := [value][0u64]; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report.abstract_body_fallbacks.iter().any(|fallback| {
+            !fallback.span.filename.starts_with("<embedded")
+                && fallback.reason == "temporary index ownership contract is not yet retained"
+        }),
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_copy_elements_of_temporary_arrays() {
+    let report = move_report_for_source_with(
+        r#"
+fun number<T>(value: T) -> i64 { 7 }
+fun index<T>(value: T) -> u64 { 0u64 }
+fun copied<T: Copy>(value: T, position: u64) -> T { [value, value][position] }
+fun effects<T>(value: T, other: T) {
+    let result := [number(value), 0][index(other)];
+    value; other;
+}
+fun borrowed<T>(value: T, other: T) {
+    let result := (&[number(value), 0])[index(other)];
+    value; other;
+}
+fun nested<T>(value: T, other: T) {
+    let result := [[number(value), 0], [0, 1]][index(other)][0u64];
+    value; other;
+}
+fun returning<T>(value: T) {
+    let gone := value;
+    let result := [loop { return; break 0; }, 0][index(value)];
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        7,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 6, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_non_numeric_compound_operators_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun text<T>(unused: T) { var text := "a"; text += "b"; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report.abstract_body_fallbacks.iter().any(|fallback| {
+            !fallback.span.filename.starts_with("<embedded")
+                && fallback.reason == "compound assignment operator contract is not yet retained"
+        }),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_reads_compound_targets_without_duplicate_errors() {
+    let report = move_report_for_source_with(
+        r#"
+fun moved<record R: { n: i64, .. }>(value: R) {
+    var target := value;
+    let gone := target;
+    target.n += 1;
+}
+fun partial<record R: { n: i64, payload: String, .. }>(value: R) {
+    var target := value;
+    let gone := target.payload;
+    target.n += 1;
+}
+fun stopped<record R: { idx: u64, .. }>(values: &var [[i64; 2]; 2], value: R) {
+    let gone := value;
+    values[loop { return; break 0u64; }][value.idx] += 1;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_numeric_compound_assignments() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(value: T) -> u64 { 0u64 }
+fun assigned<T>(value: T) {
+    var n := 1;
+    n += 2; n -= 1; n *= 2; n /= 2; n %= 3;
+}
+fun indexed<T>(values: &var [i64; 2], value: T) {
+    values[choose(value)] += 1;
+    value;
+}
+fun tupled<T>(values: &var [(i64, i64); 2], value: T) {
+    values[choose(value)].0 *= 2;
+    value;
+}
+fun projected<record R: { n: i64, .. }>(values: &var [R; 2]) {
+    values[0u64].n -= 1;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_non_numeric_cast_contracts_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun identity<T>(value: T) -> T { value as T }
+fun text<T>(unused: T, value: String) -> String { value as String }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert_eq!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .filter(|fallback| {
+                !fallback.span.filename.starts_with("<embedded")
+                    && fallback.reason
+                        == "cast dispatch and ownership contracts are not yet retained"
+            })
+            .count(),
+        2,
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_numeric_casts_and_indices() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(value: T) -> i64 { 0 }
+fun read<T>(values: &[T; 2], value: T) {
+    let element := &values[choose(value) as u64];
+    value;
+}
+fun write<T>(values: &var [T; 2], value: T, spare: T) {
+    values[choose(value) as u64] := spare;
+    value;
+}
+fun numeric<T>(value: T, number: i64) -> f64 { number as f64 }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_break_coercions_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun narrowed<T>(unused: T, value: &i64) -> i64 {
+    loop { break value; }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report.abstract_body_fallbacks.iter().any(|fallback| {
+            !fallback.span.filename.starts_with("<embedded")
+                && fallback.reason
+                    == "branch/return coercion facts are not yet retained in abstract bodies"
+        }),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_value_producing_loops() {
+    let report = move_report_for_source_with(
+        r#"
+fun extracted<T>(value: T) -> T { loop { break value; } }
+fun repeated<T>(value: T) {
+    let result := loop { break value; };
+    value;
+}
+fun copied<T: Copy>(value: T) -> T {
+    let result := loop { break value; };
+    value
+}
+fun nested<T>(value: T) -> T {
+    loop {
+        let result := loop { break value; };
+        break result;
+    }
+}
+fun statement_loops<T>(value: T) -> T {
+    while (true) { break; }
+    for (var i := 0; i < 1; i := i + 1) { break; }
+    for (item in [1, 2]) { break; }
+    loop { break value; }
+}
+fun returning<T>(value: T) {
+    let moved := value;
+    let result: () := loop { break if (true) { return; } else { return; }; };
+    value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_stops_assignment_inputs_after_return() {
+    let report = move_report_for_source_with(
+        r#"
+fun stopped<record T: { idx: u64, .. }>(values: &var [[i64; 2]; 2], value: T) {
+    let moved := value;
+    values[loop { return; break 0u64; }][value.idx] := 1;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_assignment_rhs_before_index_inputs() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(first: T, second: T) -> u64 { 0u64 }
+fun ordered<T>(slots: &var [T; 2], value: T, spare: T) {
+    slots[choose(value, spare)] := value;
+}
+fun divergent<T>(slots: &var [T; 2], value: T) {
+    slots[choose(value, value)] := if (true) { return; } else { return; };
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert!(
+        report.violations[0].use_span.col < report.violations[0].moved_span.col,
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_keeps_assignment_storage_contracts_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun stored<T>(slots: &var [once || -> T; 2], value: T) {
+    slots[0u64] := [value] once || { value };
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason == "assignment storage contract is not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_evaluates_indexed_assignment_inputs_once() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(value: T) -> u64 { 0u64 }
+fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] := value; }
+fun field_write<T>(values: &var [{ x: i64 }; 2], value: T) {
+    values[choose(value)].x := 1;
+    let again := value;
+}
+fun tuple_write<T>(values: &var [(i64, i64); 2], value: T) {
+    values[choose(value)].0 := 1;
+    let again := value;
+}
+fun nested<T>(values: &var [[i64; 2]; 2], first: T, second: T) {
+    values[choose(first)][choose(second)] := 1;
+    let again_first := first; let again_second := second;
+}
+fun rhs<T>(values: &var [T; 2], value: T, index: u64) {
+    values[index] := value; let again := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 5, "{report:#?}");
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .all(|fallback| fallback.span.filename.starts_with("<embedded std::")),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_keeps_for_continue_reinitializations() {
+    let report = move_report_for_source_with(
+        r#"
+fun eat<T>(value: T) -> i64 { 0 }
+fun restored<T>(value: T, replacement: T) {
+    var slot := value;
+    let first := slot;
+    for (; true; eat(slot)) { slot := replacement; continue; }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert!(!report.violations.is_empty(), "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.binding == "replacement"),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.moved_in_previous_iteration),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_does_not_consume_unreachable_for_tails() {
+    let report = move_report_for_source_with(
+        "fun bad<T>(value: T) { for (;;) { continue; (value, value) } } fun main() {}",
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_for_initializers_steps_and_continue_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun eat<T>(value: T) -> i64 { 0 }
+fun init_once<T>(value: T) {
+    for (let held: T := value; false; ) { let seen := &held; }
+}
+fun copied<T: Copy>(value: T) {
+    for (var i: i64 := 0; i < 2; i := i + 1) { let first := value; }
+}
+fun step_move<T>(value: T) {
+    for (; true; eat(value)) { continue; }
+}
+fun step_read<T>(value: T) {
+    for (; true; eat(value)) { let first := value; continue; }
+}
+fun broken<T>(value: T) {
+    for (; true; eat(value)) { break; }
+    let kept := value;
+}
+fun returned<T>(value: T) {
+    for (; true; eat(value)) { return; }
+}
+fun condition_returns<T>(value: T) {
+    for (; if (true) { return; } else { return; }; eat(value)) { continue; }
+    let unreachable := value;
+    let also_unreachable := value;
+}
+fun initializer_returns<T>(value: T) {
+    for (return; true; eat(value)) { continue; }
+}
+fun unconditioned<T>(value: T) {
+    for (;;) { return; }
+    let unreachable := value;
+    let also_unreachable := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        10,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .all(|fallback| fallback.span.filename.starts_with("<embedded std::")),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| violation.moved_in_previous_iteration),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| !violation.moved_in_previous_iteration),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.use_span.line == 10 || violation.use_span.line == 13),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_preserves_exact_ascriptions_and_leaves_coercions_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun moved<T>(value: T) { let first := (value: T); let second := value; }
+fun copied<T: Copy>(value: T) { let first := (value: T); let second := value; }
+fun coerced<T>(unused: T, value: &i64) { let owned := (value: i64); }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason == "ascription coercion facts are not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_uses_retained_nominal_coherence_without_samples() {
+    let report = move_report_for_source_with(
+        r#"
+struct Owned<T> { value: T }
+struct Ticket { count: i64 }
+extend Ticket: Copy;
+enum Choice<T> { Some { value: T }, None }
+struct Handle { name: String }
+extend Handle: Drop { fun drop(&var self) {} }
+fun repeated<T>(value: Owned<T>) { let first := value; let again := value; }
+fun copied<T>(value: Ticket, unused: T) { let first := value; let again := value; }
+fun payload<T>(value: Choice<T>) -> T {
+    match (value) { Some { value } => value, None => { loop {} } }
+}
+fun destructor<T>(value: Handle, unused: T) { let name := value.name; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_nominal_self_identity_in_generic_bodies() {
+    let report = move_report_for_source_with(
+        r#"
+struct Box<T> { value: T }
+extend<T> Box<T> {
+    fun consume(self) -> Box<T> { self }
+    fun twice(self) { let first := self; let again := self; }
+}
+fun main() {}
+"#,
+        |graph| {
+            let expected = graph
+                .type_registry
+                .resolve_type_id(&[], "Box")
+                .expect("Box identity");
+            let methods = graph
+                .modules
+                .iter()
+                .flat_map(|module| &module.decls)
+                .filter_map(|decl| match decl {
+                    TypedDecl::Impl(implementation) => Some(&implementation.methods),
+                    _ => None,
+                })
+                .flatten()
+                .filter(|method| method.name == "consume" || method.name == "twice")
+                .collect::<Vec<_>>();
+            assert_eq!(methods.len(), 2);
+            for method in methods {
+                let Some(crate::data::abstract_body::AbstractBodyPreparation::Typed(body)) =
+                    &method.abstract_body
+                else {
+                    panic!("missing abstract method body");
+                };
+                assert_eq!(body.nominal_ownership.len(), 1, "{body:#?}");
+                assert!(
+                    body.nominal_ownership.iter().all(|fact| matches!(
+                        &fact.ty,
+                        crate::data::abstract_body::AbstractType::Named { identity, .. }
+                            if identity.get() == Some(expected)
+                    )),
+                    "{body:#?}"
+                );
+            }
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "self");
+}
+
+#[test]
+fn abstract_ownership_keeps_unknown_conjuncts_distinct_from_disproved_candidates() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Marker {}
+aspect Other {}
+struct Guard<A, B> { name: String }
+extend<A, B> Guard<A, B>: Drop where A: Marker, B: Other { fun drop(&var self) {} }
+struct Witness<A, B> { count: i64 }
+extend<A, B> Witness<A, B>: Copy;
+extend<A, B> Witness<A, B>: !Copy where A: Marker, B: Other;
+struct Token<T> { count: i64 }
+extend<T> Token<T>: Copy where T: Marker, T: Other;
+fun extract<A: !Marker, B>(value: Guard<A, B>) -> String { value.name }
+fun unknown_drop<A: Marker, B>(value: Guard<A, B>) -> String { value.name }
+fun copied<A: !Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
+fun unknown_override<A: Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
+fun token<T: Marker + Other>(value: Token<T>) { let first := value; let again := value; }
+fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 3, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_proves_where_conditions_and_destructor_disjointness() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Marker {}
+struct Wrapper<T> { value: T }
+extend<T> Wrapper<T>: Copy where T: Copy;
+struct Guard<T> { name: String, tag: T }
+extend<T> Guard<T>: Drop where T: Marker { fun drop(&var self) {} }
+fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
+fun allowed<T: !Marker>(value: Guard<T>) -> String { value.name }
+fun denied<T: Marker>(value: Guard<T>) -> String { value.name }
+fun unknown<T>(value: Guard<T>) -> String { value.name }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 9, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_proves_conditional_negative_override() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Marker {}
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Copy;
+extend<T: Marker> Witness<T>: !Copy;
+fun allowed<T: !Marker>(value: Witness<T>) { let first := value; let again := value; }
+fun denied<T: Marker>(value: Witness<T>) { let first := value; let again := value; }
+fun unknown<T>(value: Witness<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 7, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_proves_declared_conditional_copy() {
+    let report = move_report_for_source_with(
+        r#"
+struct Wrapper<T> { value: T }
+extend<T: Copy> Wrapper<T>: Copy;
+struct Swapped<A, B> { count: i64 }
+extend<Y: Copy, X> Swapped<X, Y>: Copy;
+aspect Marker {}
+struct Token<T> { count: i64 }
+extend<T: !Marker> Token<T>: Copy;
+fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
+fun swapped<T, U: Copy>(value: Swapped<T, U>) { let first := value; let again := value; }
+fun excluded<T: !Marker>(value: Token<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_unrestricted_generic_nominal_impls() {
+    let report = move_report_for_source_with(
+        r#"
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Copy;
+enum Mark<T> { Only }
+extend<T> Mark<T>: Copy;
+struct Guardian<T> { value: T }
+extend<T> Guardian<T>: Drop { fun drop(&var self) {} }
+fun copied<T>(value: Witness<T>) { let first := value; let again := value; }
+fun enum_copied<T>(value: Mark<T>) { let first := value; let again := value; }
+fun partial<T>(value: Guardian<T>) { let field := value.value; }
+fun whole<T>(value: Guardian<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_does_not_grant_copy_from_an_unrelated_marker() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Copy {}
+struct Marker { count: i64 }
+extend Marker: Copy;
+fun repeated<T>(value: Marker, unused: T) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason
+                == "abstract conditional nominal aspect entailment is not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_preserves_aliased_ownership_aspects() {
+    let report = move_report_for_source_with(
+        r#"
+import std::core::Copy as Repeatable;
+import std::core::Drop as Finalize;
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Repeatable;
+struct Guardian<T> { value: T }
+extend<T> Guardian<T>: Finalize { fun drop(&var self) {} }
+struct Conditional<T> { value: T }
+extend<T: Copy> Conditional<T>: Finalize { fun drop(&var self) {} }
+fun copied<T>(value: Witness<T>) { let first := value; let again := value; }
+fun partial<T>(value: Guardian<T>) { let field := value.value; }
+fun unknown<T>(value: Conditional<T>) { let field := value.value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 11, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_aliased_negative_overrides_pending() {
+    let report = move_report_for_source_with(
+        r#"
+import std::core::Copy as Repeatable;
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Copy;
+extend Witness<String>: !Repeatable;
+fun repeated<T>(value: Witness<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason
+                == "abstract conditional nominal aspect entailment is not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_does_not_generalize_specialized_nominal_copy() {
+    let report = move_report_for_source_with(
+        r#"
+struct Box<T> { value: T }
+extend Box<i64>: Copy;
+fun twice<T>(value: Box<T>) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason
+                == "abstract conditional nominal aspect entailment is not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_does_not_assume_conditional_destructor_absent() {
+    let report = move_report_for_source_with(
+        r#"
+struct Guard<T> { value: T }
+extend<T: Copy> Guard<T>: Drop { fun drop(&var self) {} }
+fun take<T>(value: Guard<T>) -> T { value.value }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    // The destructor definition is checkable; its conditional applicability
+    // must not become a negative Drop proof for the unbounded extraction.
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies[0].line, 3,
+        "{report:#?}"
+    );
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .any(|fallback| fallback.reason
+                == "abstract conditional nominal aspect entailment is not yet retained"),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_unused_definitions_without_a_reconstruction_context() {
+    let report = move_report_for_source_with(
+        r#"
+fun repeated<T>(value: T) { let first := value; let second := value; }
+fun copied<T: Copy>(value: T) { let first := value; let second := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.violations[0].use_span.line, 2);
+    assert_eq!(report.skipped_generic_bodies_user, 0);
+}
+
+#[test]
+fn abstract_ownership_preserves_borrowed_arguments_and_receivers() {
+    let report = move_report_for_source(
+        r#"
+aspect Inspect { fun inspect(&self); }
+aspect Consume { fun consume(self); }
+fun borrow<T>(value: &T) {}
+fun observed<T: Inspect>(value: T) { borrow(&value); value.inspect(); value.inspect(); }
+fun consumed<T: Consume>(value: T) { value.consume(); value.consume(); }
+fun moved_reference<T>(value: &T) -> T { *value }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| violation.moved_by_value_receiver)
+    );
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| violation.kind == MoveViolationKind::MoveOutOfReference)
+    );
+}
+
+#[test]
+fn abstract_ownership_distinguishes_unknown_and_copy_row_tails() {
+    let report = move_report_for_source(
+        r#"
+fun repeated<row R>(value: { ..R }) { let first := value; let second := value; }
+fun copied<row R>(value: { ..R }) where all R: Copy { let first := value; let second := value; }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 2);
+}
+
+#[test]
+fn abstract_ownership_restores_projected_places_and_keeps_shadowed_identities_distinct() {
+    let report = move_report_for_source(
+        r#"
+fun restore<T>(initial: T, replacement: T) -> T {
+    var pair := (initial, 0);
+    let first := pair.0;
+    pair.0 := replacement;
+    pair.0
+}
+fun shadow<T>(value: T, other: T) {
+    let first := value;
+    let value := other;
+    let second := value;
+}
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_retains_loop_carried_moves_and_function_exits() {
+    let report = move_report_for_source(
+        r#"
+fun repeated<T>(value: T) { loop { let moved := value; } }
+fun exits<T>(value: T) { loop { let moved := value; return; } }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert!(report.violations[0].moved_in_previous_iteration);
+}
+
+#[test]
+fn abstract_ownership_consumes_by_value_receivers_through_references() {
+    let report = move_report_for_source(
+        r#"
+aspect Take { fun take(self); }
+fun receiver<T: Take>(value: &T) { value.take(); }
+fun mutable_reference<T>(value: &&var T) -> &var T { *value }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.kind == MoveViolationKind::MoveOutOfReference)
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_move_only_owned_closure_entry_and_body() {
+    let report = move_report_for_source(
+        r#"
+fun repeated<T>(value: T) {
+    let f := [value] once || { let first := value; let second := value; };
+}
+fun unused<T>(value: T) {
+    let f := [value] once || {};
+    let again := value;
+}
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.binding == "value")
+    );
+}
+
+#[test]
+fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial_results() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder<T> { value: T }
+extend<T: Copy> Holder<T>: Copy;
+fun preparation<T>(value: T) { fun nested() -> i64 { 1 } }
+fun ownership<T>(value: T, holder: Holder<T>) {
+    let first := value; let second := value; let held := holder;
+}
+fun completed<T: Copy>(value: T) { let first := value; let second := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    let fallbacks: Vec<_> = report
+        .abstract_body_fallbacks
+        .iter()
+        .filter(|fallback| !fallback.span.filename.starts_with("<embedded std::"))
+        .collect();
+    assert_eq!(fallbacks.len(), 2, "{report:#?}");
+    assert_eq!(fallbacks[0].stage, AbstractBodyFallbackStage::Preparation);
+    assert_eq!(
+        fallbacks[0].reason,
+        "nested declarations and patterns are not yet retained in abstract bodies"
+    );
+    assert_eq!(fallbacks[1].stage, AbstractBodyFallbackStage::Ownership);
+    assert_eq!(
+        fallbacks[1].reason,
+        "abstract conditional nominal aspect entailment is not yet retained"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 2, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_builtin_operators_and_operand_effects_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun eat<T>(value: T) -> boolean { true }
+fun numeric<T>(unused: T, left: i64, right: i64, flag: boolean) {
+    let sum := -left + right * 2;
+    let ordered := sum < right;
+    let logical := !flag || ordered;
+    let range := left..right;
+}
+fun text<T>(unused: T, value: String) {
+    let first := value + "a"; let second := value + "b";
+}
+fun bad_read<T>(unused: T, value: String) {
+    let moved := value; let compare := value == "gone";
+}
+fun eager<T>(value: T) { let both := eat(value) && eat(value); }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(
+        report
+            .abstract_body_fallbacks
+            .iter()
+            .all(|fallback| fallback.span.filename.starts_with("<embedded std::")),
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_array_iteration_modes_and_loop_carried_moves() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T: Copy>(items: [T]) {
+    for (item in items) { let first := item; let second := item; }
+}
+fun owned<T>(items: [T; 2]) { for (item in items) { let first := item; } }
+fun borrowed<T>(items: [T]) { for (item in items) { let first := item; } }
+fun copied_reference<T: Copy>(items: &[T]) {
+    for (item in items) { let first := item; let second := item; }
+}
+fun repeated<T>(value: T, items: [i64; 2]) {
+    for (item in items) { let moved := value; }
+}
+fun captured<T>(items: [T]) {
+    for (item in items) { let f := [item] once || {}; }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(
+        report
+            .violations
+            .iter()
+            .filter(|violation| violation.kind == MoveViolationKind::BorrowedArrayElementMove)
+            .count(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(
+        report
+            .violations
+            .iter()
+            .filter(|violation| violation.moved_in_previous_iteration)
+            .count(),
+        1,
+        "{report:#?}"
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_copyable_closure_contracts_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T: Copy>(value: T) {
+    let f := [value] once || { value };
+    let first := f;
+    let second := f;
+}
+
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_preserves_closure_capture_contracts_through_local_aliases() {
+    let report = move_report_for_source_with(
+        r#"
+fun empty<T>(unused: T) {
+    let f := [] || {}; let first := f; let second := f; f(); f();
+}
+fun copied<T: Copy>(value: T) {
+    let f := [value] || { let first := value; let second := value; };
+    f(); f(); let alias := f; alias();
+}
+fun borrowed<T>(value: T) {
+    let f := [&value] once || { let first := value; let second := value; };
+    let first := f; let second := f;
+}
+fun nested<T: Copy>(value: T) {
+    let f := [value] once || { value };
+    let g := [f] once || { let first := f; let second := f; };
+    let first := g; let second := g; let again := f;
+}
+fun moved<T>(value: T) {
+    let f := [value] once || {}; let first := f; let second := f;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(
+        report
+            .violations
+            .iter()
+            .filter(|violation| violation.kind == MoveViolationKind::MoveOutOfReference)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn abstract_ownership_retains_implicit_copy_capture_environments() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T: Copy>(value: T) {
+    let f := || { let first := value; let second := value; };
+    f(); f(); let alias := f; alias(); let again := value;
+}
+fun owned<T>(value: T) {
+    let f := once || { value }; let first := f; let second := f;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_does_not_erase_implicit_captures_in_nominal_literals() {
+    let report = move_report_for_source_with(
+        r#"
+struct Packet<T> { payload: T }
+fun owned<T>(value: T) {
+    let f := || { let packet := Packet { payload = value }; };
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_closed_rows_preserve_noncopy_and_mixed_head_controls() {
+    let report = move_report_for_source(
+        r#"
+fun copied<row R: { count: i64 }>(r: { ..R }) { let first := r; let second := r; }
+fun owned<row R: { payload: String }>(r: { ..R }) { let first := r; let second := r; }
+fun mixed<row R: { count: i64 }>(r: { payload: String, ..R }) { let first := r; let second := r; }
+fun mixed_copy<row R: { count: i64 }>(r: { header: i64, ..R }) { let first := r; let second := r; }
+fun branded<record T: { count: i64 }>(r: T) { let first := r; let second := r; }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| matches!(violation.use_span.line, 3 | 4 | 6))
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_renders_global_binding_names_without_identity_tokens() {
+    let report = move_report_for_source(
+        r#"
+let token := "owned";
+fun repeated<T>(unused: T) { let first := token; let second := token; }
+fun main() {}
+"#,
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "token");
+    assert_eq!(report.violations[0].moved_place.to_string(), "token");
+}
+
+#[test]
+fn abstract_ownership_checks_exact_local_annotations_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun repeated<T>(value: T) { let first: T := value; let second: T := first; let third := first; }
+fun copied<T: Copy>(value: T) { let first: T := value; let second: T := first; let third := first; }
+fun restored<T>(value: T, replacement: T) { var local: T := value; let first := local; local := replacement; let second: T := local; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "first");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_keeps_annotated_read_copy_coercions_pending() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T>(unused: T, value: &i64) { let first: i64 := value; }
+fun shared<T>(unused: T, value: &var i64) { let first: &i64 := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert!(
+        report.checked_abstract_generic_bodies.is_empty(),
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 2, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_unused_generic_methods_and_inherited_grants() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder {}
+extend Holder {
+    fun repeated<T>(&self, value: T) { let first := value; let second := value; }
+    fun copied<T: Copy>(&self, value: T) { let first := value; let second := value; }
+}
+struct Bounded<T: Copy> { value: T }
+extend<T> Bounded<T> {
+    fun inherited(&self, value: T) { let first := value; let second := value; }
+    fun extra<U>(&self, value: T, extra: U) { let a := value; let b := value; let c := extra; let d := extra; }
+}
+struct Packet<T> { payload: T }
+extend<T> Packet<T> {
+    fun borrowed(&self) { let first := self.payload; }
+}
+fun main() {}
+"#,
+        |graph| {
+            for method in graph
+                .modules
+                .iter()
+                .flat_map(|module| &module.decls)
+                .filter_map(|decl| {
+                    if let TypedDecl::Impl(ib) = decl {
+                        Some(&ib.methods)
+                    } else {
+                        None
+                    }
+                })
+                .flatten()
+                .filter(|method| {
+                    matches!(
+                        method.name.as_str(),
+                        "repeated" | "copied" | "inherited" | "extra" | "borrowed"
+                    )
+                })
+            {
+                assert!(
+                    matches!(
+                        method.abstract_body,
+                        Some(crate::data::abstract_body::AbstractBodyPreparation::Typed(
+                            _
+                        ))
+                    ),
+                    "{}: {:?}",
+                    method.name,
+                    method.abstract_body
+                );
+            }
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .any(|violation| violation.kind == MoveViolationKind::MoveOutOfReference)
+    );
+}
+
+#[test]
+fn abstract_ownership_distinguishes_conditional_method_binders() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder<T> { value: T }
+extend<T: Copy> Holder<T> { fun probe<U>(&self, value: U) { let moved := value; value; } }
+extend<T: !Copy> Holder<T> { fun probe<V: Copy>(&self, value: V) { let copied := value; value; } }
+fun main() {}
+"#,
+        |graph| {
+            use crate::data::abstract_body::AbstractBodyPreparation;
+            let methods = graph
+                .modules
+                .iter()
+                .flat_map(|module| &module.decls)
+                .filter_map(|decl| {
+                    if let TypedDecl::Impl(ib) = decl {
+                        Some(ib.methods.iter())
+                    } else {
+                        None
+                    }
+                })
+                .flatten()
+                .filter(|method| method.name == "probe")
+                .collect::<Vec<_>>();
+            assert_eq!(methods.len(), 2);
+            let signatures = methods
+                .iter()
+                .map(|method| {
+                    method
+                        .abstract_signature
+                        .as_ref()
+                        .expect("retained method signature")
+                })
+                .collect::<Vec<_>>();
+            assert_ne!(signatures[0].binder, signatures[1].binder);
+            for method in methods {
+                assert!(matches!(
+                    &method.abstract_body,
+                    Some(AbstractBodyPreparation::Typed(_))
+                ));
+            }
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_aligns_method_templates_with_forward_recursive_calls() {
+    let report = move_report_for_source_with(
+        r#"
+struct Holder {}
+extend Holder {
+    fun forward<T>(&self, value: T) -> T { let returned := left(value); value }
+    fun copy_forward<T: Copy>(&self, value: T) -> T { let returned := left(value); value }
+}
+fun left<T>(value: T) -> T { right(value) }
+fun right<U>(value: U) -> U { left(value) }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_inherits_fieldwise_copy_through_row_remainders() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<row R, row Rest>(source: { ..R }, rest: { ..Rest })
+where R = { token: i64, ..Rest }, all R: Copy {
+    let first := rest; let second := rest;
+}
+fun chained<row R, row Mid, row Rest>(source: { ..R }, rest: { ..Rest })
+where R = { token: i64, ..Mid }, Mid = { count: i64, ..Rest }, all R: Copy {
+    let first := rest; let second := rest;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert!(report.violations.is_empty(), "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_does_not_reverse_row_remainder_copy_grants() {
+    let report = move_report_for_source_with(
+        r#"
+fun source<row R, row Rest>(value: { ..R }, rest: { ..Rest })
+where R = { token: String, ..Rest }, all Rest: Copy {
+    let first := value; let second := value;
+}
+fun unbounded<row R, row Rest>(rest: { ..Rest })
+where R = { token: i64, ..Rest } {
+    let first := rest; let second := rest;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_remainder_copy_requires_every_exception_removed() {
+    // Exceptions are internal retained facts, not a separate surface syntax.
+    let report = move_report_for_source_with(
+        r#"
+fun covered<row R, row Rest>(source: { ..R }, rest: { ..Rest })
+where R = { token: i64, ..Rest }, all R: Copy {
+    let first := rest; let second := rest;
+}
+fun uncovered<row R, row Rest>(source: { ..R }, rest: { ..Rest })
+where R = { token: i64, ..Rest }, all R: Copy {
+    let first := rest; let second := rest;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+                for decl in &mut module.decls {
+                    let TypedDecl::Fun(fun) = decl else { continue };
+                    let label = match fun.name.as_str() {
+                        "covered" => "token",
+                        "uncovered" => "payload",
+                        _ => continue,
+                    };
+                    let signature = fun.abstract_signature.as_mut().expect("signature");
+                    let mut changed = false;
+                    for bound in signature
+                        .facts
+                        .as_mut()
+                        .expect("facts")
+                        .iter_mut()
+                        .flat_map(|facts| &mut facts.positive)
+                    {
+                        if let crate::data::abstract_body::AbstractBound::AllFields {
+                            except, ..
+                        } = bound
+                        {
+                            except.push(label.to_string());
+                            changed = true;
+                        }
+                    }
+                    assert!(changed, "fieldwise grant retained");
+                }
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "rest");
+}
+
+#[test]
+fn abstract_ownership_checks_array_index_reads_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T: Copy>(values: [T; 2], index: u64) { let first := values[index]; let second := values[index]; }
+fun owned<T>(values: [T; 2], index: u64) { let first := values[index]; }
+fun borrowed<T>(values: &[T; 2], index: u64) { let first := values[index]; }
+fun nested<T>(values: ([T; 2], i64), index: u64) { let first := values.0[index]; }
+fun view<T: Copy>(values: &[T], index: u64) { let first := values[index]; let second := values[index]; }
+fun deep<T: Copy>(values: & &[T; 2], index: u64) { let first := values[index]; let second := values[index]; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.kind == MoveViolationKind::ArrayElementMove)
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_evaluates_indices_inside_projection_chains() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(value: T) -> u64 { 0u64 }
+fun indexed<T>(values: [(i64, i64); 2], value: T) {
+    let first := values[choose(value)].0;
+    let second := value;
+}
+fun observed<T>(values: [i64; 2], value: T) {
+    values[choose(value)];
+    let second := value;
+}
+fun nested<T>(values: [[i64; 2]; 2], indices: [u64; 2], value: T) {
+    let first := values[indices[choose(value)]][0u64];
+    let second := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert!(report.violations.iter().all(|violation| violation.kind
+        == MoveViolationKind::UseAfterMove
+        && violation.binding == "value"));
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_separates_index_coercions_from_retained_operations() {
+    let report = move_report_for_source_with(
+        r#"
+fun coerced<T: Copy>(values: [T; 2]) { let first := values[0]; }
+fun temporary<T: Copy>(value: T, index: u64) { let first := [value, value][index]; }
+fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] := value; }
+fun choose<T>(value: T) -> u64 { 0u64 }
+fun field_write<T>(values: &var [{ x: i64 }; 2], value: T) {
+    values[choose(value)].x := 1;
+    let again := value;
+}
+fun tuple_write<T>(values: &var [(i64, i64); 2], value: T) {
+    values[choose(value)].0 := 1;
+    let again := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                for decl in &module.decls {
+                    if let TypedDecl::Fun(fun) = decl
+                        && matches!(fun.name.as_str(), "field_write" | "tuple_write")
+                    {
+                        assert!(
+                            matches!(
+                                &fun.abstract_body,
+                                Some(crate::data::abstract_body::AbstractBodyPreparation::Typed(
+                                    _
+                                ))
+                            ),
+                            "{}: {:?}",
+                            fun.name,
+                            fun.abstract_body
+                        );
+                    }
+                }
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        6,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_record_destructuring_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun owned<T>(value: { payload: T, count: i64 }) {
+    let { payload, .. } := value; let count := value.count;
+    let first := payload; let again := payload;
+}
+fun copied<T: Copy>(value: { payload: T, count: i64 }) {
+    let { payload, .. } := value; let first := payload; let again := payload;
+}
+fun temporary<T>(value: T) {
+    let { payload, .. } := { payload = value, count = 1 }; let again := value;
+}
+fun remainder<T>(value: { payload: T, count: i64 }) {
+    let { payload, ..rest } := value; let first := rest; let again := rest;
+}
+fun mutable<T>(value: T, replacement: T) {
+    let var { payload, .. } := { payload = value }; let first := payload;
+    payload := replacement; let again := payload;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_evaluates_record_pattern_indices_once() {
+    let report = move_report_for_source_with(
+        r#"
+fun choose<T>(value: T) -> u64 { 0u64 }
+fun indexed<T>(values: [{ left: i64, right: i64 }; 2], value: T) {
+    let { left, right } := values[choose(value)]; let again := value;
+}
+fun forbidden<T>(values: [{ payload: T }; 2], index: u64) {
+    let { payload } := values[index];
+}
+fun discarded<T>(values: [{ payload: T }; 2], index: u64) {
+    let { payload: _ } := values[index];
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_preserves_empty_rows_and_pattern_identities_without_guessing_open_shapes() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<row R>(value: { payload: String, ..R }) where all R: Copy {
+    let { payload: _, ..rest } := value; let first := rest; let again := rest;
+}
+fun owned<row R>(value: { payload: String, ..R }) {
+    let { payload: _, ..rest } := value; let first := rest; let again := rest;
+}
+fun empty<T>(value: { payload: T }) {
+    let { payload: _, ..rest } := value; let first := rest; let again := rest;
+}
+fun shadow<T>(payload: T, value: { payload: T }) {
+    let { payload } := value; let first := payload; let again := payload;
+}
+fun preserved<T, row R>(value: { payload: T, ..R }) {
+    let { payload, .. } := value; let first := payload; let again := payload;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_composes_row_heads_and_copy_tails() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<row R, row Tail>(value: { ..R })
+where R = { count: i64, ..Tail }, all Tail: Copy {
+    let first := value; let again := value;
+}
+fun chained<row R, row Rest, row Tail>(rest: { ..Rest })
+where R = { token: String, ..Rest }, Rest = { count: i64, ..Tail }, all Tail: Copy {
+    let first := rest; let again := rest;
+}
+fun owned<row R, row Tail>(value: { ..R })
+where R = { token: String, ..Tail }, all Tail: Copy {
+    let first := value; let again := value;
+}
+fun alternatives<T, row R, row A, row B: Copy>(value: { ..R })
+where R = { a: T, ..A }, R = { b: i64, ..B }, all A: Copy {
+    let first := value; let again := value;
+}
+fun closed_alternative<T, row R: { a: T, b: i64 }, row B: Copy>(value: { ..R })
+where R = { b: i64, ..B } {
+    let first := value; let again := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_derives_closed_remainder_ownership_without_samples() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<row R: { token: String, count: i64 }, row Rest>(rest: { ..Rest })
+where R = { token: String, ..Rest } {
+    let first := rest; let again := rest;
+}
+fun owned<row R: { token: i64, payload: String }, row Rest>(rest: { ..Rest })
+where R = { token: i64, ..Rest } {
+    let first := rest; let again := rest;
+}
+fun empty<row R: { token: String }, row Rest>(rest: { ..Rest })
+where R = { token: String, ..Rest } {
+    let first := rest; let again := rest;
+}
+fun chain<row R: { token: String, payload: String, count: i64 }, row Rest, row Tail>(tail_value: { ..Tail })
+where R = { token: String, ..Rest }, Rest = { payload: String, ..Tail } {
+    let first := tail_value; let again := tail_value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        4,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "rest");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_parameter_backed_record_pattern_consumption() {
+    let report = move_report_for_source_with(
+        r#"
+fun whole<row R>(value: { payload: String, ..R }) where all R: Copy {
+    let { payload: _, ..rest } := value;
+    let first := rest; let again := rest;
+    let invalid := value;
+}
+fun fields<row R>(value: { payload: String, count: i64, ..R }) {
+    let { payload: _, .. } := value;
+    let count := value.count;
+    let invalid := value.payload;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_explicit_open_record_pattern_remainders() {
+    let report = move_report_for_source_with(
+        r#"
+fun copied<T, row R: !{ payload }>(payload: T, tail_value: { ..R }) where all R: Copy {
+    let { payload: _, ..rest } := { payload = payload, ..tail_value };
+    let first := rest; let again := rest;
+}
+fun owned<T, row R: !{ payload }>(payload: T, tail_value: { ..R }) {
+    let { payload: _, ..rest } := { payload = payload, ..tail_value };
+    let first := rest; let again := rest;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "rest");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
 }
 
 /// RFC-0137 slice 2: some shapes that `move_check` used to be the only thing

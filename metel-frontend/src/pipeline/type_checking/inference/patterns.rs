@@ -62,6 +62,7 @@ pub(super) fn infer_match(
         *ctx.flow_mut() = entry_flow.clone();
         ctx.push_scope();
         infer_pattern(&pattern, &scrutinee_ty, false, ctx)?;
+        retain_match_pattern(&pattern, &scrutinee_ty, &arm.span, ctx);
         if let Some(guard) = &arm.guard {
             let g = infer_expr(guard, ctx, fun_generalizations)?;
             ctx.add_constraint(g, InferType::bool(), arm.span.clone());
@@ -76,6 +77,75 @@ pub(super) fn infer_match(
         *ctx.flow_mut() = joined_flow;
     }
     Ok(result_var)
+}
+
+fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mut InferContext) {
+    use super::super::type_engine::{DefinitionMatchPattern, DefinitionMatchPatternKind};
+    let mut fact = DefinitionMatchPattern {
+        kind: DefinitionMatchPatternKind::Wildcard,
+        bindings: Vec::new(),
+        enum_variants: Vec::new(),
+    };
+    match pattern {
+        Pattern::Wildcard(_) => {}
+        Pattern::Literal(literal, _) => {
+            fact.kind = DefinitionMatchPatternKind::Literal(literal.clone());
+        }
+        Pattern::Binding(name, binding_span) => {
+            fact.kind = DefinitionMatchPatternKind::Binding;
+            fact.bindings
+                .push((None, name.clone(), binding_span.clone(), ty.clone()));
+        }
+        Pattern::EnumVariant {
+            path,
+            fields,
+            field_spans,
+            ..
+        } => {
+            let [owner, name] = path.as_slice() else {
+                return;
+            };
+            let Some(info) = ctx.get_enum(owner) else {
+                return;
+            };
+            let Some(variant) = info.variants.iter().find(|variant| variant.name == *name) else {
+                return;
+            };
+            let Some(id) = variant.id else {
+                return;
+            };
+            let Some(variants) = info
+                .variants
+                .iter()
+                .map(|variant| variant.id)
+                .collect::<Option<Vec<_>>>()
+            else {
+                return;
+            };
+            if fields.len() != field_spans.len() {
+                return;
+            }
+            for (field, field_span) in fields.iter().zip(field_spans) {
+                let Some(id) = variant
+                    .fields
+                    .iter()
+                    .find(|entry| entry.name == *field)
+                    .and_then(|entry| entry.id)
+                else {
+                    return;
+                };
+                let Some(ty) = ctx.lookup_mono_raw(field) else {
+                    return;
+                };
+                fact.bindings
+                    .push((Some(id), field.clone(), field_span.clone(), ty));
+            }
+            fact.kind = DefinitionMatchPatternKind::Variant(id);
+            fact.enum_variants = variants;
+        }
+        _ => return,
+    }
+    ctx.record_definition_match_pattern(span.clone(), fact);
 }
 
 #[allow(clippy::too_many_lines)]
@@ -425,6 +495,15 @@ fn infer_record_remainder(
 ) -> Result<InferType, MetelError> {
     let solved = ctx.solve()?.apply(scrutinee_ty);
     let facts = collect_remainder_facts(&solved, span, ctx)?;
+    let shape = if let Some(tail) = &facts.tail {
+        InferType::RowExtend {
+            fields: facts.fields.clone(),
+            tail: Box::new(tail.clone()),
+        }
+    } else {
+        InferType::Record(facts.fields.clone())
+    };
+    ctx.record_definition_record_shape(span.clone(), shape);
     build_remainder_type(fields, &solved, &facts, span, ctx)
 }
 

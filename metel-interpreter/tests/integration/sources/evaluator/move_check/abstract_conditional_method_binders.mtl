@@ -1,0 +1,24 @@
+struct Holder<T> { value: T }
+
+extend<T: Copy> Holder<T> {
+    fun carry<U>(&self, value: U) -> U {
+        let local := value;
+        local
+    }
+}
+
+extend<T: !Copy> Holder<T> {
+    fun carry<U>(&self, value: U) -> U {
+        let local := value;
+        local
+    }
+}
+
+fun main() {
+    let copied := Holder { value = 1 };
+    let owned := Holder { value = "owned" };
+    assert(copied.carry("first") == "first");
+    assert(owned.carry("second") == "second");
+    assert(copied.carry(3) == 3);
+    assert(owned.carry(4) == 4);
+}

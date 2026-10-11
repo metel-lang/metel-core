@@ -1,0 +1,13 @@
+import tokens::Token;
+import tokens::copied;
+
+fun local<T>(value: Token, unused: T) -> i64 {
+    let first := value;
+    let again := value;
+    first.count + again.count
+}
+
+fun main() {
+    assert(copied(Token { count = 2 }, "dependency") == 4);
+    assert(local(Token { count = 3 }, "importer") == 6);
+}

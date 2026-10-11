@@ -182,6 +182,23 @@ fn collect_closure_expr_uses(
                 collect_closure_expr_uses(item, bound, reads, writes, spans);
             }
         }
+        Expr::StructLiteral { fields, .. } => {
+            for (_, value) in fields {
+                collect_closure_expr_uses(value, bound, reads, writes, spans);
+            }
+        }
+        Expr::RecordProjection {
+            path, path_span, ..
+        } => {
+            if let [name] = path.as_slice()
+                && !bound.contains(name)
+            {
+                reads.insert(name.clone());
+                spans
+                    .entry(name.clone())
+                    .or_insert_with(|| path_span.clone());
+            }
+        }
         Expr::RecordLiteral { fields, spread, .. } => {
             for (_, value) in fields {
                 collect_closure_expr_uses(value, bound, reads, writes, spans);
@@ -289,11 +306,7 @@ fn collect_closure_expr_uses(
                 }
             }
         }
-        Expr::Literal(_, _)
-        | Expr::Path(..)
-        | Expr::StructLiteral { .. }
-        | Expr::RecordProjection { .. }
-        | Expr::Continue(_) => {}
+        Expr::Literal(_, _) | Expr::Path(..) | Expr::Continue(_) => {}
     }
 }
 

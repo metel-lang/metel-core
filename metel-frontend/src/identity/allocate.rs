@@ -128,8 +128,9 @@ pub struct Allocation {
     pub binding_spans: BindingSpans,
 }
 
-/// Declared-name span of every binding definition, and the use span of every
-/// *resolved* value reference, → the [`BindingId`] it denotes.
+/// Declared-name spans, resolved value-reference spans, and whole impl-method
+/// declaration spans → their [`BindingId`]. Whole declarations join body facts
+/// only; they are not name sites in the editor position index.
 ///
 /// A **transient construction-time bridge** (metel-core#1052): the typed-AST
 /// pass stamps a node's `BindingId` by looking its span up here, then discards
@@ -141,7 +142,8 @@ pub struct Allocation {
 pub struct BindingSpans(HashMap<Span, BindingId>);
 
 impl BindingSpans {
-    /// The binding whose definition or resolved-reference span is exactly `span`.
+    /// The binding whose definition, method declaration or resolved-reference
+    /// span is exactly `span`.
     #[must_use]
     pub fn get(&self, span: &Span) -> Option<BindingId> {
         self.0.get(span).copied()
@@ -177,6 +179,7 @@ pub fn allocate_module(
     nav: ModuleNav<'_>,
 ) -> Allocation {
     let mut acc = ModuleAlloc::default();
+    let mut method_ordinals = HashMap::<super::SymbolId, u32>::new();
 
     for decl in decls {
         match decl {
@@ -226,14 +229,10 @@ pub fn allocate_module(
                         method_symbol_name(target, impl_block.aspect_name.as_deref(), &method.name);
                     let key = (module_path.to_vec(), method_name);
                     if let Some(&sym) = names.symbols.get(&key) {
-                        walk_body(
-                            BindingId::Global(sym),
-                            &method.params,
-                            &method.body,
-                            interner,
-                            &mut acc,
-                            nav,
-                        );
+                        let ordinal = method_ordinals.entry(sym).or_default();
+                        let owner = allocate_method_body(sym, *ordinal, method, interner, &mut acc);
+                        *ordinal += 1;
+                        walk_body(owner, &method.params, &method.body, interner, &mut acc, nav);
                     }
                 }
             }
@@ -270,7 +269,8 @@ pub fn allocate_module(
     // T0009 determination and is populated at the post-inference freeze (#1051).
     classify_globals(&mut acc.out, &acc.positions, names);
 
-    let binding_spans = binding_spans_from(&acc.positions, &acc.out);
+    let mut binding_spans = binding_spans_from(&acc.positions, &acc.out);
+    binding_spans.0.extend(acc.method_body_spans);
     Allocation {
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
@@ -303,6 +303,9 @@ struct ModuleAlloc {
     out: ResolutionMap,
     positions: Vec<(Span, PositionHit)>,
     collision: CollisionGuard,
+    // Whole declaration spans join construction facts but must not turn
+    // literals or whitespace into name sites in the editor position index.
+    method_body_spans: HashMap<Span, BindingId>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -397,6 +400,81 @@ pub fn allocate_for_graph(
             aliases: &graph.path_aliases,
         },
     )
+}
+
+fn allocate_method_body(
+    symbol: super::SymbolId,
+    ordinal: u32,
+    method: &crate::data::ast::FunDecl,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+) -> BindingId {
+    let group = BindingId::Global(symbol);
+    let path = LexicalPath::root().child(LexicalSeg::MethodBody(ordinal));
+    let id = LocalId(structural_hash(group, &path));
+    acc.collision.check_local(id, group, &path);
+    let binder = BindingId::Local(id);
+    acc.out.definitions.insert(
+        binder,
+        DefinitionInfo {
+            kind: DefinitionKind::MethodBody,
+            name: interner.name(&method.name),
+            span: method.span.clone(),
+        },
+    );
+    acc.method_body_spans.insert(method.span.clone(), binder);
+    binder
+}
+
+pub(crate) fn allocate_inherited_body(
+    source_method: super::SymbolId,
+    target: super::InheritedMethodTarget,
+    implementation_module: &[String],
+    ordinal: u32,
+    method: &crate::data::ast::FunDecl,
+    source: &BindingSpans,
+) -> (BindingId, BindingSpans) {
+    let path = LexicalPath::root().child(LexicalSeg::InheritedMethod {
+        target,
+        module: implementation_module.to_vec(),
+        ordinal,
+    });
+    let binder = BindingId::Local(LocalId(structural_hash(
+        BindingId::Global(source_method),
+        &path,
+    )));
+    let mut acc = ModuleAlloc::default();
+    let table = ModuleTable::new();
+    let aliases = HashMap::new();
+    let symbols = HashMap::new();
+    walk_body(
+        binder,
+        &method.params,
+        &method.body,
+        &mut NameInterner::new(),
+        &mut acc,
+        ModuleNav {
+            table: &table,
+            aliases: &aliases,
+            scope: None,
+            symbols: &symbols,
+        },
+    );
+    // Global references retain the source aspect's resolution. Locals belong
+    // to the inherited body, so copying the source LocalIds would conflate impls.
+    let mut spans = BindingSpans(
+        source
+            .0
+            .iter()
+            .filter(|(_, binding)| matches!(binding, BindingId::Global(_)))
+            .map(|(span, binding)| (span.clone(), *binding))
+            .collect(),
+    );
+    spans
+        .0
+        .extend(binding_spans_from(&acc.positions, &acc.out).0);
+    spans.0.insert(method.span.clone(), binder);
+    (binder, spans)
 }
 
 /// Walk one function-shaped body (a free function, an impl method, or an aspect

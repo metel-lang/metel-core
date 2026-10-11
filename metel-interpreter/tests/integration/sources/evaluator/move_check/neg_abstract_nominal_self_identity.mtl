@@ -1,0 +1,9 @@
+struct Box<T> { value: T }
+extend<T> Box<T> {
+    fun twice(self) {
+        let first := self;
+        let again := self; // ERROR[T0019]
+    }
+}
+
+fun main() {}

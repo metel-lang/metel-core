@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.types.fixed-size-arrays.legality-2"]
+
+[expect]
+status = "success"

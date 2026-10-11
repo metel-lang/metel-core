@@ -30,6 +30,8 @@ fn main() {
     let mut user_violations_with_by_value_receiver_moves = 0usize;
     let mut embedded_std_violation_count = 0usize;
     let mut per_program_generic_skips = Vec::new();
+    let mut checked_abstract_bodies = std::collections::BTreeSet::new();
+    let mut abstract_fallbacks = std::collections::BTreeSet::new();
 
     for (index, fixture) in fixtures.into_iter().enumerate() {
         if index > 0 && index % 50 == 0 {
@@ -41,18 +43,37 @@ fn main() {
         let Ok(names) = name_resolver::resolve(&graph) else {
             continue;
         };
+        let members = metel::identity::collect_members_for_graph(&graph, &names);
+        let allocation = metel::identity::allocate_for_graph(&graph, &names);
         let Ok(normalized) = path_normalization::normalize(graph, names) else {
             continue;
         };
         if coherence::check(&normalized).is_err() {
             continue;
         }
-        let Ok(typed) =
-            type_checking::check_graph(&normalized, &type_checking::CorePrelude::default())
-        else {
+        let Ok(checked) = type_checking::check_graph_with_report(
+            &normalized,
+            &type_checking::CorePrelude::default(),
+            Some(metel::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        ) else {
             continue;
         };
-        let report = move_check::collect_graph_violations(&typed);
+        let report = move_check::collect_graph_violations(&checked.graph);
+        for span in &report.checked_abstract_generic_bodies {
+            checked_abstract_bodies.insert((span.filename.clone(), span.line, span.col));
+        }
+        for fallback in &report.abstract_body_fallbacks {
+            abstract_fallbacks.insert((
+                fallback.span.filename.clone(),
+                fallback.span.line,
+                fallback.span.col,
+                format!("{:?}", fallback.stage),
+                fallback.reason.clone(),
+            ));
+        }
         for body in &report.unchecked_generic_bodies {
             if !body.span.filename.starts_with("<embedded std::") {
                 println!(
@@ -147,6 +168,17 @@ fn main() {
         println!("max_skipped_generic_bodies_per_program=user:{max_user};embedded_std:{max_std}");
     }
     println!("fixtures_with_move_violations={}", newly_failing.len());
+    println!(
+        "distinct_checked_abstract_generic_bodies={}",
+        checked_abstract_bodies.len()
+    );
+    println!(
+        "distinct_abstract_fallback_records={}",
+        abstract_fallbacks.len()
+    );
+    for (filename, line, col, stage, reason) in abstract_fallbacks {
+        println!("abstract_fallback={filename}:{line}:{col}:{stage}:{reason}");
+    }
     println!("user_move_violations={user_violation_count}");
     println!(
         "user_move_violations_with_by_value_receiver_move_side={user_violations_with_by_value_receiver_moves}"

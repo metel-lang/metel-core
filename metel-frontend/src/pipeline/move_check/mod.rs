@@ -14,6 +14,7 @@ use crate::pipeline::type_checking::type_engine::{
 };
 use crate::pipeline::type_checking::type_expr_to_infer;
 
+mod abstract_bodies;
 mod symbolic_rows;
 
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
@@ -102,6 +103,10 @@ pub(crate) fn type_bucket(ty: &Type) -> String {
 #[derive(Debug, Clone, Default)]
 pub struct MoveCheckReport {
     pub violations: Vec<MoveViolation>,
+    /// Definitions analyzed from retained abstract operations without reconstruction.
+    pub checked_abstract_generic_bodies: Vec<Span>,
+    /// Migration evidence, distinct from bodies that remain unchecked after fallback.
+    pub abstract_body_fallbacks: Vec<AbstractBodyFallback>,
     pub skipped_generic_bodies_user: usize,
     pub skipped_generic_bodies_embedded_std: usize,
     pub unchecked_generic_bodies: Vec<UncheckedGenericBody>,
@@ -133,10 +138,25 @@ pub struct UncheckedGenericBody {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbstractBodyFallbackStage {
+    Preparation,
+    Ownership,
+}
+
+#[derive(Debug, Clone)]
+pub struct AbstractBodyFallback {
+    pub span: Span,
+    pub stage: AbstractBodyFallbackStage,
+    pub reason: String,
+}
+
 /// Everything a report accumulates, captured so a speculative pass can be undone.
 #[derive(Debug, Clone, Copy)]
 struct ReportMark {
     violations: usize,
+    abstract_bodies: usize,
+    abstract_fallbacks: usize,
     skipped_user: usize,
     skipped_embedded_std: usize,
     unchecked: usize,
@@ -151,6 +171,8 @@ impl MoveCheckReport {
     fn mark(&self) -> ReportMark {
         ReportMark {
             violations: self.violations.len(),
+            abstract_bodies: self.checked_abstract_generic_bodies.len(),
+            abstract_fallbacks: self.abstract_body_fallbacks.len(),
             skipped_user: self.skipped_generic_bodies_user,
             skipped_embedded_std: self.skipped_generic_bodies_embedded_std,
             unchecked: self.unchecked_generic_bodies.len(),
@@ -162,6 +184,10 @@ impl MoveCheckReport {
     /// pass will walk, and must not report it twice.
     fn rewind_to(&mut self, mark: ReportMark) {
         self.violations.truncate(mark.violations);
+        self.checked_abstract_generic_bodies
+            .truncate(mark.abstract_bodies);
+        self.abstract_body_fallbacks
+            .truncate(mark.abstract_fallbacks);
         self.skipped_generic_bodies_user = mark.skipped_user;
         self.skipped_generic_bodies_embedded_std = mark.skipped_embedded_std;
         self.unchecked_generic_bodies.truncate(mark.unchecked);
@@ -242,6 +268,9 @@ struct Checker<'a> {
 /// The two ways out of one loop body, plus what a jump out of it has to unwind.
 #[derive(Debug, Clone, Default)]
 struct LoopFrame {
+    // A reachable continue can carry no moves; an empty back-edge map alone
+    // cannot tell a C-style loop whether its step still needs to run.
+    continue_reached: bool,
     /// How deep the scope stack was when this body's pass began. A `break` or
     /// `continue` jumps out of every scope opened since, and the state it
     /// contributes has to be unwound to here first — otherwise a binding that
@@ -336,14 +365,16 @@ impl<'a> Checker<'a> {
                         fn_state.pop_scope();
                     }
                     FunBody::Generic(body) => {
-                        self.check_generic_body(
-                            &fun.name,
-                            &fun.generics,
-                            &fun.params,
-                            body,
-                            &fun.span,
-                            current_module,
-                        );
+                        if !self.check_retained_abstract_body(fun, current_module) {
+                            self.check_generic_body(
+                                &fun.name,
+                                &fun.generics,
+                                &fun.params,
+                                body,
+                                &fun.span,
+                                current_module,
+                            );
+                        }
                     }
                     FunBody::Native(_) => {}
                 }
@@ -398,7 +429,9 @@ impl<'a> Checker<'a> {
                             fn_state.pop_scope();
                         }
                         FunBody::Generic(body) => {
-                            self.check_generic_method_body(ib, method, body, current_module);
+                            if !self.check_retained_abstract_body(method, current_module) {
+                                self.check_generic_method_body(ib, method, body, current_module);
+                            }
                         }
                         FunBody::Native(_) => {}
                     }
@@ -762,6 +795,7 @@ impl<'a> Checker<'a> {
         if let Some(depth) = self.loop_frames.last().map(|frame| frame.scope_depth) {
             let unwound = state.unwound_to(depth);
             if let Some(frame) = self.loop_frames.last_mut() {
+                frame.continue_reached = true;
                 frame.back_edge.union_from(&unwound);
             }
         }

@@ -14,6 +14,12 @@
 
 use std::hash::Hash;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InheritedMethodTarget {
+    Nominal(super::SymbolId),
+    Record,
+}
+
 /// One step in a [`LexicalPath`].
 ///
 /// Name-bearing steps carry the raw spelling, not an interned [`NameId`]: an
@@ -59,6 +65,16 @@ pub enum LexicalSeg {
     /// position, disambiguated by its ordinal among like-spelled uses in the
     /// same immediate scope.
     Use { name: String, occurrence: u32 },
+    /// One definition within a resolved impl-method group. Only definitions
+    /// of that group advance the ordinal; unrelated declarations do not.
+    MethodBody(u32),
+    /// A default inherited by one nominal or record-target impl variant. Its owner is
+    /// the resolved source aspect method, not a call-time selection symbol.
+    InheritedMethod {
+        target: InheritedMethodTarget,
+        module: Vec<String>,
+        ordinal: u32,
+    },
 }
 
 /// The structural location of a binding or use within its owner.

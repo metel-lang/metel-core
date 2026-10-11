@@ -1,0 +1,53 @@
+enum Flag { On, Off }
+enum Payload<T> { Present { value: T }, Missing }
+struct Envelope<T> { value: T }
+struct Ticket { count: i64 }
+extend Ticket: Copy;
+
+fun copy_witness<T>(unused: T) -> i64 {
+    let witness := Ticket { count = 2 };
+    let first := witness;
+    let again := witness;
+    first.count + again.count
+}
+
+fun extract_saved<T>(value: Payload<T>) -> T {
+    match (value) { Present { value } => value, Missing => { loop {} } }
+}
+
+fun unwrap<T>(value: Envelope<T>) -> T { value.value }
+
+fun flag<T>(tag: Flag, unused: T) -> boolean {
+    match (tag) { On => true, Off => false }
+}
+
+fun choose<T>(tag: i64, first: T, second: T) -> T {
+    match (tag) { 1 => first, _ => second }
+}
+
+fun whole<T>(value: T) -> T {
+    match (value) { bound => bound }
+}
+
+fun make<T>(value: T, mark: &var i64) -> Perhaps<T> {
+    *mark := *mark + 1;
+    Perhaps::Some { value = value }
+}
+
+fun extract<T>(value: T, mark: &var i64) -> T {
+    match (make(value, mark)) { Some { value } => value, None => { loop {} } }
+}
+
+fun main() {
+    assert(flag(Flag::On, "unused"));
+    assert(!flag(Flag::Off, 0));
+    assert(choose(1, "first", "second") == "first");
+    assert(choose(2, "first", "second") == "second");
+    assert(whole("owned") == "owned");
+    var mark := 0;
+    assert(extract("payload", &var mark) == "payload");
+    assert(mark == 1);
+    assert(extract_saved(Payload::Present { value = "saved" }) == "saved");
+    assert(unwrap(Envelope { value = "enclosed" }) == "enclosed");
+    assert(copy_witness("unused") == 4);
+}

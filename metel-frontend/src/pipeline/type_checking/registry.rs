@@ -698,6 +698,7 @@ fn register_program_decls(
     // infer_impl_method in inference.rs registers them correctly as polymorphic schemes.
     for decl in decls {
         if let Decl::Impl(ib) = decl {
+            registry.register_nominal_ownership_candidate(current_module_path, ib);
             let nominal_target_name = match &ib.target_type {
                 TypeExpr::Named(name, _) => Some(name.clone()),
                 _ => None,
@@ -705,6 +706,22 @@ fn register_program_decls(
             let is_array_generic_target = array_target_generic_name(ib).is_some();
             if let Some(row) = record_target_row(ib) {
                 register_record_target_impl(ib, &row, type_var_gen, registry);
+                let aspect = ib
+                    .aspect_name
+                    .as_ref()
+                    .and_then(|name| registry.resolve_type_id(current_module_path, name));
+                for method in &ib.methods {
+                    if let Some(receiver) = method
+                        .params
+                        .first()
+                        .and_then(|parameter| parameter.receiver.clone())
+                    {
+                        registry.register_definition_receiver(method.span.clone(), receiver);
+                    }
+                    if let Some(aspect) = aspect {
+                        registry.register_definition_aspect(method.span.clone(), aspect);
+                    }
+                }
                 continue;
             }
             if nominal_target_name.is_none() && !is_array_generic_target {
@@ -1155,7 +1172,7 @@ fn register_generic_impl_method_schemes(
     let self_ty = InferType::Named(
         target_name.to_string(),
         type_params.iter().map(|tv| InferType::Var(*tv)).collect(),
-        crate::data::types::NominalId::NONE,
+        crate::data::types::NominalId(target_id),
     );
     for method in &ib.methods {
         // Only instance methods (those with a receiver) dispatch through the
@@ -1313,6 +1330,7 @@ fn register_generic_impl_method_schemes(
             neg_bounds: vec![],
             record_kinds: vec![],
             assoc_projections: vec![],
+            body_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
@@ -1341,6 +1359,7 @@ fn register_generic_impl_method_schemes(
             ib.aspect_name.clone(),
             method.span.clone(),
         );
+        registry.register_definition_receiver(method.span.clone(), receiver.clone());
         registry.register_method_receiver(owner, method.name.clone(), receiver);
     }
 }
@@ -1531,6 +1550,7 @@ fn register_array_impl_method_schemes(
             neg_bounds: vec![],
             record_kinds: vec![],
             assoc_projections: vec![],
+            body_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
@@ -1617,6 +1637,7 @@ fn register_record_impl_method_schemes(
             neg_bounds: vec![],
             record_kinds: vec![],
             assoc_projections: vec![],
+            body_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
@@ -1926,7 +1947,15 @@ pub(super) fn register_primitive_type_bindings(
 ) {
     // Free-function builtins all come from CorePrelude — no separate list needed.
     for (name, scheme) in prelude.schemes() {
-        ctx.bind_poly_if_absent(name, scheme.clone());
+        let mut resolved = scheme.clone();
+        // Prelude schemes were parsed before a declaration registry existed.
+        // Preserve provenance in std::core, not a shadowing importing module.
+        resolve_declaring_nominals(
+            &mut resolved.ty,
+            ctx.registry(),
+            &["std".to_string(), "core".to_string()],
+        );
+        ctx.bind_poly_if_absent(name, resolved);
     }
 
     // The primitive Display/From impls (to_string, the numeric From
@@ -1938,6 +1967,53 @@ pub(super) fn register_primitive_type_bindings(
 
     // The core aspects (Display/Iterable/From) are declared in the embedded
     // std::core source and registered by build_registry's decl pass (METEL-181).
+}
+
+fn resolve_declaring_nominals(
+    ty: &mut InferType,
+    registry: &TypeDefinitionRegistry,
+    module: &[String],
+) {
+    match ty {
+        InferType::Named(name, arguments, identity) => {
+            if identity.get().is_none() {
+                *identity = crate::data::types::NominalId(registry.resolve_type_id(module, name));
+            }
+            for argument in arguments {
+                resolve_declaring_nominals(argument, registry, module);
+            }
+        }
+        InferType::Fun(parameters, result, ..) => {
+            for parameter in parameters {
+                resolve_declaring_nominals(parameter, registry, module);
+            }
+            resolve_declaring_nominals(result, registry, module);
+        }
+        InferType::Tuple(items)
+        | InferType::Dyn {
+            type_args: items, ..
+        } => {
+            for item in items {
+                resolve_declaring_nominals(item, registry, module);
+            }
+        }
+        InferType::Record(fields) | InferType::Residual { fields, .. } => {
+            for (_, field) in fields {
+                resolve_declaring_nominals(field, registry, module);
+            }
+        }
+        InferType::RowExtend { fields, tail } => {
+            for (_, field) in fields {
+                resolve_declaring_nominals(field, registry, module);
+            }
+            resolve_declaring_nominals(tail, registry, module);
+        }
+        InferType::Array(inner)
+        | InferType::SizedArray(inner, _)
+        | InferType::Reference(inner)
+        | InferType::MutReference(inner) => resolve_declaring_nominals(inner, registry, module),
+        InferType::Concrete(_) | InferType::Var(_) | InferType::Never => {}
+    }
 }
 
 /// Add all built-in function schemes from `CorePrelude` to `scheme_env`.

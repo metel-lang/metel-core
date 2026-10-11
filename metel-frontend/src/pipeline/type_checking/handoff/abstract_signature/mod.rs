@@ -184,6 +184,7 @@ impl SignatureFreezer<'_> {
             },
             InferType::Tuple(items) => AbstractType::Tuple(self.items(items)?),
             InferType::Record(fields) => AbstractType::Record(self.fields(fields)?),
+            InferType::RowExtend { fields, tail } if fields.is_empty() => self.freeze(tail)?,
             InferType::RowExtend { fields, tail } => AbstractType::OpenRecord {
                 fields: self.fields(fields)?,
                 tail: Box::new(self.freeze(tail)?),

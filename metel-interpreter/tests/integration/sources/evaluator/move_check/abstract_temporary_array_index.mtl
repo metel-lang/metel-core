@@ -1,0 +1,31 @@
+fun position<T>(unused: T, mark: &var i64) -> u64 {
+    *mark := *mark * 10 + 2;
+    0u64
+}
+
+fun element<T>(unused: T, mark: &var i64) -> i64 {
+    *mark := *mark * 10 + 1;
+    7
+}
+
+fun copied<T: Copy>(value: T, index: u64) -> T {
+    [value, value][index]
+}
+
+fun ordered<T>(value: T, other: T, mark: &var i64) -> i64 {
+    [element(value, mark), 0][position(other, mark)]
+}
+
+fun borrowed<T>(value: T, other: T, mark: &var i64) -> i64 {
+    (&[element(value, mark), 0])[position(other, mark)]
+}
+
+fun main() {
+    assert(copied(9, 1u64) == 9);
+    var mark := 0;
+    assert(ordered(0, 0, &var mark) == 7);
+    assert(mark == 12);
+    mark := 0;
+    assert(borrowed(0, 0, &var mark) == 7);
+    assert(mark == 12);
+}

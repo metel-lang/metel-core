@@ -42,6 +42,7 @@ pub(super) fn infer_decl(
             ctx.note_consumed_infer(&ld.value);
             let bound_ty = if let Some(ann) = &ld.type_ann {
                 let declared = ann_to_infer(ann, ctx);
+                ctx.record_definition_binding_type(ld.span.clone(), declared.clone());
                 // RFC-0053 §4 (metel-core#757): `[T; N]` coerces to `T[]`,
                 // never the reverse. `unify()` stays bidirectional for
                 // Array/SizedArray -- it's shared by many symmetric/
@@ -135,6 +136,7 @@ pub(super) fn infer_decl(
             ctx.note_consumed_infer(&md.value);
             let bound_ty = if let Some(ann) = &md.type_ann {
                 let declared = ann_to_infer(ann, ctx);
+                ctx.record_definition_binding_type(md.span.clone(), declared.clone());
                 // RFC-0053 §4 (metel-core#757): see the matching check in
                 // `Decl::Let` above for the full rationale.
                 if !matches!(&md.value, Expr::Array(_, _))
@@ -395,12 +397,19 @@ pub(super) fn infer_decl(
                     }
                 }
             }
-            // A record target's bodies are checked per call against the concrete
-            // receiver, like every structural target's (`impl_defers_method_bodies`);
-            // there is no single receiver type to infer them against here.
             let record_target = super::super::registry::record_target_row(ib).is_some();
-            for method in ib.methods.iter().filter(|_| !record_target) {
-                infer_impl_method(method, ib, &target_name, ctx, fun_generalizations)?;
+            for method in &ib.methods {
+                if record_target {
+                    super::structural_definitions::infer_record_definition(
+                        method,
+                        ib,
+                        ctx,
+                        fun_generalizations,
+                    )?;
+                } else {
+                    infer_impl_method(method, ib, &target_name, ctx, fun_generalizations)?;
+                }
+                ctx.retain_definition_snapshot(&method.span)?;
             }
             // `inherited_defaults` is only ever populated inside the `Some(aspect_name)`
             // branch above, so this is always `Some` when the loop body runs.
@@ -583,7 +592,7 @@ pub(super) fn rewrite_impl_aspect_returns(
 /// expression caused it, so the error is reported at the function. Equalities the
 /// declared bounds state (a row equation, an associated-type binding) are held in side
 /// tables and never unify the two parameters, so they do not trip this check.
-fn check_declared_parameters_rigid(
+pub(super) fn check_declared_parameters_rigid(
     span: &crate::data::ast::Span,
     params: &[(&str, TypeVar)],
     resolve: &dyn Fn(&InferType) -> InferType,
@@ -1336,6 +1345,17 @@ pub(super) fn infer_fun_decl(
         .iter()
         .map(|var| names_by_var.get(var).cloned().unwrap_or_default())
         .collect();
+    let definition_scheme = definition_body_scheme(
+        &scheme,
+        &generic_map,
+        &fun.generics,
+        &type_var_bounds,
+        &partial_subst.to_substitution(),
+    )
+    .with_neg_bounds(&scheme_neg_bounds)
+    .with_record_kinds(&type_var_record_kinds)
+    .with_row_remainders(&row_remainders)
+    .with_open_row_params(&open_row_params);
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -1400,6 +1420,23 @@ pub(super) fn infer_fun_decl(
             },
         )
         .collect();
+    let definition_projections = build_assoc_projection_map(
+        &body_assoc_log,
+        &partial_subst.to_substitution(),
+        &definition_scheme,
+    );
+    let definition_scheme = definition_scheme
+        .with_neg_bounds(&neg_bounds)
+        .with_record_kinds(&record_kinds)
+        .with_assoc_eq_constraints(&assoc_eq)
+        .with_assoc_projections(&definition_projections)
+        .with_opaque_returns(&opaque_map);
+    let definition_scheme = retain_body_projections(
+        definition_scheme,
+        &body_assoc_log,
+        &partial_subst.to_substitution(),
+    );
+    ctx.record_definition_template(fun.span.clone(), definition_scheme, fun.generics.clone());
     // Store resolved_ty (post-solve) so the re-generalization in check_impl uses the
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
@@ -1689,20 +1726,19 @@ pub(super) fn infer_impl_method(
         InferType::Array(Box::new(InferType::Var(element_tv)))
     } else if let Some(prim) = primitive_type_from_name(target_name) {
         InferType::Concrete(prim)
-    } else if struct_tvars_ordered.is_empty() {
-        InferType::Named(
-            target_name.to_string(),
-            vec![],
-            crate::data::types::NominalId::NONE,
-        )
     } else {
+        // The declaration's receiver identity must survive into the abstract
+        // body; consumers cannot recover it by resolving a placeholder's name.
         InferType::Named(
             target_name.to_string(),
             struct_tvars_ordered
                 .iter()
                 .map(|&tv| InferType::Var(tv))
                 .collect(),
-            crate::data::types::NominalId::NONE,
+            crate::data::types::NominalId(
+                ctx.registry()
+                    .resolve_type_id(ctx.current_module_path(), target_name),
+            ),
         )
     };
 
@@ -1929,6 +1965,18 @@ pub(super) fn infer_impl_method(
         }
     }
 
+    let definition_names = generic_map.clone();
+    let definition_bounds = struct_bounds.clone();
+    let definition_negative_bounds = negative_bounds.clone();
+    let mut definition_generics = Vec::new();
+    for generic in method.generics.iter().chain(&ib.generics).chain(&synth) {
+        if !definition_generics
+            .iter()
+            .any(|existing: &crate::data::ast::GenericParam| existing.name == generic.name)
+        {
+            definition_generics.push(generic.clone());
+        }
+    }
     let rigidity_tracking_checkpoint = ctx.rigidity_tracking_checkpoint();
     ctx.track_rigidity_parameters(generic_map.values().copied());
     // Native methods have no Metel body; their signature comes entirely from
@@ -1950,6 +1998,15 @@ pub(super) fn infer_impl_method(
             &generic_map,
         ));
         let saved_aspect_arguments = ctx.enter_aspect_type_arguments(aspect_arguments);
+        ctx.record_definition_aspect_arguments(
+            method.span.clone(),
+            collect_polarized_aspect_arguments(
+                ib.generics.iter().chain(method.generics.iter()),
+                ib.where_clause.iter().chain(method.where_clause.iter()),
+                &generic_map,
+                Polarity::Negative,
+            ),
+        );
         let saved_type_params = ctx.swap_type_params(generic_map);
         let saved_tp_bounds = ctx.swap_type_param_bounds(struct_bounds);
         let saved_negative_bounds = ctx.swap_negative_type_param_bounds(negative_bounds);
@@ -2032,6 +2089,66 @@ pub(super) fn infer_impl_method(
         .collect();
     let method_tvars_free: std::collections::HashSet<TypeVar> =
         method_tvars_resolved.iter().copied().collect();
+    // Definition retention is independent of whether call sites need a
+    // polymorphic method scheme. A structural target or a body-only parameter
+    // can otherwise lose its artifact merely because it has no caller quantifier.
+    let definition_subst = partial_subst.to_substitution();
+    let negative_grants = definition_negative_bounds
+        .iter()
+        .filter_map(
+            |(variable, bounds)| match definition_subst.apply(&InferType::Var(*variable)) {
+                InferType::Var(variable) => Some((variable, bounds.clone())),
+                _ => None,
+            },
+        )
+        .collect();
+    let definition_kinds = definition_generics
+        .iter()
+        .filter(|generic| generic.is_record || generic.is_row)
+        .filter_map(|generic| definition_names.get(&generic.name))
+        .filter_map(
+            |variable| match definition_subst.apply(&InferType::Var(*variable)) {
+                InferType::Var(variable) => Some((variable, true)),
+                _ => None,
+            },
+        )
+        .collect();
+    let definition_remainders = impl_row_remainders
+        .iter()
+        .flat_map(|(remainder, sources)| sources.iter().map(move |source| (remainder, source)))
+        .filter_map(|(remainder, (source, removed))| {
+            let (InferType::Var(remainder), InferType::Var(source)) = (
+                definition_subst.apply(&InferType::Var(*remainder)),
+                definition_subst.apply(&InferType::Var(*source)),
+            ) else {
+                return None;
+            };
+            (remainder != source).then(|| (remainder, (source, removed.clone())))
+        })
+        .fold(HashMap::new(), |mut equations, (remainder, equation)| {
+            equations
+                .entry(remainder)
+                .or_insert_with(Vec::new)
+                .push(equation);
+            equations
+        });
+    let definition_scheme = definition_body_scheme(
+        &generalize(resolved_fun_ty.clone(), &HashSet::new()),
+        &definition_names,
+        &definition_generics,
+        &definition_bounds,
+        &definition_subst,
+    )
+    .with_neg_bounds(&negative_grants)
+    .with_record_kinds(&definition_kinds)
+    .with_row_remainders(&definition_remainders);
+    let definition_scheme =
+        retain_body_projections(definition_scheme, &body_assoc_log, &definition_subst);
+    ctx.record_definition_template(
+        method.span.clone(),
+        definition_scheme,
+        definition_generics.clone(),
+    );
     if (!struct_tvars_free.is_empty() || !method_tvars_free.is_empty())
         && free_vars(&resolved_fun_ty)
             .iter()
@@ -2186,6 +2303,19 @@ pub(super) fn infer_impl_method(
             );
             scheme.with_assoc_projections(&proj_map)
         };
+        let definition_scheme = definition_body_scheme(
+            &scheme,
+            &definition_names,
+            &definition_generics,
+            &definition_bounds,
+            &partial_subst.to_substitution(),
+        );
+        let definition_scheme = retain_body_projections(
+            definition_scheme,
+            &body_assoc_log,
+            &partial_subst.to_substitution(),
+        );
+        ctx.record_definition_template(method.span.clone(), definition_scheme, definition_generics);
         if array_target_generic_name.is_some() {
             ctx.register_array_method_scheme(
                 method.name.clone(),
@@ -2221,6 +2351,111 @@ pub(super) fn infer_impl_method(
         ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     }
     Ok(())
+}
+
+pub(super) fn retain_body_projections(
+    mut scheme: crate::pipeline::type_checking::type_engine::TypeScheme,
+    projections: &crate::pipeline::type_checking::type_engine::AssocProjectionLog,
+    subst: &Substitution,
+) -> crate::pipeline::type_checking::type_engine::TypeScheme {
+    // Body-only projections are definition parameters, not caller quantifiers.
+    // Preserve their base/projection relationship and the associated member's
+    // declared bounds even when its result never appears in the signature.
+    for (base, aspect, member, placeholder) in projections {
+        let (InferType::Var(base), InferType::Var(projected)) = (
+            subst.apply(&InferType::Var(*base)),
+            subst.apply(&InferType::Var(*placeholder)),
+        ) else {
+            continue;
+        };
+        let Some(base_index) = scheme.quantified_vars.iter().position(|var| *var == base) else {
+            continue;
+        };
+        let index = if let Some(index) = scheme
+            .quantified_vars
+            .iter()
+            .position(|var| *var == projected)
+        {
+            index
+        } else {
+            let index = scheme.quantified_vars.len();
+            scheme.quantified_vars.push(projected);
+            index
+        };
+        scheme
+            .param_names
+            .resize(scheme.quantified_vars.len(), String::new());
+        scheme
+            .assoc_projections
+            .resize(scheme.quantified_vars.len(), None);
+        let projection = (base_index, aspect.clone(), member.clone(), projected);
+        if !scheme.body_projections.contains(&projection) {
+            scheme.body_projections.push(projection.clone());
+        }
+        scheme.assoc_projections[index] = Some(projection);
+    }
+    scheme
+}
+
+pub(super) fn definition_body_scheme(
+    call_scheme: &crate::pipeline::type_checking::type_engine::TypeScheme,
+    names: &HashMap<String, TypeVar>,
+    generics: &[crate::data::ast::GenericParam],
+    body_bounds: &HashMap<TypeVar, Vec<GenericBound>>,
+    subst: &Substitution,
+) -> crate::pipeline::type_checking::type_engine::TypeScheme {
+    let mut scheme = call_scheme.clone();
+    let mut resolved_names = HashMap::new();
+    for generic in generics {
+        if let Some(var) = names.get(&generic.name)
+            && let InferType::Var(resolved) = subst.apply(&InferType::Var(*var))
+        {
+            resolved_names
+                .entry(resolved)
+                .or_insert_with(|| generic.name.clone());
+        }
+    }
+    // A declared parameter can occur only in a row grant or a body operation.
+    // Retaining it here must not add a new caller-visible quantifier.
+    let mut declared: Vec<_> = resolved_names.keys().copied().collect();
+    declared.sort();
+    for variable in declared {
+        if !scheme.quantified_vars.contains(&variable) {
+            scheme.quantified_vars.push(variable);
+        }
+    }
+    scheme.param_names = scheme
+        .quantified_vars
+        .iter()
+        .map(|var| resolved_names.get(var).cloned().unwrap_or_default())
+        .collect();
+    // Call-site bounds omit inherited struct requirements checked on the receiver.
+    // Definition consumers need those body grants, without strengthening callers.
+    let mut named_variables: Vec<_> = names.iter().collect();
+    named_variables.sort_by_key(|(name, _)| *name);
+    for (index, var) in scheme.quantified_vars.iter().enumerate() {
+        let mut seen = HashSet::new();
+        let grants = named_variables
+            .iter()
+            .filter(|(_, original)| {
+                seen.insert(**original)
+                    && subst.apply(&InferType::Var(**original)) == InferType::Var(*var)
+            })
+            .flat_map(|(_, original)| body_bounds.get(original).into_iter().flatten().cloned())
+            .collect::<Vec<_>>();
+        if scheme.bounds.len() <= index {
+            scheme.bounds.resize(index + 1, Vec::new());
+        }
+        for grant in grants {
+            if !scheme.bounds[index].iter().any(|existing| {
+                matches!((&grant, existing),
+                (GenericBound::Aspect(a), GenericBound::Aspect(b)) if a == b)
+            }) {
+                scheme.bounds[index].push(grant);
+            }
+        }
+    }
+    scheme
 }
 
 pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr {
@@ -2379,7 +2614,10 @@ pub(super) fn infer_default_aspect_method(
         None => InferType::Named(
             target_name.to_string(),
             vec![],
-            crate::data::types::NominalId::NONE,
+            crate::data::types::NominalId(
+                ctx.registry()
+                    .resolve_type_id(ctx.current_module_path(), target_name),
+            ),
         ),
     };
     let param_types: Vec<InferType> = method

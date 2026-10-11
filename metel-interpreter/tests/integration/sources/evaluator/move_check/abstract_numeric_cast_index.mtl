@@ -1,0 +1,26 @@
+fun index<T>(value: T, mark: &var i64) -> i64 {
+    *mark := *mark + 1;
+    1
+}
+
+fun write<T>(values: &var [T; 2], value: T, mark: &var i64) {
+    values[index(0, mark) as u64] := value;
+}
+
+fun read<T: Copy>(values: &[T; 2], mark: &var i64) -> T {
+    values[index(0, mark) as u64]
+}
+
+fun converted<T>(unused: T, value: i64) -> f64 {
+    value as f64
+}
+
+fun main() {
+    var values := [3, 4];
+    var mark := 0;
+    write(&var values, 7, &var mark);
+    assert(mark == 1);
+    assert(read(&values, &var mark) == 7);
+    assert(mark == 2);
+    assert(converted(0, 9) == 9.0);
+}

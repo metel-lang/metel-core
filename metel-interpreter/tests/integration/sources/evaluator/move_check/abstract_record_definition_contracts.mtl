@@ -1,0 +1,25 @@
+aspect Counted {
+    fun read(&self) -> i64;
+    fun bump(&var self);
+}
+
+extend { count: i64 }: Counted {
+    fun read(&self) -> i64 { self.count + self.count }
+    fun bump(&var self) { self.count += 1; }
+}
+
+aspect Echo {
+    fun echo<R>(&self, value: R) -> R;
+}
+
+extend<row R> { ..R }: Echo {
+    fun echo<R>(&self, value: R) -> R { value }
+}
+
+fun main() {
+    var value := { count = 2 };
+    assert(value.read() == 4);
+    value.bump();
+    assert(value.read() == 6);
+    assert(value.echo("ok") == "ok");
+}

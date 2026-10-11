@@ -1,0 +1,24 @@
+fun extracted<T>(value: T) -> T {
+    loop { break value; }
+}
+
+fun nested<T>(value: T) -> T {
+    loop {
+        let result := loop { break value; };
+        break result;
+    }
+}
+
+fun returning<T>(value: T, mark: &var i64) {
+    *mark := 1;
+    let result: () := loop { break if (true) { return; } else { return; }; };
+    *mark := 2;
+}
+
+fun main() {
+    assert(extracted(7) == 7);
+    assert(nested(9) == 9);
+    var mark := 0;
+    returning(1, &var mark);
+    assert(mark == 1);
+}

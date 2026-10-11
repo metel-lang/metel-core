@@ -1,0 +1,11 @@
+aspect Marker {}
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Copy;
+extend<T> Witness<T>: !Copy where T: Marker;
+
+fun denied<T: Marker>(value: Witness<T>) {
+    let first := value;
+    let again := value; // ERROR[T0019]
+}
+
+fun main() {}

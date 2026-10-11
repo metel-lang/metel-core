@@ -1,0 +1,10 @@
+import std::core::Copy as Repeatable;
+
+public struct Token { public count: i64 }
+extend Token: Repeatable;
+
+public fun copied<T>(value: Token, unused: T) -> i64 {
+    let first := value;
+    let again := value;
+    first.count + again.count
+}

@@ -259,6 +259,7 @@ pub(super) fn construct_fun_decl(
             neg_bounds: vec![],
             record_kinds: vec![],
             assoc_projections: vec![],
+            body_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
@@ -383,7 +384,11 @@ pub(super) fn construct_fun_decl(
         FunBody::Generic(fun.body.clone())
     };
 
-    let abstract_signature = if scheme.quantified_vars.is_empty() {
+    let definition_scheme = ctx
+        .resolved_facts
+        .definition_template(&fun.span)
+        .map_or(&scheme, |(definition, _)| definition);
+    let abstract_signature = if definition_scheme.quantified_vars.is_empty() {
         None
     } else {
         let binder = ctx
@@ -401,7 +406,7 @@ pub(super) fn construct_fun_decl(
         binder
             .map(|binder| {
                 super::super::handoff::freeze_declaration_signature(
-                    &scheme,
+                    definition_scheme,
                     binder,
                     fun,
                     ctx.registry,
@@ -415,10 +420,11 @@ pub(super) fn construct_fun_decl(
     let abstract_body = abstract_signature.as_ref().map(|signature| {
         super::super::handoff::prepare_abstract_body(
             signature,
-            &scheme,
+            definition_scheme,
             fun,
             ctx.resolved_facts,
             ctx.identity,
+            ctx.registry,
         )
     });
     Ok(TypedDecl::Fun(TypedFunDecl {
@@ -524,7 +530,11 @@ pub(super) fn construct_impl_decl(
     let mut methods = ib
         .methods
         .iter()
-        .map(|m| construct_impl_method(m, &target_name, defers_bodies, ctx))
+        .map(|method| {
+            let mut typed = construct_impl_method(method, &target_name, defers_bodies, ctx)?;
+            retain_abstract_method(method, ib, &mut typed, ctx)?;
+            Ok(typed)
+        })
         .collect::<Result<Vec<_>, _>>()?;
     // Default aspect-method bodies are constructed eagerly against a concrete `self`
     // type today (see `construct_default_aspect_method`) — not sound to do against a
@@ -598,6 +608,105 @@ pub(super) fn construct_impl_decl(
         methods,
         span: ib.span.clone(),
     }))
+}
+
+fn retain_abstract_method(
+    method: &FunDecl,
+    implementation: &ImplBlock,
+    typed: &mut TypedFunDecl,
+    ctx: &mut ConstructCtx,
+) -> Result<(), MetelError> {
+    if !matches!(typed.body, FunBody::Generic(_)) {
+        return Ok(());
+    }
+    let inherited = inherited_method_identity(method, implementation, ctx);
+    let identity = inherited.as_ref().map_or(ctx.identity, |(_, spans)| {
+        ctx.identity
+            .map(|identity| crate::identity::FrozenIdentity {
+                members: identity.members,
+                binding_spans: spans,
+            })
+    });
+    let facts = ctx.resolved_facts.for_definition(&method.span);
+    let Some((scheme, generics)) = facts.definition_template(&method.span) else {
+        return Ok(());
+    };
+    // The runtime method-group symbol is not a definition identity: conditional
+    // variants have separate lexical bodies and binder-local parameters.
+    let Some(binder) = identity.and_then(|identity| identity.binding_spans.get(&method.span))
+    else {
+        return Ok(());
+    };
+    let mut definition = method.clone();
+    definition.generics.clone_from(generics);
+    let signature = super::super::handoff::freeze_declaration_signature(
+        scheme,
+        binder,
+        &definition,
+        ctx.registry,
+        ctx.current_module,
+        facts.definition_aspect_arguments(&method.span),
+    )?;
+    typed.abstract_body = Some(super::super::handoff::prepare_abstract_body(
+        &signature,
+        scheme,
+        &definition,
+        facts,
+        identity,
+        ctx.registry,
+    ));
+    typed.abstract_signature = Some(signature);
+    Ok(())
+}
+
+fn inherited_method_identity(
+    method: &FunDecl,
+    implementation: &ImplBlock,
+    ctx: &mut ConstructCtx,
+) -> Option<(crate::identity::BindingId, crate::identity::BindingSpans)> {
+    let identity = ctx.identity?;
+    if identity.binding_spans.get(&method.span).is_some()
+        || !ctx.resolved_facts.has_definition_snapshot(&method.span)
+    {
+        return None;
+    }
+    let aspect = implementation.aspect_name.as_deref()?;
+    let declaring_module = ctx
+        .registry
+        .aspect_declaring_module_in(ctx.current_module, aspect)?;
+    let aspect_identity = ctx.registry.resolve_type_id(ctx.current_module, aspect)?;
+    let aspect_name = ctx.symbols?.iter().find_map(|((module, name), id)| {
+        (module == declaring_module && *id == aspect_identity).then_some(name.as_str())
+    })?;
+    let method_name = crate::pipeline::name_resolution::name_resolver::method_symbol_name(
+        aspect_name,
+        None,
+        &method.name,
+    );
+    let source_method = *ctx.symbols?.get(&(declaring_module.clone(), method_name))?;
+    let target = match &implementation.target_type {
+        TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
+            crate::identity::InheritedMethodTarget::Record
+        }
+        TypeExpr::Named(name, _) => crate::identity::InheritedMethodTarget::Nominal(
+            ctx.registry.resolve_type_id(ctx.current_module, name)?,
+        ),
+        _ => return None,
+    };
+    let ordinal = ctx
+        .inherited_method_ordinals
+        .entry((source_method, target))
+        .or_default();
+    let allocated = crate::identity::allocate_inherited_body(
+        source_method,
+        target,
+        ctx.current_module,
+        *ordinal,
+        method,
+        identity.binding_spans,
+    );
+    *ordinal += 1;
+    Some(allocated)
 }
 
 pub(super) fn construct_impl_method(

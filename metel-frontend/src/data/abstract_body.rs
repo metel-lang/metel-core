@@ -14,6 +14,11 @@ pub struct AbstractParameterId {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AbstractType {
+    /// The callable signature alone cannot describe environment ownership.
+    Closure {
+        signature: Box<Self>,
+        owned_captures: Vec<Self>,
+    },
     Concrete(Type),
     Parameter(AbstractParameterId),
     Never,
@@ -108,15 +113,54 @@ pub struct AbstractRowRemainder {
     pub removed: Vec<String>,
 }
 
+/// Removing no labels is a typed row equality. Both preparation and ownership
+/// use its equivalence class, including synthesized open-row parameters.
+pub(crate) fn equal_parameter_facts(
+    facts: &[AbstractParameterFacts],
+    parameter: AbstractParameterId,
+) -> Vec<&AbstractParameterFacts> {
+    let mut equal = std::collections::HashSet::from([parameter]);
+    let mut pending = vec![parameter];
+    while let Some(current) = pending.pop() {
+        for fact in facts {
+            for remainder in &fact.remainders {
+                if !remainder.removed.is_empty() {
+                    continue;
+                }
+                let other = if current == fact.parameter {
+                    Some(remainder.source)
+                } else if current == remainder.source {
+                    Some(fact.parameter)
+                } else {
+                    None
+                };
+                if let Some(other) = other
+                    && equal.insert(other)
+                {
+                    pending.push(other);
+                }
+            }
+        }
+    }
+    facts
+        .iter()
+        .filter(|fact| equal.contains(&fact.parameter))
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbstractParameterFacts {
     pub parameter: AbstractParameterId,
     pub record_kind: bool,
+    /// A structural row variable, distinct from a possibly nominal record type.
+    pub row_kind: bool,
     pub open_row_parameter: bool,
     pub positive: Vec<AbstractBound>,
     pub negative: Vec<AbstractBound>,
     pub associated_equalities: Vec<AbstractAssociatedEquality>,
     pub projection: Option<AbstractAssociatedProjection>,
+    /// All origins of a solved associated result, including branch alternatives.
+    pub projection_origins: Vec<AbstractAssociatedProjection>,
     pub opaque_return: Option<(AbstractAspect, Type)>,
     pub remainders: Vec<AbstractRowRemainder>,
 }
@@ -133,7 +177,19 @@ pub enum AbstractBodyPreparation {
 pub struct AbstractBody {
     pub binder: BindingId,
     pub parameters: Vec<AbstractBinding>,
+    /// Source spelling is presentation metadata; consumers key state by identity.
+    pub binding_names: std::collections::HashMap<BindingId, String>,
+    pub nominal_ownership: Vec<AbstractNominalOwnership>,
     pub block: AbstractBlock,
+}
+
+/// Definition-time coherence facts. An unknown conditional result is not a
+/// negative proof, especially for a destructor on an enclosing place.
+#[derive(Debug, Clone)]
+pub struct AbstractNominalOwnership {
+    pub ty: AbstractType,
+    pub copy: Option<bool>,
+    pub drop: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -152,6 +208,11 @@ pub struct AbstractBlock {
 
 #[derive(Debug, Clone)]
 pub enum AbstractStatement {
+    DestructureRecord {
+        pattern: AbstractRecordPattern,
+        mutable: bool,
+        value: AbstractExpr,
+    },
     Bind {
         binding: AbstractBinding,
         mutable: bool,
@@ -163,6 +224,33 @@ pub enum AbstractStatement {
         body: AbstractBlock,
         span: Span,
     },
+    For {
+        init: Option<Box<AbstractStatement>>,
+        condition: Option<Box<AbstractExpr>>,
+        step: Option<Box<AbstractExpr>>,
+        body: AbstractBlock,
+        span: Span,
+    },
+    ForIn {
+        binding: AbstractBinding,
+        iterable: AbstractExpr,
+        mode: AbstractIterationMode,
+        body: AbstractBlock,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbstractIterationMode {
+    BorrowedArrayElement,
+    OwnedArrayElement,
+}
+
+#[derive(Debug, Clone)]
+pub struct AbstractRecordPattern {
+    pub bindings: Vec<AbstractBinding>,
+    pub discarded: Vec<(String, AbstractType)>,
+    pub remainder: Option<AbstractBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -173,9 +261,43 @@ pub struct AbstractExpr {
 }
 
 #[derive(Debug, Clone)]
+pub enum AbstractMatchPattern {
+    Wildcard,
+    Literal(Literal),
+    Binding(AbstractBinding),
+    Variant {
+        identity: crate::identity::VariantId,
+        bindings: Vec<(crate::identity::FieldId, AbstractBinding)>,
+    },
+}
+
+#[derive(Debug, Clone)]
 pub enum AbstractExprKind {
+    Match {
+        scrutinee: Box<AbstractExpr>,
+        arms: Vec<(AbstractMatchPattern, AbstractBlock)>,
+    },
     Binding(BindingId),
     Literal(Literal),
+    /// A selected global/static callable is not an owned lexical binding.
+    StaticMember {
+        owner: SymbolId,
+        member: String,
+    },
+    UnitVariant(crate::identity::VariantId),
+    NumericCast(Box<AbstractExpr>),
+    /// The built-in array length operation borrows an existing array, but
+    /// evaluating an owned temporary still consumes its construction inputs.
+    ArrayLength(Box<AbstractExpr>),
+    Binary {
+        operator: crate::data::ast::BinOp,
+        left: Box<AbstractExpr>,
+        right: Box<AbstractExpr>,
+    },
+    Unary {
+        operator: crate::data::ast::UnaryOp,
+        operand: Box<AbstractExpr>,
+    },
     Tuple(Vec<AbstractExpr>),
     Array(Vec<AbstractExpr>),
     RepeatArray {
@@ -200,11 +322,16 @@ pub enum AbstractExprKind {
         source: Box<AbstractExpr>,
         fields: Vec<String>,
     },
-    /// Plain local rebinding restores the tracked binding. More elaborate
-    /// assignment places remain pending until their own selection facts are
-    /// retained.
+    /// Rebinding retains the root binding and projected target place. The
+    /// target type and selection evidence describe the assignment at the
+    /// definition site rather than reconstructing it from the RHS.
     Assign {
+        operator: crate::data::ast::AssignOp,
         target: BindingId,
+        projections: Vec<Projection>,
+        target_type: AbstractType,
+        selection: Option<AbstractFieldSelection>,
+        inputs: Vec<AbstractExpr>,
         value: Box<AbstractExpr>,
     },
     Closure(AbstractClosure),
@@ -223,6 +350,11 @@ pub enum AbstractExprKind {
         temporary: bool,
     },
     Dereference(Box<AbstractExpr>),
+    Index {
+        object: Box<AbstractExpr>,
+        index: Box<AbstractExpr>,
+        auto_dereferences: usize,
+    },
     TupleAccess {
         object: Box<AbstractExpr>,
         index: usize,
@@ -242,9 +374,15 @@ pub struct AbstractMethodCall {
     pub receiver: Box<AbstractExpr>,
     pub receiver_mode: AbstractReceiverMode,
     pub method: String,
-    pub aspect: SymbolId,
+    pub origin: AbstractMethodOrigin,
     pub signature: AbstractType,
     pub arguments: Vec<AbstractArgument>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AbstractMethodOrigin {
+    Aspect(SymbolId),
+    Nominal(SymbolId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,12 +434,18 @@ pub struct AbstractClosure {
 #[derive(Debug, Clone)]
 pub struct AbstractCapture {
     pub binding: BindingId,
+    pub name: String,
+    pub span: Span,
     pub mode: AbstractCaptureMode,
+    /// The captured value's type at closure entry, before the closure body can
+    /// narrow or reassign the enclosing binding.
+    pub ty: AbstractType,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbstractCaptureMode {
     Owned,
+    ImplicitCopy,
     SharedReference,
     MutableReference,
     Clone,
@@ -343,6 +487,18 @@ impl AbstractExpr {
                     .projections
                     .extend(std::iter::repeat_n(Projection::Deref, *auto_dereferences));
                 place.projections.push(Projection::TupleIndex(*index));
+                Some(place)
+            }
+            AbstractExprKind::Index {
+                object,
+                auto_dereferences,
+                ..
+            } => {
+                let mut place = object.place()?;
+                place
+                    .projections
+                    .extend(std::iter::repeat_n(Projection::Deref, *auto_dereferences));
+                place.projections.push(Projection::OpaqueIndex);
                 Some(place)
             }
             AbstractExprKind::FieldAccess {

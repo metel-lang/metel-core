@@ -28,6 +28,50 @@ use super::{
 
 // ── harness ─────────────────────────────────────────────────────────────────
 
+#[test]
+fn inherited_default_locals_are_distinct_across_implementation_modules() {
+    let source = "struct Box { value: i64 } fun body(value: i64) -> i64 { value }";
+    let fixture = Fixture::build(source);
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let crate::data::ast::Decl::Fun(method) = &program.decls[1] else {
+        panic!("function")
+    };
+    let source_method = fixture.names.symbols[&(vec![], "body".to_string())];
+    let target = fixture.names.symbols[&(vec![], "Box".to_string())];
+    let allocate = |module: &str| {
+        super::allocate_inherited_body(
+            source_method,
+            super::InheritedMethodTarget::Nominal(target),
+            &[module.to_string()],
+            0,
+            method,
+            &fixture.alloc.binding_spans,
+        )
+    };
+    let (left, left_spans) = allocate("left");
+    let (right, right_spans) = allocate("right");
+    let (again, again_spans) = allocate("left");
+    assert_ne!(left, right);
+    assert_eq!(left, again);
+    assert_ne!(
+        left_spans.get(&method.params[0].span),
+        right_spans.get(&method.params[0].span)
+    );
+    assert_eq!(
+        left_spans.get(&method.params[0].span),
+        again_spans.get(&method.params[0].span)
+    );
+    let tail = method.body.tail.as_ref().expect("tail");
+    assert_eq!(
+        left_spans.get(tail.span()),
+        left_spans.get(&method.params[0].span)
+    );
+    assert_eq!(
+        right_spans.get(tail.span()),
+        right_spans.get(&method.params[0].span)
+    );
+}
+
 /// One parsed + resolved + allocated single-module program, with the interner
 /// used to build it so tests can turn a [`NameId`] back into a spelling.
 struct Fixture {
@@ -498,6 +542,37 @@ fn impl_method_params_and_locals_are_allocated_under_method_symbols() {
     assert_eq!(a.map().references_to(self_binding).count(), 1);
     assert_eq!(a.map().references_to(amount).count(), 1);
     assert_eq!(a.map().references_to(total).count(), 1);
+}
+
+#[test]
+fn impl_method_body_binder_does_not_index_literals_as_definitions() {
+    let source = "struct Holder {} extend Holder { fun probe() { 123; } }";
+    let fixture = Fixture::build(source);
+    assert!(
+        fixture
+            .alloc
+            .positions
+            .resolve("test.mtl", source.find("123").unwrap())
+            .is_none()
+    );
+}
+
+#[test]
+fn impl_method_variants_have_distinct_stable_body_and_local_identities() {
+    let source = "struct Holder<T> { value: T } extend<T: Copy> Holder<T> { fun probe<U>(self, value: U) { let local := value; local; } } extend<T: !Copy> Holder<T> { fun probe<U>(self, value: U) { let local := value; local; } }";
+    let original = Fixture::build(source);
+    let edited = Fixture::build(&format!(
+        "fun unrelated() {{ let other := 1; }}\n\n{source}"
+    ));
+    for name in ["probe", "self", "value", "local"] {
+        let ids = original.bindings_named(name);
+        assert_eq!(ids.len(), 2, "{name}: {ids:?}");
+        assert_ne!(ids[0], ids[1]);
+        assert_eq!(ids, edited.bindings_named(name), "{name}");
+    }
+    for id in original.bindings_named("local") {
+        assert_eq!(original.map().references_to(id).count(), 1);
+    }
 }
 
 #[test]

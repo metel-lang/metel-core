@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.expressions.control-flow.break-continue-and-return.dynamics-1"]
+
+[expect]
+status = "success"

@@ -1,0 +1,4 @@
+public struct Box<T> { public value: T }
+extend<T> Box<T> {
+    public fun consume(self) -> Box<T> { self }
+}

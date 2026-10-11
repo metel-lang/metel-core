@@ -1,0 +1,21 @@
+// Inherited defaults retain their definition contracts independently of callers.
+fun identity<T>(value: T) -> T { value }
+aspect Echo {
+    fun echo<V>(self, value: V) -> V { identity(value) }
+}
+aspect Repeat<A> {
+    fun repeat(self, value: A) { let first := value; let second := value; }
+}
+struct Box<T> { public value: T }
+struct Other<T> { public value: T }
+extend<T> Box<T>: Echo {}
+extend<T> Other<T>: Echo {}
+extend<row R> { ..R }: Echo {}
+extend<T: Copy> Box<T>: Repeat<T> {}
+
+fun main() {
+    assert(Box { value = 1 }.echo("box") == "box");
+    assert(Other { value = "other" }.echo(2) == 2);
+    assert(({ count = 5 }).echo("record") == "record");
+    Box { value = 3 }.repeat(4);
+}

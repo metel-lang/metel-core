@@ -1932,6 +1932,8 @@ fn canonical_generic_bound(bound: &Bound, env: &SignatureEnv) -> String {
 }
 
 mod declarations;
+mod structural_binders;
+mod structural_definitions;
 pub(super) use declarations::collect_aspect_type_arguments;
 use declarations::{infer_decl, rewrite_impl_aspect_returns, type_expr_contains_impl_aspect};
 
@@ -2722,6 +2724,20 @@ fn root_binding_for_write(expr: &Expr) -> Option<(&str, &Span)> {
     }
 }
 
+fn original_record_field_type(object: &Expr, field: &str, ctx: &InferContext) -> Option<InferType> {
+    let Expr::Ident(name, _) = object else {
+        return None;
+    };
+    let declared = ctx.lookup_mono_raw(name)?;
+    let InferType::Record(fields) = ctx.apply_cached_subst(&declared) else {
+        return None;
+    };
+    fields
+        .into_iter()
+        .find(|(name, _)| name == field)
+        .map(|(_, ty)| ty)
+}
+
 fn infer_field_assign_type(
     object: &Expr,
     field: &str,
@@ -2753,19 +2769,7 @@ fn infer_field_assign_type(
     if let InferType::Record(fields) = &peeled {
         // A direct write can restore an anonymous record's removed label; the
         // binding's original row supplies its type, not the narrowed read row.
-        let declared_field = if let Expr::Ident(name, _) = object {
-            ctx.lookup_mono_raw(name).and_then(|declared| {
-                let InferType::Record(declared_fields) = ctx.apply_cached_subst(&declared) else {
-                    return None;
-                };
-                declared_fields
-                    .into_iter()
-                    .find(|(name, _)| name == field)
-                    .map(|(_, ty)| ty)
-            })
-        } else {
-            None
-        };
+        let declared_field = original_record_field_type(object, field, ctx);
         return fields
             .iter()
             .find(|(name, _)| name == field)
@@ -2800,6 +2804,7 @@ fn infer_field_assign_type(
             .get_struct_fields(brand)
             .and_then(|fields| fields.iter().find(|e| e.name == field).cloned())
         {
+            ctx.record_definition_nominal_field(target_span.clone(), entry.id);
             return Ok(entry.ty);
         }
         return Err(MetelError::type_error(
@@ -2841,6 +2846,7 @@ fn infer_field_assign_type(
         target_span,
         "assign to",
     )?;
+    ctx.record_definition_nominal_field(target_span.clone(), field_entry.id);
     let raw_ty = field_entry.ty.clone();
     if let Some(type_params) = resolved_type_params {
         let mut remap = Substitution::new();
@@ -3156,4 +3162,4 @@ fn infer_type_name(ty: &InferType) -> Option<&str> {
 /// for error messages (the typechecker uses GenericParam.bounds for enforcement).
 mod lowering;
 
-pub(super) use lowering::lower_program;
+pub(super) use lowering::lower_with_definition_sites;

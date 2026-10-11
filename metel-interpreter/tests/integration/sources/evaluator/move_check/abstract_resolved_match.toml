@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.expressions.pattern-matching.dynamics-1"]
+
+[expect]
+status = "success"

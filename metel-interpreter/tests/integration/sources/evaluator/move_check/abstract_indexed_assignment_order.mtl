@@ -1,0 +1,21 @@
+fun rhs<T>(value: T, mark: &var i64) -> T {
+    *mark := *mark * 10 + 1;
+    value
+}
+
+fun index(mark: &var i64) -> u64 {
+    *mark := *mark * 10 + 2;
+    0u64
+}
+
+fun write<T>(values: &var [T; 1], value: T, mark: &var i64) {
+    values[index(mark)] := rhs(value, mark);
+}
+
+fun main() {
+    var values := [0];
+    var mark := 0;
+    write(&var values, 7, &var mark);
+    assert(mark == 12);
+    assert(values[0u64] == 7);
+}

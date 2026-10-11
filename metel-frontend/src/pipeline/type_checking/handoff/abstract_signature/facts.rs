@@ -20,6 +20,7 @@ struct FactFreezer<'a> {
     module: &'a [String],
     aspect_arguments: Option<&'a (AspectTypeArguments, AspectTypeArguments)>,
     scheme: &'a TypeScheme,
+    row_parameters: std::collections::HashSet<usize>,
 }
 
 pub(in crate::pipeline::type_checking) fn freeze_declaration_signature(
@@ -57,6 +58,18 @@ pub(in crate::pipeline::type_checking) fn freeze_declaration_signature(
         module,
         aspect_arguments,
         scheme,
+        row_parameters: scheme
+            .param_names
+            .iter()
+            .enumerate()
+            .filter(|(_, name)| {
+                declaration
+                    .generics
+                    .iter()
+                    .any(|generic| generic.is_row && generic.name == **name)
+            })
+            .map(|(index, _)| index)
+            .collect(),
     };
     let facts = ordered
         .iter()
@@ -269,6 +282,7 @@ impl FactFreezer<'_> {
             .assoc_projections
             .get(index)
             .and_then(Option::as_ref)
+            .filter(|(_, _, _, placeholder)| *placeholder == self.scheme.quantified_vars[index])
             .map(|(base, aspect, name, _)| {
                 Ok(AbstractAssociatedProjection {
                     base: self.parameter_id(*base)?,
@@ -277,6 +291,10 @@ impl FactFreezer<'_> {
                 })
             })
             .transpose()?;
+        let mut positive = bounds(&self.scheme.bounds, Polarity::Positive)?;
+        let mut negative = bounds(&self.scheme.neg_bounds, Polarity::Negative)?;
+        let projection_origins = self.projection_origins(index, projection.as_ref())?;
+        self.common_projection_bounds(&projection_origins, &mut positive, &mut negative)?;
         let opaque_return = self
             .scheme
             .opaque_returns
@@ -303,6 +321,7 @@ impl FactFreezer<'_> {
             .collect::<Result<_, _>>()?;
         Ok(AbstractParameterFacts {
             parameter: self.parameter_id(index)?,
+            row_kind: self.row_parameters.contains(&index),
             record_kind: self
                 .scheme
                 .record_kinds
@@ -315,19 +334,125 @@ impl FactFreezer<'_> {
                 .get(index)
                 .copied()
                 .unwrap_or(false),
-            positive: bounds(&self.scheme.bounds, Polarity::Positive)?,
-            negative: bounds(&self.scheme.neg_bounds, Polarity::Negative)?,
+            positive,
+            negative,
             associated_equalities,
             projection,
+            projection_origins,
             opaque_return,
             remainders,
         })
+    }
+
+    fn projection_origins(
+        &self,
+        index: usize,
+        primary: Option<&AbstractAssociatedProjection>,
+    ) -> Result<Vec<AbstractAssociatedProjection>, MetelError> {
+        let mut origins: Vec<_> = primary.into_iter().cloned().collect();
+        for (base, aspect, name, variable) in &self.scheme.body_projections {
+            if *variable != self.scheme.quantified_vars[index] {
+                continue;
+            }
+            let origin = AbstractAssociatedProjection {
+                base: self.parameter_id(*base)?,
+                aspect: self.aspect(aspect, *base, Polarity::Positive)?,
+                name: name.clone(),
+            };
+            if !origins.contains(&origin) {
+                origins.push(origin);
+            }
+        }
+        Ok(origins)
+    }
+
+    fn common_projection_bounds(
+        &self,
+        origins: &[AbstractAssociatedProjection],
+        positive: &mut Vec<AbstractBound>,
+        negative: &mut Vec<AbstractBound>,
+    ) -> Result<(), MetelError> {
+        let mut common: Option<(Vec<AbstractBound>, Vec<AbstractBound>)> = None;
+        for origin in origins {
+            let mut grants = (Vec::new(), Vec::new());
+            self.projection_bounds(origin, &mut grants.0, &mut grants.1)?;
+            if let Some((positive, negative)) = &mut common {
+                positive.retain(|bound| {
+                    grants
+                        .0
+                        .iter()
+                        .any(|other| same_projection_grant(bound, other))
+                });
+                negative.retain(|bound| {
+                    grants
+                        .1
+                        .iter()
+                        .any(|other| same_projection_grant(bound, other))
+                });
+            } else {
+                common = Some(grants);
+            }
+        }
+        if let Some((positive_grants, negative_grants)) = common {
+            positive.extend(positive_grants);
+            negative.extend(negative_grants);
+        }
+        Ok(())
+    }
+
+    fn projection_bounds(
+        &self,
+        projection: &AbstractAssociatedProjection,
+        positive: &mut Vec<AbstractBound>,
+        negative: &mut Vec<AbstractBound>,
+    ) -> Result<(), MetelError> {
+        let module = self
+            .registry
+            .aspect_declaring_module_in(self.module, &projection.aspect.name)
+            .ok_or_else(|| MetelError::internal("associated projection has no declaring module"))?;
+        let declaration = self
+            .registry
+            .aspect_assoc_type_decls_in(self.module, &projection.aspect.name)
+            .and_then(|members| members.iter().find(|member| member.name == projection.name))
+            .ok_or_else(|| MetelError::internal("associated projection has no declared member"))?;
+        for bound in &declaration.bounds {
+            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(name, arguments)) = &bound.head
+            else {
+                return Err(MetelError::internal(
+                    "associated member bound contract is not retained",
+                ));
+            };
+            if !arguments.is_empty() || !bound.assoc_bindings.is_empty() {
+                return Err(MetelError::internal(
+                    "associated member bound arguments are not retained",
+                ));
+            }
+            let identity = self
+                .registry
+                .resolve_type_id(module, name)
+                .ok_or_else(|| MetelError::internal("associated member bound has no identity"))?;
+            let fact = AbstractBound::Aspect(AbstractAspect {
+                identity,
+                name: name.clone(),
+                arguments: Vec::new(),
+            });
+            if bound.polarity == Polarity::Positive {
+                positive.push(fact);
+            } else {
+                negative.push(fact);
+            }
+        }
+        Ok(())
     }
 }
 
 fn has_unresolved_nominal(ty: &crate::data::abstract_body::AbstractType) -> bool {
     use crate::data::abstract_body::AbstractType;
     match ty {
+        AbstractType::Closure {
+            signature,
+            owned_captures,
+        } => has_unresolved_nominal(signature) || owned_captures.iter().any(has_unresolved_nominal),
         AbstractType::Named {
             identity,
             arguments,
@@ -349,6 +474,15 @@ fn has_unresolved_nominal(ty: &crate::data::abstract_body::AbstractType) -> bool
         | AbstractType::MutReference(inner) => has_unresolved_nominal(inner),
         AbstractType::Dyn { .. } => true,
         AbstractType::Concrete(_) | AbstractType::Parameter(_) | AbstractType::Never => false,
+    }
+}
+
+fn same_projection_grant(first: &AbstractBound, second: &AbstractBound) -> bool {
+    match (first, second) {
+        (AbstractBound::Aspect(first), AbstractBound::Aspect(second)) => {
+            first.identity == second.identity && first.arguments == second.arguments
+        }
+        _ => first == second,
     }
 }
 
@@ -378,6 +512,7 @@ mod tests {
             module: &[],
             scheme: &scheme,
             aspect_arguments: None,
+            row_parameters: std::collections::HashSet::new(),
         };
         let unresolved = InferType::Array(Box::new(InferType::Named(
             "T::Item".to_string(),

@@ -341,8 +341,15 @@ not solver allocation order. Source spans join temporary tables only; retained
 references use frozen binding identities.
 
 Generic free functions currently retain abstract signatures and parameter facts,
-plus a staged body preparation for bindings and plain rebinding, record/nominal
-construction, nominal residual projections, closures with explicit capture modes,
+plus a staged body preparation for bindings and projected assignment to named
+fields, tuple slots, and explicit dereferences.
+Annotated local bindings retain their solved declared types. An exact match
+with the initializer needs no coercion operation; differing types remain pending
+until their read-copy, reborrow or erasure facts can be retained explicitly.
+Assignment targets carry their solved type and field-selection evidence;
+indexed and compound assignments
+remain pending. The body also retains record/nominal construction, nominal
+residual projections, closures with typed capture-entry states and explicit capture modes,
 control flow, ordinary calls, borrows and field/tuple projections. Call contracts preserve
 parameter passing modes and callable axes; places retain a `BindingId` root and
 the shared ownership projection algebra. Temporary borrows materialize storage
@@ -355,9 +362,185 @@ resolved aspect identity when their own generic parameters have no declared
 requirements. Calls whose method generics have bounds remain `Pending` until
 their instantiated fact environment is retained too.
 Missing selection/coercion facts or unresolved associated arguments produce
-`Pending`, never invented types or an ownership verdict. The existing generic
-move-check reconstruction remains active until its consumer migration is complete.
-This artifact is not used for runtime evaluation.
+`Pending`, never invented types or an ownership verdict. Move checking consumes
+supported retained free-function and impl-method bodies directly and records
+their spans in
+`checked_abstract_generic_bodies`. It keys the shared flow lattice by resolved
+binding identity, renders source names only in diagnostics, and queries explicit
+parameter/field-wise `Copy` grants without constructing sample types. Incomplete
+operation or nominal-entailment coverage rolls back that attempted analysis before
+the existing reconstruction path runs. This staged migration preserves the current
+incomplete-analysis policy. The artifact is not used for runtime evaluation.
+
+Structural row remainders inherit field-wise `Copy` through retained subtraction
+equations, including chains and zero-removal equalities. Excluded labels must all
+have been removed before that grant covers the remainder. This proof is directional:
+it never grants `Copy` to the source from a bound on its remainder.
+For a closed source, the retained equation determines the remainder's actual
+fields; their types decide ownership, including mixed and empty remainders.
+In the opposite direction, a row equation proves Copy of its source when its
+known heads and retained remainder are Copy. Alternative decompositions are
+positive proof routes, not an ordering-dependent choice of one shape.
+
+Array reads retain their array/element types, auto-dereference depth and an
+already-typed `u64` index operation. The consumer evaluates indices even inside
+longer projection chains and uses the shared opaque-index place projection to
+reject non-`Copy` element moves. Indexed writes, including field and tuple writes
+through an indexed base, retain a separate ordered list of target-input operations.
+The abstract consumer follows the interpreter: consume the RHS first, then
+evaluate target inputs once, then reinitialize the place. A diverging RHS skips
+the target entirely. Storage conversions, including closure environments erased
+by a raw function type, remain pending without a retained contract. Index
+coercions and empty-array validation remain pending. Temporary-array indexing is
+retained when the selected element has a declared or structural Copy proof: the
+base construction is consumed once before observing the index. Non-Copy temporary
+element accesses and other temporary projections remain pending.
+
+Numeric casts retain a distinct operation with solved primitive source and result
+types. Their operands are observed once, including call effects inside explicit
+array-index casts. Generic and nonnumeric casts remain pending rather than erasing
+`From` dispatch or non-Copy source ownership.
+
+Unguarded matches retain definition-resolved literal, wildcard, whole-binding
+and enum-variant patterns with variant/field identities and solved binding types.
+Bare variant resolution stays in inference. The consumer observes the scrutinee
+once, applies pattern moves to the saved place and scopes bindings per arm, then
+joins only continuing arms. Enum exhaustiveness uses the retained variant set;
+primitive matches require a catch-all (or both boolean literals). Guards,
+borrowed payload extraction and structural/positional patterns remain pending.
+Nominal types without applicable ownership impl candidates retain negative
+`Copy`/`Drop` coherence facts by declaration identity, allowing ordinary generic
+struct moves and in-place enum payload extraction without reconstruction.
+Unrestricted positive impls separately retain resolved target/aspect identity
+and universal target coverage, allowing unconditional nominal `Copy` and `Drop`
+queries. Conditional candidates with distinct ordinary target parameters and inline
+or ordinary `where` aspect-only bounds retain polarity and conditions in target-argument
+order. Applicability is proved or disproved from identity-resolved definition grants,
+including negative bounds. A disproved conjunct defeats unknown siblings; a missing
+grant does not prove absence. Applicable negative candidates override positive ones;
+unknown overrides block positive grants. Destructor absence requires all positive
+candidates to be disproved or an applicable negative override. Concrete specializations,
+repeated/nested target arguments, associated bindings, row equations, field-wise conditions
+and kind restrictions remain pending. Every candidate uses
+the resolved aspect identity, including imported aliases; a same-named marker
+cannot grant builtin ownership permission. Record blankets block only record
+kinds. Absence of a declared bound never proves absence of a conditional destructor.
+As in the concrete checker, unreachable duplicate
+arms are conservatively analyzed rather than pruned.
+
+Impl-method variants have separate structural lexical body binders, allocated
+under their shared method-group symbol with a group-local definition ordinal.
+Their parameters and locals are owned by those binders. Abstract construction
+uses the retained binder rather than the flattened runtime method symbol, so
+conditional variants cannot alias each other's generic parameters or locals.
+Definition retention is independent of caller polymorphism: a declared generic
+used only inside the method body still retains its binder and bounds.
+Record-target aspect methods are inferred at definition time through a separate
+definition-local `Self` parameter; this does not replace their call-site schemes
+or runtime dispatch. The receiver's nominal identity is distinct from its field
+row, even for a pure-tail target. Field-wise `Copy` evidence is not a nominal
+`Copy` grant, and a method-owned parameter may shadow an impl row name.
+Shadowed impl names are alpha-renamed only in definition-local enclosing facts;
+the source method and runtime/call schemes are not rewritten. Selected structural
+call contracts retain the candidate's declaring aspect identity and receiver
+mode. Registration-ordered provenance is merged alongside candidates, because
+module-local inference variable numbers cannot identify a declaration globally.
+
+Expanded inherited defaults have definition-local fact snapshots: their copied
+source spans must not let a later impl overwrite an earlier impl's selected
+types or contracts. The snapshot is frozen immediately after that definition's
+inference, before construction. Lexical identities are
+allocated under the resolved source aspect-method identity, the resolved nominal
+target or record-target group,
+the canonical implementation module and a pair-local impl ordinal. Locals are
+reallocated under that owner; source-global references keep their original
+resolution. The module is part of the key because disjoint impl variants can
+reside in different modules whose ordinal counters both start at zero.
+
+Numeric compound assignments retain the assignment operator and read the target
+after the RHS and target inputs have been evaluated. The target read checks moves
+without re-evaluating indices. Nonnumeric compound operators remain pending until
+their ownership-relevant operator contracts are retained.
+
+Value-producing loops retain their solved result type and consume exact-type break
+values. Nested loops establish their own result contracts, including Unit for
+statement loops, and closures do not inherit an enclosing loop's contract. Break
+coercions remain pending. A diverging break operand does not create a loop exit;
+likewise, a diverging assignment index prevents later target inputs and restoration.
+
+Record destructuring retains resolved binding identities, explicit discards and
+typed owned remainders for closed rows and known open-row heads. Destructuring
+has a pattern-specific shape retained from inference, separate from the source
+receiver's type. Structural method inference installs the target's field-row
+decomposition without asserting equality between nominal `Self` and its row.
+Brand-erasing destructuring remains pending when ownership lacks destructor-
+absence evidence for a possibly nominal receiver; field-wise `Copy` is not such
+evidence.
+A named remainder consumes the source once; without one, named and explicitly discarded fields are
+consumed separately. Temporary constructions consume their inputs once, and place
+scrutinees evaluate nested indices once before projecting the selected fields.
+Unknown tails remain part of the remainder type. Parameter-backed open rows can
+be decomposed when a typed row grant and an exact retained subtraction equation
+identify their known heads and tail. Missing field types or remainder equations
+remain pending, as do unresolved remainder ownership entailments. A known non-Copy
+head disproves structural Copy without requiring a tail sample; explicit Copy
+grants still take precedence. Nominal and reference patterns also remain staged.
+
+Built-in operators retain their solved operand and result types. The direct
+consumer visits operand effects without reconstructing a concrete body; operators
+requiring abstract dispatch or additional legality facts remain pending. Array
+`for-in` retains its element binding and iteration mode: unsized-array elements
+are borrowed, while sized arrays follow the existing owned-element rules. Each
+loop pass starts with a fresh element binding and preserves loop-carried moves.
+Non-array iteration dispatch remains pending.
+
+C-style `for` retains an initializer operation, condition, step and body. The
+initializer owns a loop-local scope and runs once. Continue paths unwind body
+locals and join fallthrough before the step; breaks and returns bypass it.
+Restoring the step's lexical scope does not restore pre-body moves: saved
+continue-edge moves preserve reinitializations performed by the body.
+Diverging initializers or conditions do not enter the body. Exact-type
+ascriptions preserve the underlying operation and place; ascriptions requiring
+coercions or a different closure ownership contract remain pending.
+
+Move-check reports distinguish preparation fallbacks from ownership-consumer
+fallbacks and retain their source span and reason. Failed speculative analysis
+rolls back partial results before recording the fallback. `move-check-count`
+uses frozen resolver identities and prints deduplicated abstract successes and
+fallback records; these measurements do not replace the unchecked-body report
+or enable the final completeness guard.
+
+Free functions and impl methods retain a declaration-specific definition scheme
+with source names, including parameters appearing only in row-grant field types.
+Associated facts are rebuilt against that definition's retained quantifiers.
+Body-only associated projections retain separate definition parameters and their
+declared member bounds, resolved in the aspect's declaring module. Static and
+unit-variant paths retain their definition-time selections. Generic native
+prelude schemes acquire nominal identity in `std::core` before instantiation.
+Method definitions also retain inherited positive body grants. This does not
+strengthen the separate call-site scheme. Supported methods use distinct frozen
+body binders under their shared method-group symbol. A selected conditional call
+retains its own receiver mode, rather than the last registered receiver mode.
+Nominal impl receivers acquire the target declaration's resolved identity during
+inference, including inherited defaults. Consuming receivers therefore retain
+ownership facts without a later lookup by type spelling.
+Named method calls likewise select signatures, candidate spans and receiver
+modes by the receiver's known declaration identity, not the caller's imports.
+Borrowed receiver declarations limit access to
+`self` even though inference retains its bare target type. Structural targets,
+default methods, and full method selection coverage remain staged.
+
+The direct consumer retains closure environment ownership separately from the
+callable signature. Direct local aliases and nested captures preserve this
+contract: owned and cloned captures contribute to `Copy`, while reference
+captures limit access without making the closure move-only. Implicit captures
+carry a separate entry snapshot per closure and require a definition-time `Copy`
+proof. Capture bodies are checked in a separate flow state. Aggregate, borrowed,
+reassigned and coerced closure contracts, many-call non-Copy owned capture legality, other derived
+entailments, nominal projections, and remaining method or
+nested-definition artifacts are still staged. A loop with no break targeting it
+retains a definition-time divergence fact so its abstract result is `Never` even
+when inference's unused break-result variable remains unresolved.
 
 Functions with quantified type variables in their scheme are stored as `FunBody::Generic(untyped_block)` rather than `FunBody::Typed(typed_block)`. At each call site the evaluator re-runs the construction pass on the untyped block at the concrete call-site types, producing a `TypedBlock` that is evaluated normally. This is the monomorphization mechanism.
 

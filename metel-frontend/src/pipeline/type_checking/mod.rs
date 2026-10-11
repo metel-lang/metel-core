@@ -268,6 +268,7 @@ fn refresh_scheme_for_export(
         // dropping it would lose `Rest` derivation across modules.
         row_remainders: scheme.row_remainders.clone(),
         assoc_projections: vec![],
+        body_projections: vec![],
         assoc_eq_constraints: vec![],
         // RFC-0037 opaque-return metadata is positional (index-aligned with
         // `quantified_vars`) and stores fully-concrete `Type` values with no
@@ -394,8 +395,9 @@ pub fn check_graph(
 /// `identity` bundles the frozen-identity tables (ADR-0054): the member table
 /// (#1051), so construction stamps field accesses / enum-variant literals with
 /// their `FieldId` / `VariantId` (#1062), and the span → `BindingId` bridge
-/// (#1052), so `TypedExpr::Ident` carries its resolved binding. `None` — the
-/// move-check and diagnostic-tool entry points — leaves every id `None`.
+/// (#1052), so `TypedExpr::Ident` carries its resolved binding. `None` leaves
+/// every id `None`; identity-aware ownership consumers and measurement tools
+/// must supply the frozen tables.
 // arch-implements: ["arch.type-construction.requirement-2"]
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
@@ -1452,7 +1454,8 @@ fn check_impl_with_report(
     // Lowering passes, in order: desugar `impl Aspect` params to fresh anonymous type
     // params; recognize `T::AssocType` projections (RFC-0082 SS3) among known generic
     // parameter names; write inherited aspect defaults out into generic impls (#1329).
-    let program = inference::lower_program(program.clone(), base_registry, current_module_path);
+    let (program, snapshot_sites) =
+        inference::lower_with_definition_sites(program, base_registry, current_module_path);
     let program = &program;
 
     let started = Instant::now();
@@ -1478,6 +1481,7 @@ fn check_impl_with_report(
         imported_schemes,
         current_module_path.to_vec(),
     );
+    ctx.set_definition_snapshot_sites(snapshot_sites);
     ctx.seed_glob_conflicts(deferred_conflicts);
 
     // Pre-pass: register built-in value bindings, build the overload table, and
@@ -1512,17 +1516,7 @@ fn check_impl_with_report(
     // where an expected type exists, so one still unresolved here is a name that means
     // nothing — reachable when it sits somewhere pass 2 never constructs, such as the
     // body of a closure that is never called.
-    if let Some((span, name)) = ctx.unresolved_variant_deferrals(&subst).into_iter().next() {
-        return Err(MetelError::type_error(
-            crate::data::error::TypeErrorCode::T0002,
-            format!(
-                "cannot tell which enum `{name}` belongs to here; there is no expected \
-                 type at this position — qualify it (`Enum::{name}`) or annotate the \
-                 enclosing declaration"
-            ),
-            &span,
-        ));
-    }
+    check_unresolved_variant_deferrals(&ctx, &subst)?;
     let solve_stats = ctx.solve_stats();
     let solve_ns = solve_after_inference.solve_ns + final_solve_ns;
     let inference_ns = infer_total_ns.saturating_sub(solve_after_inference.solve_ns);
@@ -1582,6 +1576,24 @@ fn check_impl_with_report(
             constraints_processed: solve_stats.constraints_processed,
         },
     })
+}
+
+fn check_unresolved_variant_deferrals(
+    ctx: &InferContext,
+    subst: &Substitution,
+) -> Result<(), MetelError> {
+    if let Some((span, name)) = ctx.unresolved_variant_deferrals(subst).into_iter().next() {
+        return Err(MetelError::type_error(
+            crate::data::error::TypeErrorCode::T0002,
+            format!(
+                "cannot tell which enum `{name}` belongs to here; there is no expected \
+                 type at this position — qualify it (`Enum::{name}`) or annotate the \
+                 enclosing declaration"
+            ),
+            &span,
+        ));
+    }
+    Ok(())
 }
 
 /// Build a module's `SchemeEnv` from its own generalized function types, plus

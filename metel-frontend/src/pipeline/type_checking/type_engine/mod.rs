@@ -18,6 +18,8 @@ use std::fmt;
 use std::rc::Rc;
 use std::time::Instant;
 
+mod ownership_rules;
+
 // ── Phase 1: Type Variables ───────────────────────────────────────────────────
 
 /// A type variable representing an unknown type during inference.
@@ -1698,6 +1700,9 @@ pub struct TypeScheme {
     /// `None` means no projection declared for this position. The `position` is
     /// the 0-based index into `quantified_vars` (redundant but explicit).
     pub assoc_projections: Vec<Option<(usize, String, String, TypeVar)>>,
+    /// Definition-only projection origins. Several associated results can share
+    /// a solved variable; retaining every origin prevents last-writer grants.
+    pub body_projections: Vec<(usize, String, String, TypeVar)>,
     /// Per-quantified-var equality constraints (RFC-0082 §4).
     /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
     /// where both sides resolve to the i-th quantified var's projection.
@@ -1741,6 +1746,7 @@ impl TypeScheme {
             neg_bounds: vec![],
             record_kinds: vec![],
             assoc_projections: vec![],
+            body_projections: vec![],
             assoc_eq_constraints: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
@@ -1954,6 +1960,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         neg_bounds: vec![],
         record_kinds: vec![],
         assoc_projections: vec![],
+        body_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
         open_row_params: vec![],
@@ -2747,6 +2754,11 @@ pub struct TypeDefinitionRegistry {
     /// Unlike the name-keyed environments above, this remains unambiguous when
     /// several conditional impls provide the same method name.
     generic_method_schemes_by_span: HashMap<Span, TypeScheme>,
+    method_receivers_by_span: HashMap<Span, ReceiverKind>,
+    method_aspects_by_span: HashMap<Span, SymbolId>,
+    // Candidate variables restart in each module. Provenance follows registration
+    // order instead; registration and merging must append both vectors together.
+    record_method_definition_spans: HashMap<String, Vec<Span>>,
     /// Per-type-param aspect bounds for generic structs and enums.
     /// Key: type `SymbolId`. Value: one Vec<String> per type param (same order as
     /// `struct_type_params`), each containing the aspect names that param must satisfy.
@@ -2866,6 +2878,12 @@ pub struct TypeDefinitionRegistry {
     /// would make a local `From`/`Iterable` declaration invisibly shadow the builtin
     /// one for this bookkeeping — a real regression caught by that exact test.
     impl_aspect_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
+    /// Unlike the legacy name-keyed table, these entries identify the aspect
+    /// and certify an unrestricted target rather than a concrete specialization.
+    unconditional_ownership_impls: HashSet<(SymbolId, SymbolId)>,
+    uncertain_ownership_impls: HashSet<(Option<SymbolId>, SymbolId)>,
+    uncertain_record_ownership_impls: HashSet<SymbolId>,
+    ownership_rules: HashMap<(SymbolId, SymbolId), Vec<Option<ownership_rules::OwnershipRule>>>,
     /// RFC-0036 §2.2/§3.1: per-conditional-impl bound metadata.
     /// Key: `(target_type_id, aspect_name)`. Value: Vec of `(pos_bounds, neg_bounds)`
     /// where `pos_bounds[i]` / `neg_bounds[i]` are the aspect names required / forbidden
@@ -3196,6 +3214,9 @@ impl TypeDefinitionRegistry {
             array_method_scheme_env: HashMap::new(),
             array_method_scheme_variants: HashMap::new(),
             generic_method_schemes_by_span: HashMap::new(),
+            method_receivers_by_span: HashMap::new(),
+            method_aspects_by_span: HashMap::new(),
+            record_method_definition_spans: HashMap::new(),
             type_param_bounds: HashMap::new(),
             type_param_aspect_arguments: HashMap::new(),
             neg_type_param_bounds: HashMap::new(),
@@ -3221,6 +3242,10 @@ impl TypeDefinitionRegistry {
             aspects: HashMap::new(),
             symbolic_named_aspects: HashMap::new(),
             impl_aspect_env: HashMap::new(),
+            unconditional_ownership_impls: HashSet::new(),
+            uncertain_ownership_impls: HashSet::new(),
+            uncertain_record_ownership_impls: HashSet::new(),
+            ownership_rules: HashMap::new(),
             conditional_impl_bounds: HashMap::new(),
             bare_impl_bounds: HashMap::new(),
             record_impl_bounds: HashMap::new(),
@@ -3464,6 +3489,34 @@ impl TypeDefinitionRegistry {
             .insert(method_name, receiver_kind);
     }
 
+    pub(super) fn register_definition_receiver(&mut self, span: Span, receiver: ReceiverKind) {
+        self.method_receivers_by_span.insert(span, receiver);
+    }
+
+    pub(crate) fn definition_receiver(&self, span: &Span) -> Option<&ReceiverKind> {
+        self.method_receivers_by_span.get(span)
+    }
+
+    pub(super) fn register_definition_aspect(&mut self, span: Span, aspect: SymbolId) {
+        self.method_aspects_by_span.insert(span, aspect);
+    }
+
+    pub(crate) fn definition_aspect(&self, span: &Span) -> Option<SymbolId> {
+        self.method_aspects_by_span.get(span).copied()
+    }
+
+    pub(crate) fn record_method_definition(
+        &self,
+        method: &str,
+        candidate: &ArrayMethodSchemeVariant,
+    ) -> Option<&Span> {
+        let index = self
+            .record_method_scheme_variants_for(method)
+            .iter()
+            .position(|registered| std::ptr::eq(registered, candidate))?;
+        self.record_method_definition_spans.get(method)?.get(index)
+    }
+
     pub fn register_array_method(&mut self, method_name: String, fun_ty: InferType) {
         self.array_method_env.insert(method_name, fun_ty);
     }
@@ -3643,6 +3696,26 @@ impl TypeDefinitionRegistry {
         self.method_scheme_variants
             .get(&owner)
             .and_then(|m| m.get(method_name))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    #[must_use]
+    pub fn method_scheme_variants_by_id(
+        &self,
+        owner: SymbolId,
+        method_name: &str,
+    ) -> &[MethodSchemeVariant] {
+        self.method_scheme_variants
+            .get(&owner)
+            .and_then(|methods| methods.get(method_name))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    #[must_use]
+    pub fn method_variant_spans_by_id(&self, owner: SymbolId, method_name: &str) -> &[Span] {
+        self.method_variant_spans
+            .get(&owner)
+            .and_then(|methods| methods.get(method_name))
             .map_or(&[], Vec::as_slice)
     }
 
@@ -4197,6 +4270,142 @@ impl TypeDefinitionRegistry {
             aspect_name,
             &AspectAssumptions::new(),
         )
+    }
+
+    /// Retain argument-independent nominal ownership facts. Conditional
+    /// candidates and negative overrides require a separate proof artifact;
+    /// absence of a proof must not become a proof of absence.
+    #[must_use]
+    pub fn unconditional_nominal_aspect(
+        &self,
+        identity: &crate::data::types::NominalId,
+        aspect: &str,
+    ) -> Option<bool> {
+        let id = identity.get()?;
+        let aspect_id = self.resolve_type_id(&["std".to_string(), "core".to_string()], aspect)?;
+        let key = (id, aspect.to_string());
+        if self
+            .uncertain_ownership_impls
+            .contains(&(Some(id), aspect_id))
+            || self.uncertain_ownership_impls.contains(&(None, aspect_id))
+            || (self.record_structs.contains(&id)
+                && self.uncertain_record_ownership_impls.contains(&aspect_id))
+            || self.bare_impl_bounds.contains_key(aspect)
+            || self.bare_neg_impl_bounds.contains_key(aspect)
+            || (self.record_structs.contains(&id) && self.record_impl_bounds.contains_key(aspect))
+            || self.conditional_impl_bounds.contains_key(&key)
+            || self.neg_conditional_impl_bounds.contains_key(&key)
+            || self.neg_impl_env.contains_key(&key)
+        {
+            return None;
+        }
+        if self
+            .unconditional_ownership_impls
+            .contains(&(id, aspect_id))
+        {
+            return Some(true);
+        }
+        if self.impl_aspect_env.contains_key(&key) {
+            return None;
+        }
+        Some(false)
+    }
+
+    pub(super) fn register_nominal_ownership_candidate(
+        &mut self,
+        module: &[String],
+        implementation: &crate::data::ast::ImplBlock,
+    ) {
+        use crate::data::ast::TypeExpr;
+        let Some(aspect) = implementation.aspect_name.as_deref() else {
+            return;
+        };
+        let Some(aspect_id) = self.resolve_type_id(module, aspect) else {
+            return;
+        };
+        let target = match &implementation.target_type {
+            TypeExpr::Named(name, _) => {
+                if implementation
+                    .generics
+                    .iter()
+                    .any(|generic| &generic.name == name)
+                {
+                    None
+                } else {
+                    self.resolve_type_id(module, name)
+                }
+            }
+            TypeExpr::Record(_) | TypeExpr::OpenRecord(_, _) => {
+                self.uncertain_record_ownership_impls.insert(aspect_id);
+                return;
+            }
+            _ => return,
+        };
+        if let Some(target) = target {
+            let rule = self.nominal_ownership_rule(module, target, implementation);
+            self.ownership_rules
+                .entry((target, aspect_id))
+                .or_default()
+                .push(rule);
+        }
+        if implementation.polarity == crate::data::ast::Polarity::Positive
+            && target.is_some_and(|id| self.unrestricted_ownership_target(id, implementation))
+        {
+            self.unconditional_ownership_impls
+                .insert((target.expect("matched target"), aspect_id));
+        } else {
+            // Aliases share the aspect identity, not its written spelling. A
+            // conditional or negative alias must also block an absence proof.
+            self.uncertain_ownership_impls.insert((target, aspect_id));
+        }
+    }
+
+    fn unrestricted_ownership_target(
+        &self,
+        target_id: SymbolId,
+        implementation: &crate::data::ast::ImplBlock,
+    ) -> bool {
+        use crate::data::ast::TypeExpr;
+        let TypeExpr::Named(_, arguments) = &implementation.target_type else {
+            return false;
+        };
+        if implementation.where_clause.is_some()
+            || !implementation.aspect_type_args.is_empty()
+            || implementation
+                .generics
+                .iter()
+                .any(|generic| !generic.bounds.is_empty() || generic.is_record || generic.is_row)
+        {
+            return false;
+        }
+        let parameter_count = self
+            .struct_type_params
+            .get(&target_id)
+            .map(Vec::len)
+            .or_else(|| {
+                self.enum_env
+                    .get(&target_id)
+                    .map(|info| info.type_params.len())
+            })
+            .unwrap_or(0);
+        if arguments.len() != parameter_count || implementation.generics.len() != parameter_count {
+            return false;
+        }
+        let names: HashSet<_> = implementation
+            .generics
+            .iter()
+            .map(|generic| &generic.name)
+            .collect();
+        let mut used = HashSet::new();
+        for argument in arguments {
+            let TypeExpr::Named(name, inner) = argument else {
+                return false;
+            };
+            if !inner.is_empty() || !names.contains(name) || !used.insert(name) {
+                return false;
+            }
+        }
+        true
     }
 
     /// The aspect-satisfaction query, over `InferType` and under a set of
@@ -4886,6 +5095,20 @@ impl TypeDefinitionRegistry {
     }
 
     #[must_use]
+    pub fn method_type_by_id(&self, owner: SymbolId, method_name: &str) -> Option<&InferType> {
+        self.method_env.get(&owner)?.get(method_name)
+    }
+
+    #[must_use]
+    pub fn method_receiver_kind_by_id(
+        &self,
+        owner: SymbolId,
+        method_name: &str,
+    ) -> Option<&ReceiverKind> {
+        self.method_receiver_env.get(&owner)?.get(method_name)
+    }
+
+    #[must_use]
     pub fn array_method_type(&self, method_name: &str) -> Option<&InferType> {
         self.array_method_env.get(method_name)
     }
@@ -4917,6 +5140,10 @@ impl TypeDefinitionRegistry {
         aspect_name: Option<String>,
         method_span: Span,
     ) {
+        self.record_method_definition_spans
+            .entry(method_name.clone())
+            .or_default()
+            .push(method_span.clone());
         self.generic_method_schemes_by_span
             .insert(method_span, scheme.clone());
         self.record_method_scheme_variants
@@ -5479,6 +5706,22 @@ impl TypeDefinitionRegistry {
                 .entry(method_name.clone())
                 .or_insert_with(|| receiver.clone());
         }
+        for (span, receiver) in &other.method_receivers_by_span {
+            self.method_receivers_by_span
+                .entry(span.clone())
+                .or_insert_with(|| receiver.clone());
+        }
+        for (span, aspect) in &other.method_aspects_by_span {
+            self.method_aspects_by_span
+                .entry(span.clone())
+                .or_insert(*aspect);
+        }
+        for (method, spans) in &other.record_method_definition_spans {
+            self.record_method_definition_spans
+                .entry(method.clone())
+                .or_default()
+                .extend(spans.iter().cloned());
+        }
         for (span, scheme) in &other.generic_method_schemes_by_span {
             self.generic_method_schemes_by_span
                 .entry(span.clone())
@@ -5579,6 +5822,18 @@ impl TypeDefinitionRegistry {
             self.impl_aspect_env
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
+        }
+        self.unconditional_ownership_impls
+            .extend(other.unconditional_ownership_impls.iter().copied());
+        self.uncertain_ownership_impls
+            .extend(other.uncertain_ownership_impls.iter().copied());
+        self.uncertain_record_ownership_impls
+            .extend(other.uncertain_record_ownership_impls.iter().copied());
+        for (key, rules) in &other.ownership_rules {
+            self.ownership_rules
+                .entry(*key)
+                .or_default()
+                .extend(rules.iter().cloned());
         }
         for (k, v) in &other.conditional_impl_bounds {
             // Concatenate: multiple modules can each declare a conditional impl
@@ -5685,7 +5940,40 @@ impl Default for TypeDefinitionRegistry {
 pub(crate) struct DefinitionMethodFact {
     pub contract: InferType,
     pub receiver: crate::data::ast::ReceiverKind,
-    pub aspect: crate::identity::SymbolId,
+    pub origin: crate::data::abstract_body::AbstractMethodOrigin,
+}
+
+/// The selected declaration behind a non-lexical value path. Its solved type
+/// is retained separately; ownership consumers never resolve the path again.
+#[derive(Debug, Clone)]
+pub(crate) enum DefinitionPathFact {
+    StaticMember {
+        owner: crate::identity::SymbolId,
+        member: String,
+    },
+    UnitVariant(crate::identity::VariantId),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DefinitionImplicitCapture {
+    pub name: String,
+    pub span: Span,
+    pub ty: InferType,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum DefinitionMatchPatternKind {
+    Wildcard,
+    Literal(crate::data::ast::Literal),
+    Binding,
+    Variant(crate::identity::VariantId),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DefinitionMatchPattern {
+    pub kind: DefinitionMatchPatternKind,
+    pub bindings: Vec<(Option<FieldId>, String, Span, InferType)>,
+    pub enum_variants: Vec<crate::identity::VariantId>,
 }
 
 /// State threaded through the entire AST walk during type inference.
@@ -5775,8 +6063,20 @@ pub struct InferContext {
     /// resolved types and binding identities, never this span-keyed solver table.
     definition_expression_types: HashMap<Span, InferType>,
     definition_call_types: HashMap<Span, InferType>,
+    definition_paths: HashMap<Span, DefinitionPathFact>,
+    definition_array_lengths: HashSet<Span>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
     definition_method_facts: HashMap<Span, DefinitionMethodFact>,
+    definition_capture_types: HashMap<Span, InferType>,
+    definition_implicit_captures: HashMap<Span, Vec<DefinitionImplicitCapture>>,
+    definition_binding_types: HashMap<Span, InferType>,
+    definition_match_patterns: HashMap<Span, DefinitionMatchPattern>,
+    definition_record_shapes: HashMap<Span, InferType>,
+    definition_templates: HashMap<Span, (TypeScheme, Vec<crate::data::ast::GenericParam>)>,
+    definition_snapshot_sites: HashSet<Span>,
+    definition_snapshots: HashMap<Span, Box<super::handoff::ResolvedInferenceFacts>>,
+    definition_break_targets: HashSet<TypeVar>,
+    definition_diverging_loops: HashSet<Span>,
     definition_aspect_arguments: HashMap<Span, (AspectTypeArguments, AspectTypeArguments)>,
     cached_subst: Rc<Substitution>,
     solved_constraint_count: usize,
@@ -5875,8 +6175,20 @@ impl InferContext {
             closure_return_types: HashMap::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
+            definition_paths: HashMap::new(),
+            definition_array_lengths: HashSet::new(),
             definition_nominal_fields: HashMap::new(),
             definition_method_facts: HashMap::new(),
+            definition_capture_types: HashMap::new(),
+            definition_implicit_captures: HashMap::new(),
+            definition_binding_types: HashMap::new(),
+            definition_match_patterns: HashMap::new(),
+            definition_record_shapes: HashMap::new(),
+            definition_templates: HashMap::new(),
+            definition_snapshot_sites: HashSet::new(),
+            definition_snapshots: HashMap::new(),
+            definition_break_targets: HashSet::new(),
+            definition_diverging_loops: HashSet::new(),
             definition_aspect_arguments: HashMap::new(),
             cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
@@ -7093,6 +7405,10 @@ impl InferContext {
         self.variant_deferrals.push((span, name, var));
     }
 
+    pub(crate) fn variant_deferrals(&self) -> &[(Span, String, TypeVar)] {
+        &self.variant_deferrals
+    }
+
     /// Bare-variant deferrals that never resolved to a concrete enum. Reported after the
     /// final solve. A resolved deferral is one whose stand-in variable became a named
     /// type — pass 2 then resolves the variant against it. One that is still a variable,
@@ -7283,6 +7599,37 @@ impl InferContext {
         &self.definition_call_types
     }
 
+    pub(crate) fn record_definition_path(&mut self, span: Span, fact: DefinitionPathFact) {
+        self.definition_paths.insert(span, fact);
+    }
+
+    pub(crate) fn definition_paths(&self) -> &HashMap<Span, DefinitionPathFact> {
+        &self.definition_paths
+    }
+
+    pub(crate) fn record_definition_array_length(&mut self, span: Span) {
+        self.definition_array_lengths.insert(span);
+    }
+
+    pub(crate) fn definition_array_lengths(&self) -> &HashSet<Span> {
+        &self.definition_array_lengths
+    }
+
+    pub(crate) fn record_definition_static_path(&mut self, span: &Span, owner: &str, member: &str) {
+        if let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, owner)
+        {
+            self.record_definition_path(
+                span.clone(),
+                DefinitionPathFact::StaticMember {
+                    owner,
+                    member: member.to_string(),
+                },
+            );
+        }
+    }
+
     pub(crate) fn record_definition_nominal_field(
         &mut self,
         span: Span,
@@ -7307,6 +7654,124 @@ impl InferContext {
 
     pub(crate) fn definition_method_facts(&self) -> &HashMap<Span, DefinitionMethodFact> {
         &self.definition_method_facts
+    }
+
+    pub(crate) fn record_definition_capture_type(&mut self, span: Span, ty: InferType) {
+        if self.current_return_type.is_some() {
+            self.definition_capture_types.insert(span, ty);
+        }
+    }
+
+    pub(crate) fn definition_capture_types(&self) -> &HashMap<Span, InferType> {
+        &self.definition_capture_types
+    }
+
+    pub(crate) fn record_definition_implicit_captures(
+        &mut self,
+        span: Span,
+        captures: Vec<DefinitionImplicitCapture>,
+    ) {
+        if self.current_return_type.is_some() {
+            self.definition_implicit_captures.insert(span, captures);
+        }
+    }
+
+    pub(crate) fn definition_implicit_captures(
+        &self,
+    ) -> &HashMap<Span, Vec<DefinitionImplicitCapture>> {
+        &self.definition_implicit_captures
+    }
+
+    pub(crate) fn record_definition_binding_type(&mut self, span: Span, ty: InferType) {
+        if self.current_return_type.is_some() {
+            self.definition_binding_types.insert(span, ty);
+        }
+    }
+
+    pub(crate) fn definition_binding_types(&self) -> &HashMap<Span, InferType> {
+        &self.definition_binding_types
+    }
+
+    pub(crate) fn record_definition_match_pattern(
+        &mut self,
+        span: Span,
+        fact: DefinitionMatchPattern,
+    ) {
+        if self.current_return_type.is_some() {
+            self.definition_match_patterns.insert(span, fact);
+        }
+    }
+
+    pub(crate) fn definition_match_patterns(&self) -> &HashMap<Span, DefinitionMatchPattern> {
+        &self.definition_match_patterns
+    }
+
+    pub(crate) fn record_definition_record_shape(&mut self, span: Span, shape: InferType) {
+        if self.current_return_type.is_some() {
+            self.definition_record_shapes.insert(span, shape);
+        }
+    }
+
+    pub(crate) fn definition_record_shapes(&self) -> &HashMap<Span, InferType> {
+        &self.definition_record_shapes
+    }
+
+    pub(crate) fn record_definition_template(
+        &mut self,
+        span: Span,
+        scheme: TypeScheme,
+        generics: Vec<crate::data::ast::GenericParam>,
+    ) {
+        self.definition_templates.insert(span, (scheme, generics));
+    }
+
+    pub(crate) fn definition_templates(
+        &self,
+    ) -> &HashMap<Span, (TypeScheme, Vec<crate::data::ast::GenericParam>)> {
+        &self.definition_templates
+    }
+
+    pub(super) fn set_definition_snapshot_sites(&mut self, sites: HashSet<Span>) {
+        self.definition_snapshot_sites = sites;
+    }
+
+    pub(super) fn retain_definition_snapshot(&mut self, span: &Span) -> Result<(), MetelError> {
+        if !self.definition_snapshot_sites.contains(span) {
+            return Ok(());
+        }
+        // Expanded defaults share diagnostic spans, but not the facts selected
+        // for each impl. Freeze before another copied body can overwrite them.
+        let solved = self.solve()?;
+        let subst = self.default_literal_vars(&solved).to_substitution();
+        let facts = super::handoff::ResolvedInferenceFacts::resolve_current(self, &subst)?;
+        self.definition_snapshots
+            .insert(span.clone(), Box::new(facts));
+        Ok(())
+    }
+
+    pub(super) fn definition_snapshots(
+        &self,
+    ) -> &HashMap<Span, Box<super::handoff::ResolvedInferenceFacts>> {
+        &self.definition_snapshots
+    }
+
+    pub(crate) fn record_definition_break_target(&mut self) {
+        if let Some(InferType::Var(var)) = self.current_break_type() {
+            self.definition_break_targets.insert(*var);
+        }
+    }
+
+    pub(crate) fn record_definition_loop(&mut self, span: Span, break_type: &InferType) {
+        if let InferType::Var(var) = break_type
+            && self.current_return_type.is_some()
+            && !self.definition_break_targets.contains(var)
+        {
+            self.definition_diverging_loops.insert(span);
+        }
+    }
+
+    pub(crate) fn definition_diverging_loops(&self) -> &HashSet<Span> {
+        &self.definition_diverging_loops
     }
 
     #[must_use]
@@ -7515,6 +7980,43 @@ mod registry_identity_tests {
         EnumInfo, FieldEntry, InferType, Span, SymbolId, TypeDefinitionRegistry, VariantInfo,
         Visibility,
     };
+
+    #[test]
+    fn abstract_record_candidates_keep_identity_when_module_variables_collide() {
+        let variable = super::TypeVar(0);
+        let scheme = super::generalize(
+            InferType::fun(vec![InferType::Var(variable)], InferType::unit()),
+            &std::collections::HashSet::new(),
+        );
+        let mut local = TypeDefinitionRegistry::new();
+        let mut imported = TypeDefinitionRegistry::new();
+        let local_span = Span::new(0, 10, "local.mtl");
+        let imported_span = Span::new(0, 10, "imported.mtl");
+        local.register_record_method_scheme_variant(
+            "ping".into(),
+            scheme.clone(),
+            vec![variable],
+            None,
+            local_span.clone(),
+        );
+        imported.register_record_method_scheme_variant(
+            "ping".into(),
+            scheme,
+            vec![variable],
+            None,
+            imported_span.clone(),
+        );
+        local.merge_from(&imported);
+        let candidates = local.record_method_scheme_variants_for("ping");
+        assert_eq!(
+            local.record_method_definition("ping", &candidates[0]),
+            Some(&local_span)
+        );
+        assert_eq!(
+            local.record_method_definition("ping", &candidates[1]),
+            Some(&imported_span)
+        );
+    }
 
     fn field(name: &str) -> FieldEntry {
         FieldEntry {

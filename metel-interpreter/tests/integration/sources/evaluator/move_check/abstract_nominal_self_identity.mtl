@@ -1,0 +1,26 @@
+struct Box<T> { value: T }
+extend<T> Box<T> {
+    fun consume(self) -> Box<T> { self }
+    fun pair<U>(self, other: U) -> (Box<T>, U) { (self, other) }
+}
+
+struct Repeatable<T> { value: T }
+extend<T: Copy> Repeatable<T>: Copy;
+extend<T: Copy> Repeatable<T> {
+    fun twice(self) -> T {
+        let first := self;
+        let again := self;
+        first.value;
+        again.value
+    }
+}
+
+fun main() {
+    let owned := Box { value = "owned" };
+    let moved := owned.consume();
+    assert(moved.value == "owned");
+    let combined := Box { value = 3 }.pair("other");
+    assert(combined.0.value == 3);
+    assert(combined.1 == "other");
+    assert(Repeatable { value = 7 }.twice() == 7);
+}

@@ -1,0 +1,32 @@
+fun rhs<T>(unused: T, mark: &var i64) -> i64 {
+    *mark := *mark * 10 + 1;
+    4
+}
+
+fun index(mark: &var i64) -> u64 {
+    *mark := *mark * 10 + 2;
+    0u64
+}
+
+fun update<T>(unused: T, values: &var [i64; 2], mark: &var i64) {
+    values[index(mark)] += rhs(unused, mark);
+}
+
+fun arithmetic<T>(unused: T) -> i64 {
+    var number := 6;
+    number += 2;
+    number -= 1;
+    number *= 3;
+    number /= 3;
+    number %= 4;
+    number
+}
+
+fun main() {
+    var values := [3, 5];
+    var mark := 0;
+    update(0, &var values, &var mark);
+    assert(mark == 12);
+    assert(values[0u64] == 7);
+    assert(arithmetic(0) == 3);
+}

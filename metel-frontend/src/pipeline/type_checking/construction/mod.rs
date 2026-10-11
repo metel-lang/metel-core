@@ -142,6 +142,7 @@ struct ConstructCtx<'a> {
     references: Option<&'a HashMap<Span, SymbolId>>,
     /// Concrete semantic decisions frozen at the inference/construction boundary.
     resolved_facts: &'a ResolvedInferenceFacts,
+    inherited_method_ordinals: HashMap<(SymbolId, crate::identity::InheritedMethodTarget), u32>,
     /// Whole-graph member identity table (ADR-0054 / #1051). When present,
     /// construction stamps `TypedExpr::FieldAccess::field_id` and
     /// `TypedExpr::StructLiteral::variant_id` from it, keyed by
@@ -211,6 +212,7 @@ impl<'a> ConstructCtx<'a> {
             current_module,
             references,
             resolved_facts,
+            inherited_method_ordinals: HashMap::new(),
             identity,
             current_self_type_name: None,
             fn_table: vec![HashMap::new()],
@@ -917,6 +919,7 @@ pub(super) fn symbolic_aspect_method_scheme(
         neg_bounds: super::registry::collect_negative_type_param_bounds(&method.generics, None),
         record_kinds: super::registry::collect_type_param_record_kinds(&method.generics, None),
         assoc_projections: vec![],
+        body_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
         open_row_params: vec![],
@@ -994,6 +997,7 @@ pub(super) fn symbolic_impl_method_scheme(
         neg_bounds: super::registry::collect_negative_type_param_bounds(&generics, None),
         record_kinds: super::registry::collect_type_param_record_kinds(&generics, None),
         assoc_projections: vec![],
+        body_projections: vec![],
         assoc_eq_constraints: vec![],
         opaque_returns: vec![],
         open_row_params: vec![],

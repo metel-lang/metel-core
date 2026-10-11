@@ -1,0 +1,26 @@
+aspect Marker {}
+struct Clear { count: i64 }
+extend Clear: !Marker;
+
+struct Wrapper<T> { value: T }
+extend<T> Wrapper<T>: Copy where T: Copy;
+
+struct Guard<T> { name: String, tag: T }
+extend<T> Guard<T>: Drop where T: Marker {
+    fun drop(&var self) {}
+}
+
+fun copied<T: Copy>(value: Wrapper<T>) -> T {
+    let first := value;
+    let again := value;
+    first.value;
+    again.value
+}
+
+fun extract<T: !Marker>(value: Guard<T>) -> String { value.name }
+
+fun main() {
+    assert(copied(Wrapper { value = 7 }) == 7);
+    let guarded := Guard { name = "clear", tag = Clear { count = 2 } };
+    assert(extract(guarded) == "clear");
+}

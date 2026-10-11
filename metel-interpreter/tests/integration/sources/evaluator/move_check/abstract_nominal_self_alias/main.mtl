@@ -1,0 +1,9 @@
+import alpha::Box as Crate;
+import beta::Box;
+
+fun main() {
+    let imported := Crate { value = "alpha" }.consume();
+    let other := Box { value = 3 }.consume();
+    assert(imported.value == "alpha");
+    assert(other.value == 3);
+}

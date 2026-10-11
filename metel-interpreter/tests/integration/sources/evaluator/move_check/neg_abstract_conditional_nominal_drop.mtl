@@ -1,0 +1,11 @@
+aspect Marker {}
+struct Guard<T> { name: String, tag: T }
+extend<T> Guard<T>: Drop where T: Marker {
+    fun drop(&var self) {}
+}
+
+fun denied<T: Marker>(value: Guard<T>) -> String {
+    value.name // ERROR[T0019]
+}
+
+fun main() {}

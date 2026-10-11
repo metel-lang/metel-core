@@ -1,0 +1,13 @@
+struct Wrapper<T> { value: T }
+extend<T: Copy> Wrapper<T>: Copy;
+
+fun copied<T: Copy>(value: Wrapper<T>) -> T {
+    let first := value;
+    let again := value;
+    first.value;
+    again.value
+}
+
+fun main() {
+    assert(copied(Wrapper { value = 7 }) == 7);
+}

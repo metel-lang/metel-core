@@ -47,6 +47,40 @@ fn check_explicit_closure_captures(
     Ok(())
 }
 
+fn record_implicit_closure_captures(
+    params: &[Param],
+    body: &crate::data::ast::Block,
+    span: &crate::data::ast::Span,
+    ctx: &mut InferContext,
+) {
+    use super::super::closure_uses::collect_closure_body_uses;
+    let mut bound = params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect();
+    let mut reads = std::collections::BTreeSet::new();
+    let mut writes = std::collections::BTreeSet::new();
+    let mut spans = HashMap::new();
+    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes, &mut spans);
+    let captures = reads
+        .union(&writes)
+        .filter_map(|name| {
+            if !ctx.has_local_binding(name) {
+                return None;
+            }
+            let ty = ctx.narrowed_infertype(name).or_else(|| ctx.lookup(name))?;
+            Some(super::super::type_engine::DefinitionImplicitCapture {
+                name: name.clone(),
+                span: spans.get(name)?.clone(),
+                ty,
+            })
+        })
+        .collect();
+    // A transitive free use can have the same span in nested closures, but
+    // each closure must retain its own pre-body entry shape.
+    ctx.record_definition_implicit_captures(span.clone(), captures);
+}
+
 /// Enforce RFC-0173 D6(2) for the direct parameter-passing shape.  General
 /// unification still relates the two signatures; this check supplies the one
 /// fact unification must not invent: that a declared argument grants every
@@ -210,6 +244,7 @@ pub(super) fn infer_stmt(
                         } else {
                             val_ty
                         };
+                        ctx.record_definition_binding_type(ld.span.clone(), bound_ty.clone());
                         ctx.bind_mono(&ld.name, bound_ty, false);
                     }
                     ForInit::Mut(md) => {
@@ -220,6 +255,7 @@ pub(super) fn infer_stmt(
                         } else {
                             val_ty
                         };
+                        ctx.record_definition_binding_type(md.span.clone(), bound_ty.clone());
                         ctx.bind_mono(&md.name, bound_ty, true);
                     }
                     ForInit::Expr(e) => {
@@ -315,6 +351,7 @@ pub(super) fn infer_stmt(
                 }
             }
             ctx.push_scope();
+            ctx.record_definition_binding_type(fi.span.clone(), elem_ty.clone());
             ctx.bind_mono(&fi.binding, elem_ty, fi.mutable);
             ctx.enter_loop();
             infer_block(&fi.body, ctx, fun_generalizations)?;
@@ -909,6 +946,22 @@ fn infer_expr_inner(
                     infer_tuple_assign_type(object, *index, target_span, ctx, fun_generalizations)?
                 }
             };
+            let target_span = match target {
+                AssignTarget::Ident(_, target_span)
+                | AssignTarget::Deref {
+                    span: target_span, ..
+                }
+                | AssignTarget::Index {
+                    span: target_span, ..
+                }
+                | AssignTarget::FieldAccess {
+                    span: target_span, ..
+                }
+                | AssignTarget::TupleAccess {
+                    span: target_span, ..
+                } => target_span,
+            };
+            ctx.record_definition_expression_type(target_span.clone(), target_ty.clone());
             let value_ty = infer_expr(value, ctx, fun_generalizations)?;
             // RFC-0137 slice 2: the RHS may itself partially move a struct field;
             // then a plain `a.f := …` widens `a`'s type back by reinitializing
@@ -1117,6 +1170,7 @@ fn infer_expr_inner(
                 .collect::<Result<_, _>>()?;
 
             if let Some(result) = builtin_pattern_method_type(&recv_ty, method, &arg_tys, span) {
+                ctx.record_definition_array_length(span.clone());
                 return result;
             }
 
@@ -1220,24 +1274,24 @@ fn infer_expr_inner(
                 {
                     let assumptions = ctx.current_aspect_assumptions();
                     let (positive_bounds, negative_bounds) = ctx.resolved_method_bounds();
-                    let Some((scheme, receiver_tvars, _)) = record_candidates
-                        .iter()
-                        .rev()
-                        .find(|(scheme, receiver_tvars, _)| {
-                            ctx.registry().generic_method_receiver_bounds_hold(
-                                ctx.current_module_path(),
-                                scheme,
-                                receiver_tvars,
-                                std::slice::from_ref(&peeled_recv),
-                                GenericMethodEntailment {
-                                    aspect_assumptions: &assumptions,
-                                    bounds: &positive_bounds,
-                                    negative_bounds: &negative_bounds,
-                                    generic_vars: ctx.type_params(),
-                                },
-                            )
-                        })
-                        .cloned()
+                    let Some(candidate) =
+                        record_candidates
+                            .iter()
+                            .rev()
+                            .find(|(scheme, receiver_tvars, _)| {
+                                ctx.registry().generic_method_receiver_bounds_hold(
+                                    ctx.current_module_path(),
+                                    scheme,
+                                    receiver_tvars,
+                                    std::slice::from_ref(&peeled_recv),
+                                    GenericMethodEntailment {
+                                        aspect_assumptions: &assumptions,
+                                        bounds: &positive_bounds,
+                                        negative_bounds: &negative_bounds,
+                                        generic_vars: ctx.type_params(),
+                                    },
+                                )
+                            })
                     else {
                         let row_diagnostic = row_candidate_failure_message(
                             record_candidates,
@@ -1254,6 +1308,11 @@ fn infer_expr_inner(
                             span,
                         ));
                     };
+                    let declaration = ctx
+                        .registry()
+                        .record_method_definition(method, candidate)
+                        .cloned();
+                    let (scheme, receiver_tvars, _) = candidate.clone();
                     return infer_record_method_call_with_scheme(
                         &RecordMethodCall {
                             receiver,
@@ -1266,12 +1325,17 @@ fn infer_expr_inner(
                         ctx,
                         &scheme,
                         &receiver_tvars,
+                        declaration.as_ref(),
                     );
                 }
             }
 
             // Fast path: concrete named type — look up method as usual.
             if let Some(struct_name) = named_type_name(&recv_ty) {
+                let receiver_owner = match &peeled_recv {
+                    InferType::Named(_, _, identity) => identity.0,
+                    _ => None,
+                };
                 let recv_type_args = match &recv_ty {
                     InferType::Named(_, args, ..) => args.clone(),
                     InferType::Reference(inner) | InferType::MutReference(inner) => {
@@ -1288,9 +1352,17 @@ fn infer_expr_inner(
                 // declared bounds.  Concrete receivers keep the existing
                 // construction-time bound diagnostic; the definition-time
                 // check matters when an argument is an opaque parameter.
-                let generic_candidates = ctx
-                    .registry()
-                    .method_scheme_variants_for(ctx.current_module_path(), &struct_name, method)
+                let generic_candidates = receiver_owner
+                    .map_or_else(
+                        || {
+                            ctx.registry().method_scheme_variants_for(
+                                ctx.current_module_path(),
+                                &struct_name,
+                                method,
+                            )
+                        },
+                        |owner| ctx.registry().method_scheme_variants_by_id(owner, method),
+                    )
                     .to_vec();
                 let declared_receiver_param = recv_type_args.iter().find_map(|arg| {
                     let InferType::Var(tv) = arg else {
@@ -1322,8 +1394,9 @@ fn infer_expr_inner(
                     });
                 let selected_generic_method = generic_candidates
                     .iter()
+                    .enumerate()
                     .rev()
-                    .find(|(scheme, receiver_tvars, _)| {
+                    .find(|(_, (scheme, receiver_tvars, _))| {
                         ctx.registry().generic_method_receiver_bounds_hold(
                             ctx.current_module_path(),
                             scheme,
@@ -1337,7 +1410,7 @@ fn infer_expr_inner(
                             },
                         )
                     })
-                    .cloned();
+                    .map(|(index, candidate)| (index, candidate.clone()));
                 if selected_generic_method.is_none()
                     && declared_receiver_param.is_none()
                     && !self_aspect_grants_method
@@ -1351,15 +1424,51 @@ fn infer_expr_inner(
                 // the fallback preserves the declaration-time T0035 path below.
                 let generic_method = selected_generic_method.or_else(|| {
                     (declared_receiver_param.is_none() || self_aspect_grants_method)
-                        .then(|| generic_candidates.last().cloned())
+                        .then(|| {
+                            generic_candidates
+                                .iter()
+                                .enumerate()
+                                .next_back()
+                                .map(|(index, candidate)| (index, candidate.clone()))
+                        })
                         .flatten()
                 });
+                let concrete_method = receiver_owner
+                    .map_or_else(
+                        || ctx.get_method_type(&struct_name, method),
+                        |owner| ctx.registry().method_type_by_id(owner, method),
+                    )
+                    .cloned();
+                let selected_receiver = if concrete_method.is_some() {
+                    receiver_owner
+                        .map_or_else(
+                            || ctx.get_method_receiver_kind(&struct_name, method),
+                            |owner| ctx.registry().method_receiver_kind_by_id(owner, method),
+                        )
+                        .cloned()
+                } else {
+                    generic_method.as_ref().and_then(|(index, _)| {
+                        receiver_owner
+                            .map_or_else(
+                                || {
+                                    ctx.registry().method_variant_spans_for(
+                                        ctx.current_module_path(),
+                                        &struct_name,
+                                        method,
+                                    )
+                                },
+                                |owner| ctx.registry().method_variant_spans_by_id(owner, method),
+                            )
+                            .get(*index)
+                            .and_then(|span| ctx.registry().definition_receiver(span))
+                            .cloned()
+                    })
+                };
 
                 // Try concrete method_env first; fall back to a generic method scheme.
-                let method_ty = if let Some(ty) = ctx.get_method_type(&struct_name, method).cloned()
-                {
+                let method_ty = if let Some(ty) = concrete_method {
                     ty
-                } else if let Some((scheme, struct_tvars, _)) = generic_method {
+                } else if let Some((_, (scheme, struct_tvars, _))) = generic_method {
                     // Instantiate the scheme with a fresh TypeVar for EVERY
                     // quantified var — the struct's type params and the method's
                     // own generics (e.g. `U` in `fun map<U>(...)`). Instantiating
@@ -1428,7 +1537,7 @@ fn infer_expr_inner(
                 };
 
                 if matches!(
-                    ctx.get_method_receiver_kind(&struct_name, method),
+                    selected_receiver.as_ref(),
                     Some(crate::data::ast::ReceiverKind::RefMut)
                 ) && !chain_provides_mut_access(&recv_ty)
                 {
@@ -1452,6 +1561,22 @@ fn infer_expr_inner(
 
                 let ret_var = ctx.fresh_var();
                 let receiver_ty_for_method = peel_all_references(&recv_ty);
+                if let Some(owner) = receiver_owner.or_else(|| {
+                    ctx.registry()
+                        .resolve_type_id(ctx.current_module_path(), &struct_name)
+                }) && let Some(receiver_kind) = selected_receiver
+                {
+                    ctx.record_definition_method_fact(
+                        span.clone(),
+                        DefinitionMethodFact {
+                            contract: method_ty.clone(),
+                            receiver: receiver_kind,
+                            origin: crate::data::abstract_body::AbstractMethodOrigin::Nominal(
+                                owner,
+                            ),
+                        },
+                    );
+                }
                 let expected = InferType::fun(
                     std::iter::once(receiver_ty_for_method)
                         .chain(arg_tys)
@@ -1734,7 +1859,10 @@ fn infer_expr_inner(
                                         ret_ty.clone(),
                                     ),
                                     receiver: receiver_kind,
-                                    aspect,
+                                    origin:
+                                        crate::data::abstract_body::AbstractMethodOrigin::Aspect(
+                                            aspect,
+                                        ),
                                 },
                             );
                         }
@@ -2032,18 +2160,20 @@ fn infer_expr_inner(
             infer_block(body, ctx, fun_generalizations)?;
             ctx.exit_loop();
             ctx.pop_break_type(saved_break);
-            let _ = span;
+            ctx.record_definition_loop(span.clone(), &break_var);
             Ok(break_var)
         }
         Expr::Path(segments, _, span) => {
             // For 2-segment paths, first try TypeName::member (static methods, enum variants).
             if let [type_name, member_name] = segments.as_slice() {
                 if let Some(fun_ty) = ctx.get_method_type(type_name, member_name).cloned() {
+                    ctx.record_definition_static_path(span, type_name, member_name);
                     return Ok(fun_ty);
                 }
                 // Try builtin static constructors registered as joined-path poly schemes (e.g. "List::new").
                 let joined = format!("{type_name}::{member_name}");
                 if let Some(ty) = ctx.lookup(&joined) {
+                    ctx.record_definition_static_path(span, type_name, member_name);
                     return Ok(ty);
                 }
                 // Static method on a generic struct/enum registered as a polymorphic
@@ -2055,12 +2185,19 @@ fn infer_expr_inner(
                     .method_scheme_for(type_name, member_name)
                     .map(|(s, t)| (s.clone(), t.clone()))
                 {
+                    ctx.record_definition_static_path(span, type_name, member_name);
                     return Ok(ctx.instantiate(&scheme));
                 }
                 if let Some(info) = ctx.get_enum(type_name).cloned()
                     && let Some(variant) = info.variants.iter().find(|v| v.name == *member_name)
                 {
                     if variant.fields.is_empty() {
+                        if let Some(id) = variant.id {
+                            ctx.record_definition_path(
+                                span.clone(),
+                                super::super::type_engine::DefinitionPathFact::UnitVariant(id),
+                            );
+                        }
                         let type_args: Vec<InferType> =
                             info.type_params.iter().map(|_| ctx.fresh_var()).collect();
                         // metel-core#1137: `type_name` is written right here in
@@ -2118,6 +2255,9 @@ fn infer_expr_inner(
             ..
         } => {
             check_explicit_closure_captures(captures, params, body, span, ctx)?;
+            if captures.is_empty() {
+                record_implicit_closure_captures(params, body, span, ctx);
+            }
             let param_types: Vec<InferType> = params
                 .iter()
                 .map(|p| {
@@ -2138,16 +2278,17 @@ fn infer_expr_inner(
             };
             ctx.push_scope();
             for capture in captures {
-                let (name, mutable) = match capture {
+                let (name, span, mutable) = match capture {
                     // Construction performs the closure-specific capture diagnostic. Keeping
                     // this binding writable here prevents the generic immutable-binding check
                     // from pre-empting the required `&var` diagnostic.
-                    crate::data::ast::CaptureSpec::Owned { name, .. }
-                    | crate::data::ast::CaptureSpec::Clone { name, .. }
-                    | crate::data::ast::CaptureSpec::SharedRef { name, .. }
-                    | crate::data::ast::CaptureSpec::MutRef { name, .. } => (name, true),
+                    crate::data::ast::CaptureSpec::Owned { name, span }
+                    | crate::data::ast::CaptureSpec::Clone { name, span }
+                    | crate::data::ast::CaptureSpec::SharedRef { name, span }
+                    | crate::data::ast::CaptureSpec::MutRef { name, span } => (name, span, true),
                 };
                 if let Some(ty) = ctx.narrowed_infertype(name).or_else(|| ctx.lookup(name)) {
+                    ctx.record_definition_capture_type(span.clone(), ty.clone());
                     ctx.bind_mono(name, ty, mutable);
                 }
             }
@@ -2198,6 +2339,7 @@ fn infer_expr_inner(
                 None => InferType::unit(),
             };
             if let Some(expected) = ctx.current_break_type().cloned() {
+                ctx.record_definition_break_target();
                 constrain_with_read_copy(ctx, break_ty, expected, b.span.clone());
             }
             Ok(InferType::never())
@@ -2352,10 +2494,9 @@ fn infer_record_method_call(
     ctx: &mut InferContext,
 ) -> Result<InferType, MetelError> {
     let candidates = ctx.registry().record_method_scheme_variants_for(method);
-    let Some((scheme, receiver_tvars, _)) = ctx
-        .registry()
-        .record_method_variant_for(ctx.current_module_path(), method, peeled_recv)
-        .cloned()
+    let Some(candidate) =
+        ctx.registry()
+            .record_method_variant_for(ctx.current_module_path(), method, peeled_recv)
     else {
         let diagnostic =
             row_candidate_failure_message(candidates, std::slice::from_ref(peeled_recv), ctx);
@@ -2371,6 +2512,11 @@ fn infer_record_method_call(
             span,
         ));
     };
+    let declaration = ctx
+        .registry()
+        .record_method_definition(method, candidate)
+        .cloned();
+    let (scheme, receiver_tvars, _) = candidate.clone();
     infer_record_method_call_with_scheme(
         &RecordMethodCall {
             receiver,
@@ -2383,6 +2529,7 @@ fn infer_record_method_call(
         ctx,
         &scheme,
         &receiver_tvars,
+        declaration.as_ref(),
     )
 }
 
@@ -2506,6 +2653,7 @@ fn infer_record_method_call_with_scheme(
     ctx: &mut InferContext,
     scheme: &TypeScheme,
     receiver_tvars: &[TypeVar],
+    declaration: Option<&crate::data::ast::Span>,
 ) -> Result<InferType, MetelError> {
     let RecordMethodCall {
         receiver,
@@ -2523,8 +2671,11 @@ fn infer_record_method_call_with_scheme(
         }
     }
     let method_ty = pin.apply(&instance);
+    let selected_receiver = declaration
+        .and_then(|declaration| ctx.registry().definition_receiver(declaration))
+        .cloned();
     if matches!(
-        ctx.registry().record_method_receiver_kind(method),
+        selected_receiver,
         Some(crate::data::ast::ReceiverKind::RefMut)
     ) && !chain_provides_mut_access(recv_ty)
     {
@@ -2555,6 +2706,19 @@ fn infer_record_method_call_with_scheme(
     }
     for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
         ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+    }
+    if let (Some(receiver), Some(aspect)) = (
+        selected_receiver,
+        declaration.and_then(|declaration| ctx.registry().definition_aspect(declaration)),
+    ) {
+        ctx.record_definition_method_fact(
+            span.clone(),
+            DefinitionMethodFact {
+                contract: method_ty.clone(),
+                receiver,
+                origin: crate::data::abstract_body::AbstractMethodOrigin::Aspect(aspect),
+            },
+        );
     }
     Ok(*ret.clone())
 }
