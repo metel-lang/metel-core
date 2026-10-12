@@ -1284,7 +1284,40 @@ impl BodyFreezer<'_, '_> {
         let (AbstractType::Concrete(left_type), AbstractType::Concrete(right_type)) =
             (&left.ty, &right.ty)
         else {
-            return Err("abstract operator selection facts are not yet retained".to_string());
+            // Arithmetic and ordering operators on a *declared* type parameter are
+            // rejected during inference (RFC-0173 D5), so a shared parameter operand
+            // here is an inferred signature variable. Operand agreement constrains
+            // it, and each instantiation re-checks operator legality; the operation
+            // only observes its operands, so no sample type is needed.
+            let inferred_operand = matches!(
+                (&left.ty, &right.ty),
+                (AbstractType::Parameter(left), AbstractType::Parameter(right)) if left == right
+            ) && matches!(
+                operator,
+                BinOp::Add
+                    | BinOp::Sub
+                    | BinOp::Mul
+                    | BinOp::Div
+                    | BinOp::Rem
+                    | BinOp::Lt
+                    | BinOp::Le
+                    | BinOp::Gt
+                    | BinOp::Ge
+            );
+            let result_agrees = match operator {
+                BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => {
+                    result == &left.ty
+                }
+                _ => *result == AbstractType::Concrete(Type::Boolean),
+            };
+            if !inferred_operand || !result_agrees {
+                return Err("abstract operator selection facts are not yet retained".to_string());
+            }
+            return Ok(AbstractExprKind::Binary {
+                operator: operator.clone(),
+                left: Box::new(left),
+                right: Box::new(right),
+            });
         };
         // Only built-in selections established by the solved operand types are
         // retained here. A parameter must not acquire an operator from a sample.

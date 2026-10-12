@@ -1,0 +1,15 @@
+// Arithmetic and ordering on inferred parameters keep their operation in the
+// abstract body without sampling a concrete operand type (#273).
+fun double(value) {
+    value + value
+}
+
+fun larger(a, b) {
+    if (a < b) { b } else { a }
+}
+
+fun main() {
+    assert(double(21) == 42);
+    assert(double("ab") == "abab");
+    assert(larger(3, 9) == 9);
+}
