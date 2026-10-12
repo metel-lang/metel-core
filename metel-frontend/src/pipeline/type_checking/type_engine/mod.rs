@@ -5954,6 +5954,17 @@ pub(crate) enum DefinitionPathFact {
     UnitVariant(crate::identity::VariantId),
 }
 
+/// A closure written without a capture list must capture only provably `Copy`
+/// locals (spec legality-6). The obligation is judged after solving, against the
+/// bounds in force where the closure was written, not per instantiation.
+#[derive(Debug, Clone)]
+pub(crate) struct ImplicitCaptureCopyObligation {
+    pub closure_span: Span,
+    pub name: String,
+    pub ty: InferType,
+    pub assumptions: AspectAssumptions,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct DefinitionImplicitCapture {
     pub name: String,
@@ -6073,6 +6084,7 @@ pub struct InferContext {
     definition_method_facts: HashMap<Span, DefinitionMethodFact>,
     definition_capture_types: HashMap<Span, InferType>,
     definition_implicit_captures: HashMap<Span, Vec<DefinitionImplicitCapture>>,
+    implicit_capture_obligations: Vec<ImplicitCaptureCopyObligation>,
     definition_binding_types: HashMap<Span, InferType>,
     definition_value_boundaries: HashMap<Span, Vec<(InferType, InferType)>>,
     definition_match_patterns: HashMap<Span, DefinitionMatchPattern>,
@@ -6186,6 +6198,7 @@ impl InferContext {
             definition_method_facts: HashMap::new(),
             definition_capture_types: HashMap::new(),
             definition_implicit_captures: HashMap::new(),
+            implicit_capture_obligations: Vec::new(),
             definition_binding_types: HashMap::new(),
             definition_value_boundaries: HashMap::new(),
             definition_match_patterns: HashMap::new(),
@@ -7680,6 +7693,26 @@ impl InferContext {
         if self.current_return_type.is_some() {
             self.definition_implicit_captures.insert(span, captures);
         }
+    }
+
+    pub(crate) fn record_implicit_capture_obligation(
+        &mut self,
+        closure_span: Span,
+        name: String,
+        ty: InferType,
+    ) {
+        let assumptions = self.current_aspect_assumptions();
+        self.implicit_capture_obligations
+            .push(ImplicitCaptureCopyObligation {
+                closure_span,
+                name,
+                ty,
+                assumptions,
+            });
+    }
+
+    pub(crate) fn implicit_capture_obligations(&self) -> &[ImplicitCaptureCopyObligation] {
+        &self.implicit_capture_obligations
     }
 
     pub(crate) fn definition_implicit_captures(

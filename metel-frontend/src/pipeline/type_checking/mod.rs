@@ -1517,6 +1517,7 @@ fn check_impl_with_report(
     // nothing — reachable when it sits somewhere pass 2 never constructs, such as the
     // body of a closure that is never called.
     check_unresolved_variant_deferrals(&ctx, &subst)?;
+    check_implicit_capture_copy_obligations(&ctx, &subst, current_module_path)?;
     let solve_stats = ctx.solve_stats();
     let solve_ns = solve_after_inference.solve_ns + final_solve_ns;
     let inference_ns = infer_total_ns.saturating_sub(solve_after_inference.solve_ns);
@@ -1576,6 +1577,68 @@ fn check_impl_with_report(
             constraints_processed: solve_stats.constraints_processed,
         },
     })
+}
+
+/// Whether a still-generic captured type is `Copy` at the definition. A function
+/// value is `Copy` by its real captured environment, which inference's provisional
+/// use axis does not know (ADR-0063), so it is judged where that environment is
+/// built, by construction, and never rejected here.
+fn capture_has_copy_grant(
+    ctx: &InferContext,
+    ty: &InferType,
+    current_module: &[String],
+    assumptions: &type_engine::AspectAssumptions,
+) -> bool {
+    match ty {
+        InferType::Fun(..) => true,
+        InferType::Tuple(items) => items
+            .iter()
+            .all(|item| capture_has_copy_grant(ctx, item, current_module, assumptions)),
+        _ => ctx
+            .registry()
+            .infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions),
+    }
+}
+
+/// A closure with no capture list may capture only `Copy` locals (spec
+/// legality-6), and whether a type parameter is `Copy` is decided from the bounds in
+/// scope at the definition, never per instantiation. A capture whose type is still
+/// generic after solving therefore needs a `Copy` grant there; an unbounded
+/// parameter or an unannotated (inferred) one has none. Fully concrete captures are
+/// judged by construction, which sees the final type.
+fn check_implicit_capture_copy_obligations(
+    ctx: &InferContext,
+    subst: &Substitution,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for obligation in ctx.implicit_capture_obligations() {
+        let resolved = subst.apply(&obligation.ty);
+        if type_engine::free_vars(&resolved).is_empty() {
+            continue;
+        }
+        // Assumptions were keyed before later unification; re-key them on the
+        // solution so a grant on a parameter still applies to its aliases.
+        let mut assumptions = type_engine::AspectAssumptions::new();
+        for (var, aspects) in &obligation.assumptions {
+            if let InferType::Var(solved) = subst.apply(&InferType::Var(*var)) {
+                assumptions
+                    .entry(solved)
+                    .or_default()
+                    .extend(aspects.iter().cloned());
+            }
+        }
+        if !capture_has_copy_grant(ctx, &resolved, current_module, &assumptions) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0026,
+                format!(
+                    "closure captures non-`Copy` `{}`; add a capture list",
+                    obligation.name
+                ),
+                &obligation.closure_span,
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_unresolved_variant_deferrals(

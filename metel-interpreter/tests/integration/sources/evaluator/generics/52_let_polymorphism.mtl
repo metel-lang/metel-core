@@ -1,7 +1,7 @@
 // Let-bound closures without annotations are generalized into polymorphic schemes.
 
 let id := |x| { x };
-let swap_vals := |a| { |b| { (b, a) } };
+let swap_vals := |a, b| { (b, a) };
 
 fun main() {
     // id used at i64, boolean, String.

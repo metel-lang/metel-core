@@ -1,0 +1,11 @@
+// RFC-0050 legality-6 for a declared type parameter: `A` has no `Copy` bound, so
+// the implicit capture is rejected at the definition even though the only
+// instantiation (`i64`) is `Copy` (#273).
+fun swap_vals<A>(a: A) -> |i64| -> (i64, A) {
+    |b: i64| -> (i64, A) { (b, a) }
+}
+
+fun main() {
+    let f := swap_vals(1);
+    let pair := f(2);
+}

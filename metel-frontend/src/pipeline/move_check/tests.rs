@@ -2256,7 +2256,34 @@ fun copied<T: Copy>(value: T) {
     f(); f(); let alias := f; alias(); let again := value;
 }
 fun owned<T>(value: T) {
-    let f := once || { value }; let first := f; let second := f;
+    let f := [value] once || { value }; let first := f; let second := f;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    // `owned` moves its `once` closure twice; `copied` is a legal Copy environment.
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_does_not_erase_implicit_captures_in_nominal_literals() {
+    let report = move_report_for_source_with(
+        r#"
+struct Packet<T> { payload: T }
+fun copied<T: Copy>(value: T) {
+    let f := || { let packet := Packet { payload = value }; };
+    let again := value;
 }
 fun main() {}
 "#,
@@ -2272,30 +2299,7 @@ fun main() {}
         "{report:#?}"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
-    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
-}
-
-#[test]
-fn abstract_ownership_does_not_erase_implicit_captures_in_nominal_literals() {
-    let report = move_report_for_source_with(
-        r#"
-struct Packet<T> { payload: T }
-fun owned<T>(value: T) {
-    let f := || { let packet := Packet { payload = value }; };
-}
-fun main() {}
-"#,
-        |graph| {
-            for module in &mut graph.modules {
-                module.scheme_env.clear();
-            }
-        },
-    );
-    assert!(
-        report.checked_abstract_generic_bodies.is_empty(),
-        "{report:#?}"
-    );
-    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
 }
 
 #[test]

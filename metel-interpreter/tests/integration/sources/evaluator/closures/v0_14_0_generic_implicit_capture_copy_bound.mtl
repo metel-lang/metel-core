@@ -1,0 +1,11 @@
+// The same shape is legal when the definition grants `Copy` (#273).
+fun keep<A: Copy>(a: A) -> |i64| -> (i64, A) {
+    |b: i64| -> (i64, A) { (b, a) }
+}
+
+fun main() {
+    let f := keep(1);
+    let pair := f(2);
+    assert(pair.0 == 2);
+    assert(pair.1 == 1);
+}

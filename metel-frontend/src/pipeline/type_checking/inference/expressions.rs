@@ -69,6 +69,7 @@ fn record_implicit_closure_captures(
                 return None;
             }
             let ty = ctx.narrowed_infertype(name).or_else(|| ctx.lookup(name))?;
+            ctx.record_implicit_capture_obligation(span.clone(), name.clone(), ty.clone());
             Some(super::super::type_engine::DefinitionImplicitCapture {
                 name: name.clone(),
                 span: spans.get(name)?.clone(),
