@@ -101,7 +101,8 @@ pub struct MoveCheckReport {
     pub violations: Vec<MoveViolation>,
     /// Definitions analyzed from retained abstract operations without reconstruction.
     pub checked_abstract_generic_bodies: Vec<Span>,
-    /// Migration evidence, distinct from bodies that remain unchecked after fallback.
+    /// Generic definitions whose retained abstract body could not be analysed to the end.
+    /// Each is also recorded in `unchecked_generic_bodies`, which is what fails the run.
     pub abstract_body_fallbacks: Vec<AbstractBodyFallback>,
     pub skipped_generic_bodies_user: usize,
     pub skipped_generic_bodies_embedded_std: usize,
