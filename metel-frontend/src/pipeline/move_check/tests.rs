@@ -1653,6 +1653,7 @@ fun main() {}
     assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
+// arch-verifies: ["arch.move-check.requirement-8"]
 #[test]
 fn abstract_ownership_proves_declared_conditional_copy() {
     let report = move_report_for_source_with(
@@ -1932,6 +1933,7 @@ fun main() {}
     );
 }
 
+// arch-verifies: ["arch.move-check.requirement-8"]
 #[test]
 fn abstract_ownership_distinguishes_unknown_and_copy_row_tails() {
     let report = move_report_for_source(
@@ -2260,6 +2262,7 @@ fun main() {}
     );
 }
 
+// arch-verifies: ["arch.move-check.requirement-8", "arch.move-check.requirement-10"]
 #[test]
 fn abstract_ownership_retains_implicit_copy_capture_environments() {
     let report = move_report_for_source_with(
@@ -5175,6 +5178,7 @@ println(item.show());
     );
 }
 
+// arch-verifies: ["arch.move-check.requirement-6"]
 #[test]
 fn incomplete_analysis_is_a_distinct_error_and_never_passes() {
     let mut report = None;
@@ -5199,6 +5203,7 @@ fn incomplete_analysis_is_a_distinct_error_and_never_passes() {
     }
 }
 
+// arch-verifies: ["arch.move-check.requirement-6"]
 #[test]
 fn analyzable_generic_bodies_pass_the_completeness_guard() {
     let mut result = None;
@@ -5209,6 +5214,7 @@ fn analyzable_generic_bodies_pass_the_completeness_guard() {
     assert!(matches!(result, Some(Ok(()))), "{result:?}");
 }
 
+// arch-verifies: ["arch.move-check.requirement-4", "arch.move-check.requirement-5", "arch.move-check.requirement-10"]
 #[test]
 fn let_polymorphic_closures_are_analyzed_from_retained_bodies() {
     // Clearing the scheme environment makes reconstruction impossible, so a checked

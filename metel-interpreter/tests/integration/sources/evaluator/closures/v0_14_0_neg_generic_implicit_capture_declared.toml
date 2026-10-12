@@ -4,5 +4,6 @@ code = "T0026"
 contains = "add a capture list"
 
 [options]
+arch_verifies = ["arch.move-check.requirement-7"]
 error = ["T0026"]
 spec = ["spec.functions.closures.legality-6"]

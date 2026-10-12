@@ -35,6 +35,7 @@ fn method_fun_decl(
 /// function, so it gets the same retained abstract signature and body. The closure's
 /// parameters, return type and body stand in for a function declaration, and its own
 /// span keys the definition-time facts recorded while inferring it.
+// arch-implements: ["arch.move-check.requirement-5"]
 fn closure_definition(
     ld: &crate::data::ast::LetDecl,
     params: &[crate::data::ast::Param],

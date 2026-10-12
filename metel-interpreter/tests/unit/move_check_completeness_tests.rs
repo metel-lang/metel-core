@@ -94,6 +94,7 @@ fn analyze_fixture(root: &Path, fixture: &Path) -> (usize, Vec<String>) {
     (report.checked_abstract_generic_bodies.len(), incomplete)
 }
 
+// arch-verifies: ["arch.move-check.requirement-4", "arch.move-check.requirement-6", "arch.move-check.requirement-10"]
 #[test]
 fn every_generic_body_in_the_corpus_is_analyzed() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/integration/sources");

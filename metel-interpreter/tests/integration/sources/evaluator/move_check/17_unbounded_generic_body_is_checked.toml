@@ -1,4 +1,5 @@
 [options]
+arch_verifies = ["arch.move-check.requirement-8"]
 error = ["T0019"]
 move_check = true
 

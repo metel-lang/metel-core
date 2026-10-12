@@ -2,4 +2,5 @@
 status = "success"
 
 [options]
+arch_verifies = ["arch.move-check.requirement-7"]
 spec = ["spec.functions.closures.legality-6"]

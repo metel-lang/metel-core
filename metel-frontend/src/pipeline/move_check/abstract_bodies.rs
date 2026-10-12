@@ -62,6 +62,7 @@ impl Checker<'_> {
     /// Analyse a generic definition from its retained abstract body. When that cannot
     /// complete the body is recorded as unanalysed, so `--move-check` fails with `I0011`
     /// rather than passing on a partial result (ADR-0063).
+    // arch-implements: ["arch.move-check.requirement-6", "arch.move-check.requirement-10"]
     pub(super) fn analyze_generic_definition(&mut self, fun: &TypedFunDecl, module: &[String]) {
         if self.check_retained_abstract_body(fun, module) {
             return;
@@ -1102,6 +1103,7 @@ impl Checker<'_> {
         Ok(())
     }
 
+    // arch-implements: ["arch.move-check.requirement-8"]
     fn abstract_is_copy_in(
         &self,
         ty: &AbstractType,

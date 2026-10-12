@@ -36,6 +36,7 @@ struct BodyFreezer<'a, 'return_type> {
     nominal_ownership: &'a RefCell<Vec<crate::data::abstract_body::AbstractNominalOwnership>>,
 }
 
+// arch-implements: ["arch.move-check.requirement-4"]
 pub(in crate::pipeline::type_checking) fn prepare_abstract_body(
     signature: &AbstractSignature,
     scheme: &TypeScheme,
@@ -1270,6 +1271,7 @@ impl BodyFreezer<'_, '_> {
         }
     }
 
+    // arch-implements: ["arch.move-check.requirement-9"]
     fn binary_operator(
         &self,
         left: &Expr,

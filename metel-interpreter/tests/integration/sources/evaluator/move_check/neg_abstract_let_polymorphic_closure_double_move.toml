@@ -4,5 +4,6 @@ code = "T0019"
 contains = "use of moved value `v`"
 
 [options]
+arch_verifies = ["arch.move-check.requirement-5"]
 error = ["T0019"]
 move_check = true

@@ -1544,6 +1544,7 @@ fn capture_has_copy_grant(
 /// generic after solving therefore needs a `Copy` grant there; an unbounded
 /// parameter or an unannotated (inferred) one has none. Fully concrete captures are
 /// judged by construction, which sees the final type.
+// arch-implements: ["arch.move-check.requirement-7"]
 fn check_implicit_capture_copy_obligations(
     ctx: &InferContext,
     subst: &Substitution,
