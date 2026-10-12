@@ -38,7 +38,7 @@ fn method_fun_decl(
 fn closure_definition(
     ld: &crate::data::ast::LetDecl,
     params: &[crate::data::ast::Param],
-    return_type: &Option<crate::data::ast::TypeExpr>,
+    return_type: Option<&crate::data::ast::TypeExpr>,
     body: &crate::data::ast::Block,
     closure_span: &crate::data::ast::Span,
     ctx: &mut ConstructCtx,
@@ -52,7 +52,7 @@ fn closure_definition(
         generics: Vec::new(),
         where_clause: None,
         params: params.to_vec(),
-        return_type: return_type.clone(),
+        return_type: return_type.cloned(),
         native: None,
         body: body.clone(),
         span: closure_span.clone(),
@@ -124,7 +124,8 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
                 && !scheme.quantified_vars.is_empty()
             {
-                let definition = closure_definition(ld, params, return_type, body, cls_span, ctx)?;
+                let definition =
+                    closure_definition(ld, params, return_type.as_ref(), body, cls_span, ctx)?;
                 return Ok(TypedDecl::Let(TypedLetDecl {
                     name: ld.name.clone(),
                     type_ann: ld.type_ann.clone(),

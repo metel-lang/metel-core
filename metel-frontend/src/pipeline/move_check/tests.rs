@@ -3335,11 +3335,23 @@ fn move_warnings_for_source(source: &str) -> Vec<String> {
     let warnings = (|| {
         let graph = module_loader::load_root(&path).expect("load temp fixture");
         let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
+        // Frozen identities are required to retain abstract bodies, exactly as in the
+        // compiler pipeline.
+        let members = crate::identity::collect_members_for_graph(&graph, &names);
+        let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized =
             path_normalization::normalize(graph, names).expect("normalize temp fixture");
         coherence::check(&normalized).expect("coherence temp fixture");
-        let typed = type_checking::check_graph(&normalized, &type_checking::CorePrelude::default())
-            .expect("typecheck temp fixture");
+        let typed = type_checking::check_graph_with_report(
+            &normalized,
+            &type_checking::CorePrelude::default(),
+            Some(crate::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            }),
+        )
+        .expect("typecheck temp fixture")
+        .graph;
         match check_graph(&typed) {
             Ok(()) => Vec::new(),
             // An incomplete analysis surfaces as I0011; its message is what these
@@ -3447,7 +3459,10 @@ fun main() { assert(duplicate({ count = 3 }) == 7); }
 
 // arch-verifies: ["arch.move-check.requirement-1"]
 #[test]
-fn unchecked_generic_body_is_reported_to_compiler_callers() {
+fn ambiguous_aspect_method_body_is_analyzed_from_its_retained_definition() {
+    // Reconstruction could not build this body and reported the ambiguity as an unchecked
+    // body. The retained definition-time body carries the resolved facts, so it is analysed
+    // completely and nothing is reported as incomplete.
     let warnings = move_warnings_for_source(
         r#"
 aspect FirstMarker {
@@ -3471,13 +3486,7 @@ item.inspect();
 fun main() { }
 "#,
     );
-    assert!(
-        warnings.iter().any(|warning| {
-            warning.contains("ambiguous aspect method `inspect`")
-                && warning.contains("FirstMarker, SecondMarker")
-        }),
-        "expected the reconstruction failure reason, got {warnings:#?}"
-    );
+    assert!(warnings.is_empty(), "{warnings:#?}");
 }
 
 #[test]
@@ -3585,7 +3594,9 @@ fun main() {}
 }
 
 #[test]
-fn unmet_method_generic_bound_is_reported_unchecked() {
+fn method_generic_bound_body_is_analyzed_from_its_retained_definition() {
+    // The method's own `U: Copy` bound is a fact of the declaration, not something a
+    // placeholder sample must satisfy, so the caller's unbounded `U` is analysed.
     let warnings = move_warnings_for_source(
         r#"
 aspect GenericSink {
@@ -3599,12 +3610,7 @@ value.take(other);
 fun main() { }
 "#,
     );
-    assert!(
-        warnings
-            .iter()
-            .any(|warning| warning.contains("does not implement `Copy`")),
-        "expected the reconstruction failure reason, got {warnings:#?}"
-    );
+    assert!(warnings.is_empty(), "{warnings:#?}");
 }
 
 // arch-verifies: ["arch.move-check.requirement-1"]

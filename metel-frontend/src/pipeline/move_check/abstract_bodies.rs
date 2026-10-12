@@ -59,6 +59,20 @@ impl Environment<'_> {
 }
 
 impl Checker<'_> {
+    /// Analyse a generic definition from its retained abstract body. When that cannot
+    /// complete the body is recorded as unanalysed, so `--move-check` fails with `I0011`
+    /// rather than passing on a partial result (ADR-0063).
+    pub(super) fn analyze_generic_definition(&mut self, fun: &TypedFunDecl, module: &[String]) {
+        if self.check_retained_abstract_body(fun, module) {
+            return;
+        }
+        let reason = self.report.abstract_body_fallbacks.last().map_or_else(
+            || "abstract analysis did not complete".to_string(),
+            |fallback| fallback.reason.clone(),
+        );
+        self.record_skipped_generic_body(&fun.span, reason);
+    }
+
     pub(super) fn check_retained_abstract_body(
         &mut self,
         fun: &TypedFunDecl,

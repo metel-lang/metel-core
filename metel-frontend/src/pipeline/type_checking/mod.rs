@@ -25,7 +25,6 @@ mod inference;
 mod object_safety;
 mod overload;
 mod projections;
-pub(crate) use conversions::type_expr_to_infer;
 pub use overload::core_native_symbol;
 mod registry;
 
@@ -1252,67 +1251,6 @@ pub fn construct_generic_body(
     options: GenericBodyOptions<'_>,
 ) -> Result<crate::data::typed_ast::TypedBlock, MetelError> {
     construction::construct_generic_body(scheme, params, arg_types, body, span, type_ctx, options)
-}
-
-pub(crate) fn symbolic_aspect_method_type(
-    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
-    aspect: &str,
-    method: &crate::data::ast::AspectMethod,
-    placeholder: &str,
-) -> Option<crate::pipeline::type_checking::type_engine::InferType> {
-    construction::symbolic_aspect_method_type(registry, aspect, method, placeholder)
-}
-
-pub(crate) fn symbolic_aspect_method_scheme(
-    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
-    aspect: &str,
-    method: &crate::data::ast::AspectMethod,
-    placeholder: &str,
-    type_var_gen: &mut crate::pipeline::type_checking::type_engine::TypeVarGenerator,
-) -> Option<crate::pipeline::type_checking::type_engine::TypeScheme> {
-    construction::symbolic_aspect_method_scheme(registry, aspect, method, placeholder, type_var_gen)
-}
-
-pub(crate) fn symbolic_impl_method_scheme(
-    registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
-    impl_generics: &[crate::data::ast::GenericParam],
-    method_generics: &[crate::data::ast::GenericParam],
-    target_type: &crate::data::ast::TypeExpr,
-    aspect_name: Option<&str>,
-    params: &[crate::data::ast::Param],
-    return_type: Option<&crate::data::ast::TypeExpr>,
-) -> Option<crate::pipeline::type_checking::type_engine::TypeScheme> {
-    construction::symbolic_impl_method_scheme(
-        registry,
-        impl_generics,
-        method_generics,
-        target_type,
-        aspect_name,
-        params,
-        return_type,
-    )
-}
-
-pub(crate) fn symbolic_aspect_method_generator()
--> crate::pipeline::type_checking::type_engine::TypeVarGenerator {
-    construction::symbolic_aspect_method_generator()
-}
-
-pub(crate) fn substitute_named_generics(
-    ty: &crate::pipeline::type_checking::type_engine::InferType,
-    named_samples: &std::collections::HashMap<
-        String,
-        crate::pipeline::type_checking::type_engine::InferType,
-    >,
-) -> crate::pipeline::type_checking::type_engine::InferType {
-    construction::substitute_named_generics(ty, named_samples)
-}
-
-pub(crate) fn repair_scheme_with_source_generics(
-    scheme: &crate::pipeline::type_checking::type_engine::TypeScheme,
-    generics: &[crate::data::ast::GenericParam],
-) -> crate::pipeline::type_checking::type_engine::TypeScheme {
-    construction::repair_scheme_with_source_generics(scheme, generics)
 }
 
 /// Recover concrete type arguments for a generic struct/enum instance, given the

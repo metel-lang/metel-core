@@ -1,7 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::data::ast::Visibility;
-use crate::data::ast::{GenericParam, Polarity, ReceiverKind, Span};
+use crate::data::ast::{ReceiverKind, Span};
 use crate::data::error::{InternalErrorCode, MetelError, TypeErrorCode};
 use crate::data::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
@@ -9,13 +8,10 @@ use crate::data::typed_ast::{
 };
 use crate::data::types::Type;
 use crate::pipeline::type_checking::type_engine::{
-    AspectAssumptions, FieldEntry, GenericBound, InferType, RowConstraintField, Substitution,
-    TypeCtx, TypeDefinitionRegistry, TypeScheme, TypeVar, type_to_infer,
+    Substitution, TypeCtx, TypeDefinitionRegistry, type_to_infer,
 };
-use crate::pipeline::type_checking::type_expr_to_infer;
 
 mod abstract_bodies;
-mod symbolic_rows;
 
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
 
@@ -114,10 +110,6 @@ pub struct MoveCheckReport {
 
 #[derive(Clone, Copy)]
 struct GenericClosureMove<'a> {
-    name: &'a str,
-    params: &'a [crate::data::ast::Param],
-    body: &'a crate::data::ast::Block,
-    capture_types: &'a [(String, Type)],
     owned_capture_types: &'a [(String, Type)],
     span: &'a Span,
     definition: Option<&'a crate::data::typed_ast::TypedFunDecl>,
@@ -253,25 +245,10 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
 
 use crate::ownership::flow_state::{FlowState, MoveCause, MoveRecord};
 
-#[derive(Debug, Clone, Default)]
-struct GenericMoveEnv {
-    placeholders: HashMap<String, TypeVar>,
-    assumptions: AspectAssumptions,
-    symbolic_aspects: HashMap<String, HashSet<String>>,
-    associated_types: HashMap<(String, String), HashMap<String, Type>>,
-    /// metel-core#1226: a quantified var's `<record T: { field: Type, .. }>`
-    /// row bound, by the var's own placeholder name. See
-    /// `type_ctx_with_symbolic_row_fields`.
-    row_fields: HashMap<String, Vec<RowConstraintField>>,
-    arg_types: Vec<Type>,
-    return_type: Option<Type>,
-}
-
 struct Checker<'a> {
     registry: &'a TypeDefinitionRegistry,
     report: MoveCheckReport,
     type_ctx: Option<TypeCtx>,
-    generic_envs: Vec<GenericMoveEnv>,
     /// One frame per enclosing loop body currently being walked, innermost last.
     loop_frames: Vec<LoopFrame>,
 }
@@ -313,7 +290,6 @@ impl<'a> Checker<'a> {
             registry,
             report: MoveCheckReport::default(),
             type_ctx: None,
-            generic_envs: Vec::new(),
             loop_frames: Vec::new(),
         }
     }
@@ -375,18 +351,7 @@ impl<'a> Checker<'a> {
                         self.check_block(body, current_module, &mut fn_state);
                         fn_state.pop_scope();
                     }
-                    FunBody::Generic(body) => {
-                        if !self.check_retained_abstract_body(fun, current_module) {
-                            self.check_generic_body(
-                                &fun.name,
-                                &fun.generics,
-                                &fun.params,
-                                body,
-                                &fun.span,
-                                current_module,
-                            );
-                        }
-                    }
+                    FunBody::Generic(_) => self.analyze_generic_definition(fun, current_module),
                     FunBody::Native(_) => {}
                 }
             }
@@ -439,10 +404,8 @@ impl<'a> Checker<'a> {
                             self.check_block(body, current_module, &mut fn_state);
                             fn_state.pop_scope();
                         }
-                        FunBody::Generic(body) => {
-                            if !self.check_retained_abstract_body(method, current_module) {
-                                self.check_generic_method_body(ib, method, body, current_module);
-                            }
+                        FunBody::Generic(_) => {
+                            self.analyze_generic_definition(method, current_module);
                         }
                         FunBody::Native(_) => {}
                     }
@@ -450,278 +413,6 @@ impl<'a> Checker<'a> {
             }
             TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Aspect(_) => {}
         }
-    }
-
-    fn check_generic_body(
-        &mut self,
-        name: &str,
-        generics: &[GenericParam],
-        params: &[crate::data::ast::Param],
-        body: &crate::data::ast::Block,
-        span: &Span,
-        current_module: &[String],
-    ) {
-        if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, generics, params, body, span, &[])
-        {
-            let mut fn_state = FlowState::default();
-            fn_state.push_scope();
-            for (param, ty) in params.iter().zip(&generic_env.arg_types) {
-                fn_state.bind_typed(&param.name, ty);
-            }
-            self.generic_envs.push(generic_env);
-            self.check_block(&typed_body, current_module, &mut fn_state);
-            fn_state.pop_scope();
-            self.generic_envs.pop();
-        }
-    }
-
-    fn construct_generic_body_for_move(
-        &mut self,
-        name: &str,
-        generics: &[GenericParam],
-        params: &[crate::data::ast::Param],
-        body: &crate::data::ast::Block,
-        span: &Span,
-        capture_types: &[(String, Type)],
-    ) -> Option<(TypedBlock, GenericMoveEnv)> {
-        let Some(type_ctx) = self.type_ctx.as_ref() else {
-            self.record_skipped_generic_body(span, "type context was unavailable");
-            return None;
-        };
-        let Some(raw_scheme) = type_ctx.scheme_env.get(name) else {
-            self.record_skipped_generic_body(span, "function type scheme was unavailable");
-            return None;
-        };
-        let scheme = crate::pipeline::type_checking::repair_scheme_with_source_generics(
-            raw_scheme, generics,
-        );
-        let Some((arg_types, generic_env)) =
-            Self::generic_sample_args(&scheme, &type_ctx.registry, generics)
-        else {
-            self.record_skipped_generic_body(
-                span,
-                "function type scheme could not be converted to symbolic arguments",
-            );
-            return None;
-        };
-        let symbolic_type_ctx = type_ctx_with_symbolic_row_fields(
-            &type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env),
-            &generic_env,
-        );
-        match crate::pipeline::type_checking::construct_generic_body(
-            &scheme,
-            params,
-            &arg_types,
-            body,
-            span,
-            &symbolic_type_ctx,
-            crate::pipeline::type_checking::GenericBodyOptions {
-                expected_ret: generic_env.return_type.as_ref(),
-                capture_types,
-            },
-        ) {
-            Ok(typed_body) => Some((typed_body, generic_env)),
-            Err(error) => {
-                let reason =
-                    symbolic_method_ambiguity_reason(&error, &generic_env, &type_ctx.registry)
-                        .unwrap_or_else(|| error.to_string());
-                self.record_skipped_generic_body(span, reason);
-                None
-            }
-        }
-    }
-
-    fn check_generic_method_body(
-        &mut self,
-        impl_block: &crate::data::typed_ast::TypedImplBlock,
-        method: &crate::data::typed_ast::TypedFunDecl,
-        body: &crate::data::ast::Block,
-        current_module: &[String],
-    ) {
-        if self.type_ctx.is_none() {
-            self.record_skipped_generic_body(&method.span, "type context was unavailable");
-            return;
-        }
-        let raw_scheme = self
-            .registry
-            .generic_method_scheme_for_decl(&method.span)
-            .cloned()
-            .or_else(|| {
-                crate::pipeline::type_checking::symbolic_impl_method_scheme(
-                    self.registry,
-                    &impl_block.generics,
-                    &method.generics,
-                    &impl_block.target_type,
-                    impl_block.aspect_name.as_deref(),
-                    &method.params,
-                    method.return_type.as_ref(),
-                )
-            });
-        let Some(raw_scheme) = raw_scheme else {
-            self.record_skipped_generic_body(&method.span, "method type scheme was unavailable");
-            return;
-        };
-        let mut source_generics = impl_block.generics.clone();
-        source_generics.extend_from_slice(&method.generics);
-        let scheme = crate::pipeline::type_checking::repair_scheme_with_source_generics(
-            &raw_scheme,
-            &source_generics,
-        );
-        let Some(type_ctx) = self.type_ctx.as_ref() else {
-            self.record_skipped_generic_body(&method.span, "type context was unavailable");
-            return;
-        };
-        let Some((arg_types, generic_env)) =
-            Self::generic_sample_args(&scheme, &type_ctx.registry, &source_generics)
-        else {
-            self.record_skipped_generic_body(
-                &method.span,
-                "method type scheme could not be converted to symbolic arguments",
-            );
-            return;
-        };
-        let symbolic_type_ctx = type_ctx_with_symbolic_row_fields(
-            &type_ctx_with_symbolic_aspect_methods(type_ctx, &generic_env),
-            &generic_env,
-        );
-        match crate::pipeline::type_checking::construct_generic_body(
-            &scheme,
-            &method.params,
-            &arg_types,
-            body,
-            &method.span,
-            &symbolic_type_ctx,
-            crate::pipeline::type_checking::GenericBodyOptions {
-                expected_ret: generic_env.return_type.as_ref(),
-                capture_types: &[],
-            },
-        ) {
-            Ok(typed_body) => {
-                let mut fn_state = FlowState::default();
-                fn_state.push_scope();
-                for (param, ty) in method.params.iter().zip(&generic_env.arg_types) {
-                    fn_state.bind_typed(&param.name, ty);
-                }
-                self.generic_envs.push(generic_env);
-                self.check_block(&typed_body, current_module, &mut fn_state);
-                fn_state.pop_scope();
-                self.generic_envs.pop();
-            }
-            Err(error) => {
-                let reason =
-                    symbolic_method_ambiguity_reason(&error, &generic_env, &type_ctx.registry)
-                        .unwrap_or_else(|| error.to_string());
-                self.record_skipped_generic_body(&method.span, reason);
-            }
-        }
-    }
-
-    fn generic_sample_args(
-        scheme: &TypeScheme,
-        registry: &TypeDefinitionRegistry,
-        generics: &[GenericParam],
-    ) -> Option<(Vec<Type>, GenericMoveEnv)> {
-        let mut subst = Substitution::new();
-        let mut generic_env = GenericMoveEnv::default();
-        let mut named_samples = HashMap::new();
-        for (index, var) in scheme.quantified_vars.iter().enumerate() {
-            let placeholder = generic_placeholder_name(*var);
-            // A bare nominal placeholder, not a `Type::Record` -- a record
-            // sample would make the whole placeholder structurally `Copy`
-            // whenever its bound's fields happen to all be `Copy` (RFC-0050's
-            // usual rule for a literal record type), which the bound itself
-            // never claimed. Move-checking's `is_copy` has to see the same
-            // unbound-by-default nominal type an unconstrained `<T>` gets;
-            // see `type_ctx_with_symbolic_row_fields` for how a `<record T:
-            // { field: Type, .. }>` bound's fields still resolve.
-            let sample = Type::Named(
-                placeholder.clone(),
-                Vec::new(),
-                crate::data::types::NominalId::NONE,
-            );
-            if let Some(name) = scheme.param_names.get(index) {
-                named_samples.insert(name.clone(), type_to_infer(&sample));
-            }
-            generic_env.placeholders.insert(placeholder.clone(), *var);
-            if let Some(bounds) = scheme.bounds.get(index) {
-                let assumed: HashSet<String> = bounds
-                    .iter()
-                    .filter_map(GenericBound::aspect_name)
-                    .map(ToOwned::to_owned)
-                    .collect();
-                if !assumed.is_empty() {
-                    generic_env.assumptions.insert(*var, assumed);
-                }
-                // metel-core#1226: record the row bound's own fields (by
-                // placeholder name) so `type_ctx_with_symbolic_row_fields` can
-                // register them for the symbolic construction pass below --
-                // otherwise a body that accesses one of them can't construct
-                // at all, and its use-after-move is never checked.
-                if let Some(row) = bounds.iter().find_map(|bound| match bound {
-                    GenericBound::Row(row) => Some(row),
-                    GenericBound::Aspect(_) | GenericBound::AllFields { .. } => None,
-                }) {
-                    generic_env
-                        .row_fields
-                        .insert(placeholder.clone(), row.fields.clone());
-                }
-            }
-            subst.bind(*var, type_to_infer(&sample));
-        }
-        let row_samples = symbolic_rows::row_samples(scheme, generics, &named_samples)?;
-        for (var, sample) in row_samples {
-            subst.bind(var, type_to_infer(&sample));
-            if let Some(index) = scheme
-                .quantified_vars
-                .iter()
-                .position(|candidate| *candidate == var)
-                && let Some(name) = scheme.param_names.get(index)
-            {
-                named_samples.insert(name.clone(), type_to_infer(&sample));
-            }
-        }
-        generic_env.symbolic_aspects = symbolic_aspect_assumptions(
-            registry,
-            &generic_env.placeholders,
-            &generic_env.assumptions,
-        );
-        for (index, bindings) in scheme.assoc_eq_constraints.iter().enumerate() {
-            let placeholder = generic_placeholder_name(*scheme.quantified_vars.get(index)?);
-            for (aspect, associated, expected) in bindings {
-                let expected = subst.apply(expected);
-                let expected =
-                    infer_to_type(&crate::pipeline::type_checking::substitute_named_generics(
-                        &expected,
-                        &named_samples,
-                    ))?;
-                generic_env
-                    .associated_types
-                    .entry((placeholder.clone(), aspect.clone()))
-                    .or_default()
-                    .insert(associated.clone(), expected);
-            }
-        }
-        let InferType::Fun(params, ret, ..) = &scheme.ty else {
-            return None;
-        };
-        let arg_types = params
-            .iter()
-            .map(|param| {
-                let substituted = subst.apply(param);
-                infer_to_type(&crate::pipeline::type_checking::substitute_named_generics(
-                    &substituted,
-                    &named_samples,
-                ))
-            })
-            .collect::<Option<Vec<_>>>()?;
-        generic_env.arg_types.clone_from(&arg_types);
-        generic_env.return_type =
-            infer_to_type(&crate::pipeline::type_checking::substitute_named_generics(
-                &subst.apply(ret),
-                &named_samples,
-            ));
-        Some((arg_types, generic_env))
     }
 
     /// Walk a loop body until the state *entering* it stops growing, then walk it
@@ -1020,38 +711,21 @@ impl<'a> Checker<'a> {
                 state,
             ),
             TypedExpr::GenericClosure {
-                name,
-                params,
-                body,
-                capture_types,
                 owned_capture_types,
                 span,
                 definition,
                 is_function_alias,
                 ..
-            } => {
-                if let Some(name) = name {
-                    self.observe_generic_closure_expr(
-                        GenericClosureMove {
-                            name,
-                            params,
-                            body,
-                            capture_types,
-                            owned_capture_types,
-                            span,
-                            definition: definition.as_deref(),
-                            is_function_alias: *is_function_alias,
-                        },
-                        current_module,
-                        state,
-                    );
-                } else {
-                    self.record_skipped_generic_body(
-                        span,
-                        "anonymous generic closure has no type scheme lookup key",
-                    );
-                }
-            }
+            } => self.observe_generic_closure_expr(
+                GenericClosureMove {
+                    owned_capture_types,
+                    span,
+                    definition: definition.as_deref(),
+                    is_function_alias: *is_function_alias,
+                },
+                current_module,
+                state,
+            ),
             // `return` and `break` both leave the loop iteration, so whatever
             // they moved never reaches a following iteration.
             TypedExpr::Return(ret) => {
@@ -1265,10 +939,6 @@ impl<'a> Checker<'a> {
         state: &mut FlowState,
     ) {
         let GenericClosureMove {
-            name,
-            params,
-            body,
-            capture_types,
             owned_capture_types,
             span,
             definition,
@@ -1280,42 +950,12 @@ impl<'a> Checker<'a> {
         if is_function_alias {
             return;
         }
-        // ADR-0063: analyse the retained definition-time body rather than reconstructing
-        // the closure against invented concrete arguments.
-        if let Some(definition) = definition
-            && self.check_retained_abstract_body(definition, current_module)
-        {
-            return;
-        }
-        if let Some((typed_body, generic_env)) =
-            self.construct_generic_body_for_move(name, &[], params, body, span, capture_types)
-        {
-            self.capture_closure(
-                &typed_body,
-                params.iter().map(|param| param.name.as_str()),
-                owned_capture_types,
+        match definition {
+            Some(definition) => self.analyze_generic_definition(definition, current_module),
+            None => self.record_skipped_generic_body(
                 span,
-                state,
-            );
-            let mut closure_state = FlowState::default();
-            closure_state.push_scope();
-            for captured in collect_free_roots_from_typed_block(&typed_body, &HashSet::new()) {
-                if let Some((_, ty)) = capture_types
-                    .iter()
-                    .find(|(name, _)| name == &captured.name)
-                {
-                    closure_state.bind_typed(&captured.name, ty);
-                } else {
-                    closure_state.bind(&captured.name);
-                }
-            }
-            for (param, ty) in params.iter().zip(&generic_env.arg_types) {
-                closure_state.bind_typed(&param.name, ty);
-            }
-            self.generic_envs.push(generic_env);
-            self.check_block(&typed_body, current_module, &mut closure_state);
-            closure_state.pop_scope();
-            self.generic_envs.pop();
+                "let-polymorphic closure has no retained abstract definition",
+            ),
         }
     }
 
@@ -2073,27 +1713,8 @@ impl<'a> Checker<'a> {
         ty: &Type,
         aspect_name: &str,
     ) -> bool {
-        let Some(generic_env) = self.generic_envs.last() else {
-            return self
-                .registry
-                .type_satisfies_aspect(current_module, ty, aspect_name);
-        };
-        if let Type::Named(name, args, ..) = peel_type_references(ty)
-            && args.is_empty()
-            && generic_env
-                .symbolic_aspects
-                .get(name)
-                .is_some_and(|aspects| aspects.contains(aspect_name))
-        {
-            return true;
-        }
-        let infer_ty = type_to_infer_under_generic_env(ty, &generic_env.placeholders);
-        self.registry.infer_type_satisfies_aspect(
-            current_module,
-            &infer_ty,
-            aspect_name,
-            &generic_env.assumptions,
-        )
+        self.registry
+            .type_satisfies_aspect(current_module, ty, aspect_name)
     }
 
     fn illegal_move_kind(
@@ -2179,32 +1800,6 @@ impl<'a> Checker<'a> {
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone()),
                 Type::Named(name, args, ..) => {
-                    // metel-core#1226: a symbolic generic body's row-bound
-                    // placeholder has no entry in the shared, immutable
-                    // `self.registry` (unlike `symbolic_type_ctx`'s own
-                    // enriched clone the construction pass above used) --
-                    // its fields live in the enclosing `GenericMoveEnv`
-                    // instead, the same place `type_satisfies_aspect` already
-                    // looks first for a placeholder's symbolic aspects.
-                    if args.is_empty()
-                        && let Some(row_fields) = self
-                            .generic_envs
-                            .last()
-                            .and_then(|env| env.row_fields.get(name))
-                    {
-                        let entry = row_fields.iter().find(|f| f.label == *field)?;
-                        let infer_ty = entry.ty.as_ref().map_or_else(
-                            || {
-                                InferType::Named(
-                                    format!("{name}__field_{field}"),
-                                    Vec::new(),
-                                    crate::data::types::NominalId::NONE,
-                                )
-                            },
-                            type_expr_to_infer,
-                        );
-                        return infer_to_type(&infer_ty);
-                    }
                     let (type_id, _resolved_name, fields) = self
                         .registry
                         .projection_struct_fields(current_module, name)?;
@@ -2273,12 +1868,6 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<ReceiverKind> {
-        if let Some((_, method_def, _)) = self.symbolic_aspect_method(receiver_ty, method) {
-            return method_def
-                .params
-                .first()
-                .and_then(|param| param.receiver.clone());
-        }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self.registry.array_method_receiver_kind(method).cloned(),
             Type::Named(name, ..) => self
@@ -2300,18 +1889,6 @@ impl<'a> Checker<'a> {
         current_module: &[String],
         _dispatch: &MethodDispatch,
     ) -> Option<Vec<Type>> {
-        if let Some((aspect, method_def, placeholder)) =
-            self.symbolic_aspect_method(receiver_ty, method)
-        {
-            return crate::pipeline::type_checking::symbolic_aspect_method_type(
-                self.registry,
-                &aspect,
-                &method_def,
-                &placeholder,
-            )
-            .as_ref()
-            .and_then(infer_method_arg_types);
-        }
         match peel_type_references(receiver_ty) {
             Type::Array(_) => self
                 .registry
@@ -2328,40 +1905,6 @@ impl<'a> Checker<'a> {
             }),
         }
     }
-
-    // metel-core#989: the symbolic-aspect helpers below still look aspects up by bare
-    // short name. `--move-check` is opt-in, and these reconstruct a generic parameter's
-    // proven aspect bounds — a narrow path. On the rare same-short-name-across-modules
-    // collision the registry's bare accessor now returns `None` (a missed symbolic
-    // resolution) rather than the wrong aspect's methods; threading `current_module`
-    // through here is deferred.
-    fn symbolic_aspect_method(
-        &self,
-        receiver_ty: &Type,
-        method: &str,
-    ) -> Option<(String, crate::data::ast::AspectMethod, String)> {
-        let Type::Named(placeholder, args, ..) = peel_type_references(receiver_ty) else {
-            return None;
-        };
-        if !args.is_empty() {
-            return None;
-        }
-        let generic_env = self.generic_envs.last()?;
-        let aspects = generic_env.symbolic_aspects.get(placeholder)?;
-        let mut matches = aspects.iter().filter_map(|aspect| {
-            self.registry
-                .aspect_method_defs(aspect)?
-                .iter()
-                .find(|method_def| method_def.name == method)
-                .cloned()
-                .map(|method_def| (aspect.clone(), method_def, placeholder.clone()))
-        });
-        let result = matches.next()?;
-        if matches.next().is_some() {
-            return None;
-        }
-        Some(result)
-    }
 }
 
 fn function_param_types(ty: &Type) -> Option<&[Type]> {
@@ -2373,231 +1916,6 @@ fn function_param_types(ty: &Type) -> Option<&[Type]> {
 
 fn is_embedded_std_span(span: &Span) -> bool {
     span.filename.starts_with("<embedded std::")
-}
-
-fn generic_placeholder_name(var: TypeVar) -> String {
-    format!("__metel_move_check_generic_{}", var.0)
-}
-
-fn type_ctx_with_symbolic_aspect_methods(
-    type_ctx: &TypeCtx,
-    generic_env: &GenericMoveEnv,
-) -> TypeCtx {
-    let mut enriched = type_ctx.clone();
-    let mut method_gen = crate::pipeline::type_checking::symbolic_aspect_method_generator();
-    for placeholder in generic_env.placeholders.keys() {
-        enriched.registry.local_placeholder_id(placeholder);
-        enriched
-            .registry
-            .register_symbolic_named_aspects(placeholder.clone(), HashSet::new());
-    }
-    for ((placeholder, aspect), bindings) in &generic_env.associated_types {
-        enriched
-            .registry
-            .register_impl_assoc_types(&[], placeholder, aspect, bindings.clone());
-    }
-    for (placeholder, aspects) in &generic_env.symbolic_aspects {
-        enriched
-            .registry
-            .register_symbolic_named_aspects(placeholder.clone(), aspects.clone());
-        let mut methods: HashMap<String, Vec<(String, crate::data::ast::AspectMethod)>> =
-            HashMap::new();
-        for aspect in aspects {
-            let Some(method_defs) = enriched.registry.aspect_method_defs(aspect) else {
-                continue;
-            };
-            for method in method_defs {
-                methods
-                    .entry(method.name.clone())
-                    .or_default()
-                    .push((aspect.clone(), method.clone()));
-            }
-        }
-        for candidates in methods.into_values() {
-            let [(aspect, method)] = candidates.as_slice() else {
-                continue;
-            };
-            let Some(method_scheme) = crate::pipeline::type_checking::symbolic_aspect_method_scheme(
-                &enriched.registry,
-                aspect,
-                method,
-                placeholder,
-                &mut method_gen,
-            ) else {
-                continue;
-            };
-            // metel-core#1124: `placeholder` names a generic parameter, not a
-            // real declaration -- the name resolver never assigns it a
-            // `SymbolId`, so mint/reuse a local placeholder one to register
-            // these methods under (the method tables are `SymbolId`-keyed).
-            let owner = enriched.registry.local_placeholder_id(placeholder);
-            enriched.registry.register_method_scheme(
-                owner,
-                method.name.clone(),
-                method_scheme.clone(),
-                Vec::new(),
-            );
-            enriched.registry.register_method_scheme_variant(
-                owner,
-                method.name.clone(),
-                method_scheme,
-                Vec::new(),
-                Some(aspect.clone()),
-                method.span.clone(),
-            );
-            if let Some(receiver) = method
-                .params
-                .first()
-                .and_then(|param| param.receiver.clone())
-            {
-                enriched
-                    .registry
-                    .register_method_receiver(owner, method.name.clone(), receiver);
-            }
-        }
-    }
-    enriched
-}
-
-/// metel-core#1226: register a `<record T: { field: Type, .. }>` bound's own
-/// fields as a struct declaration under `T`'s placeholder id, so the
-/// symbolic construction pass below can resolve `value.field` the same way
-/// it resolves a field on any other nominal type -- a placeholder that
-/// carries no row bound otherwise has no fields at all, and construction
-/// fails outright on the first field access, silently skipping the whole
-/// body (and any use-after-move inside it) instead of analyzing it.
-///
-/// The sample given to construction stays a bare nominal placeholder (not a
-/// `Type::Record`) precisely so this registration is what supplies its
-/// fields: a `Type::Record` sample would also make the placeholder
-/// structurally `Copy` whenever the bound's fields happen to all be `Copy`,
-/// which the bound never claimed and move-checking must not assume.
-fn type_ctx_with_symbolic_row_fields(type_ctx: &TypeCtx, generic_env: &GenericMoveEnv) -> TypeCtx {
-    let mut enriched = type_ctx.clone();
-    for (placeholder, fields) in &generic_env.row_fields {
-        let owner = enriched.registry.local_placeholder_id(placeholder);
-        for field in fields.iter().filter(|field| field.ty.is_none()) {
-            enriched.registry.register_symbolic_named_aspects(
-                format!("{placeholder}__field_{}", field.label),
-                HashSet::new(),
-            );
-        }
-        let field_entries = fields
-            .iter()
-            .map(|field| FieldEntry {
-                name: field.label.clone(),
-                ty: field.ty.as_ref().map_or_else(
-                    || {
-                        InferType::Named(
-                            format!("{placeholder}__field_{}", field.label),
-                            Vec::new(),
-                            crate::data::types::NominalId::NONE,
-                        )
-                    },
-                    type_expr_to_infer,
-                ),
-                span: Span::new(0, 0, ""),
-                visibility: Visibility::Public,
-                id: None,
-            })
-            .collect();
-        enriched.registry.register_struct_fields(
-            owner,
-            placeholder.clone(),
-            field_entries,
-            Vec::new(),
-            Visibility::Public,
-            false,
-        );
-    }
-    enriched
-}
-
-fn symbolic_aspect_assumptions(
-    registry: &TypeDefinitionRegistry,
-    placeholders: &HashMap<String, TypeVar>,
-    assumptions: &AspectAssumptions,
-) -> HashMap<String, HashSet<String>> {
-    let mut symbolic_aspects: HashMap<String, HashSet<String>> = placeholders
-        .iter()
-        .filter_map(|(placeholder, var)| {
-            assumptions
-                .get(var)
-                .cloned()
-                .map(|aspects| (placeholder.clone(), aspects))
-        })
-        .collect();
-    let mut pending: Vec<String> = symbolic_aspects.keys().cloned().collect();
-    let mut next = 0;
-
-    while let Some(symbolic_name) = pending.get(next).cloned() {
-        next += 1;
-        let aspects = symbolic_aspects
-            .get(&symbolic_name)
-            .cloned()
-            .unwrap_or_default();
-        for aspect in aspects {
-            let Some(assoc_decls) = registry.aspect_assoc_type_decls(&aspect) else {
-                continue;
-            };
-            for assoc_decl in assoc_decls {
-                let assoc_aspects: HashSet<String> = assoc_decl
-                    .bounds
-                    .iter()
-                    .filter(|bound| bound.polarity == Polarity::Positive)
-                    .filter_map(GenericBound::from_ast)
-                    .filter_map(|bound| bound.aspect_name().map(ToOwned::to_owned))
-                    .collect();
-                let projection = format!("{symbolic_name}::{}", assoc_decl.name);
-                let entry = symbolic_aspects.entry(projection.clone()).or_default();
-                let previous_len = entry.len();
-                entry.extend(assoc_aspects);
-                if entry.len() != previous_len {
-                    pending.push(projection);
-                }
-            }
-        }
-    }
-
-    symbolic_aspects
-}
-
-fn symbolic_method_ambiguity_reason(
-    error: &MetelError,
-    generic_env: &GenericMoveEnv,
-    registry: &TypeDefinitionRegistry,
-) -> Option<String> {
-    let MetelError::Internal { message, .. } = error else {
-        return None;
-    };
-    for (symbolic_name, aspects) in &generic_env.symbolic_aspects {
-        let prefix = "no method `";
-        let suffix = format!("` on `{symbolic_name}`");
-        let Some(method) = message
-            .strip_prefix(prefix)
-            .and_then(|rest| rest.strip_suffix(&suffix))
-        else {
-            continue;
-        };
-        let mut candidates: Vec<String> = aspects
-            .iter()
-            .filter(|aspect| {
-                registry
-                    .aspect_method_defs(aspect)
-                    .is_some_and(|methods| methods.iter().any(|candidate| candidate.name == method))
-            })
-            .cloned()
-            .collect();
-        if candidates.len() < 2 {
-            continue;
-        }
-        candidates.sort();
-        return Some(format!(
-            "ambiguous aspect method `{method}` on symbolic type `{symbolic_name}`; candidates: {}",
-            candidates.join(", ")
-        ));
-    }
-    None
 }
 
 /// The declared parameter types of a method, excluding the receiver.
@@ -2620,124 +1938,6 @@ fn infer_method_arg_types(
             .collect::<Option<Vec<_>>>(),
         _ => None,
     }
-}
-
-fn type_to_infer_under_generic_env(
-    ty: &Type,
-    placeholders: &HashMap<String, TypeVar>,
-) -> InferType {
-    match ty {
-        Type::OpenRecord { fields, tail } => InferType::RowExtend {
-            fields: infer_row_fields_under_generic_env(fields, placeholders),
-            tail: Box::new(type_to_infer_under_generic_env(tail, placeholders)),
-        },
-        Type::SymbolicRow { .. } => InferType::Concrete(ty.clone()),
-        Type::Boolean
-        | Type::Str
-        | Type::Char
-        | Type::Unit
-        | Type::Never
-        | Type::I8
-        | Type::I16
-        | Type::I32
-        | Type::I64
-        | Type::U8
-        | Type::U16
-        | Type::U32
-        | Type::U64
-        | Type::F32
-        | Type::F64 => type_to_infer(ty),
-        Type::Tuple(items) => InferType::Tuple(
-            items
-                .iter()
-                .map(|item| type_to_infer_under_generic_env(item, placeholders))
-                .collect(),
-        ),
-        Type::Record(fields) => InferType::Record(
-            fields
-                .iter()
-                .map(|(name, field_ty)| {
-                    (
-                        name.clone(),
-                        type_to_infer_under_generic_env(field_ty, placeholders),
-                    )
-                })
-                .collect(),
-        ),
-        Type::Array(inner) => InferType::Array(Box::new(type_to_infer_under_generic_env(
-            inner,
-            placeholders,
-        ))),
-        Type::SizedArray(inner, len) => InferType::SizedArray(
-            Box::new(type_to_infer_under_generic_env(inner, placeholders)),
-            *len,
-        ),
-        Type::Reference(inner) => InferType::Reference(Box::new(type_to_infer_under_generic_env(
-            inner,
-            placeholders,
-        ))),
-        Type::MutReference(inner) => InferType::MutReference(Box::new(
-            type_to_infer_under_generic_env(inner, placeholders),
-        )),
-        Type::Fun(params, ret, call_mult, use_mult, call_mutation) => InferType::Fun(
-            params
-                .iter()
-                .map(|param| type_to_infer_under_generic_env(param, placeholders))
-                .collect(),
-            Box::new(type_to_infer_under_generic_env(ret, placeholders)),
-            *call_mult,
-            *use_mult,
-            *call_mutation,
-        ),
-        Type::Named(name, args, ..) => {
-            if args.is_empty()
-                && let Some(var) = placeholders.get(name)
-            {
-                return InferType::Var(*var);
-            }
-            InferType::Named(
-                name.clone(),
-                args.iter()
-                    .map(|arg| type_to_infer_under_generic_env(arg, placeholders))
-                    .collect(),
-                crate::data::types::NominalId::NONE,
-            )
-        }
-        Type::Residual { brand, fields } => InferType::Residual {
-            brand: brand.clone(),
-            fields: fields
-                .iter()
-                .map(|(name, field_ty)| {
-                    (
-                        name.clone(),
-                        type_to_infer_under_generic_env(field_ty, placeholders),
-                    )
-                })
-                .collect(),
-        },
-        Type::Dyn { aspect, type_args } => InferType::Dyn {
-            aspect: aspect.clone(),
-            type_args: type_args
-                .iter()
-                .map(|arg| type_to_infer_under_generic_env(arg, placeholders))
-                .collect(),
-        },
-    }
-}
-
-fn infer_row_fields_under_generic_env(
-    fields: &[(String, Type)],
-    placeholders: &HashMap<String, TypeVar>,
-) -> Vec<(String, InferType)> {
-    fields
-        .iter()
-        .map(|(name, ty)| {
-            (
-                name.clone(),
-                type_to_infer_under_generic_env(ty, placeholders),
-            )
-        })
-        .collect()
 }
 
 /// Convert an `InferType` to a `Type`, or `None` if any part of it is still an unresolved
