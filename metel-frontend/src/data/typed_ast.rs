@@ -539,6 +539,13 @@ pub enum TypedExpr {
         #[allow(dead_code)] // kept for future type annotation checking
         return_type: Option<TypeExpr>,
         body: Block,
+        /// ADR-0063: the closure as a generic definition, with the abstract signature and
+        /// body retained from definition-time checking. `None` for an alias of an existing
+        /// generic function, whose body is that function's own and is analysed there.
+        definition: Option<Box<TypedFunDecl>>,
+        /// `let alias = generic_fn;` shares the referenced function's body instead of
+        /// introducing a new one.
+        is_function_alias: bool,
         ty: Type,
         span: Span,
     },

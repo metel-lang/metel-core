@@ -1419,6 +1419,10 @@ impl Checker<'_> {
                 .ok_or_else(|| {
                     "abstract conditional nominal aspect entailment is not yet retained".to_string()
                 }),
+            // A residual exists only after a partial move, and partially moving a `Drop`
+            // type is itself rejected, so a residual never carries `Drop`. Drop dispatch
+            // against a narrowed residual is specified as not implemented.
+            AbstractType::Residual { .. } if name == "Drop" => Ok(false),
             AbstractType::Residual { .. } | AbstractType::Dyn { .. } => {
                 Err("abstract nominal aspect entailment is not yet retained".to_string())
             }

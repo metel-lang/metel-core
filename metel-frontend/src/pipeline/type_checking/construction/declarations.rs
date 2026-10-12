@@ -31,6 +31,80 @@ fn method_fun_decl(
     }
 }
 
+/// ADR-0063: a let-bound polymorphic closure is a generic definition like any generic
+/// function, so it gets the same retained abstract signature and body. The closure's
+/// parameters, return type and body stand in for a function declaration, and its own
+/// span keys the definition-time facts recorded while inferring it.
+fn closure_definition(
+    ld: &crate::data::ast::LetDecl,
+    params: &[crate::data::ast::Param],
+    return_type: &Option<crate::data::ast::TypeExpr>,
+    body: &crate::data::ast::Block,
+    closure_span: &crate::data::ast::Span,
+    ctx: &mut ConstructCtx,
+) -> Result<Option<Box<TypedFunDecl>>, MetelError> {
+    let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()).cloned() else {
+        return Ok(None);
+    };
+    let fun = crate::data::ast::FunDecl {
+        visibility: crate::data::ast::Visibility::Private,
+        name: ld.name.clone(),
+        generics: Vec::new(),
+        where_clause: None,
+        params: params.to_vec(),
+        return_type: return_type.clone(),
+        native: None,
+        body: body.clone(),
+        span: closure_span.clone(),
+    };
+    let binder = ctx
+        .local_binding_at(&ld.span)
+        .map(crate::identity::BindingId::Local)
+        .or_else(|| {
+            ctx.symbols
+                .filter(|_| ctx.env.len() == 1)
+                .and_then(|symbols| symbols.get(&(ctx.current_module.to_vec(), ld.name.clone())))
+                .copied()
+                .map(crate::identity::BindingId::Global)
+        });
+    let abstract_signature = binder
+        .map(|binder| {
+            super::super::handoff::freeze_declaration_signature(
+                &scheme,
+                binder,
+                &fun,
+                ctx.registry,
+                ctx.current_module,
+                ctx.resolved_facts.definition_aspect_arguments(&fun.span),
+            )
+        })
+        .transpose()?;
+    let abstract_body = abstract_signature.as_ref().map(|signature| {
+        super::super::handoff::prepare_abstract_body(
+            signature,
+            &scheme,
+            &fun,
+            ctx.resolved_facts,
+            ctx.identity,
+            ctx.registry,
+        )
+    });
+    Ok(Some(Box::new(TypedFunDecl {
+        name: fun.name,
+        generics: fun.generics,
+        params: fun.params,
+        param_ids: ctx.param_local_ids(params),
+        return_type: fun.return_type,
+        body: FunBody::Generic(fun.body),
+        abstract_signature,
+        abstract_body,
+        local_id: ctx.local_binding_at(&ld.span),
+        symbol_id: None,
+        def_id: None,
+        span: fun.span,
+    })))
+}
+
 #[allow(clippy::too_many_lines)]
 pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     match decl {
@@ -50,11 +124,14 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
                 && !scheme.quantified_vars.is_empty()
             {
+                let definition = closure_definition(ld, params, return_type, body, cls_span, ctx)?;
                 return Ok(TypedDecl::Let(TypedLetDecl {
                     name: ld.name.clone(),
                     type_ann: ld.type_ann.clone(),
                     value: TypedExpr::GenericClosure {
                         name: Some(ld.name.clone()),
+                        definition,
+                        is_function_alias: false,
                         captures: captures.clone(),
                         capture_ids: ctx.capture_local_ids(captures),
                         capture_types: ctx.capture_types(captures),
@@ -94,6 +171,8 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                     type_ann: ld.type_ann.clone(),
                     value: TypedExpr::GenericClosure {
                         name: Some(ld.name.clone()),
+                        definition: None,
+                        is_function_alias: true,
                         captures: vec![],
                         capture_ids: vec![],
                         capture_types: vec![],

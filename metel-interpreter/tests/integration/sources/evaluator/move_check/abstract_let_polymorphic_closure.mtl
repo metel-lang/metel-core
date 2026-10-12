@@ -1,0 +1,15 @@
+// Let-polymorphic closures are analysed from retained abstract bodies: a `Copy`-free
+// use and a function alias both pass (#273).
+let pair_up := |a, b| { (b, a) };
+let identity := |x| { x };
+
+fun twice<T>(value: T) -> T { value }
+
+let alias := twice;
+
+fun main() {
+    let swapped := pair_up(1, "one");
+    assert(swapped.0 == "one");
+    assert(identity(7) == 7);
+    assert(alias(3) == 3);
+}

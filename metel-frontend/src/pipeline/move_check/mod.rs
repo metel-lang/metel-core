@@ -120,6 +120,8 @@ struct GenericClosureMove<'a> {
     capture_types: &'a [(String, Type)],
     owned_capture_types: &'a [(String, Type)],
     span: &'a Span,
+    definition: Option<&'a crate::data::typed_ast::TypedFunDecl>,
+    is_function_alias: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -1024,6 +1026,8 @@ impl<'a> Checker<'a> {
                 capture_types,
                 owned_capture_types,
                 span,
+                definition,
+                is_function_alias,
                 ..
             } => {
                 if let Some(name) = name {
@@ -1035,6 +1039,8 @@ impl<'a> Checker<'a> {
                             capture_types,
                             owned_capture_types,
                             span,
+                            definition: definition.as_deref(),
+                            is_function_alias: *is_function_alias,
                         },
                         current_module,
                         state,
@@ -1265,8 +1271,22 @@ impl<'a> Checker<'a> {
             capture_types,
             owned_capture_types,
             span,
+            definition,
+            is_function_alias,
         } = closure;
         self.capture_owned_closure(owned_capture_types, span, state);
+        // `let alias = generic_fn;` introduces no body: the function's own is analysed
+        // where it is declared.
+        if is_function_alias {
+            return;
+        }
+        // ADR-0063: analyse the retained definition-time body rather than reconstructing
+        // the closure against invented concrete arguments.
+        if let Some(definition) = definition
+            && self.check_retained_abstract_body(definition, current_module)
+        {
+            return;
+        }
         if let Some((typed_body, generic_env)) =
             self.construct_generic_body_for_move(name, &[], params, body, span, capture_types)
         {

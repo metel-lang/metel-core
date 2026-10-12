@@ -1,0 +1,12 @@
+// A let-polymorphic closure is checked from its retained definition-time body, so a
+// double move of its unannotated parameter is rejected even though no call fixes a type
+// that would make it `Copy` (#273).
+let dup := |v| {
+    let first := v;
+    let second := v;
+    first
+};
+
+fun main() {
+    let kept := dup(1);
+}
