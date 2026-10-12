@@ -1434,6 +1434,21 @@ pub(super) fn construct_expr(
                             field_subst.compose_in_place(&delta);
                         }
                     }
+                    // A parameter no field mentions (a phantom parameter) cannot be
+                    // recovered from the field values. Inference already solved it from
+                    // the expected type, so take it from there when that type is this
+                    // same struct. A parameter a field fixed is never overridden.
+                    if let Some(Type::Named(_, expected_args, nominal)) = expected_ty
+                        && nominal.get() == type_id
+                        && expected_args.len() == type_params.len()
+                    {
+                        for (tp, expected_arg) in type_params.iter().zip(expected_args) {
+                            if matches!(field_subst.apply(&InferType::Var(*tp)), InferType::Var(_))
+                            {
+                                field_subst.bind(*tp, type_to_infer(expected_arg));
+                            }
+                        }
+                    }
                     let type_args: Vec<Type> = type_params
                         .iter()
                         .map(|tp| {

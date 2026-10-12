@@ -1,0 +1,7 @@
+// The annotation fixes the phantom parameter; it is not a license to change it (#1432).
+struct Witness<T> { count: i64 }
+
+fun main() {
+    let text: Witness<String> := Witness { count = 1 };
+    let number: Witness<i64> := text;
+}

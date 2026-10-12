@@ -1,0 +1,7 @@
+[options]
+error = ["T0002"]
+
+[expect]
+status = "typecheck_error"
+code = "T0002"
+contains = "cannot infer type"

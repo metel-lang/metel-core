@@ -1,0 +1,33 @@
+// A type parameter that no field mentions (a phantom parameter) is fixed by the expected
+// type the annotation already solved. Construction used to ignore it and fail with T0002,
+// surfacing as I0010 when a generic body was reconstructed (#1432).
+struct Witness<T> { count: i64 }
+extend<T> Witness<T>: Copy;
+
+struct Tagged<K, V> { value: V }
+
+fun copy_witness<T>(unused: T) -> i64 {
+    let witness: Witness<T> := Witness { count = 2 };
+    let first := witness;
+    let again := witness;
+    first.count + again.count
+}
+
+fun main() {
+    // Several instantiations, so success cannot depend on an incidental fallback type.
+    assert(copy_witness("unused") == 4);
+    assert(copy_witness(7) == 4);
+    assert(copy_witness(true) == 4);
+    assert(copy_witness('c') == 4);
+
+    // The same construction outside a generic body.
+    let text: Witness<String> := Witness { count = 3 };
+    let number: Witness<i64> := Witness { count = 5 };
+    assert(text.count + number.count == 8);
+
+    // One phantom parameter next to one a field fixes.
+    let tagged: Tagged<String, i64> := Tagged { value = 7 };
+    let other: Tagged<boolean, String> := Tagged { value = "s" };
+    assert(tagged.value == 7);
+    assert(other.value == "s");
+}

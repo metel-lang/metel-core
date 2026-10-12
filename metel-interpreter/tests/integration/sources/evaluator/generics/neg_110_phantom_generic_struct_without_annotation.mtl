@@ -1,0 +1,6 @@
+// With nothing to fix a phantom parameter, no type is guessed (#1432).
+struct Witness<T> { count: i64 }
+
+fun main() {
+    let witness := Witness { count = 2 };
+}
