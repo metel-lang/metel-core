@@ -5966,6 +5966,10 @@ pub(crate) enum DefinitionMatchPatternKind {
     Wildcard,
     Literal(crate::data::ast::Literal),
     Binding,
+    Tuple,
+    Array,
+    Record,
+    Struct(crate::identity::symbols::SymbolId),
     Variant(crate::identity::VariantId),
 }
 
@@ -6070,6 +6074,7 @@ pub struct InferContext {
     definition_capture_types: HashMap<Span, InferType>,
     definition_implicit_captures: HashMap<Span, Vec<DefinitionImplicitCapture>>,
     definition_binding_types: HashMap<Span, InferType>,
+    definition_value_boundaries: HashMap<Span, Vec<(InferType, InferType)>>,
     definition_match_patterns: HashMap<Span, DefinitionMatchPattern>,
     definition_record_shapes: HashMap<Span, InferType>,
     definition_templates: HashMap<Span, (TypeScheme, Vec<crate::data::ast::GenericParam>)>,
@@ -6182,6 +6187,7 @@ impl InferContext {
             definition_capture_types: HashMap::new(),
             definition_implicit_captures: HashMap::new(),
             definition_binding_types: HashMap::new(),
+            definition_value_boundaries: HashMap::new(),
             definition_match_patterns: HashMap::new(),
             definition_record_shapes: HashMap::new(),
             definition_templates: HashMap::new(),
@@ -7690,6 +7696,27 @@ impl InferContext {
 
     pub(crate) fn definition_binding_types(&self) -> &HashMap<Span, InferType> {
         &self.definition_binding_types
+    }
+
+    pub(crate) fn record_definition_value_boundary(
+        &mut self,
+        span: Span,
+        source: InferType,
+        target: InferType,
+    ) {
+        if self.current_return_type.is_some() {
+            // Nested ascriptions and the enclosing return can share a span.
+            self.definition_value_boundaries
+                .entry(span)
+                .or_default()
+                .push((source, target));
+        }
+    }
+
+    pub(crate) fn definition_value_boundaries(
+        &self,
+    ) -> &HashMap<Span, Vec<(InferType, InferType)>> {
+        &self.definition_value_boundaries
     }
 
     pub(crate) fn record_definition_match_pattern(

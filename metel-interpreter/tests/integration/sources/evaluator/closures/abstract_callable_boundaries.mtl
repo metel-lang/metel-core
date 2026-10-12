@@ -1,0 +1,22 @@
+// Written callable boundaries preserve capture effects without recovering Copy.
+fun returned<T>(value: T) -> once || -> T {
+    [value] once || { value }
+}
+
+fun invoke(callback: once || -> i64) -> i64 { callback() }
+
+fun argument<T>(value: T) -> i64 {
+    let callback := [value] once || { 7 };
+    invoke(callback)
+}
+
+fun annotated<T>(value: T) -> T {
+    let callback: once || -> T := [value] once || { value };
+    callback()
+}
+
+fun main() {
+    assert(returned("returned".to_string())() == "returned");
+    assert(argument("captured".to_string()) == 7);
+    assert(annotated("annotated".to_string()) == "annotated");
+}

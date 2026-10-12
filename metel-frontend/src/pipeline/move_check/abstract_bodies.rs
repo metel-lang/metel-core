@@ -403,7 +403,12 @@ impl Checker<'_> {
         } else {
             self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
         }
-        for binding in pattern.bindings.iter().chain(pattern.remainder.iter()) {
+        for binding in pattern
+            .bindings
+            .iter()
+            .filter_map(|field| field.binding.as_ref())
+            .chain(pattern.remainder.iter())
+        {
             env.bind(binding, state);
         }
         Ok(())
@@ -420,19 +425,12 @@ impl Checker<'_> {
         if pattern.remainder.is_some() {
             return self.consume_abstract_place(value, place, env, state, MoveCause::Other);
         }
-        let fields = pattern
-            .bindings
-            .iter()
-            .map(|binding| (&binding.name, &binding.ty))
-            .chain(pattern.discarded.iter().map(|(name, ty)| (name, ty)));
-        for (name, ty) in fields {
+        for field in pattern.bindings.iter().chain(&pattern.discarded) {
             let field = AbstractExpr {
-                ty: ty.clone(),
+                ty: field.ty.clone(),
                 kind: AbstractExprKind::FieldAccess {
                     object: Box::new(value.clone()),
-                    selection: AbstractFieldSelection::Structural {
-                        label: name.clone(),
-                    },
+                    selection: field.selection.clone(),
                     auto_dereferences: 0,
                 },
                 span: value.span.clone(),
@@ -456,7 +454,7 @@ impl Checker<'_> {
         let facts = env.equal_parameter_facts(*parameter)?;
         if facts
             .iter()
-            .any(|fact| fact.row_kind || fact.open_row_parameter)
+            .any(|fact| fact.record_kind || fact.row_kind || fact.open_row_parameter)
         {
             return Ok(());
         }
@@ -507,6 +505,18 @@ impl Checker<'_> {
             return Ok(());
         }
         match &expr.kind {
+            AbstractExprKind::ArrayView(value) => self.borrow_abstract_receiver(value, env, state),
+            AbstractExprKind::ReadCopy(value) => {
+                if !self.abstract_is_copy(&expr.ty, env)? {
+                    return Err("read-copy lacks a definition-time Copy proof".to_string());
+                }
+                self.observe_abstract_expr(value, env, state)
+            }
+            AbstractExprKind::SharedReferenceView(value)
+            | AbstractExprKind::CallableView(value)
+            | AbstractExprKind::RepeatArray { value, .. } => {
+                self.consume_abstract_expr(value, env, state, MoveCause::Other)
+            }
             AbstractExprKind::Literal(_)
             | AbstractExprKind::StaticMember { .. }
             | AbstractExprKind::UnitVariant(_) => Ok(()),
@@ -526,9 +536,6 @@ impl Checker<'_> {
                 }
                 Ok(())
             }
-            AbstractExprKind::RepeatArray { value, .. } => {
-                self.consume_abstract_expr(value, env, state, MoveCause::Other)
-            }
             AbstractExprKind::StructLiteral { fields } => {
                 self.consume_abstract_items(fields.iter().map(|(_, value)| value), env, state)
             }
@@ -544,37 +551,7 @@ impl Checker<'_> {
                     self.observe_abstract_expr(value, env, state)
                 }
             }
-            AbstractExprKind::Assign {
-                operator,
-                target,
-                projections,
-                inputs,
-                value,
-                ..
-            } => {
-                self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
-                if state.diverged {
-                    return Ok(());
-                }
-                let base_moved = if let Some((_, base)) = projections.split_last() {
-                    let base = ownership_place(*target, base);
-                    self.record_descendant_use_if_moved(&base, &expr.span, state)
-                } else {
-                    false
-                };
-                for input in inputs {
-                    self.observe_abstract_expr(input, env, state)?;
-                    if state.diverged {
-                        return Ok(());
-                    }
-                }
-                let place = ownership_place(*target, projections);
-                if !base_moved && !matches!(operator, crate::data::ast::AssignOp::Assign) {
-                    self.record_whole_use_if_moved(&place, &expr.span, state, None);
-                }
-                state.reinitialize(&place);
-                Ok(())
-            }
+            AbstractExprKind::Assign { .. } => self.observe_abstract_assignment(expr, env, state),
             AbstractExprKind::Call(call) => {
                 let AbstractType::Function {
                     call: multiplicity, ..
@@ -594,6 +571,47 @@ impl Checker<'_> {
             }
             _ => self.observe_abstract_control_flow(expr, env, state),
         }
+    }
+
+    fn observe_abstract_assignment(
+        &mut self,
+        expr: &AbstractExpr,
+        env: &mut Environment<'_>,
+        state: &mut FlowState,
+    ) -> Result<(), String> {
+        let AbstractExprKind::Assign {
+            operator,
+            target,
+            projections,
+            inputs,
+            value,
+            ..
+        } = &expr.kind
+        else {
+            return Err("abstract assignment lost its retained operation".to_string());
+        };
+        self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
+        if state.diverged {
+            return Ok(());
+        }
+        let base_moved = if let Some((_, base)) = projections.split_last() {
+            let base = ownership_place(*target, base);
+            self.record_descendant_use_if_moved(&base, &expr.span, state)
+        } else {
+            false
+        };
+        for input in inputs {
+            self.observe_abstract_expr(input, env, state)?;
+            if state.diverged {
+                return Ok(());
+            }
+        }
+        let place = ownership_place(*target, projections);
+        if !base_moved && !matches!(operator, crate::data::ast::AssignOp::Assign) {
+            self.record_whole_use_if_moved(&place, &expr.span, state, None);
+        }
+        state.reinitialize(&place);
+        Ok(())
     }
 
     fn borrow_abstract_receiver(
@@ -971,6 +989,25 @@ impl Checker<'_> {
         let bindings = match pattern {
             AbstractMatchPattern::Wildcard | AbstractMatchPattern::Literal(_) => return Ok(()),
             AbstractMatchPattern::Binding(binding) => vec![binding],
+            AbstractMatchPattern::Tuple(patterns) => {
+                return self.check_abstract_tuple_pattern(patterns, scrutinee, env, state);
+            }
+            AbstractMatchPattern::Array {
+                elements,
+                remainder,
+            } => {
+                if let Some(place) = scrutinee.place() {
+                    self.consume_abstract_place(scrutinee, &place, env, state, MoveCause::Other)?;
+                }
+                Self::bind_abstract_pattern_values(elements, env, state);
+                if let Some(binding) = remainder {
+                    env.bind(binding, state);
+                }
+                return Ok(());
+            }
+            AbstractMatchPattern::Record(pattern) => {
+                return self.check_abstract_record_pattern(pattern, scrutinee, env, state);
+            }
             AbstractMatchPattern::Variant { bindings, .. } => {
                 bindings.iter().map(|(_, binding)| binding).collect()
             }
@@ -995,6 +1032,62 @@ impl Checker<'_> {
         Ok(())
     }
 
+    fn bind_abstract_pattern_values(
+        patterns: &[AbstractMatchPattern],
+        env: &mut Environment<'_>,
+        state: &mut FlowState,
+    ) {
+        for pattern in patterns {
+            match pattern {
+                AbstractMatchPattern::Binding(binding) => env.bind(binding, state),
+                AbstractMatchPattern::Tuple(items) => {
+                    Self::bind_abstract_pattern_values(items, env, state);
+                }
+                AbstractMatchPattern::Array {
+                    elements,
+                    remainder,
+                } => {
+                    Self::bind_abstract_pattern_values(elements, env, state);
+                    if let Some(binding) = remainder {
+                        env.bind(binding, state);
+                    }
+                }
+                AbstractMatchPattern::Wildcard
+                | AbstractMatchPattern::Literal(_)
+                | AbstractMatchPattern::Record(_)
+                | AbstractMatchPattern::Variant { .. } => {}
+            }
+        }
+    }
+
+    fn check_abstract_tuple_pattern(
+        &mut self,
+        patterns: &[AbstractMatchPattern],
+        value: &AbstractExpr,
+        env: &mut Environment<'_>,
+        state: &mut FlowState,
+    ) -> Result<(), String> {
+        let AbstractType::Tuple(items) = &value.ty else {
+            return Err("tuple pattern has no retained tuple shape".to_string());
+        };
+        if patterns.len() != items.len() {
+            return Err("tuple pattern arity is not retained".to_string());
+        }
+        for (index, (pattern, item)) in patterns.iter().zip(items).enumerate() {
+            let item = AbstractExpr {
+                ty: item.clone(),
+                kind: AbstractExprKind::TupleAccess {
+                    object: Box::new(value.clone()),
+                    index,
+                    auto_dereferences: 0,
+                },
+                span: value.span.clone(),
+            };
+            self.apply_abstract_match_pattern(pattern, &item, env, state)?;
+        }
+        Ok(())
+    }
+
     fn abstract_is_copy_in(
         &self,
         ty: &AbstractType,
@@ -1005,8 +1098,8 @@ impl Checker<'_> {
             AbstractType::Closure { owned_captures, .. } => {
                 self.abstract_items_copy(owned_captures.iter(), env, active)
             }
-            AbstractType::Reference(_) => Ok(true),
-            AbstractType::MutReference(_) | AbstractType::Array(_) => Ok(false),
+            AbstractType::Reference(_) | AbstractType::Array(_) => Ok(true),
+            AbstractType::MutReference(_) => Ok(false),
             AbstractType::Function { usage, .. } => Ok(*usage == UseMultiplicity::Copy),
             AbstractType::Tuple(items) => self.abstract_items_copy(items.iter(), env, active),
             AbstractType::Record(fields) | AbstractType::Residual { fields, .. } => {
@@ -1029,8 +1122,30 @@ impl Checker<'_> {
                 active.remove(id);
                 result
             }
-            _ => self.abstract_has_aspect(ty, env, "Copy"),
+            _ => match self.abstract_has_aspect(ty, env, "Copy") {
+                Ok(copy) => Ok(copy),
+                Err(reason)
+                    if reason
+                        == "abstract conditional nominal aspect entailment is not yet retained"
+                        && self.is_nominal_record(ty) =>
+                {
+                    // The standard record `Copy` implementation is conditional
+                    // on its row. Without a proof a generic body may still
+                    // consume the record, so model this operation as a move.
+                    Ok(false)
+                }
+                Err(reason) => Err(reason),
+            },
         }
+    }
+
+    fn is_nominal_record(&self, ty: &AbstractType) -> bool {
+        matches!(
+            ty,
+            AbstractType::Named { identity, .. }
+                if identity.get().and_then(|id| self.registry.visible_type_kind_by_id(id))
+                    == Some(crate::pipeline::type_checking::type_engine::VisibleTypeKind::Record)
+        )
     }
 
     fn abstract_items_copy<'a>(
@@ -1287,8 +1402,18 @@ impl Checker<'_> {
                 .iter()
                 .find(|fact| &fact.ty == ty)
                 .and_then(|fact| match name {
-                    "Copy" => fact.copy,
-                    "Drop" => fact.drop,
+                    "Copy" => match fact.copy {
+                        crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
+                            Some(value)
+                        }
+                        crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
+                    },
+                    "Drop" => match fact.drop {
+                        crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
+                            Some(value)
+                        }
+                        crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
+                    },
                     _ => None,
                 })
                 .ok_or_else(|| {

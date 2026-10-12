@@ -96,6 +96,25 @@ fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mu
             fact.bindings
                 .push((None, name.clone(), binding_span.clone(), ty.clone()));
         }
+        Pattern::Tuple(..) => {
+            fact.kind = DefinitionMatchPatternKind::Tuple;
+        }
+        Pattern::Array { .. } => {
+            fact.kind = DefinitionMatchPatternKind::Array;
+        }
+        Pattern::Record { .. } => {
+            fact.kind = DefinitionMatchPatternKind::Record;
+        }
+        Pattern::Struct {
+            name,
+            fields,
+            field_spans,
+            ..
+        } => {
+            if !retain_struct_match_pattern(name, fields, field_spans, ctx, &mut fact) {
+                return;
+            }
+        }
         Pattern::EnumVariant {
             path,
             fields,
@@ -143,9 +162,46 @@ fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mu
             fact.kind = DefinitionMatchPatternKind::Variant(id);
             fact.enum_variants = variants;
         }
-        _ => return,
     }
     ctx.record_definition_match_pattern(span.clone(), fact);
+}
+
+fn retain_struct_match_pattern(
+    name: &str,
+    fields: &[String],
+    field_spans: &[Span],
+    ctx: &InferContext,
+    fact: &mut super::super::type_engine::DefinitionMatchPattern,
+) -> bool {
+    use super::super::type_engine::DefinitionMatchPatternKind;
+    let Some(id) = ctx
+        .registry()
+        .resolve_type_id(ctx.current_module_path(), name)
+    else {
+        return false;
+    };
+    let Some(declared_fields) = ctx.registry().struct_fields_by_id(id) else {
+        return false;
+    };
+    if fields.len() != field_spans.len() {
+        return false;
+    }
+    for (field, field_span) in fields.iter().zip(field_spans) {
+        let Some(field_id) = declared_fields
+            .iter()
+            .find(|entry| entry.name == *field)
+            .and_then(|entry| entry.id)
+        else {
+            return false;
+        };
+        let Some(field_ty) = ctx.lookup_mono_raw(field) else {
+            return false;
+        };
+        fact.bindings
+            .push((Some(field_id), field.clone(), field_span.clone(), field_ty));
+    }
+    fact.kind = DefinitionMatchPatternKind::Struct(id);
+    true
 }
 
 #[allow(clippy::too_many_lines)]

@@ -393,7 +393,10 @@ fun main() {}
 
 #[test]
 fn abstract_body_does_not_drop_bounded_method_generic_facts() {
-    use crate::data::abstract_body::AbstractBodyPreparation;
+    use crate::data::abstract_body::{
+        AbstractBodyPreparation, AbstractExprKind, AbstractMethodOrigin, AbstractReceiverMode,
+        AbstractStatement, AbstractType,
+    };
     let typed = typecheck_source(
         "abstract_bounded_method_generic.mtl",
         r#"
@@ -413,15 +416,28 @@ fun main() {}
             _ => None,
         })
         .unwrap();
-    assert!(
-        matches!(
-            &forward.abstract_body,
-            Some(AbstractBodyPreparation::Pending { reason })
-                if reason.contains("method dispatch contract")
-        ),
-        "bounded method generic facts must not be discarded: {:?}",
-        forward.abstract_body
-    );
+    let Some(AbstractBodyPreparation::Typed(body)) = &forward.abstract_body else {
+        panic!(
+            "bounded method generic facts must be retained: {:?}",
+            forward.abstract_body
+        );
+    };
+    let AbstractStatement::Expr(expr) = &body.block.statements[0] else {
+        panic!("expected method-call statement")
+    };
+    let AbstractExprKind::MethodCall(call) = &expr.kind else {
+        panic!("expected retained method call")
+    };
+    assert_eq!(call.method, "take");
+    assert_eq!(call.receiver_mode, AbstractReceiverMode::SharedReference);
+    assert!(matches!(call.origin, AbstractMethodOrigin::Aspect(_)));
+    let AbstractType::Function { parameters, .. } = &call.signature else {
+        panic!("expected retained method signature")
+    };
+    assert!(matches!(
+        parameters.as_slice(),
+        [AbstractType::Parameter(_), AbstractType::Parameter(_)]
+    ));
 }
 
 #[test]

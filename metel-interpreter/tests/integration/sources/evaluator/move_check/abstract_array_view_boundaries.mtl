@@ -1,0 +1,51 @@
+fun empty<T>() -> [T] { [] }
+fun returned<T>(value: [T; 2]) -> [T] { value }
+fun explicit<T>(value: [T; 2]) -> [T] { return value; }
+fun exited<T>(value: [T; 2]) -> [T] { loop { break value; } }
+fun ascribed<T>(value: [T; 2]) -> [T] { (value: [T]) }
+
+fun take<T>(view: [T]) -> i64 { view.len() }
+fun arguments<T>(value: [T; 2]) -> [T; 2] {
+    take(value);
+    take(value);
+    value
+}
+
+struct Sink {}
+extend Sink { fun accept<T>(&self, view: [T]) -> i64 { view.len() } }
+fun method_argument<T>(sink: &Sink, value: [T; 2]) -> [T; 2] {
+    sink.accept(value);
+    value
+}
+
+extend<T> [T] { fun width(self) -> i64 { self.len() } }
+fun receivers<T>(value: [T; 2]) -> [T; 2] {
+    value.width();
+    value.width();
+    value
+}
+fun borrowed_receiver<T>(value: &[T; 2]) -> i64 { value.width() }
+
+fun binding<T>(value: [T; 2]) -> [T; 2] {
+    let view: [T] := value;
+    let first := view;
+    let second := view;
+    let same_length := first.len() == second.len();
+    value
+}
+
+fun main() {
+    let nothing: [String] := empty();
+    assert(nothing.len() == 0);
+    assert(returned([1, 2]).len() == 2);
+    assert(explicit([1, 2]).len() == 2);
+    assert(exited([1, 2]).len() == 2);
+    assert(ascribed([1, 2]).len() == 2);
+    let owned := binding(["first".to_string(), "second".to_string()]);
+    assert(owned.len() == 2);
+    assert(arguments(["a".to_string(), "b".to_string()]).len() == 2);
+    let sink := Sink {};
+    assert(method_argument(&sink, ["a".to_string(), "b".to_string()]).len() == 2);
+    let receiver := receivers(["a".to_string(), "b".to_string()]);
+    assert(borrowed_receiver(&receiver) == 2);
+}

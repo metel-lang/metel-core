@@ -33,6 +33,7 @@ pub(super) struct ResolvedInferenceFacts {
     definition_capture_types: HashMap<Span, InferType>,
     definition_implicit_captures: HashMap<Span, Vec<super::type_engine::DefinitionImplicitCapture>>,
     definition_binding_types: HashMap<Span, InferType>,
+    definition_value_boundaries: HashMap<Span, Vec<(InferType, InferType)>>,
     definition_match_patterns: HashMap<Span, super::type_engine::DefinitionMatchPattern>,
     definition_record_shapes: HashMap<Span, InferType>,
     definition_templates: HashMap<
@@ -60,6 +61,7 @@ impl ResolvedInferenceFacts {
             definition_capture_types: HashMap::new(),
             definition_implicit_captures: HashMap::new(),
             definition_binding_types: HashMap::new(),
+            definition_value_boundaries: HashMap::new(),
             definition_match_patterns: HashMap::new(),
             definition_record_shapes: HashMap::new(),
             definition_templates: HashMap::new(),
@@ -151,34 +153,25 @@ impl ResolvedInferenceFacts {
                 .map(|(span, ty)| (span.clone(), subst.apply(ty)))
                 .collect(),
             definition_match_patterns: Self::resolve_match_patterns(ctx, subst),
+            definition_value_boundaries: ctx
+                .definition_value_boundaries()
+                .iter()
+                .map(|(span, pairs)| {
+                    (
+                        span.clone(),
+                        pairs
+                            .iter()
+                            .map(|(source, target)| (subst.apply(source), subst.apply(target)))
+                            .collect(),
+                    )
+                })
+                .collect(),
             definition_record_shapes: ctx
                 .definition_record_shapes()
                 .iter()
                 .map(|(span, shape)| (span.clone(), subst.apply(shape)))
                 .collect(),
-            definition_aspect_arguments: ctx
-                .definition_aspect_arguments()
-                .iter()
-                .map(|(span, (positive, negative))| {
-                    let resolve = |arguments: &AspectTypeArguments| {
-                        arguments
-                            .iter()
-                            .filter_map(|((variable, aspect), args)| {
-                                let InferType::Var(variable) =
-                                    subst.apply(&InferType::Var(*variable))
-                                else {
-                                    return None;
-                                };
-                                Some((
-                                    (variable, aspect.clone()),
-                                    args.iter().map(|arg| subst.apply(arg)).collect(),
-                                ))
-                            })
-                            .collect()
-                    };
-                    (span.clone(), (resolve(positive), resolve(negative)))
-                })
-                .collect(),
+            definition_aspect_arguments: Self::resolve_aspect_arguments(ctx, subst),
             definition_expression_types: ctx
                 .definition_expression_types()
                 .iter()
@@ -192,6 +185,33 @@ impl ResolvedInferenceFacts {
             definition_paths: Self::resolve_paths(ctx, subst),
             definition_array_lengths: ctx.definition_array_lengths().clone(),
         })
+    }
+
+    fn resolve_aspect_arguments(
+        ctx: &InferContext,
+        subst: &Substitution,
+    ) -> HashMap<Span, (AspectTypeArguments, AspectTypeArguments)> {
+        ctx.definition_aspect_arguments()
+            .iter()
+            .map(|(span, (positive, negative))| {
+                let resolve = |arguments: &AspectTypeArguments| {
+                    arguments
+                        .iter()
+                        .filter_map(|((variable, aspect), args)| {
+                            let InferType::Var(variable) = subst.apply(&InferType::Var(*variable))
+                            else {
+                                return None;
+                            };
+                            Some((
+                                (variable, aspect.clone()),
+                                args.iter().map(|arg| subst.apply(arg)).collect(),
+                            ))
+                        })
+                        .collect()
+                };
+                (span.clone(), (resolve(positive), resolve(negative)))
+            })
+            .collect()
     }
 
     fn resolve_paths(
@@ -285,6 +305,12 @@ impl ResolvedInferenceFacts {
 
     pub(super) fn definition_binding_type(&self, span: &Span) -> Option<&InferType> {
         self.definition_binding_types.get(span)
+    }
+
+    pub(super) fn definition_value_boundaries(&self, span: &Span) -> &[(InferType, InferType)] {
+        self.definition_value_boundaries
+            .get(span)
+            .map_or(&[], Vec::as_slice)
     }
 
     pub(super) fn definition_record_shape(&self, span: &Span) -> Option<&InferType> {

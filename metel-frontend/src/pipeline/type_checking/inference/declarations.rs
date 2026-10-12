@@ -809,6 +809,11 @@ pub(super) fn infer_fun_decl(
         open_record_record_kinds,
         open_record_projection_tail_constraints,
     ) = collect_open_record_param_vars(fun, ctx)?;
+    // These branded projection fields constrain only the body receiver's
+    // abstract shape. Keep a copy for the definition artifact; adding them to
+    // the caller-visible scheme would turn the nominal width check into a
+    // structural row requirement.
+    let definition_projection_tail_constraints = open_record_projection_tail_constraints.clone();
 
     // Collect merged bounds (inline + where clause) per TypeVar, register for call-site checking.
     let mut type_var_bounds = collect_fun_type_var_bounds(fun, &generic_map);
@@ -1345,7 +1350,7 @@ pub(super) fn infer_fun_decl(
         .iter()
         .map(|var| names_by_var.get(var).cloned().unwrap_or_default())
         .collect();
-    let definition_scheme = definition_body_scheme(
+    let mut definition_scheme = definition_body_scheme(
         &scheme,
         &generic_map,
         &fun.generics,
@@ -1356,6 +1361,31 @@ pub(super) fn infer_fun_decl(
     .with_record_kinds(&type_var_record_kinds)
     .with_row_remainders(&row_remainders)
     .with_open_row_params(&open_row_params);
+    if !definition_projection_tail_constraints.is_empty() {
+        let mut retained_bounds: HashMap<_, _> = definition_scheme
+            .quantified_vars
+            .iter()
+            .enumerate()
+            .map(|(index, variable)| {
+                (
+                    *variable,
+                    definition_scheme
+                        .bounds
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_default(),
+                )
+            })
+            .collect();
+        for (original, (_, row)) in &definition_projection_tail_constraints {
+            if let InferType::Var(variable) = partial_subst.apply(&InferType::Var(*original))
+                && let Some(bounds) = retained_bounds.get_mut(&variable)
+            {
+                bounds.push(GenericBound::Row(row.clone()));
+            }
+        }
+        definition_scheme = definition_scheme.with_bounds(&retained_bounds);
+    }
     ctx.bind_poly(fun.name.clone(), scheme);
 
     // After solving, the original TypeVars may have been unified with others.
@@ -1478,12 +1508,32 @@ pub(super) fn infer_impl_method(
         },
         _ => None,
     };
+    // A blanket implementation such as `extend<T> T: Aspect` has no nominal
+    // receiver identity. Keep its target as the declaration's TypeVar rather
+    // than manufacturing a Named("T") placeholder: the abstract-body handoff
+    // must preserve its bound facts without looking the spelling up later.
+    let structural_target_generic_name = match &ib.target_type {
+        TypeExpr::Named(name, arguments)
+            if arguments.is_empty()
+                && ib.generics.iter().any(|generic| {
+                    !generic.is_row && !generic.is_record && generic.name == *name
+                }) =>
+        {
+            Some(name.as_str())
+        }
+        _ => None,
+    };
     // Start with the method's own generic params.
     let mut generic_map: HashMap<String, TypeVar> = method
         .generics
         .iter()
         .map(|g| (g.name.clone(), ctx.fresh_type_var_raw()))
         .collect();
+    if let Some(name) = structural_target_generic_name
+        && !generic_map.contains_key(name)
+    {
+        generic_map.insert(name.to_string(), ctx.fresh_type_var_raw());
+    }
     // RFC-0173 D1: the method's own declared parameters, checked rigid after the body
     // is solved. The enclosing struct and impl parameters are captured after they are
     // merged into `generic_map` below.
@@ -1548,6 +1598,12 @@ pub(super) fn infer_impl_method(
     {
         let tv = ctx.fresh_type_var_raw();
         generic_map.insert(name.to_string(), tv);
+        struct_tvars_ordered.push(tv);
+    }
+    if let Some(name) = structural_target_generic_name
+        && let Some(&tv) = generic_map.get(name)
+        && !struct_tvars_ordered.contains(&tv)
+    {
         struct_tvars_ordered.push(tv);
     }
 
@@ -1667,6 +1723,8 @@ pub(super) fn infer_impl_method(
     // visible when resolving `self.value.to_string()`).
     let generic_names_for_impl: Vec<String> = if let Some(name) = array_target_generic_name {
         vec![name.to_string()]
+    } else if let Some(name) = structural_target_generic_name {
+        vec![name.to_string()]
     } else {
         ctx.struct_generic_names_for(target_name)
             .cloned()
@@ -1724,6 +1782,10 @@ pub(super) fn infer_impl_method(
         .filter(|_| array_target_generic_name.is_some())
     {
         InferType::Array(Box::new(InferType::Var(element_tv)))
+    } else if let Some(name) = structural_target_generic_name
+        && let Some(&tv) = generic_map.get(name)
+    {
+        InferType::Var(tv)
     } else if let Some(prim) = primitive_type_from_name(target_name) {
         InferType::Concrete(prim)
     } else {

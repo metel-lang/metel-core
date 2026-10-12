@@ -188,8 +188,16 @@ pub struct AbstractBody {
 #[derive(Debug, Clone)]
 pub struct AbstractNominalOwnership {
     pub ty: AbstractType,
-    pub copy: Option<bool>,
-    pub drop: Option<bool>,
+    pub copy: AbstractNominalAspect,
+    pub drop: AbstractNominalAspect,
+}
+
+/// Definition-time ownership entailment for a nominal type.  `Conditional`
+/// preserves an unresolved candidate set; it is not a negative proof.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbstractNominalAspect {
+    Proven(bool),
+    Conditional,
 }
 
 #[derive(Debug, Clone)]
@@ -248,9 +256,20 @@ pub enum AbstractIterationMode {
 
 #[derive(Debug, Clone)]
 pub struct AbstractRecordPattern {
-    pub bindings: Vec<AbstractBinding>,
-    pub discarded: Vec<(String, AbstractType)>,
+    pub bindings: Vec<AbstractRecordPatternField>,
+    pub discarded: Vec<AbstractRecordPatternField>,
     pub remainder: Option<AbstractBinding>,
+}
+
+/// A record-pattern field retains the declaration-sensitive selection that
+/// produced its place.  A label alone is not sufficient for a nominal record:
+/// same-spelled fields may belong to different declarations.
+#[derive(Debug, Clone)]
+pub struct AbstractRecordPatternField {
+    pub name: String,
+    pub ty: AbstractType,
+    pub selection: AbstractFieldSelection,
+    pub binding: Option<AbstractBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -265,6 +284,12 @@ pub enum AbstractMatchPattern {
     Wildcard,
     Literal(Literal),
     Binding(AbstractBinding),
+    Tuple(Vec<Self>),
+    Array {
+        elements: Vec<Self>,
+        remainder: Option<AbstractBinding>,
+    },
+    Record(AbstractRecordPattern),
     Variant {
         identity: crate::identity::VariantId,
         bindings: Vec<(crate::identity::FieldId, AbstractBinding)>,
@@ -286,6 +311,15 @@ pub enum AbstractExprKind {
     },
     UnitVariant(crate::identity::VariantId),
     NumericCast(Box<AbstractExpr>),
+    /// A written callable slot forgets capture-derived Copy, but evaluation
+    /// must still retain the source closure's capture effects.
+    CallableView(Box<AbstractExpr>),
+    /// The source reference remains available; only its Copy referent is read.
+    ReadCopy(Box<AbstractExpr>),
+    /// Unlike read-copy, storing a shared view consumes the mutable reference.
+    SharedReferenceView(Box<AbstractExpr>),
+    /// A sized place is borrowed; an owned temporary evaluates its elements once.
+    ArrayView(Box<AbstractExpr>),
     /// The built-in array length operation borrows an existing array, but
     /// evaluating an owned temporary still consumes its construction inputs.
     ArrayLength(Box<AbstractExpr>),
@@ -383,6 +417,7 @@ pub struct AbstractMethodCall {
 pub enum AbstractMethodOrigin {
     Aspect(SymbolId),
     Nominal(SymbolId),
+    Array,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

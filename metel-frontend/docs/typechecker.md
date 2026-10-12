@@ -358,9 +358,18 @@ identity selected by inference; structural and row-granted fields retain their
 typed evidence. A name-keyed generic call contract alone cannot establish the
 contract of a shadowing local callable. Aspect methods selected through a
 declared generic bound retain their instantiated contract, receiver mode and
-resolved aspect identity when their own generic parameters have no declared
-requirements. Calls whose method generics have bounds remain `Pending` until
-their instantiated fact environment is retained too.
+resolved aspect identity. The solved method-generic arguments remain in that
+contract, so an enclosing declared bound such as `U: Copy` is available to
+ownership analysis without reconstruction.
+For a blanket implementation (`extend<T> T: Aspect`), the target is frozen as
+that definition's abstract parameter rather than a synthetic nominal name, so
+the body can be checked directly and its move diagnostics retain the receiver.
+Record-pattern match arms retain their selection. An open record bound carries
+its declared fields plus an opaque self tail, allowing a trailing `..` with no
+remainder binding to discard fields without representing the row as closed.
+For a nominal `record`, the retained declaration identity instantiates the
+declared field template; its fields retain their `FieldId` selections rather
+than being re-found by label in the ownership pass.
 Missing selection/coercion facts or unresolved associated arguments produce
 `Pending`, never invented types or an ownership verdict. Move checking consumes
 supported retained free-function and impl-method bodies directly and records
@@ -402,7 +411,9 @@ array-index casts. Generic and nonnumeric casts remain pending rather than erasi
 `From` dispatch or non-Copy source ownership.
 
 Unguarded matches retain definition-resolved literal, wildcard, whole-binding
-and enum-variant patterns with variant/field identities and solved binding types.
+and enum-variant and named-struct patterns with declaration/field identities and
+solved binding types. Tuple patterns retain their recursive element shape and
+consume through individual tuple projections, preserving partial moves.
 Bare variant resolution stays in inference. The consumer observes the scrutinee
 once, applies pattern moves to the saved place and scopes bindings per arm, then
 joins only continuing arms. Enum exhaustiveness uses the retained variant set;
@@ -424,7 +435,10 @@ repeated/nested target arguments, associated bindings, row equations, field-wise
 and kind restrictions remain pending. Every candidate uses
 the resolved aspect identity, including imported aliases; a same-named marker
 cannot grant builtin ownership permission. Record blankets block only record
-kinds. Absence of a declared bound never proves absence of a conditional destructor.
+kinds. For a nominal `record` whose field-wise `Copy` applicability remains
+unproved, a consuming operation is retained as a move rather than granted a
+copy; this is conservative and does not infer `Copy` or destructor absence.
+Absence of a declared bound never proves absence of a conditional destructor.
 As in the concrete checker, unreachable duplicate
 arms are conservatively analyzed rather than pruned.
 
@@ -752,6 +766,45 @@ those equations before defaulting unresolved scalar variables to `Never`.
 Regression tests require no generic-body skip warning and pair successful `Copy`
 forwarding with a genuine move violation when that bound is absent. See
 [ADR-0060](../../docs/architecture/decisions/adr-0060-symbolic-row-ownership-witnesses.md).
+
+Abstract field selections through equal row parameters gather grants from the
+entire retained equality class. An untyped `{ label, .. }` grant proves the
+label exists while the solved field-expression type supplies its type; typed row
+grants must also agree with that expression type. Open nominal-projection
+parameters contribute their selected head fields to the definition artifact
+only, keeping the structural proof out of the call-site scheme.
+
+Callable boundaries retain an explicit abstract callable-view operation. The
+operand keeps its capture types and creation effects; the result carries the
+written function type, including its use multiplicity. Capture-derived `Copy`
+is therefore not recovered after a written slot erases the environment. Only
+equal callable signatures and the existing first-order `Copy`-to-`Move`
+conversion are accepted; other value coercions remain explicit fallbacks.
+
+Declared value boundaries retain solved source/target pairs in each definition
+snapshot. Multiple pairs may share a span (for example an ascription at a return
+tail). Abstract read-copy requires a matching retained boundary, peels the
+reference chain, and checks the referent's definition-time `Copy` proof before
+observing the source. A mutable-to-shared reference view instead consumes the
+source reference at an ordinary declared boundary; call-site reborrowing is a
+separate operation.
+
+Abstract sized-array-to-view coercions retain their solved boundary pair and a
+distinct view operation. Creating a view observes a source place rather than
+moving its owner; a temporary still consumes its construction inputs once.
+Views are unconditionally `Copy`, as in the ordinary checker, while owning
+sized arrays require `Copy` elements. View copying grants no permission to
+move a non-`Copy` element out through an index. Empty literal coercions retain
+their zero-length bottom element without inventing a bound for the target.
+Call arguments use the retained selected function contract for the same view
+operation. Array method dispatch retains its receiver kind and callable contract;
+receiver views observe the sized owner, including through an existing reference.
+Explicit type arguments constrain fresh callee parameters during definition
+inference, so empty arguments retain the caller's declared parameter identity.
+Explicit forwarding checks the caller's positive and negative grants, including
+the existing `Copy`/`Drop` exclusion; it does not attach callee requirements to
+the caller's binder. This retained abstract contract does not replace runtime
+reconstruction, whose remaining unsupported forms can still report `I0010`.
 
 ## Known Limitations
 

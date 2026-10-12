@@ -259,7 +259,7 @@ fun main() {}
     );
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        4,
+        7,
         "{report:#?}"
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
@@ -271,7 +271,7 @@ fun main() {}
             .filter(|fallback| fallback.reason
                 == "record destructuring requires retained destructor-absence evidence")
             .count(),
-        4,
+        1,
         "{report:#?}"
     );
 }
@@ -658,6 +658,165 @@ fun main() {}
 }
 
 #[test]
+fn abstract_ownership_checks_record_bound_matches_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun describe<record T: { x: f64, .. }>(value: T) -> f64 {
+    match (value) { { x, .. } => x }
+}
+fun closed<record T: { x: f64 }>(value: T) -> f64 {
+    match (value) { { x, .. } => x }
+}
+fun exact<record T: { x: f64, y: f64 }>(value: T) -> f64 {
+    match (value) { { x, y } => x + y }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        3,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_nominal_row_record_patterns_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+record Packet<row R> { public id: i64, public data: { ..R } }
+extend<row R> Packet<..R> {
+    fun packet_id(self) -> i64 {
+        let { id, .. } := self;
+        id
+    }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_consumes_unproved_nominal_record_copy_without_granting_it() {
+    let report = move_report_for_source_with(
+        r#"
+record Packet<row R> { public id: i64, public data: { ..R } }
+fun consume<row R>(value: Packet<..R>) { let moved := value; }
+fun duplicate<row R>(value: Packet<..R>) {
+    let first := value;
+    let second := value;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+}
+
+#[test]
+fn abstract_ownership_checks_nested_tuple_patterns_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun first<T, U>(pair: (T, (U, i64))) -> T {
+    match (pair) { (value, (_, _)) => value }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_exact_fixed_array_patterns_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun first<T>(items: [T; 2]) -> T {
+    match (items) { [head, _] => head }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_fixed_array_rest_patterns_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun leading<T>(items: [T; 3]) -> T {
+    match (items) { [value, ..rest] => value }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
 fn abstract_ownership_checks_boolean_matches_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
@@ -933,7 +1092,7 @@ fun main() {}
 }
 
 #[test]
-fn abstract_ownership_keeps_break_coercions_pending() {
+fn abstract_ownership_checks_break_read_copy_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
 fun narrowed<T>(unused: T, value: &i64) -> i64 {
@@ -947,18 +1106,13 @@ fun main() {}
             }
         },
     );
-    assert!(
-        report.checked_abstract_generic_bodies.is_empty(),
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
         "{report:#?}"
     );
-    assert!(
-        report.abstract_body_fallbacks.iter().any(|fallback| {
-            !fallback.span.filename.starts_with("<embedded")
-                && fallback.reason
-                    == "branch/return coercion facts are not yet retained in abstract bodies"
-        }),
-        "{report:#?}"
-    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
 }
 
 #[test]
@@ -1276,7 +1430,7 @@ fun main() {}
 }
 
 #[test]
-fn abstract_ownership_preserves_exact_ascriptions_and_leaves_coercions_pending() {
+fn abstract_ownership_checks_exact_ascriptions_and_read_copy() {
     let report = move_report_for_source_with(
         r#"
 fun moved<T>(value: T) { let first := (value: T); let second := value; }
@@ -1292,17 +1446,11 @@ fun main() {}
     );
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        2,
+        3,
         "{report:#?}"
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert!(
-        report
-            .abstract_body_fallbacks
-            .iter()
-            .any(|fallback| fallback.reason == "ascription coercion facts are not yet retained"),
-        "{report:#?}"
-    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
 }
 
 #[test]
@@ -2222,7 +2370,7 @@ fun main() {}
 }
 
 #[test]
-fn abstract_ownership_keeps_annotated_read_copy_coercions_pending() {
+fn abstract_ownership_checks_annotated_read_copy_coercions_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
 fun copied<T>(unused: T, value: &i64) { let first: i64 := value; }
@@ -2235,12 +2383,238 @@ fun main() {}
             }
         },
     );
-    assert!(
-        report.checked_abstract_generic_bodies.is_empty(),
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
         "{report:#?}"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
-    assert_eq!(report.skipped_generic_bodies_user, 2, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_callable_boundaries_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun invoke(callback: once || -> i64) -> i64 { callback() }
+fun returned<T>(value: T) -> once || -> T { [value] once || { value } }
+fun annotated<T: Copy>(value: T) {
+    let callback: once || -> T := [value] once || { value };
+    let first := callback; let second := callback;
+}
+fun argument<T>(value: T) {
+    let callback := [value] once || { 1 };
+    invoke(callback); callback();
+}
+fun explicit<T>(value: T) -> once || -> T { return [value] once || { value }; }
+fun branch<T>(value: T, other: T, flag: boolean) -> once || -> T {
+    if (flag) { [value] once || { value } } else { [other] once || { other } }
+}
+fun ascribed<T: Copy>(value: T) {
+    let callback := ([value] once || { value }: once || -> T);
+    let first := callback; let second := callback;
+}
+fun preserved<T: Copy>(value: T) {
+    let source := [value] once || -> T { value };
+    let callback: once || -> T := source;
+    source();
+    let first := callback; let second := callback;
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        7,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 4, "{report:#?}");
+    assert!(
+        report
+            .violations
+            .iter()
+            .all(|violation| violation.binding == "callback")
+    );
+}
+
+#[test]
+fn abstract_ownership_checks_borrowed_value_boundaries_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun deep<T>(unused: T, value: &&i64) { let first: i64 := value; let again := value; }
+fun returned<T>(unused: T, value: &i64) -> i64 { value }
+fun explicit<T>(unused: T, value: &i64) -> i64 { return value; }
+fun exited<T>(unused: T, value: &i64) -> i64 { loop { break value; } }
+fun ascribed<T>(unused: T, value: &i64) { let first := (value: i64); let again := value; }
+fun copied_record<T: Copy>(value: &{ item: T }) -> { item: T } { value }
+fun shared<T>(unused: T, value: &var i64) { let first: &i64 := value; let again := value; }
+fun mutable_read<T>(unused: T, value: &var i64) { let first: i64 := value; let again := value; }
+fun borrowed<T>(owned: T) -> &i64 { &1 }
+fun effect<T>(value: T) { let copied: i64 := borrowed(value); let again := value; }
+fun tail_ascribed<T>(unused: T, value: &i64) -> i64 { (value: i64) }
+fun nested<T>(unused: T, value: &i64) {
+    let callback := [value] once || -> i64 { (value: &i64) };
+    callback()
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        12,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 2, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.violations[0].use_span.line, 8);
+    assert_eq!(report.violations[1].use_span.line, 11);
+}
+
+#[test]
+fn abstract_ownership_checks_array_views_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun empty<T>() -> [T] { [] }
+fun returned<T>(value: [T; 2]) -> [T] { value }
+fun explicit<T>(value: [T; 2]) -> [T] { return value; }
+fun exited<T>(value: [T; 2]) -> [T] { loop { break value; } }
+fun ascribed<T>(value: [T; 2]) -> [T] { (value: [T]) }
+fun copied_view<T>(value: [T]) { let first := value; let second := value; }
+fun binding<T>(value: [T; 2]) {
+    let view: [T] := value; let first := view; let second := view; let owner := value;
+}
+fun literal<T>(value: T) { let view: [T] := [value]; let again := value; }
+fun illegal<T>(view: [T]) { let value := view[0]; }
+fun indexed<T: Copy>(view: [T]) { let first := view[0]; let second := view[0]; }
+fun moved<T>(value: [T; 1]) { let owner := value; let view: [T] := value; }
+fun copy_owner<T>(unused: T, value: [i64; 1]) { let owner := value; let view: [i64] := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        12,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 3, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.violations[0].use_span.line, 11);
+    assert_eq!(report.violations[1].binding, "view");
+    assert_eq!(
+        report.violations[1].kind,
+        MoveViolationKind::ArrayElementMove
+    );
+    assert_eq!(report.violations[2].binding, "value");
+    assert_eq!(report.violations[2].kind, MoveViolationKind::UseAfterMove);
+}
+
+#[test]
+fn abstract_ownership_checks_array_view_arguments_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+fun take<T>(view: [T]) -> i64 { view.len() }
+struct Sink {}
+extend Sink {
+    fun accept<T>(&self, view: [T]) -> i64 { view.len() }
+}
+fun repeated<T>(value: [T; 2]) { take(value); take(value); let owner := value; }
+fun method<T>(sink: &Sink, value: [T; 2]) { sink.accept(value); let owner := value; }
+fun literal<T>(value: T) { take([value]); let again := value; }
+fun empty<T>(unused: T) { take::<T>([]); }
+fun need<T: Copy>(value: &T) {}
+fun bounded<T: Copy>(value: T) { need::<T>(&value); let first := value; let second := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        8,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.violations[0].use_span.line, 9);
+}
+
+#[test]
+fn abstract_ownership_checks_explicit_call_bound_forwarding() {
+    assert_typecheck_error_contains(
+        "fun need<T: Copy>(value: T) {} fun bad<U>(value: U) { need::<U>(value); } fun main() {}",
+        "[T0012]",
+    );
+    assert_typecheck_error_contains(
+        "fun take<T>(value: [T]) {} fun bad<U>(value: U) { take::<U, i64>([]); } fun main() {}",
+        "[T0004]",
+    );
+    assert_typecheck_error_contains(
+        "fun absent<row R: !{token}>(values: [{..R}]) -> i64 { values.len() } fun caller<row T>() -> i64 { absent::<T>([]) } fun main() {}",
+        "[T0012]",
+    );
+    let report = move_report_for_source_with(
+        "fun no_drop<T: !Drop>(value: T) -> T { value } fun copied<T: Copy>(value: T) -> T { no_drop::<T>(value) } fun main() {}",
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        2,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_array_view_receivers_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+extend<T> [T] { fun width(self) -> i64 { self.len() } }
+fun value_receiver<T>(value: [T; 2]) { value.width(); value.width(); let owner := value; }
+fun borrowed_receiver<T>(value: &[T; 2]) { value.width(); let again := value; }
+fun absent<row R: !{token}>(values: [{..R}]) -> i64 { values.len() }
+fun forwarded<row R: !{token}>(values: [{..R}]) -> i64 { absent::<R>(values) }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        5,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
 }
 
 #[test]
@@ -2899,7 +3273,10 @@ fn assert_typecheck_error_contains(source: &str, needle: &str) {
         type_checking::check_graph(&normalized, &type_checking::CorePrelude::default()).map(|_| ())
     })();
     let _ = std::fs::remove_file(&path);
-    let err = result.expect_err("expected a typecheck error, got a clean typecheck");
+    let err = match result {
+        Err(err) => err,
+        Ok(()) => panic!("expected a typecheck error, got a clean typecheck: {source}"),
+    };
     let msg = err.to_string();
     assert!(
         msg.contains(needle),
@@ -3121,6 +3498,64 @@ fun main() { }
         warnings.is_empty(),
         "bounded method-generic body was not fully checked: {warnings:#?}"
     );
+}
+
+#[test]
+fn abstract_ownership_checks_bounded_method_generic_call_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+aspect GenericSink { fun take<U: Copy>(&self, other: U); }
+fun take_copy<T: GenericSink, U: Copy>(value: T, other: U) -> U {
+    value.take(other);
+    other
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+}
+
+#[test]
+fn abstract_ownership_checks_blanket_impl_target_without_reconstruction() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Marker { fun mark(self) -> String; }
+extend<T> T: Marker {
+    fun mark(self) -> String {
+        let moved := self;
+        let moved_again := self;
+        "ok"
+    }
+}
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_env.clear();
+            }
+        },
+    );
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "self");
 }
 
 #[test]

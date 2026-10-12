@@ -81,10 +81,53 @@ fn record_implicit_closure_captures(
     ctx.record_definition_implicit_captures(span.clone(), captures);
 }
 
-/// Enforce RFC-0173 D6(2) for the direct parameter-passing shape.  General
-/// unification still relates the two signatures; this check supplies the one
-/// fact unification must not invent: that a declared argument grants every
-/// bound required by the callee's corresponding parameter.
+fn constrain_explicit_call_arguments(
+    callee_name: &str,
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    annotations: &[TypeExpr],
+    span: &crate::data::ast::Span,
+    ctx: &mut InferContext,
+) -> Result<(), MetelError> {
+    if annotations.is_empty() {
+        return Ok(());
+    }
+    if annotations.len() != scheme.quantified_vars.len() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0004,
+            format!(
+                "expected {} type argument(s), got {}",
+                scheme.quantified_vars.len(),
+                annotations.len()
+            ),
+            span,
+        ));
+    }
+    for (index, (original, annotation)) in
+        scheme.quantified_vars.iter().zip(annotations).enumerate()
+    {
+        let parameter = InferType::Var(*renaming.get(original).ok_or_else(|| {
+            MetelError::internal("explicit call parameter has no fresh identity")
+        })?);
+        let argument = ann_to_infer(annotation, ctx);
+        check_forwarded_generic_bounds(
+            callee_name,
+            scheme,
+            renaming,
+            &parameter,
+            &argument,
+            span,
+            ctx,
+        )?;
+        check_explicit_negative_bounds(callee_name, scheme, index, &argument, span, ctx)?;
+        ctx.add_constraint(parameter, argument, span.clone());
+    }
+    Ok(())
+}
+
+/// Enforce RFC-0173 D6(2) for the direct parameter-passing shape. General
+/// unification still relates the signatures; it must not invent a caller's
+/// entitlement to the callee's bounds.
 fn check_forwarded_generic_bounds(
     callee_name: &str,
     scheme: &TypeScheme,
@@ -183,6 +226,53 @@ fn check_forwarded_generic_bounds(
             ),
             span,
         ));
+    }
+    Ok(())
+}
+
+fn check_explicit_negative_bounds(
+    callee_name: &str,
+    scheme: &TypeScheme,
+    index: usize,
+    arg_ty: &InferType,
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
+    let InferType::Var(arg_var) = arg_ty else {
+        return Ok(());
+    };
+    let (_, negative_bounds) = ctx.resolved_method_bounds();
+    let resolved_argument = ctx.apply_cached_subst(arg_ty);
+    let negative_var = match &resolved_argument {
+        InferType::Var(var) => var,
+        _ => arg_var,
+    };
+    let negative_available = negative_bounds
+        .get(negative_var)
+        .map_or(&[][..], Vec::as_slice);
+    for missing in scheme.neg_bounds.get(index).into_iter().flatten() {
+        let granted = match missing {
+            GenericBound::Row(row) => {
+                negative_row_bound_failures(negative_available, row).is_empty()
+            }
+            GenericBound::Aspect(aspect) => {
+                negative_available.iter().any(
+                    |bound| matches!(bound, GenericBound::Aspect(available) if available == aspect),
+                ) || (aspect == "Drop" && ctx.bounds_for_type_var(*arg_var).unwrap_or_default().iter().any(
+                    |bound| matches!(bound, GenericBound::Aspect(available) if available == "Copy"),
+                ))
+            }
+            GenericBound::AllFields { .. } => false,
+        };
+        if !granted {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "abstract parameter does not satisfy required negative bound `!{missing}` for generic call to `{callee_name}`"
+                ),
+                span,
+            ));
+        }
     }
     Ok(())
 }
@@ -559,7 +649,10 @@ fn infer_expr_inner(
             Ok(InferType::SizedArray(Box::new(elem_ty), *n))
         }
         Expr::Call {
-            callee, args, span, ..
+            callee,
+            type_args,
+            args,
+            span,
         } => {
             // Overloaded free-function call (METEL-180): infer argument types,
             // select the exact-match candidate, and yield its return type. The
@@ -701,6 +794,14 @@ fn infer_expr_inner(
                 && !scheme.quantified_vars.is_empty()
             {
                 let (callee_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                constrain_explicit_call_arguments(
+                    callee_name,
+                    &scheme,
+                    &renaming,
+                    type_args,
+                    span,
+                    ctx,
+                )?;
                 ctx.record_definition_call_type(span.clone(), callee_ty.clone());
                 let InferType::Fun(params, ret, ..) = callee_ty else {
                     return Err(MetelError::internal(
@@ -1231,6 +1332,16 @@ fn infer_expr_inner(
                     }
                     for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
                         ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                    }
+                    if let Some(receiver) = ctx.get_array_method_receiver_kind(method).cloned() {
+                        ctx.record_definition_method_fact(
+                            span.clone(),
+                            DefinitionMethodFact {
+                                contract: method_ty.clone(),
+                                receiver,
+                                origin: crate::data::abstract_body::AbstractMethodOrigin::Array,
+                            },
+                        );
                     }
                     return Ok(*ret.clone());
                 }
@@ -1832,23 +1943,16 @@ fn infer_expr_inner(
                             .collect();
                         let receiver_kind =
                             receiver_kind.unwrap_or(crate::data::ast::ReceiverKind::Value);
-                        // A complete abstract contract must retain every fact that
-                        // made the call legal. Method-generic bounds are not part
-                        // of the handoff yet, so preserving a call such as
-                        // `take<U: Copy>(other: U)` would silently drop `U: Copy`.
-                        // Keep it pending until those instantiated facts are
-                        // retained too.
-                        let method_generics_are_unbounded = method_def
-                            .generics
-                            .iter()
-                            .all(|generic| generic.bounds.is_empty());
-                        if method_generics_are_unbounded
-                            && let (Some(parameter_types), Some(aspect)) = (
-                                parameter_types,
-                                ctx.registry()
-                                    .resolve_type_id(ctx.current_module_path(), aspect_name),
-                            )
-                        {
+                        // `parameter_types` contains the fresh method variables,
+                        // which the solved definition substitution resolves to the
+                        // actual body argument type before handoff. The enclosing
+                        // signature facts then supply that argument's declared
+                        // bounds to the ownership consumer.
+                        if let (Some(parameter_types), Some(aspect)) = (
+                            parameter_types,
+                            ctx.registry()
+                                .resolve_type_id(ctx.current_module_path(), aspect_name),
+                        ) {
                             ctx.record_definition_method_fact(
                                 span.clone(),
                                 DefinitionMethodFact {

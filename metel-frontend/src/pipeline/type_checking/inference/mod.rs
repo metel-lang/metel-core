@@ -2338,6 +2338,7 @@ fn constrain_with_read_copy(
     declared: InferType,
     span: Span,
 ) -> InferType {
+    ctx.record_definition_value_boundary(span.clone(), actual.clone(), declared.clone());
     // Erasure is a declared-type boundary, not just a coercion check: retaining
     // the concrete initializer would expose methods absent from the dyn vtable.
     if contains_dyn_erasure(&declared) {

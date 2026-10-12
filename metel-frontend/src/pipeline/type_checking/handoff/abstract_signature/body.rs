@@ -4,12 +4,15 @@ use crate::data::abstract_body::{
     AbstractArgument, AbstractBinding, AbstractBlock, AbstractBody, AbstractBodyPreparation,
     AbstractBound, AbstractCall, AbstractCapture, AbstractCaptureMode, AbstractClosure,
     AbstractExpr, AbstractExprKind, AbstractFieldSelection, AbstractMethodCall,
-    AbstractPassingMode, AbstractReceiverMode, AbstractRecordPattern, AbstractStatement,
+    AbstractPassingMode, AbstractReceiverMode, AbstractRecordPattern, AbstractRecordPatternField,
+    AbstractStatement,
 };
 use crate::data::ast::{AssignOp, AssignTarget, Decl, Expr, FunDecl, Pattern, Span, Stmt, UnaryOp};
 use crate::identity::FrozenIdentity;
 use crate::ownership::place::Projection;
-use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, TypeScheme};
+use crate::pipeline::type_checking::type_engine::{
+    InferType, TypeDefinitionRegistry, TypeScheme, TypeVar, VisibleTypeKind,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -108,8 +111,8 @@ fn freeze_body(
         .zip(parameters)
         .map(|(parameter, ty)| freezer.binding(&parameter.name, &parameter.span, ty.clone()))
         .collect::<Result<_, _>>()?;
-    let block = freezer.block(&declaration.body)?;
-    BodyFreezer::check_branch_type(&block, result)?;
+    let mut block = freezer.block(&declaration.body)?;
+    freezer.check_branch_type(&mut block, result)?;
     Ok(AbstractBody {
         binder: signature.binder,
         parameters,
@@ -131,18 +134,30 @@ impl BodyFreezer<'_, '_> {
                 if !retained.iter().any(|fact| &fact.ty == ty) {
                     retained.push(crate::data::abstract_body::AbstractNominalOwnership {
                         ty: ty.clone(),
-                        copy: self.registry.abstract_nominal_aspect(
-                            identity,
-                            arguments,
-                            "Copy",
-                            self.signature.facts.as_deref().unwrap_or_default(),
-                        ),
-                        drop: self.registry.abstract_nominal_aspect(
-                            identity,
-                            arguments,
-                            "Drop",
-                            self.signature.facts.as_deref().unwrap_or_default(),
-                        ),
+                        copy: self
+                            .registry
+                            .abstract_nominal_aspect(
+                                identity,
+                                arguments,
+                                "Copy",
+                                self.signature.facts.as_deref().unwrap_or_default(),
+                            )
+                            .map_or(
+                                crate::data::abstract_body::AbstractNominalAspect::Conditional,
+                                crate::data::abstract_body::AbstractNominalAspect::Proven,
+                            ),
+                        drop: self
+                            .registry
+                            .abstract_nominal_aspect(
+                                identity,
+                                arguments,
+                                "Drop",
+                                self.signature.facts.as_deref().unwrap_or_default(),
+                            )
+                            .map_or(
+                                crate::data::abstract_body::AbstractNominalAspect::Conditional,
+                                crate::data::abstract_body::AbstractNominalAspect::Proven,
+                            ),
                     });
                 }
                 drop(retained);
@@ -279,7 +294,7 @@ impl BodyFreezer<'_, '_> {
                 );
             }
         };
-        let value = self.expression(expression)?;
+        let mut value = self.expression(expression)?;
         let binding_type = if annotation.is_some() {
             let inferred = self
                 .facts
@@ -291,11 +306,7 @@ impl BodyFreezer<'_, '_> {
                 .map_err(|error| error.to_string())?;
             // A solved equality needs no new ownership operation. A coercion
             // may change consumption (for example read-copy through a borrow).
-            if declared != value.ty {
-                return Err(
-                    "binding coercion facts are not yet retained in abstract bodies".to_string(),
-                );
-            }
+            value = self.coerce_boundary(value, &declared, span)?;
             declared
         } else {
             value.ty.clone()
@@ -408,7 +419,12 @@ impl BodyFreezer<'_, '_> {
                 .freeze(shape)
                 .map_err(|error| error.to_string())?
         } else {
-            self.record_pattern_shape_in(ty, &required, &mut std::collections::HashSet::new())?
+            self.record_pattern_shape_in(
+                ty,
+                &required,
+                rest_binding.is_none(),
+                &mut std::collections::HashSet::new(),
+            )?
         };
         let (source_fields, tail) = match &retained_shape {
             AbstractType::Record(fields) => (fields, None),
@@ -428,11 +444,25 @@ impl BodyFreezer<'_, '_> {
         let bindings = fields
             .iter()
             .zip(field_spans)
-            .map(|(name, span)| self.binding(name, span, field_type(name)?))
+            .map(|(name, span)| {
+                Ok::<_, String>(AbstractRecordPatternField {
+                    name: name.clone(),
+                    ty: field_type(name)?,
+                    selection: self.record_pattern_field_selection(ty, name)?,
+                    binding: Some(self.binding(name, span, field_type(name)?)?),
+                })
+            })
             .collect::<Result<_, _>>()?;
         let discarded = ignored_fields
             .iter()
-            .map(|name| Ok((name.clone(), field_type(name)?)))
+            .map(|name| {
+                Ok(AbstractRecordPatternField {
+                    name: name.clone(),
+                    ty: field_type(name)?,
+                    selection: self.record_pattern_field_selection(ty, name)?,
+                    binding: None,
+                })
+            })
             .collect::<Result<_, String>>()?;
         let remainder = rest_binding
             .as_ref()
@@ -464,12 +494,145 @@ impl BodyFreezer<'_, '_> {
         })
     }
 
+    fn record_pattern_field_selection(
+        &self,
+        ty: &AbstractType,
+        label: &str,
+    ) -> Result<AbstractFieldSelection, String> {
+        let AbstractType::Named { identity, .. } = ty else {
+            return Ok(AbstractFieldSelection::Structural {
+                label: label.to_string(),
+            });
+        };
+        let id = identity
+            .get()
+            .ok_or("nominal record pattern has no retained declaration identity")?;
+        let field = self
+            .registry
+            .struct_fields_by_id(id)
+            .and_then(|fields| fields.iter().find(|field| field.name == label))
+            .and_then(|field| field.id)
+            .ok_or("nominal record pattern field has no retained declaration identity")?;
+        Ok(AbstractFieldSelection::Nominal {
+            label: label.to_string(),
+            field,
+        })
+    }
+
+    fn struct_pattern(
+        &self,
+        fact: &super::super::super::type_engine::DefinitionMatchPattern,
+        ty: &AbstractType,
+        expected_identity: crate::identity::symbols::SymbolId,
+    ) -> Result<AbstractRecordPattern, String> {
+        if !matches!(ty, AbstractType::Named { identity, .. } if identity.get() == Some(expected_identity))
+        {
+            return Err("struct pattern scrutinee identity is not retained".to_string());
+        }
+        let bindings = fact
+            .bindings
+            .iter()
+            .map(|(field, name, span, field_ty)| {
+                let field_ty = self
+                    .types
+                    .freeze(field_ty)
+                    .map_err(|error| error.to_string())?;
+                Ok::<_, String>(AbstractRecordPatternField {
+                    name: name.clone(),
+                    selection: AbstractFieldSelection::Nominal {
+                        label: name.clone(),
+                        field: field.ok_or("struct pattern field identity is not retained")?,
+                    },
+                    binding: Some(self.binding(name, span, field_ty.clone())?),
+                    ty: field_ty,
+                })
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(AbstractRecordPattern {
+            bindings,
+            discarded: Vec::new(),
+            remainder: None,
+        })
+    }
+
+    fn tuple_pattern(
+        &self,
+        pattern: &Pattern,
+        ty: &AbstractType,
+    ) -> Result<crate::data::abstract_body::AbstractMatchPattern, String> {
+        use crate::data::abstract_body::AbstractMatchPattern;
+        match pattern {
+            Pattern::Wildcard(_) => Ok(AbstractMatchPattern::Wildcard),
+            Pattern::Literal(literal, _) => Ok(AbstractMatchPattern::Literal(literal.clone())),
+            Pattern::Binding(name, span) => Ok(AbstractMatchPattern::Binding(self.binding(
+                name,
+                span,
+                ty.clone(),
+            )?)),
+            Pattern::Tuple(patterns, _) => {
+                let AbstractType::Tuple(items) = ty else {
+                    return Err("tuple pattern has no retained tuple shape".to_string());
+                };
+                if patterns.len() != items.len() {
+                    return Err("tuple pattern arity is not retained".to_string());
+                }
+                Ok(AbstractMatchPattern::Tuple(
+                    patterns
+                        .iter()
+                        .zip(items)
+                        .map(|(pattern, item)| self.tuple_pattern(pattern, item))
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
+            _ => Err("nested non-tuple match pattern facts are not retained".to_string()),
+        }
+    }
+
+    fn array_pattern(
+        &self,
+        pattern: &Pattern,
+        ty: &AbstractType,
+    ) -> Result<crate::data::abstract_body::AbstractMatchPattern, String> {
+        use crate::data::abstract_body::AbstractMatchPattern;
+        let Pattern::Array { elems, rest, .. } = pattern else {
+            return Err("non-array pattern operations are not retained".to_string());
+        };
+        let (item, length) = match ty {
+            AbstractType::SizedArray(item, length) => (item.as_ref(), Some(*length)),
+            AbstractType::Array(item) if rest.is_some() => (item.as_ref(), None),
+            _ => return Err("array pattern has no retained array shape".to_string()),
+        };
+        if length.is_some_and(|length| elems.len() as u64 > length) {
+            return Err("array pattern arity is not retained".to_string());
+        }
+        if rest.is_none() && length != Some(elems.len() as u64) {
+            return Err("array pattern arity is not retained".to_string());
+        }
+        let remainder = rest
+            .as_ref()
+            .map(|(name, span)| {
+                self.binding(name, span, AbstractType::Array(Box::new(item.clone())))
+            })
+            .transpose()?;
+        Ok(AbstractMatchPattern::Array {
+            elements: elems
+                .iter()
+                .map(|pattern| self.tuple_pattern(pattern, item))
+                .collect::<Result<_, _>>()?,
+            remainder,
+        })
+    }
+
     fn record_pattern_shape_in(
         &self,
         ty: &AbstractType,
         required: &[&str],
+        allow_opaque_self_tail: bool,
         active: &mut std::collections::HashSet<crate::data::abstract_body::AbstractParameterId>,
     ) -> Result<AbstractType, String> {
+        if let Some(shape) = self.nominal_record_pattern_shape(ty)? {
+            return self.record_pattern_shape_in(&shape, required, allow_opaque_self_tail, active);
+        }
         if let AbstractType::OpenRecord { fields, tail } = ty {
             let missing: Vec<_> = required
                 .iter()
@@ -482,7 +645,7 @@ impl BodyFreezer<'_, '_> {
             if let Ok(AbstractType::OpenRecord {
                 fields: additional,
                 tail,
-            }) = self.record_pattern_shape_in(tail, &missing, active)
+            }) = self.record_pattern_shape_in(tail, &missing, allow_opaque_self_tail, active)
             {
                 let mut combined = fields.clone();
                 combined.extend(additional);
@@ -508,7 +671,7 @@ impl BodyFreezer<'_, '_> {
         let sources = crate::data::abstract_body::equal_parameter_facts(facts, *parameter);
         if !sources
             .iter()
-            .any(|fact| fact.row_kind || fact.open_row_parameter)
+            .any(|fact| fact.record_kind || fact.row_kind || fact.open_row_parameter)
         {
             return Err("record pattern requires a retained structural row shape".to_string());
         }
@@ -531,12 +694,55 @@ impl BodyFreezer<'_, '_> {
                 active.remove(parameter);
                 return Ok(AbstractType::Record(fields));
             }
-            let mut labels: Vec<_> = fields.iter().map(|(name, _)| name.clone()).collect();
-            labels.sort();
-            labels.dedup();
-            let remainder = facts.iter().find(|facts| {
-                facts.row_kind
-                    && facts.remainders.iter().any(|equation| {
+            if *open
+                && allow_opaque_self_tail
+                && required
+                    .iter()
+                    .all(|label| fields.iter().any(|(name, _)| name == label))
+            {
+                // A `<record T: { x, .. }>` bound establishes the selected
+                // fields but not an independently nameable remainder. Retain
+                // that unknown tail as T itself. Only a trailing `..` may
+                // discard it: a bound does not establish an independently
+                // bindable remainder.
+                active.remove(parameter);
+                return Ok(AbstractType::OpenRecord {
+                    fields,
+                    tail: Box::new(AbstractType::Parameter(*parameter)),
+                });
+            }
+            if let Some(remainder) = Self::record_pattern_remainder(facts, &sources, &fields) {
+                let shape = AbstractType::OpenRecord {
+                    fields,
+                    tail: Box::new(AbstractType::Parameter(remainder)),
+                };
+                if let Ok(shape) = self.record_pattern_shape_in(
+                    &shape,
+                    required,
+                    allow_opaque_self_tail,
+                    &mut active.clone(),
+                ) {
+                    active.remove(parameter);
+                    return Ok(shape);
+                }
+            }
+        }
+        active.remove(parameter);
+        Err("record pattern requires a retained structural row shape".to_string())
+    }
+
+    fn record_pattern_remainder(
+        facts: &[crate::data::abstract_body::AbstractParameterFacts],
+        sources: &[&crate::data::abstract_body::AbstractParameterFacts],
+        fields: &[(String, AbstractType)],
+    ) -> Option<crate::data::abstract_body::AbstractParameterId> {
+        let mut labels: Vec<_> = fields.iter().map(|(name, _)| name.clone()).collect();
+        labels.sort();
+        labels.dedup();
+        facts.iter().find_map(|fact| {
+            fact.row_kind
+                .then(|| {
+                    fact.remainders.iter().any(|equation| {
                         let mut removed = equation.removed.clone();
                         removed.sort();
                         removed.dedup();
@@ -545,22 +751,160 @@ impl BodyFreezer<'_, '_> {
                             .any(|source| source.parameter == equation.source)
                             && removed == labels
                     })
-            });
-            if let Some(remainder) = remainder {
-                let shape = AbstractType::OpenRecord {
-                    fields,
-                    tail: Box::new(AbstractType::Parameter(remainder.parameter)),
-                };
-                if let Ok(shape) =
-                    self.record_pattern_shape_in(&shape, required, &mut active.clone())
-                {
-                    active.remove(parameter);
-                    return Ok(shape);
+                })
+                .filter(|matches| *matches)
+                .map(|_| fact.parameter)
+        })
+    }
+
+    /// Instantiates a nominal record's declaration template from the identity
+    /// already carried by the definition-time type.  This deliberately has no
+    /// name-lookup fallback: a same-spelled type in another module must not
+    /// supply a pattern shape.
+    fn nominal_record_pattern_shape(
+        &self,
+        ty: &AbstractType,
+    ) -> Result<Option<AbstractType>, String> {
+        let AbstractType::Named {
+            arguments,
+            identity,
+            ..
+        } = ty
+        else {
+            return Ok(None);
+        };
+        let Some(id) = identity.get() else {
+            return Err("nominal record pattern has no retained declaration identity".to_string());
+        };
+        if !matches!(
+            self.registry.visible_type_kind_by_id(id),
+            Some(VisibleTypeKind::Record | VisibleTypeKind::Struct)
+        ) {
+            return Ok(None);
+        }
+        let parameters = self
+            .registry
+            .struct_type_params_by_id(id)
+            .ok_or("nominal record pattern type parameters are not retained")?;
+        if parameters.len() != arguments.len() {
+            return Err("nominal record pattern argument arity is not retained".to_string());
+        }
+        let substitutions: HashMap<_, _> = parameters
+            .iter()
+            .copied()
+            .zip(arguments.iter().cloned())
+            .collect();
+        let fields = self
+            .registry
+            .struct_fields_by_id(id)
+            .ok_or("nominal record pattern fields are not retained")?
+            .iter()
+            .map(|field| {
+                self.freeze_nominal_record_field_type(&field.ty, &substitutions)
+                    .map(|ty| (field.name.clone(), ty))
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(Some(AbstractType::Record(fields)))
+    }
+
+    fn freeze_nominal_record_field_type(
+        &self,
+        ty: &InferType,
+        substitutions: &HashMap<TypeVar, AbstractType>,
+    ) -> Result<AbstractType, String> {
+        Ok(match ty {
+            InferType::Var(variable) => substitutions.get(variable).cloned().ok_or_else(|| {
+                format!("nominal record field has an unbound declaration variable {variable:?}")
+            })?,
+            InferType::Concrete(ty) => AbstractType::Concrete(ty.clone()),
+            InferType::Never => AbstractType::Never,
+            InferType::Fun(parameters, result, call, usage, mutation) => AbstractType::Function {
+                parameters: parameters
+                    .iter()
+                    .map(|parameter| {
+                        self.freeze_nominal_record_field_type(parameter, substitutions)
+                    })
+                    .collect::<Result<_, _>>()?,
+                result: Box::new(self.freeze_nominal_record_field_type(result, substitutions)?),
+                call: *call,
+                usage: *usage,
+                mutation: *mutation,
+            },
+            InferType::Tuple(items) => AbstractType::Tuple(
+                items
+                    .iter()
+                    .map(|item| self.freeze_nominal_record_field_type(item, substitutions))
+                    .collect::<Result<_, _>>()?,
+            ),
+            InferType::Record(fields) => AbstractType::Record(
+                fields
+                    .iter()
+                    .map(|(label, ty)| {
+                        self.freeze_nominal_record_field_type(ty, substitutions)
+                            .map(|ty| (label.clone(), ty))
+                    })
+                    .collect::<Result<_, _>>()?,
+            ),
+            InferType::RowExtend { fields, tail } if fields.is_empty() => {
+                self.freeze_nominal_record_field_type(tail, substitutions)?
+            }
+            InferType::RowExtend { fields, tail } => AbstractType::OpenRecord {
+                fields: fields
+                    .iter()
+                    .map(|(label, ty)| {
+                        self.freeze_nominal_record_field_type(ty, substitutions)
+                            .map(|ty| (label.clone(), ty))
+                    })
+                    .collect::<Result<_, _>>()?,
+                tail: Box::new(self.freeze_nominal_record_field_type(tail, substitutions)?),
+            },
+            InferType::Array(inner) => AbstractType::Array(Box::new(
+                self.freeze_nominal_record_field_type(inner, substitutions)?,
+            )),
+            InferType::SizedArray(inner, length) => AbstractType::SizedArray(
+                Box::new(self.freeze_nominal_record_field_type(inner, substitutions)?),
+                *length,
+            ),
+            InferType::Reference(inner) => AbstractType::Reference(Box::new(
+                self.freeze_nominal_record_field_type(inner, substitutions)?,
+            )),
+            InferType::MutReference(inner) => AbstractType::MutReference(Box::new(
+                self.freeze_nominal_record_field_type(inner, substitutions)?,
+            )),
+            InferType::Named(name, arguments, identity) => {
+                if arguments.is_empty() && identity.get().is_none() {
+                    self.types.freeze(ty).map_err(|error| error.to_string())?
+                } else {
+                    AbstractType::Named {
+                        name: name.clone(),
+                        arguments: arguments
+                            .iter()
+                            .map(|argument| {
+                                self.freeze_nominal_record_field_type(argument, substitutions)
+                            })
+                            .collect::<Result<_, _>>()?,
+                        identity: identity.clone(),
+                    }
                 }
             }
-        }
-        active.remove(parameter);
-        Err("record pattern requires a retained structural row shape".to_string())
+            InferType::Residual { brand, fields } => AbstractType::Residual {
+                brand: brand.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(label, ty)| {
+                        self.freeze_nominal_record_field_type(ty, substitutions)
+                            .map(|ty| (label.clone(), ty))
+                    })
+                    .collect::<Result<_, _>>()?,
+            },
+            InferType::Dyn { aspect, type_args } => AbstractType::Dyn {
+                aspect: aspect.clone(),
+                arguments: type_args
+                    .iter()
+                    .map(|argument| self.freeze_nominal_record_field_type(argument, substitutions))
+                    .collect::<Result<_, _>>()?,
+            },
+        })
     }
 
     fn expression_type(&self, expression: &Expr) -> Result<AbstractType, String> {
@@ -600,12 +944,11 @@ impl BodyFreezer<'_, '_> {
                 ..
             } => AbstractExprKind::Binding(crate::identity::BindingId::Global(*id)),
             Expr::Cast { expr, .. } => self.numeric_cast(expr, &ty)?,
-            Expr::Ascribe { expr, .. } => {
+            Expr::Ascribe { expr, span, .. } => {
                 let value = self.expression(expr)?;
-                if value.ty != ty {
-                    return Err("ascription coercion facts are not yet retained".to_string());
-                }
-                return Ok(value);
+                return self
+                    .coerce_boundary(value, &ty, span)
+                    .map_err(|_| "ascription coercion facts are not yet retained".to_string());
             }
             Expr::Tuple(items, _) => AbstractExprKind::Tuple(self.items(items)?),
             Expr::Array(items, _) => AbstractExprKind::Array(self.items(items)?),
@@ -770,6 +1113,26 @@ impl BodyFreezer<'_, '_> {
                         .ok_or("match binding fact is absent")?;
                     AbstractMatchPattern::Binding(binding(name, span, ty)?)
                 }
+                DefinitionMatchPatternKind::Tuple => {
+                    catch_all = true;
+                    self.tuple_pattern(&arm.pattern, &scrutinee.ty)?
+                }
+                DefinitionMatchPatternKind::Array => {
+                    catch_all = true;
+                    self.array_pattern(&arm.pattern, &scrutinee.ty)?
+                }
+                DefinitionMatchPatternKind::Record => {
+                    catch_all = true;
+                    AbstractMatchPattern::Record(self.record_pattern(&arm.pattern, &scrutinee.ty)?)
+                }
+                DefinitionMatchPatternKind::Struct(identity) => {
+                    catch_all = true;
+                    AbstractMatchPattern::Record(self.struct_pattern(
+                        fact,
+                        &scrutinee.ty,
+                        *identity,
+                    )?)
+                }
                 DefinitionMatchPatternKind::Variant(identity) => {
                     variants.insert(*identity);
                     required_variants.clone_from(&fact.enum_variants);
@@ -788,8 +1151,8 @@ impl BodyFreezer<'_, '_> {
                     }
                 }
             };
-            let body = self.block(&arm.body)?;
-            Self::check_branch_type(&body, result)?;
+            let mut body = self.block(&arm.body)?;
+            self.check_branch_type(&mut body, result)?;
             arms.push((pattern, body));
         }
         let exhaustive = catch_all
@@ -1256,12 +1619,14 @@ impl BodyFreezer<'_, '_> {
             registry: self.registry,
             nominal_ownership: self.nominal_ownership,
         };
+        let mut body = nested.block(body)?;
+        nested.check_branch_type(&mut body, result)?;
         Ok(AbstractExprKind::Closure(AbstractClosure {
             captures,
             call,
             mutation,
             parameters,
-            body: nested.block(body)?,
+            body,
         }))
     }
 
@@ -1324,7 +1689,10 @@ impl BodyFreezer<'_, '_> {
         let value = ret
             .value
             .as_deref()
-            .map(|value| self.expression(value).map(Box::new))
+            .map(|value| {
+                self.coerce_boundary(self.expression(value)?, self.return_type, &ret.span)
+                    .map(Box::new)
+            })
             .transpose()?;
         if let Some(value) = &value {
             Self::check_value_type(&value.ty, self.return_type)?;
@@ -1349,7 +1717,7 @@ impl BodyFreezer<'_, '_> {
                 Ok(AbstractExprKind::Loop(self.loop_block(body, ty.clone())?))
             }
             Expr::Break(exit) => {
-                let value = exit
+                let mut value = exit
                     .value
                     .as_deref()
                     .map(|value| self.expression(value).map(Box::new))
@@ -1358,6 +1726,9 @@ impl BodyFreezer<'_, '_> {
                 let result = results
                     .last()
                     .ok_or("break has no retained enclosing loop result")?;
+                if let Some(source) = value.take() {
+                    value = Some(Box::new(self.coerce_boundary(*source, result, &exit.span)?));
+                }
                 let unit = AbstractType::Concrete(crate::data::types::Type::Unit);
                 Self::check_value_type(value.as_ref().map_or(&unit, |value| &value.ty), result)?;
                 Ok(AbstractExprKind::Break(value))
@@ -1438,11 +1809,11 @@ impl BodyFreezer<'_, '_> {
         else_branch: Option<&crate::data::ast::Block>,
         ty: &AbstractType,
     ) -> Result<AbstractExprKind, String> {
-        let then_branch = self.block(then_branch)?;
-        let else_branch = else_branch.map(|block| self.block(block)).transpose()?;
-        Self::check_branch_type(&then_branch, ty)?;
-        if let Some(branch) = &else_branch {
-            Self::check_branch_type(branch, ty)?;
+        let mut then_branch = self.block(then_branch)?;
+        let mut else_branch = else_branch.map(|block| self.block(block)).transpose()?;
+        self.check_branch_type(&mut then_branch, ty)?;
+        if let Some(branch) = &mut else_branch {
+            self.check_branch_type(branch, ty)?;
         }
         Ok(AbstractExprKind::If {
             condition: Box::new(self.expression(condition)?),
@@ -1483,8 +1854,7 @@ impl BodyFreezer<'_, '_> {
             .iter()
             .zip(parameters)
             .map(|(arg, parameter)| {
-                let value = self.expression(arg)?;
-                Self::check_value_type(&value.ty, parameter)?;
+                let value = Self::coerce_call_argument(self.expression(arg)?, parameter)?;
                 let mode = match parameter {
                     AbstractType::Reference(_) => AbstractPassingMode::SharedReference,
                     AbstractType::MutReference(_) => AbstractPassingMode::MutableReference,
@@ -1544,11 +1914,19 @@ impl BodyFreezer<'_, '_> {
         })
     }
 
-    fn check_branch_type(block: &AbstractBlock, result: &AbstractType) -> Result<(), String> {
+    fn check_branch_type(
+        &self,
+        block: &mut AbstractBlock,
+        result: &AbstractType,
+    ) -> Result<(), String> {
         // Unequal branch types may require ownership-affecting row coercions.
         // Their proof must be retained before lowering, not recovered here.
-        if let Some(tail) = &block.tail {
-            Self::check_value_type(&tail.ty, result)?;
+        if let Some(tail) = block.tail.take() {
+            block.tail = Some(Box::new(self.coerce_boundary(
+                *tail,
+                result,
+                &block.span,
+            )?));
         }
         Ok(())
     }
@@ -1604,13 +1982,21 @@ impl BodyFreezer<'_, '_> {
         }
         let receiver = self.expression(receiver)?;
         let (receiver_base, _) = peel_references(&receiver.ty);
-        Self::check_value_type(receiver_base, receiver_parameter)?;
+        let receiver = if Self::is_array_view_coercion(receiver_base, receiver_parameter) {
+            AbstractExpr {
+                ty: receiver_parameter.clone(),
+                span: receiver.span.clone(),
+                kind: AbstractExprKind::ArrayView(Box::new(receiver)),
+            }
+        } else {
+            Self::check_value_type(receiver_base, receiver_parameter)?;
+            receiver
+        };
         let arguments = args
             .iter()
             .zip(parameters)
             .map(|(arg, parameter)| {
-                let value = self.expression(arg)?;
-                Self::check_value_type(&value.ty, parameter)?;
+                let value = Self::coerce_call_argument(self.expression(arg)?, parameter)?;
                 let mode = match parameter {
                     AbstractType::Reference(_) => AbstractPassingMode::SharedReference,
                     AbstractType::MutReference(_) => AbstractPassingMode::MutableReference,
@@ -1678,20 +2064,29 @@ impl BodyFreezer<'_, '_> {
                     .signature
                     .facts
                     .as_ref()
-                    .and_then(|facts| facts.iter().find(|fact| fact.parameter == *parameter))
                     .ok_or("field grant facts are not retained")?;
-                let field_ty = facts
-                    .positive
+                let equivalent =
+                    crate::data::abstract_body::equal_parameter_facts(facts, *parameter);
+                let field_types: Vec<_> = equivalent
                     .iter()
-                    .find_map(|bound| match bound {
+                    .flat_map(|fact| &fact.positive)
+                    .filter_map(|bound| match bound {
                         AbstractBound::Row { fields, .. } => fields
                             .iter()
                             .find(|(name, _)| name == label)
-                            .and_then(|(_, ty)| ty.as_ref()),
+                            .map(|(_, ty)| ty.as_ref()),
                         _ => None,
                     })
-                    .ok_or("typed field grant is not retained")?;
-                Self::check_value_type(field_ty, ty)?;
+                    .collect();
+                if field_types.is_empty() {
+                    return Err("typed field grant is not retained".to_string());
+                }
+                // An unannotated row field still grants the label. Its inferred
+                // type is the solved expression type above; typed row bounds
+                // must additionally agree with that retained type.
+                for field_ty in field_types.into_iter().flatten() {
+                    Self::check_value_type(field_ty, ty)?;
+                }
                 Ok(AbstractFieldSelection::Granted {
                     label: label.to_string(),
                     parameter: *parameter,
@@ -1699,6 +2094,137 @@ impl BodyFreezer<'_, '_> {
             }
             _ => Err("field selection contract is not fully retained".to_string()),
         }
+    }
+
+    fn coerce_callable(value: AbstractExpr, result: &AbstractType) -> Result<AbstractExpr, String> {
+        if value.ty == *result || value.ty == AbstractType::Never {
+            return Ok(value);
+        }
+        let source = match &value.ty {
+            AbstractType::Closure { signature, .. } => signature.as_ref(),
+            other => other,
+        };
+        if let (
+            AbstractType::Function {
+                parameters,
+                result: returned,
+                call,
+                usage,
+                mutation,
+            },
+            AbstractType::Function {
+                parameters: expected_parameters,
+                result: expected_result,
+                call: expected_call,
+                usage: expected_usage,
+                mutation: expected_mutation,
+            },
+        ) = (source, result)
+        {
+            use crate::data::types::UseMultiplicity;
+            if parameters == expected_parameters
+                && returned == expected_result
+                && call == expected_call
+                && mutation == expected_mutation
+                && (usage == expected_usage
+                    || (*usage == UseMultiplicity::Copy
+                        && *expected_usage == UseMultiplicity::Move))
+            {
+                return Ok(AbstractExpr {
+                    ty: result.clone(),
+                    span: value.span.clone(),
+                    kind: AbstractExprKind::CallableView(Box::new(value)),
+                });
+            }
+        }
+        Self::check_value_type(&value.ty, result)?;
+        Ok(value)
+    }
+
+    fn coerce_boundary(
+        &self,
+        value: AbstractExpr,
+        target: &AbstractType,
+        span: &Span,
+    ) -> Result<AbstractExpr, String> {
+        if value.ty == *target || value.ty == AbstractType::Never {
+            return Ok(value);
+        }
+        if !matches!(
+            value.ty,
+            AbstractType::Reference(_)
+                | AbstractType::MutReference(_)
+                | AbstractType::SizedArray(_, _)
+        ) {
+            return Self::coerce_callable(value, target);
+        }
+        let mut retained = false;
+        for (source, destination) in self
+            .facts
+            .definition_value_boundaries(span)
+            .iter()
+            .chain(self.facts.definition_value_boundaries(&value.span))
+        {
+            let source = self
+                .types
+                .freeze(source)
+                .map_err(|error| error.to_string())?;
+            let destination = self
+                .types
+                .freeze(destination)
+                .map_err(|error| error.to_string())?;
+            retained |= source == value.ty && destination == *target;
+        }
+        if retained {
+            let (referent, depth) = peel_references(&value.ty);
+            let read_copy = depth > 0
+                && referent == target
+                && !matches!(
+                    target,
+                    AbstractType::Reference(_) | AbstractType::MutReference(_)
+                );
+            let shared_view = matches!((&value.ty, target), (AbstractType::MutReference(source), AbstractType::Reference(destination)) if source == destination);
+            let array_view = Self::is_array_view_coercion(&value.ty, target);
+            if read_copy || shared_view || array_view {
+                let span = value.span.clone();
+                let value = Box::new(value);
+                let kind = if read_copy {
+                    AbstractExprKind::ReadCopy(value)
+                } else if shared_view {
+                    AbstractExprKind::SharedReferenceView(value)
+                } else {
+                    AbstractExprKind::ArrayView(value)
+                };
+                return Ok(AbstractExpr {
+                    ty: target.clone(),
+                    span,
+                    kind,
+                });
+            }
+        }
+        Self::coerce_callable(value, target)
+    }
+
+    fn is_array_view_coercion(source: &AbstractType, target: &AbstractType) -> bool {
+        matches!((source, target),
+            (AbstractType::SizedArray(source, length), AbstractType::Array(destination))
+                if source == destination || (*length == 0 && **source == AbstractType::Never))
+    }
+
+    fn coerce_call_argument(
+        value: AbstractExpr,
+        parameter: &AbstractType,
+    ) -> Result<AbstractExpr, String> {
+        // The selected call's frozen signature supplies the expected type;
+        // borrowing does not require or invent Copy for the owner's elements.
+        if Self::is_array_view_coercion(&value.ty, parameter) {
+            return Ok(AbstractExpr {
+                ty: parameter.clone(),
+                span: value.span.clone(),
+                kind: AbstractExprKind::ArrayView(Box::new(value)),
+            });
+        }
+        Self::coerce_callable(value, parameter)
     }
 
     fn check_value_type(value: &AbstractType, result: &AbstractType) -> Result<(), String> {
