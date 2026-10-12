@@ -1,0 +1,7 @@
+// The paired control: an `assert` reached through a generic body still fails when its
+// condition is false, with the assertion's own message (#1433).
+fun must_hold<T>(value: T) { assert(1 == 2, "generic assertion failed"); }
+
+fun main() {
+    must_hold(1);
+}

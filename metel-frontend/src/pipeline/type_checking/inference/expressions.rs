@@ -683,11 +683,11 @@ fn infer_expr_inner(
                         .lookup(name)
                         .expect("has_binding checked before fallback");
                     let ret_var = ctx.fresh_var();
-                    ctx.add_constraint(
-                        callee_ty,
-                        InferType::fun(arg_infer.to_vec(), ret_var.clone()),
-                        span.clone(),
-                    );
+                    let contract = InferType::fun(arg_infer.to_vec(), ret_var.clone());
+                    // The contract of a call is a definition-time fact, whichever
+                    // binding ends up serving it (ADR-0063).
+                    ctx.record_definition_call_type(span.clone(), contract.clone());
+                    ctx.add_constraint(callee_ty, contract, span.clone());
                     Ok(ret_var)
                 };
                 let arg_types: Result<Vec<Type>, ()> = arg_infer
@@ -731,6 +731,15 @@ fn infer_expr_inner(
                 }
                 let ret_var = ctx.fresh_var();
                 ctx.add_constraint(ret_var.clone(), type_to_infer(&entry.ret), span.clone());
+                // The selected candidate's parameter and return types are the call's
+                // retained contract; the selection itself is stamped at construction.
+                ctx.record_definition_call_type(
+                    span.clone(),
+                    InferType::fun(
+                        entry.params.iter().map(type_to_infer).collect(),
+                        type_to_infer(&entry.ret),
+                    ),
+                );
                 return Ok(ret_var);
             }
 

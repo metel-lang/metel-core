@@ -1,0 +1,12 @@
+// An overloaded callee (the standard `assert`, one- and two-argument forms) inside a
+// generic body keeps a retained call contract, so the body is analysed and the run
+// executes under `--move-check` (#1433).
+fun check_flag<T>(value: T) {
+    assert(true);
+    assert(true, "holds");
+}
+
+fun main() {
+    check_flag(1);
+    check_flag("two");
+}

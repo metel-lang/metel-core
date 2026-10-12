@@ -523,6 +523,7 @@ fn check_one_module(
             module_path: loaded.module_path.clone(),
             decls: report.typed_decls,
             scheme_env: full_scheme_env,
+            overloads: std::rc::Rc::new(report.overloads.clone()),
         },
         exports: ModuleExports {
             pub_schemes,

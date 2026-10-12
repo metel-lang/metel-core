@@ -8,7 +8,7 @@ use crate::data::typed_ast::{
 };
 use crate::data::types::Type;
 use crate::pipeline::type_checking::type_engine::{
-    Substitution, TypeCtx, TypeDefinitionRegistry, type_to_infer,
+    Substitution, TypeDefinitionRegistry, type_to_infer,
 };
 
 mod abstract_bodies;
@@ -249,7 +249,6 @@ use crate::ownership::flow_state::{FlowState, MoveCause, MoveRecord};
 struct Checker<'a> {
     registry: &'a TypeDefinitionRegistry,
     report: MoveCheckReport,
-    type_ctx: Option<TypeCtx>,
     /// One frame per enclosing loop body currently being walked, innermost last.
     loop_frames: Vec<LoopFrame>,
 }
@@ -290,26 +289,12 @@ impl<'a> Checker<'a> {
         Self {
             registry,
             report: MoveCheckReport::default(),
-            type_ctx: None,
             loop_frames: Vec::new(),
         }
     }
 
     fn check_module(&mut self, module: &TypedModule) {
         let mut state = FlowState::default();
-        self.type_ctx = Some(TypeCtx {
-            scheme_env: module.scheme_env.clone(),
-            registry: self.registry.clone(),
-            // The move-checker reconstructs a generic body without identity
-            // context — see `TypeCtx::members`'s doc.
-            members: None,
-            binding_spans: None,
-            // metel-core#1125: the move-checker never had a `symbols` table
-            // to draw on to begin with (unlike `evaluate_graph_with_options`'s
-            // `RuntimeIdentity`), so this stays empty, same as `members` above.
-            symbols: None,
-            current_module: module.module_path.clone(),
-        });
         state.push_scope();
         for decl in &module.decls {
             self.check_decl(decl, &module.module_path, &mut state);

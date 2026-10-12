@@ -88,6 +88,7 @@ fn closure_definition(
             ctx.resolved_facts,
             ctx.identity,
             ctx.registry,
+            ctx.overloads,
         )
     });
     Ok(Some(Box::new(TypedFunDecl {
@@ -506,6 +507,7 @@ pub(super) fn construct_fun_decl(
             ctx.resolved_facts,
             ctx.identity,
             ctx.registry,
+            ctx.overloads,
         )
     });
     Ok(TypedDecl::Fun(TypedFunDecl {
@@ -735,6 +737,7 @@ fn retain_abstract_method(
         facts,
         identity,
         ctx.registry,
+        ctx.overloads,
     ));
     typed.abstract_signature = Some(signature);
     Ok(())

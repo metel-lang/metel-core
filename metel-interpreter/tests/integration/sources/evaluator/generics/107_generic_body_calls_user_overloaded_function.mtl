@@ -1,0 +1,14 @@
+// Overloads defined by the module itself resolve from inside a generic body too: the
+// reconstruction uses the defining module's overload table (#1433).
+fun render(value: i64) -> String { "int" }
+fun render(value: String) -> String { "text" }
+
+fun label_int<T>(unused: T) -> String { render(7) }
+fun label_text<T>(unused: T) -> String { render("seven") }
+
+fun main() {
+    assert(label_int(true) == "int");
+    assert(label_int('x') == "int");
+    assert(label_text(1.5) == "text");
+    assert(label_text(()) == "text");
+}

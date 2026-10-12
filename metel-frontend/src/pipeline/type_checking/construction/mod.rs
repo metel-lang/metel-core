@@ -922,9 +922,9 @@ pub(super) fn construct_generic_body(
 
     let ret_ty = infer_type_to_type(&subst.apply(&ret_infertype), span).ok();
 
-    // Generic bodies are constructed at call time; overloaded functions are never
-    // generic, so there is no overload table to consult here.
-    let empty_overloads = crate::pipeline::type_checking::type_engine::OverloadTable::new();
+    // An overloaded function is never itself generic, but a generic body calls them
+    // (the standard `assert` is one). They are selected through the defining module's
+    // table, so reconstruction sees the same callees the ahead-of-time pass did.
     // Generic bodies are reconstructed at runtime; their inner direct calls are
     // re-resolved here without a reference table (callee_id stamping is skipped),
     // and without pass 1's write-through analysis (empty set — same limitation).
@@ -958,7 +958,7 @@ pub(super) fn construct_generic_body(
         // the root cause of metel-core#1120. `None`/empty only on the
         // move-checker's own reconstruction, which has no `symbols` table.
         type_ctx.symbols.as_deref(),
-        &empty_overloads,
+        &type_ctx.overloads,
         &type_ctx.current_module,
         None,
         &resolved_facts,

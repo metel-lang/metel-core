@@ -1,0 +1,12 @@
+// The body is analysed, not skipped: a double move beside `assert` calls is still
+// reported (#1433).
+fun twice<T>(value: T) {
+    assert(true);
+    assert(true, "analysed");
+    let first := value;
+    let second := value;
+}
+
+fun main() {
+    twice(1);
+}

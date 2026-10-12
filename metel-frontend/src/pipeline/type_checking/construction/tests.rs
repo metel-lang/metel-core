@@ -1255,6 +1255,7 @@ fn construct_generic_body_stamps_a_real_local_id() {
 
     let type_ctx = crate::pipeline::type_checking::type_engine::TypeCtx {
         scheme_env: typed_module.scheme_env.clone(),
+        overloads: Rc::clone(&typed_module.overloads),
         registry: typed_report.graph.type_registry.clone(),
         members: Some(Rc::new(members)),
         binding_spans: Some(Rc::new(allocation.binding_spans)),

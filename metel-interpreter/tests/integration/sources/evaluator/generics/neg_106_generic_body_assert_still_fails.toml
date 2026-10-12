@@ -1,0 +1,8 @@
+[options]
+error = ["R0012"]
+spec = ["spec.runtime.built-in-functions.dynamics-2"]
+
+[expect]
+status = "runtime_error"
+code = "R0012"
+contains = "generic assertion failed"

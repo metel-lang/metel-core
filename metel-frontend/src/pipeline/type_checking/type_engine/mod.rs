@@ -7920,6 +7920,11 @@ pub type SymbolTable = HashMap<(Vec<String>, String), SymbolId>;
 pub struct TypeCtx {
     /// Full scheme environment of the module where the closure was defined.
     pub scheme_env: HashMap<String, TypeScheme>,
+    /// The overload table of the module where the closure was defined (its own
+    /// overloaded functions and its imports, including the prelude's `assert`). A
+    /// reconstructed generic body resolves overloaded callees through it, so a name is
+    /// looked up from the definition site and never from the caller's scope.
+    pub overloads: Rc<OverloadTable>,
     /// Accumulated type-definition registry (structs, enums, aspects, methods) visible
     /// from the module where the closure was defined.
     pub registry: TypeDefinitionRegistry,

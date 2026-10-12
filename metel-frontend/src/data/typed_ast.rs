@@ -13,7 +13,9 @@ use crate::data::types::{CallMultiplicity, CallMutation, Type};
 use crate::identity::symbols::SymbolId;
 use crate::identity::{BindingId, FieldId, LocalId, VariantId};
 use crate::pipeline::name_resolution::name_resolver::ResolvedNames;
-use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, TypeScheme};
+use crate::pipeline::type_checking::type_engine::{
+    OverloadTable, TypeDefinitionRegistry, TypeScheme,
+};
 
 /// How a method call is dispatched, resolved by the elaboration pass.
 #[derive(Debug, Clone, PartialEq)]
@@ -45,6 +47,11 @@ pub struct TypedModule {
     // share a name, so there is no cross-module collision for a bare name to
     // resolve wrong (metel-core#1054).
     pub scheme_env: HashMap<String, TypeScheme>,
+    /// The overload table visible in this module: its own overloaded functions plus
+    /// the ones it imports, including the standard prelude's (`assert`). Generic bodies
+    /// are reconstructed per call and call overloaded functions, so reconstruction
+    /// needs the defining module's table, not an empty one.
+    pub overloads: Rc<OverloadTable>,
 }
 
 /// The output of `check_graph` — one typed module per loaded module, in

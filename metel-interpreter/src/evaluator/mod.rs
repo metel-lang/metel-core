@@ -2200,6 +2200,7 @@ pub fn evaluate_graph_with_options(
         // Build type context for construction-at-call-time of generic function bodies.
         let type_ctx = std::rc::Rc::new(TypeCtx {
             scheme_env: module.scheme_env.clone(),
+            overloads: Rc::clone(&module.overloads),
             registry: graph.type_registry.clone(),
             members: identity.map(|i| Rc::clone(&i.members)),
             binding_spans: identity.map(|i| Rc::clone(&i.binding_spans)),

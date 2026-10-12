@@ -11,7 +11,7 @@ use crate::data::ast::{AssignOp, AssignTarget, Decl, Expr, FunDecl, Pattern, Spa
 use crate::identity::FrozenIdentity;
 use crate::ownership::place::Projection;
 use crate::pipeline::type_checking::type_engine::{
-    InferType, TypeDefinitionRegistry, TypeScheme, TypeVar, VisibleTypeKind,
+    InferType, OverloadTable, TypeDefinitionRegistry, TypeScheme, TypeVar, VisibleTypeKind,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -33,6 +33,8 @@ struct BodyFreezer<'a, 'return_type> {
     closure_types: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
     loop_results: RefCell<Vec<AbstractType>>,
     registry: &'a TypeDefinitionRegistry,
+    /// The defining module's overload table, to identify which overload a call selects.
+    overloads: &'a OverloadTable,
     nominal_ownership: &'a RefCell<Vec<crate::data::abstract_body::AbstractNominalOwnership>>,
 }
 
@@ -44,13 +46,22 @@ pub(in crate::pipeline::type_checking) fn prepare_abstract_body(
     facts: &ResolvedInferenceFacts,
     identity: Option<FrozenIdentity<'_>>,
     registry: &TypeDefinitionRegistry,
+    overloads: &OverloadTable,
 ) -> AbstractBodyPreparation {
     if signature.facts.is_none() {
         return AbstractBodyPreparation::Pending {
             reason: "definition fact environment is not fully retained".to_string(),
         };
     }
-    match freeze_body(signature, scheme, declaration, facts, identity, registry) {
+    match freeze_body(
+        signature,
+        scheme,
+        declaration,
+        facts,
+        identity,
+        registry,
+        overloads,
+    ) {
         Ok(body) => AbstractBodyPreparation::Typed(body),
         Err(reason) => AbstractBodyPreparation::Pending { reason },
     }
@@ -63,6 +74,7 @@ fn freeze_body(
     facts: &ResolvedInferenceFacts,
     identity: Option<FrozenIdentity<'_>>,
     registry: &TypeDefinitionRegistry,
+    overloads: &OverloadTable,
 ) -> Result<AbstractBody, String> {
     let identity = identity.ok_or("definition has no frozen binding identities")?;
     let source_order: Vec<_> = declaration
@@ -101,6 +113,7 @@ fn freeze_body(
         closure_types: &closure_types,
         loop_results: RefCell::new(Vec::new()),
         registry,
+        overloads,
         nominal_ownership: &nominal_ownership,
     };
     if parameters.len() != declaration.params.len() {
@@ -1652,6 +1665,7 @@ impl BodyFreezer<'_, '_> {
             closure_types: self.closure_types,
             loop_results: RefCell::new(Vec::new()),
             registry: self.registry,
+            overloads: self.overloads,
             nominal_ownership: self.nominal_ownership,
         };
         let mut body = nested.block(body)?;
@@ -1857,6 +1871,29 @@ impl BodyFreezer<'_, '_> {
         })
     }
 
+    /// A call to an overloaded name has no single lexical binding; the overload it selects
+    /// is fixed by the retained parameter types, exactly as construction selects it.
+    fn overloaded_callee(
+        &self,
+        callee: &Expr,
+        parameters: &[AbstractType],
+    ) -> Result<crate::identity::BindingId, String> {
+        let candidates = crate::pipeline::type_checking::overload::callee_name(callee)
+            .and_then(|name| self.overloads.get(name))
+            .ok_or("call target has no frozen identity")?;
+        let types: Vec<crate::data::types::Type> = parameters
+            .iter()
+            .map(|parameter| match parameter {
+                AbstractType::Concrete(ty) => Some(ty.clone()),
+                _ => None,
+            })
+            .collect::<Option<_>>()
+            .ok_or("overloaded call has a non-concrete retained contract")?;
+        crate::pipeline::type_checking::overload::select(candidates, &types)
+            .map(|entry| crate::identity::BindingId::Global(entry.symbol_id))
+            .ok_or_else(|| "overloaded call selection is not retained".to_string())
+    }
+
     fn call(
         &self,
         callee: &Expr,
@@ -1911,11 +1948,10 @@ impl BodyFreezer<'_, '_> {
             if !matches!(callee, Expr::Ident(..) | Expr::ResolvedPath { .. }) {
                 return Err("call target selection is not fully retained".to_string());
             }
-            let binding = self
-                .identity
-                .binding_spans
-                .get(callee.span())
-                .ok_or("call target has no frozen identity")?;
+            let binding = match self.identity.binding_spans.get(callee.span()) {
+                Some(binding) => binding,
+                None => self.overloaded_callee(callee, parameters)?,
+            };
             // Name-keyed scheme lookup can find an outer generic even when a
             // local callable shadows it. Without an expression fact tying the
             // contract to that local binding, its ownership axes are unproven.

@@ -1,0 +1,13 @@
+// A user-overloaded callee has no single lexical binding; the retained call contract
+// identifies the overload the call selects, so the generic body is analysed and the
+// run executes under `--move-check` (#1433).
+fun render(value: i64) -> String { "int" }
+fun render(value: String) -> String { "text" }
+
+fun label_int<T>(unused: T) -> String { render(7) }
+fun label_text<T>(unused: T) -> String { render("seven") }
+
+fun main() {
+    assert(label_int(true) == "int");
+    assert(label_text(1.5) == "text");
+}

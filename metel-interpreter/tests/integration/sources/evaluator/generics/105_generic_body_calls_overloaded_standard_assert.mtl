@@ -1,0 +1,14 @@
+// A generic body is reconstructed per call, and an overloaded callee inside it (the
+// standard `assert`, with one- and two-argument forms) must resolve through the
+// defining module's overload table, not an empty one (#1433).
+fun check_flag<T>(value: T) { assert(true); }
+fun check_equal<T>(value: T) { assert(1 + 1 == 2); }
+fun check_with_message<T>(value: T) { assert(true, "must hold"); }
+
+fun main() {
+    check_flag(1);
+    check_flag("two");
+    check_equal(3.5);
+    check_with_message(true);
+    check_with_message('c');
+}
