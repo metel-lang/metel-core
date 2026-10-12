@@ -1,0 +1,31 @@
+// An unsuffixed literal takes the declared type of a generic struct's field when that
+// type mentions no type parameter. Such fields used to get no hint, so the literal
+// defaulted to i64 and construction reported an internal error (#1438).
+struct Counter<T> { n: u64, v: T }
+struct Small<T> { n: u8, v: T }
+struct Wide<T> { n: i32, v: T }
+struct Ratio<T> { n: f32, v: T }
+
+// Parameters stay unhinted: `v` still takes whatever type its value has.
+struct Pair<A, B> { first: A, second: B, tag: u16 }
+
+fun make<T>(value: T) -> Counter<T> {
+    Counter { n = 7, v = value }
+}
+
+fun main() {
+    let a := Counter { n = 1, v = 2 };
+    let b: Counter<i64> := Counter { n = 3, v = 4 };
+    let c := Small { n = 5, v = "five" };
+    let d := Wide { n = -6, v = true };
+    let e := Ratio { n = 1.5, v = 'e' };
+    let f := Pair { first = "x", second = 2.5, tag = 9 };
+    assert(a.n + b.n == 4);
+    assert(c.n == 5);
+    assert(d.n == -6);
+    assert(e.n == 1.5);
+    assert(f.tag == 9);
+    // In a generic body, with several instantiations.
+    assert(make("s").n == 7);
+    assert(make(1).n + make(true).n == 14);
+}

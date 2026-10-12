@@ -1376,10 +1376,38 @@ pub(super) fn construct_expr(
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = resolved_path.last().map_or("", std::string::String::as_str);
-            let field_hints: HashMap<String, Type> = ctx
+            let mut field_hints: HashMap<String, Type> = ctx
                 .get_struct_fields(type_name)
                 .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
                 .unwrap_or_default();
+            // A generic struct has no concrete field list to hint from, but a field whose
+            // declared type mentions no type parameter is as concrete as any other: hint
+            // it, or an unsuffixed literal takes its default type and later disagrees
+            // with the field (#1438). Fields that mention a parameter stay unhinted,
+            // because their type is only known from the values, and nothing is guessed.
+            if field_hints.is_empty() && resolved_path.len() != 2 {
+                let type_id = symbol_id.or_else(|| ctx.type_symbol_id(type_name));
+                if let Some(raw_fields) = type_id.and_then(|id| {
+                    ctx.registry
+                        .raw_struct_type_params()
+                        .contains_key(&id)
+                        .then(|| ctx.registry.raw_struct_env().get(&id))
+                        .flatten()
+                }) {
+                    field_hints = raw_fields
+                        .iter()
+                        .filter(|field| {
+                            crate::pipeline::type_checking::type_engine::free_vars(&field.ty)
+                                .is_empty()
+                        })
+                        .filter_map(|field| {
+                            infer_type_to_type(&field.ty, span)
+                                .ok()
+                                .map(|ty| (field.name.clone(), ty))
+                        })
+                        .collect();
+                }
+            }
             let typed_fields: Vec<(String, TypedExpr)> = fields
                 .iter()
                 .map(|(name, expr)| {

@@ -1,0 +1,7 @@
+// A hinted field is still checked: a String literal for a u64 field is a user type
+// error, not an internal one (#1438).
+struct Counter<T> { n: u64, v: T }
+
+fun main() {
+    let c := Counter { n = "one", v = 2 };
+}
