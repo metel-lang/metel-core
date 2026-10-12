@@ -615,7 +615,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    // limit: ["LIMIT-MOVE-CHECK-002"]
     fn generic_sample_args(
         scheme: &TypeScheme,
         registry: &TypeDefinitionRegistry,
@@ -2023,7 +2022,6 @@ impl<'a> Checker<'a> {
         }
     }
 
-    // limit: ["LIMIT-MOVE-CHECK-002"]
     fn record_skipped_generic_body(&mut self, span: &Span, reason: impl Into<String>) {
         if is_embedded_std_span(span) {
             self.report.skipped_generic_bodies_embedded_std += 1;
