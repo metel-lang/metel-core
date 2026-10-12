@@ -99,9 +99,9 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     )?;
     let typecheck_ns = elapsed_ns(started);
 
-    let mut warnings = typed_report.warnings;
+    let warnings = typed_report.warnings;
     if options.move_check {
-        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+        move_check::check_graph(&typed_report.graph)?;
     }
 
     let started = Instant::now();
@@ -186,9 +186,9 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     )?;
     let typecheck_ns = elapsed_ns(started);
 
-    let mut warnings = typed_report.warnings;
+    let warnings = typed_report.warnings;
     if options.move_check {
-        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+        move_check::check_graph(&typed_report.graph)?;
     }
 
     let started = Instant::now();
@@ -264,9 +264,9 @@ pub fn run_evaluator_fixture(
         }),
     )?;
 
-    let mut warnings = typed_report.warnings;
+    let warnings = typed_report.warnings;
     if options.move_check {
-        warnings.extend(move_check::check_graph(&typed_report.graph)?);
+        move_check::check_graph(&typed_report.graph)?;
     }
 
     let elaborated = elaboration::elaborate(typed_report.graph)?;

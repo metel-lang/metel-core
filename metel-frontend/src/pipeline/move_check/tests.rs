@@ -15,6 +15,19 @@ fn move_report_for_source(source: &str) -> MoveCheckReport {
     move_report_for_source_with(source, |_| {})
 }
 
+/// Drop everything the abstract path and the legacy reconstruction fallback rely
+/// on, so a generic body genuinely cannot be analysed.
+fn make_generic_bodies_unanalyzable(graph: &mut TypedModuleGraph) {
+    for module in &mut graph.modules {
+        module.scheme_env.clear();
+        for decl in &mut module.decls {
+            if let TypedDecl::Fun(fun) = decl {
+                fun.abstract_body = None;
+            }
+        }
+    }
+}
+
 fn move_report_for_source_with(
     source: &str,
     prepare: impl FnOnce(&mut TypedModuleGraph),
@@ -3327,7 +3340,16 @@ fn move_warnings_for_source(source: &str) -> Vec<String> {
         coherence::check(&normalized).expect("coherence temp fixture");
         let typed = type_checking::check_graph(&normalized, &type_checking::CorePrelude::default())
             .expect("typecheck temp fixture");
-        check_graph(&typed).expect("move-check temp fixture")
+        match check_graph(&typed) {
+            Ok(()) => Vec::new(),
+            // An incomplete analysis surfaces as I0011; its message is what these
+            // tests inspect. Any other error is a real move violation.
+            Err(MetelError::Internal {
+                code: InternalErrorCode::I0011,
+                message,
+            }) => vec![message],
+            Err(error) => panic!("move-check temp fixture: {error:?}"),
+        }
     })();
     let _ = std::fs::remove_file(&path);
     warnings
@@ -5145,4 +5167,38 @@ println(item.show());
 }
 "#,
     );
+}
+
+#[test]
+fn incomplete_analysis_is_a_distinct_error_and_never_passes() {
+    let mut report = None;
+    let source = "fun keep<T>(value: T) -> T { value }\nfun main() {}\n";
+    let unchecked = move_report_for_source_with(source, |graph| {
+        make_generic_bodies_unanalyzable(graph);
+        report = Some(check_graph(graph));
+    });
+    assert!(
+        !unchecked.unchecked_generic_bodies.is_empty(),
+        "the body must be unanalysable: {unchecked:#?}"
+    );
+    match report.expect("check_graph ran") {
+        Err(MetelError::Internal {
+            code: InternalErrorCode::I0011,
+            message,
+        }) => assert!(
+            message.contains("could not analyze 1 generic body"),
+            "{message}"
+        ),
+        other => panic!("expected I0011, got {other:?}"),
+    }
+}
+
+#[test]
+fn analyzable_generic_bodies_pass_the_completeness_guard() {
+    let mut result = None;
+    move_report_for_source_with(
+        "fun keep<T>(value: T) -> T { value }\nfun main() {}\n",
+        |graph| result = Some(check_graph(graph)),
+    );
+    assert!(matches!(result, Some(Ok(()))), "{result:?}");
 }

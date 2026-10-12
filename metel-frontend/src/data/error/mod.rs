@@ -84,6 +84,7 @@ pub enum InternalErrorCode {
     I0008, // Iterator-dispatch invariant violated (was R0011, RFC-0167)
     I0009, // Generic construction-at-call-time invariant violated (was R0002's construction-machinery case, RFC-0167)
     I0010, // Generic definition and construction disagree (RFC-0173)
+    I0011, // Move checking could not analyze a body, so its result is incomplete (ADR-0063)
 }
 
 macro_rules! impl_display_via_debug {
@@ -310,7 +311,7 @@ impl MetelError {
     /// Interpreter bug under a specific `I00NN` code — the typechecker (or an
     /// earlier static check) should have prevented this state. Use this over
     /// [`Self::internal`] when the invariant being violated has its own
-    /// documented code (see `error-codes.md`'s I0003-I0010).
+    /// documented code (see `error-codes.md`'s I0003-I0011).
     pub fn internal_with_code(code: InternalErrorCode, msg: impl Into<String>) -> Self {
         Self::Internal {
             code,

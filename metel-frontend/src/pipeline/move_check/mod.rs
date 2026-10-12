@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::data::ast::Visibility;
 use crate::data::ast::{GenericParam, Polarity, ReceiverKind, Span};
-use crate::data::error::{MetelError, TypeErrorCode};
+use crate::data::error::{InternalErrorCode, MetelError, TypeErrorCode};
 use crate::data::typed_ast::{
     FunBody, MethodDispatch, TypedBlock, TypedDecl, TypedExpr, TypedForInit, TypedModule,
     TypedModuleGraph, TypedPattern, TypedPlace, TypedStmt,
@@ -208,13 +208,17 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
     checker.report
 }
 
-/// Run the move checker, convert the first violation into a user-facing type error,
-/// and return diagnostics for bodies that could not be checked.
+/// Run the move checker and convert the first violation into a user-facing type error.
+///
+/// Success means every generic body was analysed and none violates the move rules.
+/// A body that could not be analysed is never reported as a move violation, but it
+/// also never passes: an incomplete report cannot authorize execution (ADR-0063).
 ///
 /// # Errors
-/// Returns `T0019` when the graph contains a move-checking violation.
+/// Returns `T0019` when the graph contains a move-checking violation, and `I0011`
+/// when any body could not be analysed.
 // arch-implements: ["arch.move-check.requirement-1"]
-pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> {
+pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
     let report = collect_graph_violations(graph);
     if let Some(violation) = report
         .violations
@@ -228,16 +232,21 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<Vec<String>, MetelError> 
             &span,
         ));
     }
-    Ok(report
-        .unchecked_generic_bodies
-        .into_iter()
-        .map(|unchecked| {
-            format!(
-                "move checking could not analyze generic body at {}:{}:{}: {}",
-                unchecked.span.filename, unchecked.span.line, unchecked.span.col, unchecked.reason
-            )
-        })
-        .collect())
+    let Some(first) = report.unchecked_generic_bodies.first() else {
+        return Ok(());
+    };
+    let count = report.unchecked_generic_bodies.len();
+    Err(MetelError::internal_with_code(
+        InternalErrorCode::I0011,
+        format!(
+            "move checking could not analyze {count} generic bod{}; the first is at {}:{}:{}: {}",
+            if count == 1 { "y" } else { "ies" },
+            first.span.filename,
+            first.span.line,
+            first.span.col,
+            first.reason
+        ),
+    ))
 }
 
 use crate::ownership::flow_state::{FlowState, MoveCause, MoveRecord};

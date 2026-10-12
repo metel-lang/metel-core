@@ -92,9 +92,7 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
-        for warning in metel::pipeline::move_check::check_graph(&typed.graph)? {
-            eprintln!("warning: {warning}");
-        }
+        metel::pipeline::move_check::check_graph(&typed.graph)?;
     }
     Ok(())
 }
@@ -159,9 +157,7 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
-        for warning in metel::pipeline::move_check::check_graph(&typed.graph)? {
-            eprintln!("warning: {warning}");
-        }
+        metel::pipeline::move_check::check_graph(&typed.graph)?;
     }
     let elaborated = elaboration::elaborate(typed.graph)?;
     let runtime_identity = evaluator::RuntimeIdentity {

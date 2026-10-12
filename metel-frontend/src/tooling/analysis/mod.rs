@@ -352,9 +352,9 @@ pub(crate) fn analyze_graph(
         }),
     )?;
 
-    let mut warnings = report.warnings;
+    let warnings = report.warnings;
     if options.move_check {
-        warnings.extend(move_check::check_graph(&report.graph)?);
+        move_check::check_graph(&report.graph)?;
     }
 
     Ok(Analysis {
@@ -405,15 +405,14 @@ pub(crate) fn analyze_graph_with_diagnostics(
         }),
     );
 
-    let mut warnings = report.warnings;
+    let warnings = report.warnings;
     let mut diagnostics = report.diagnostics;
     if options.move_check {
         // Runs over whatever modules did type-check; a violation here is one
         // more diagnostic layered on an otherwise-valid partial analysis, not
         // a reason to discard it (unlike the three whole-graph passes above).
-        match move_check::check_graph(&report.graph) {
-            Ok(mc_warnings) => warnings.extend(mc_warnings),
-            Err(e) => diagnostics.push(e),
+        if let Err(e) = move_check::check_graph(&report.graph) {
+            diagnostics.push(e);
         }
     }
 
