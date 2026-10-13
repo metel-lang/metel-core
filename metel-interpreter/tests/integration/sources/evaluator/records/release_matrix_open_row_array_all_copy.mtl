@@ -1,0 +1,5 @@
+fun head<row R>(v: { xs: [i64; 3], ..R }) -> i64 where all R: Copy {
+    let w := v;
+    v.xs[0] + w.xs[1]
+}
+fun main() { assert(head({ xs = [1, 2, 3], flag = true }) == 3); }

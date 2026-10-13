@@ -1,0 +1,4 @@
+record Samples { values: [i64; 3] }
+fun main() {
+    let s := Samples { values = [1, 2] }; // ERROR[T0001]
+}

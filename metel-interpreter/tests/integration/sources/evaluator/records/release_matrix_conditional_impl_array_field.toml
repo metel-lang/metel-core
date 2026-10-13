@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.row-conditional-impls.legality-1", "spec.types.fixed-size-arrays.legality-1"]

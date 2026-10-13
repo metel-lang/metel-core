@@ -1,0 +1,26 @@
+record Session<row R> { id: i64, data: { ..R } }
+extend<row R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
+extend<row R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
+fun after_rest() {
+    let s := Session { id = 1, data = { token = "t", n = 5 } };
+    assert(s.kind() == 1);
+    let { id, data } := s;
+    let { token: _, ..rest } := data;
+    let s2 := Session { id = id, data = rest };
+    assert(s2.kind() == 2);
+}
+
+fun empty_and_stripped() {
+    let s := Session { id = 1, data = { token = "t" } };
+    let { id, data } := s;
+    let { token: _, ..rest } := data;
+    let s2 := Session { id = id, data = rest };
+    assert(s2.kind() == 2);
+    let e := Session { id = 2, data = {} };
+    assert(e.kind() == 2);
+}
+
+fun main() {
+    after_rest();
+    empty_and_stripped();
+}

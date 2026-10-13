@@ -1,0 +1,22 @@
+record Frame { rows: [i64; 3], label: String }
+record Grid { cells: [i64; 3] }
+fun consume(g: Grid) -> i64 { g.cells[0] }
+fun rest_rows() {
+    let f := Frame { rows = [1, 2, 3], label = "f" };
+    let { label, ..rest } := f;
+    assert(label == "f");
+    var total := 0;
+    for (r in rest.rows) { total := total + r; }
+    assert(total == 6);
+}
+fun empty_rest() {
+    let g := Grid { cells = [7, 8, 9] };
+    let { cells, ..rest } := g;
+    assert(cells[2] == 9);
+    let again := Grid { cells = cells };
+    assert(consume(again) == 7);
+}
+fun main() {
+    rest_rows();
+    empty_rest();
+}

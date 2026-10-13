@@ -1,0 +1,6 @@
+struct Opaque { v: i64 }
+record Wrap { o: Opaque }
+fun main() {
+    let w := Wrap { o = Opaque { v = 1 } };
+    println("${w}"); // ERROR[T0012]
+}

@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.row-conditional-impls.legality-1", "spec.types.generics.row-conditional-impls.legality-3", "spec.expressions.record-rest-patterns.legality-1"]
