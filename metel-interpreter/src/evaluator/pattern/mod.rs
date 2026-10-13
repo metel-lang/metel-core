@@ -169,11 +169,8 @@ pub(super) fn match_pattern(
             rest_binding,
             ..
         } => {
-            let (record_fields, record_type_id) = match value {
-                Value::Record { fields, type_id }
-                | Value::Struct {
-                    fields, type_id, ..
-                } => (fields, *type_id),
+            let record_fields = match value {
+                Value::Record { fields, .. } | Value::Struct { fields, .. } => fields,
                 _ => return false,
             };
             if !rest && record_fields.len() != fields.len() + ignored_fields.len() {
@@ -202,12 +199,16 @@ pub(super) fn match_pattern(
                     })
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();
+                // The remainder is an anonymous record: a rest pattern drops the
+                // scrutinee's nominal brand (spec.expressions "Record rest patterns"),
+                // so it must not carry the brand's `type_id` or aspect dispatch on it
+                // would pick the nominal impl its static type no longer names (#1446).
                 out.push((
                     name.clone(),
                     *local,
                     Value::Record {
                         fields: remainder,
-                        type_id: record_type_id,
+                        type_id: None,
                     },
                 ));
             }

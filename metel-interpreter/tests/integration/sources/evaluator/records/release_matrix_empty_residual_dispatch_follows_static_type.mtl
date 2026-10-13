@@ -1,12 +1,35 @@
+// A record rest pattern drops the nominal brand (spec.expressions "Record rest patterns"),
+// so aspect dispatch on the remainder follows its anonymous static type, not the hidden
+// brand of the record it came from (metel-core#1446). A whole value (here `u`, after a
+// `Copy` field read that does not narrow it) still dispatches to its nominal impl.
 aspect Describe { fun describe(&self) -> String; }
 record Point { x: i64, y: i64 }
 extend Point: Describe { fun describe(&self) -> String { "point".to_string() } }
 extend<row R> { ..R }: Describe where all R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
+
+record Tok { value: String, id: i64, n: i64 }
+aspect Keyed { fun key(&self) -> String; }
+extend Tok: Keyed { fun key(&self) -> String { "tok".to_string() } }
+extend<row R: { id: i64, .. }> { ..R }: Keyed where all R: Copy { fun key(&self) -> String { "row".to_string() } }
+
 fun erase(p: Point) -> {} {
     let { x: _, y: _, ..rest } := p;
     rest
 }
+
+fun show(d: &dyn Describe) -> String { d.describe() }
+
 fun main() {
     let e: {} := erase(Point { x = 1, y = 2 });
     assert(e.describe() == "copy-row");
+    assert(show(&e) == "copy-row");
+
+    let t := Tok { value = "x".to_string(), id = 1, n = 2 };
+    let { value: _, ..rest } := t;
+    assert(rest.key() == "row");
+
+    let u := Point { x = 1, y = 2 };
+    let moved := u.x;
+    assert(u.describe() == "point");
+    assert(moved == 1);
 }
