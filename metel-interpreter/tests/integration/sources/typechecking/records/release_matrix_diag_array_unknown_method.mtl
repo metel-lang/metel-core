@@ -1,0 +1,4 @@
+fun main() {
+    let xs := [1, 2, 3];
+    xs.push(4); // ERROR[T0003]
+}

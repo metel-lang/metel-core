@@ -1,0 +1,4 @@
+fun main() {
+    let n := 5;
+    for (x in n) { } // ERROR[T0001]
+}
