@@ -1,0 +1,12 @@
+aspect Describe { fun describe(&self) -> String; }
+record Point { x: i64, y: i64 }
+extend Point: Describe { fun describe(&self) -> String { "point".to_string() } }
+extend<row R> { ..R }: Describe where all R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
+fun erase(p: Point) -> {} {
+    let { x: _, y: _, ..rest } := p;
+    rest
+}
+fun main() {
+    let e: {} := erase(Point { x = 1, y = 2 });
+    assert(e.describe() == "copy-row");
+}

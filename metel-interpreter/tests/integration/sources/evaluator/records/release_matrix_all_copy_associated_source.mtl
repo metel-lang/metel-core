@@ -1,0 +1,14 @@
+record Wrapper<T> { inner: T, tag: String }
+fun inner_of<T: Copy>(w: Wrapper<T>) -> T {
+    let { tag: _, ..rest } := w;
+    rest.inner
+}
+fun sum_all<row R>(v: { a: i64, b: i64, ..R }) -> i64 where all R: Copy { v.a + v.b }
+aspect Source { type Item; fun take(self) -> Item; }
+struct Holder { value: { a: i64, b: i64, c: boolean } }
+extend Holder: Source { type Item := { a: i64, b: i64, c: boolean }; fun take(self) -> { a: i64, b: i64, c: boolean } { self.value } }
+fun use_source<S: Source<Item = { a: i64, b: i64, c: boolean }>>(s: S) -> i64 { sum_all(s.take()) }
+fun main() {
+    assert(inner_of(Wrapper { inner = 7, tag = "t" }) == 7);
+    assert(use_source(Holder { value = { a = 1, b = 2, c = true } }) == 3);
+}

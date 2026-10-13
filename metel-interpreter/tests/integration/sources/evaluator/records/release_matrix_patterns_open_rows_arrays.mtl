@@ -1,0 +1,20 @@
+enum Shape { Circle { r: i64, tag: String }, Square { s: i64, tag: String } }
+record Item { id: i64, shape: [i64; 2] }
+fun area(s: Shape) -> i64 {
+    match (s) {
+        Shape::Circle { r, tag } => r * 3 + tag.len(),
+        Shape::Square { s, tag } => s * s + tag.len(),
+    }
+}
+fun total<row R>(v: { n: i64, ..R }) -> i64 where all R: Copy {
+    match (v) { { n, ..rest } => n }
+}
+fun main() {
+    assert(area(Shape::Circle { r = 2, tag = "ab" }) == 8);
+    assert(area(Shape::Square { s = 3, tag = "" }) == 9);
+    assert(total({ n = 5, flag = true }) == 5);
+    let it := Item { id = 1, shape = [2, 3] };
+    match (it.shape) { [a, b] => assert(a + b == 5) }
+    let r: Perhaps<{ n: i64 }> := Perhaps::Some { value = { n = 4 } };
+    match (r) { Perhaps::Some { value } => assert(value.n == 4), None => assert(false) }
+}

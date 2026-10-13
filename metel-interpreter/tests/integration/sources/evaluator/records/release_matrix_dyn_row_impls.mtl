@@ -1,0 +1,17 @@
+aspect Describe { fun describe(&self) -> String; }
+record Point { x: i64, y: i64 }
+extend Point: Describe { fun describe(&self) -> String { "point".to_string() } }
+extend<row R> { ..R }: Describe where all R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
+record Packet<row R> { data: { ..R } }
+extend<row R> Packet<..R>: Describe { fun describe(&self) -> String { "packet".to_string() } }
+fun show(d: &dyn Describe) -> String { d.describe() }
+fun main() {
+    let p := Point { x = 1, y = 2 };
+    assert(show(&p) == "point");
+    let pk := Packet { data = { a = 1 } };
+    assert(show(&pk) == "packet");
+    let anon := { a = 1, b = true };
+    assert(show(&anon) == "copy-row");
+    let boxed: dyn Describe := Packet { data = { n = 2 } };
+    assert(boxed.describe() == "packet");
+}

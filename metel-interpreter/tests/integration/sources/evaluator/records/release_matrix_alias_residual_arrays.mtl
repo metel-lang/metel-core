@@ -1,0 +1,22 @@
+type Pair<T> := { left: T, right: T };
+type Grid := [i64; 3];
+record Cell { value: i64, grid: Grid }
+type Residual<row R> := { ..R };
+fun swap(p: Pair<i64>) -> Pair<i64> { { left = p.right, right = p.left } }
+fun strip(c: Cell) -> Residual<{ grid: Grid }> {
+    let { value: _, ..rest } := c;
+    rest
+}
+fun main() {
+    let s := swap({ left = 1, right = 2 });
+    assert(s.left == 2);
+    let r := strip(Cell { value = 9, grid = [1, 2, 3] });
+    assert(r.grid[1] == 2);
+    extend_ok();
+}
+fun extend_ok() {
+    let g: Grid := [4, 5, 6];
+    var total := 0;
+    for (x in g) { total := total + x; }
+    assert(total == 15);
+}

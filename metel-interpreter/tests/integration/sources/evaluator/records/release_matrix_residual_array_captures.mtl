@@ -1,0 +1,12 @@
+record Counter { n: i64, label: String }
+fun main() {
+    let c := Counter { n = 1, label = "c" };
+    let { label, ..rest } := c;
+    let f := [rest] once || { rest.n + 1 };
+    assert(f() == 2);
+    assert(label == "c");
+    let arr: [i64; 3] := [1, 2, 3];
+    let g := [arr] || { arr[0] + arr[2] };
+    assert(g() == 4);
+    assert(g() == 4);
+}

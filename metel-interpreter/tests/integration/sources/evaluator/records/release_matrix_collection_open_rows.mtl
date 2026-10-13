@@ -1,0 +1,12 @@
+record Row { id: i64, name: String }
+fun key_of<row R>(v: { k: i64, ..R }) -> i64 where all R: Copy { v.k }
+fun main() {
+    let rows: [Row] := [Row { id = 1, name = "a" }, Row { id = 2, name = "b" }];
+    var names := "";
+    for (r in rows) { names := names + r.name + r.id.to_string(); }
+    assert(names == "a1b2");
+    let copies := [{ k = 1, v = true }, { k = 2, v = false }];
+    var s := 0;
+    for (c in copies) { s := s + key_of(c); }
+    assert(s == 3);
+}

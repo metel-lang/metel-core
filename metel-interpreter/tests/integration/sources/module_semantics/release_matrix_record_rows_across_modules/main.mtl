@@ -1,0 +1,11 @@
+import shapes::{Frame, Weigh, strip_label, total, empty_after};
+fun main() {
+    let f := Frame { public_rows = [1, 2, 3], label = "x" };
+    let stripped := strip_label(f);
+    assert(stripped.public_rows[2] == 3);
+    assert(total(stripped) == 6);
+    assert(total({ public_rows = [4, 5, 6], extra = true }) == 15);
+    let e := empty_after({ label = "gone".to_string() });
+    assert(e.weigh() == 1);
+    assert(stripped.weigh() == 1);
+}
