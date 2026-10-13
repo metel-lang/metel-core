@@ -35,8 +35,9 @@ fun main() {
     assert(authed.describe() == 1);
     assert(anon.describe() == 2);
     // a generic bound is satisfied by exactly the matching impl
-    assert(show(authed) == 1);
-    assert(show(anon) == 2);
+    // `show` consumes its argument, so it gets fresh values.
+    assert(show(Session { id = 1, data = { token = "t" } }) == 1);
+    assert(show(Session { id = 2, data = { extra = 1 } }) == 2);
 
     let int_a: Session<{ a: i64 }> := Session { id = 3, data = { a = 1 } };
     let str_a: Session<{ a: String }> := Session { id = 4, data = { a = "x" } };

@@ -16,8 +16,8 @@ fun get<T, row R>(t: Tagged<T, ..R>) -> T { t.v }
 
 fun main() {
     let b := Builder { name = "req", data = { auth = "tok", retries = 3 } };
-    assert(describe(b) == "req");
     assert(auth_of(b) == "tok");
+    assert(describe(Builder { name = "req", data = { auth = "tok", retries = 3 } }) == "req");
 
     let c: Builder<{ auth: String }> := Builder { name = "c", data = { auth = "t2" } };
     assert(auth_of(c) == "t2");

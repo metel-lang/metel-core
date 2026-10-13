@@ -1,2 +1,3 @@
 [options]
+move_check = true
 spec = ["spec.declarations.structs.receiver-forms.dynamics-1"]

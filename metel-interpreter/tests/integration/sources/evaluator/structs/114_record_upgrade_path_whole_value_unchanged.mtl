@@ -13,6 +13,9 @@ record RecordPoint {
     y: f64,
 }
 
+extend StructPoint: Copy;
+extend RecordPoint: Copy;
+
 extend StructPoint {
     fun magnitude(self) -> f64 { self.x * self.x + self.y * self.y }
 }

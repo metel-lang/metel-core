@@ -1,2 +1,3 @@
 [options]
+move_check = true
 spec = ["spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-4"]

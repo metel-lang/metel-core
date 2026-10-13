@@ -25,7 +25,8 @@ fun main() {
     let plain := Box { v = "s" };
     assert(tagged.describe() == 1);
     assert(plain.describe() == 2);
-    assert(show(tagged) == 1);
-    assert(show(plain) == 2);
+    // Each by-value use gets its own value: `describe(self)` and `show` consume it.
+    assert(show(Box { v = 1 }) == 1);
+    assert(show(Box { v = "s" }) == 2);
     println("ok");
 }

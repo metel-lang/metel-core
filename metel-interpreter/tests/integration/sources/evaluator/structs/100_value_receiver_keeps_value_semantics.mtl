@@ -5,6 +5,9 @@ struct Counter {
     value: i64,
 }
 
+// `Counter` is `Copy`, so `incremented(self)` receives a copy and `original` stays usable.
+extend Counter: Copy;
+
 extend Counter {
     fun incremented(self) -> Counter {
         Counter { value = self.value + 1 }

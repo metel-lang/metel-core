@@ -39,12 +39,12 @@ extend i64: Tag { fun tag(self) -> i64 { 7 } }
 extend<U> Held<U>: Describe where U: Tag { fun describe(self) -> i64 { self.v.tag() } }
 
 fun main() {
-    let b := Box { v = "s" };
-    assert(b.twice() == 100);
-    assert(b.quad() == 200);
+    // Each by-value method call consumes its receiver, so each gets a fresh value.
+    assert(Box { v = "s" }.twice() == 100);
+    assert(Box { v = "s" }.quad() == 200);
     // a default with generics of its own is generic per call
-    assert(b.pick(5) == 5);
-    assert(b.pick("x") == "x");
+    assert(Box { v = "s" }.pick(5) == 5);
+    assert(Box { v = "s" }.pick("x") == "x");
 
     var c := Cell { n = 0, w = "s" };
     c.bump_twice();

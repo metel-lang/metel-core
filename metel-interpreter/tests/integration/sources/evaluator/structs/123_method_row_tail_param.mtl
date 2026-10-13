@@ -26,13 +26,14 @@ extend<T> Box<T> {
 }
 
 fun main() {
+    // `add`, `anon` and `both` take `self` by value, so each call gets its own `Handle`.
+    assert(Handle { fd = 1 }.add({ x = 2, y = 3 }) == 3);
     var h := Handle { fd = 1 };
-    assert(h.add({ x = 2, y = 3 }) == 3);
     assert(h.peek({ x = 2, y = 3 }) == 3);
     h.bump({ x = 10, z = 1 });
     assert(h.fd == 11);
-    assert(h.anon({ x = 1, extra = 9 }) == 12);
-    assert(h.both({ x = 1, z = 2, w = 3 }) == 14);
+    assert(Handle { fd = 11 }.anon({ x = 1, extra = 9 }) == 12);
+    assert(Handle { fd = 11 }.both({ x = 1, z = 2, w = 3 }) == 14);
 
     let b := Box { v = 1 };
     assert(b.with({ x = 5, y = 6 }) == 5);

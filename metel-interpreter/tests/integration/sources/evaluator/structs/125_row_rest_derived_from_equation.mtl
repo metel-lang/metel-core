@@ -16,7 +16,9 @@ fun main() {
             Session { id = 1, data = { token = "t", extra = 2 } };
         let r := authenticate(s);
         assert(r.data.extra == 2);
-        let annotated: Session<{ extra: i64 }> := authenticate(s);
+        let s2: Session<{ token: String, extra: i64 }> :=
+            Session { id = 1, data = { token = "t", extra = 2 } };
+        let annotated: Session<{ extra: i64 }> := authenticate(s2);
         assert(annotated.id == 1);
     }
     println("ok");

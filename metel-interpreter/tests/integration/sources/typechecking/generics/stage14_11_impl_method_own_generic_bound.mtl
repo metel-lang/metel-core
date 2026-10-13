@@ -7,7 +7,7 @@
 // rules [as free functions]... the impl block's own type parameter bounds
 // are in scope and do not need to be re-declared on individual methods").
 aspect Comparable {
-    fun compare(self, other: Self) -> i64;
+    fun compare(&self, other: &Self) -> i64;
 }
 
 aspect Display2 {
@@ -21,7 +21,7 @@ struct SortedList<T: Comparable> {
 struct Num { value: i64 }
 
 extend Num: Comparable {
-    fun compare(self, other: Num) -> i64 { self.value - other.value }
+    fun compare(&self, other: &Num) -> i64 { self.value - other.value }
 }
 
 extend Num: Display2 {
@@ -32,7 +32,7 @@ extend SortedList<T> {
     // `T: Comparable` comes from the struct; `U: Display2` is this
     // method's own additional bound.
     fun describe<U: Display2>(self, item: T, other: T, label: U) -> String {
-        let cmp := item.compare(other);
+        let cmp := item.compare(&other);
         label.show()
     }
 }
@@ -53,5 +53,5 @@ fun main() {
     assert(list.describe(Num { value = 1 }, Num { value = 2 }, n) == "num");
 
     let f := Foo { x = 1 };
-    assert(f.describe(n) == "num");
+    assert(f.describe(Num { value = 42 }) == "num");
 }

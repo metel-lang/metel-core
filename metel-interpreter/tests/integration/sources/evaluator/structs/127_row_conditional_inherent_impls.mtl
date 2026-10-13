@@ -21,16 +21,21 @@ extend<row Q: { extra: i64, .. }> Session<..Q> {
     fun has_extra(self) -> i64 { 3 }
 }
 
+fun authed() -> Session<{ token: String }> {
+    Session { id = 1, data = { token = "t" } }
+}
+
+fun anon() -> Session<{ extra: i64 }> {
+    Session { id = 2, data = { extra = 1 } }
+}
+
 fun main() {
-    let authed: Session<{ token: String }> :=
-        Session { id = 1, data = { token = "t" } };
-    let anon: Session<{ extra: i64 }> := Session { id = 2, data = { extra = 1 } };
+    // Every method here takes `self` by value, so each call gets a fresh session.
+    assert(authed().with_token() == 1);
+    assert(anon().send_data() == 20);
+    assert(anon().has_extra() == 3);
 
-    assert(authed.with_token() == 1);
-    assert(anon.send_data() == 20);
-    assert(anon.has_extra() == 3);
-
-    assert(authed.kind() == 1);
-    assert(anon.kind() == 2);
+    assert(authed().kind() == 1);
+    assert(anon().kind() == 2);
     println("ok");
 }

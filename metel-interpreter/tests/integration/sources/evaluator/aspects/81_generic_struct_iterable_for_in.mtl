@@ -1,5 +1,5 @@
 // RFC-0036 + core Iterable: a *generic* struct implementing `Iterable<T>`
-// generically (`extend<T> Wrapper<T>: Iterable<T> { ... }`), iterated via
+// generically (`extend<T: Clone> Wrapper<T>: Iterable<T> { ... }`), iterated via
 // `for (x in w)` sugar, not a direct `.next()` call. Every existing Iterable
 // fixture implements it for a concrete, non-generic target (e.g. `Counter:
 // Iterable<i64>`), so this is the first to exercise the generic case through
@@ -25,13 +25,13 @@ struct Wrapper<T> {
     used: boolean,
 }
 
-extend<T> Wrapper<T>: Iterable<T> {
+extend<T: Clone> Wrapper<T>: Iterable<T> {
     fun next(&var self) -> Perhaps<T> {
         if (self.used) {
             return None;
         }
         self.used := true;
-        return Perhaps::Some { value = self.value };
+        return Perhaps::Some { value = self.value.clone() };
     }
 }
 

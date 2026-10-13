@@ -31,15 +31,20 @@ extend<row R: !{token}> Session<..R> {
 }
 
 fun main() {
+    // Each `self` method consumes its receiver, so each call gets a fresh session.
     let s: Session<{ token: String, extra: i64 }> :=
         Session { id = 7, data = { token = "t", extra = 2 } };
     assert(s.ident() == 7);
-    assert(s.doubled() == 14);
+    let s2: Session<{ token: String, extra: i64 }> :=
+        Session { id = 7, data = { token = "t", extra = 2 } };
+    assert(s2.doubled() == 14);
+    let s3: Session<{ token: String, extra: i64 }> :=
+        Session { id = 7, data = { token = "t", extra = 2 } };
 
     let bare: Session<{ extra: i64 }> := Session { id = 3, data = { extra = 1 } };
     assert(bare.ident() == 3);
 
-    let r := s.authenticate();
+    let r := s3.authenticate();
     assert(r.data.extra == 2);
     assert(r.id == 7);
     let annotated: Session<{ extra: i64 }> := bare.with_token("new").authenticate();

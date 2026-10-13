@@ -9,12 +9,13 @@ fun main() {
     let inc := [p] var || -> () {
         *p += 1;
     };
-    let read := [p] || -> i64 {
-        *p
+    inc();
+    inc();
+
+    // `p` is move-only, so only `inc` holds it; `read` snapshots `x` once `inc` is done,
+    // which sees the writes `inc` made through the pointer.
+    let read := [x] || -> i64 {
+        x
     };
-
-    inc();
-    inc();
-
     assert(read() == 12);
 }
