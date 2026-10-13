@@ -1,0 +1,38 @@
+// old x old: TA x OW, TA x CO, CL x PM, CL x CO, DY x CO, OW x CO, PM x CO, PM x GA
+type Names := [String];
+type Handler := once |i64| -> i64;
+aspect Speak { fun speak(&self) -> String; }
+struct Dog {}
+extend Dog: Speak { fun speak(&self) -> String { "woof".to_string() } }
+enum Msg { Num { n: i64 }, Text { s: String } }
+fun apply(h: Handler, v: i64) -> i64 { h(v) }
+fun identity<T>(x: T) -> T { x }
+fun main() {
+    let names: Names := ["a".to_string(), "b".to_string()];
+    let first := names[0].clone();
+    assert(first == "a");
+    var total := 0;
+    for (n in names) { total := total + n.len(); }
+    assert(total == 2);
+    let add := 10;
+    let h: Handler := [add] once |v: i64| { v + add };
+    assert(apply(h, 5) == 15);
+    let msgs := [Msg::Num { n = 1 }, Msg::Text { s = "hi".to_string() }];
+    var acc := 0;
+    for (m in msgs) {
+        let f := [m] once || {
+            match (m) { Msg::Num { n } => n, Msg::Text { s } => s.len() }
+        };
+        acc := acc + f();
+    }
+    assert(acc == 3);
+    let dogs: [dyn Speak] := [Dog {}, Dog {}];
+    var barks := 0;
+    for (d in dogs) { if (d.speak() == "woof") { barks := barks + 1; } }
+    assert(barks == 2);
+    let moved := names;
+    assert(moved.len() == 2);
+    match (identity(Msg::Num { n = 4 })) { Msg::Num { n } => assert(n == 4), Msg::Text { s } => assert(false) }
+    let o: Perhaps<[i64]> := Perhaps::Some { value = [1, 2] };
+    match (o) { Perhaps::Some { value } => assert(value.len() == 2), None => assert(false) }
+}

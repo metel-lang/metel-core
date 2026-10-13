@@ -1,0 +1,2 @@
+fun dup<T>(x: T) -> (T, T) { (x, x) } // ERROR[T0019]
+fun main() {}

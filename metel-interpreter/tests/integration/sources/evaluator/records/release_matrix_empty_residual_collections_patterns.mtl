@@ -1,0 +1,13 @@
+record Token { value: String, id: i64 }
+fun count(xs: [{}]) -> i64 { xs.len() as i64 }
+fun main() {
+    let a := Token { value = "a".to_string(), id = 1 };
+    let { value: _, id: _, ..e1 } := a;
+    let b := Token { value = "b".to_string(), id = 2 };
+    let { value: _, id: _, ..e2 } := b;
+    let es: [{}] := [e1, e2];
+    assert(count(es) == 2);
+    let c := Token { value = "c".to_string(), id = 3 };
+    let { value: _, id: _, ..e3 } := c;
+    match (e3) { whole => { let _w: {} := whole; } }
+}

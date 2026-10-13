@@ -1,0 +1,3 @@
+type Pair<T> := (T, T);
+fun f(p: Pair<i64>) -> i64 { p.0 }
+fun main() { f((1, "a")); } // ERROR[T0001]

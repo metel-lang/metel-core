@@ -1,0 +1,8 @@
+public enum Event { Click { x: i64, y: i64 }, Key { code: i64 } }
+public fun events() -> [Event; 2] { [Event::Click { x = 1, y = 2 }, Event::Key { code = 7 }] }
+public fun weight(e: Event) -> i64 {
+    match (e) { Event::Click { x, y } => x + y, Event::Key { code } => code }
+}
+public record Doc { title: String, pages: [i64; 2] }
+public fun make() -> Doc { Doc { title = "t".to_string(), pages = [3, 4] } }
+public fun first_generic<T: Copy>(xs: [T; 2]) -> T { xs[0] }

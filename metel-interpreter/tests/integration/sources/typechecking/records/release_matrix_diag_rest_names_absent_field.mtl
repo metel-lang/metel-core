@@ -1,0 +1,5 @@
+record P { x: i64 }
+fun main() {
+    let p := P { x = 1 };
+    let { y, ..rest } := p; // ERROR[T0012]
+}

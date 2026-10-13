@@ -1,0 +1,9 @@
+[options]
+error = ["T0009"]
+spec = ["spec.modules.imports.legality-2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0009"
+contains = "cannot pattern-match on private field `x`"
+line = 5

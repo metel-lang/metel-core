@@ -1,0 +1,9 @@
+import lib::{Event, events};
+fun main() {
+    for (e in events()) {
+        match (e) {
+            Event::Click { x, y } => assert(x == 1), // ERROR[T0009]
+            Event::Key { code } => assert(code == 7),
+        }
+    }
+}

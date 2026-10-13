@@ -1,0 +1,11 @@
+import lib::{Event, events, weight, Doc, make, first_generic};
+fun main() {
+    var total := 0;
+    for (e in events()) { total := total + weight(e); }
+    assert(total == 10);
+    let d := make();
+    let title := d.title;
+    let pages := d.pages;
+    assert(title == "t");
+    assert(first_generic(pages) == 3);
+}

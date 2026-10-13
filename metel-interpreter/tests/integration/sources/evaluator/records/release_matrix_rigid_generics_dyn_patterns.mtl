@@ -1,0 +1,18 @@
+// RG x DY, RG x PM, RG x CO, AS x PM
+aspect Show { fun show(&self) -> String; }
+struct Num { v: i64 }
+extend Num: Show { fun show(&self) -> String { "num".to_string() } }
+fun show_all<T: Show>(xs: [T]) -> i64 { var n := 0; for (x in xs) { if (x.show().len() > 0) { n := n + 1; } } n }
+fun describe(d: &dyn Show) -> String { d.show() }
+fun pick<T: Copy>(o: Perhaps<T>, d: T) -> T { match (o) { Perhaps::Some { value } => value, None => d } }
+record Pt { x: i64, y: i64 }
+fun main() {
+    assert(show_all([Num { v = 1 }, Num { v = 2 }]) == 2);
+    assert(describe(&Num { v = 3 }) == "num");
+    assert(pick(Perhaps::Some { value = 3 }, 9) == 3);
+    let n: Perhaps<i64> := None;
+    assert(pick(n, 9) == 9);
+    let p := Pt { x = 1, y = 2 };
+    match (p.clone()) { Pt { x, y } => assert(x + y == 3) }
+    assert("${p}" == "Pt { x: 1, y: 2 }");
+}
