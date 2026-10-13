@@ -26,21 +26,26 @@ use crate::pipeline::type_checking::type_engine::{
 /// Resolve a bare type- or aspect-position name to its declaring `SymbolId`,
 /// from the perspective of `current_module`. Mirrors the precedence used by
 /// `reference_resolver::resolve_name` and
-/// `type_engine::TypeDefinitionRegistry::resolve_type_position_id` (local
-/// declaration -> explicit import -> glob, user tier before std) — duplicated
+/// `type_engine::TypeDefinitionRegistry::resolve_type_position_id` (explicit
+/// import / local declaration -> glob, user tier before std; the two cannot share a name) — duplicated
 /// here in miniature because coherence runs before `TypeDefinitionRegistry`
 /// exists.
 fn resolve_id(names: &ResolvedNames, current_module: &[String], name: &str) -> Option<SymbolId> {
+    // An explicit import wins over a `symbols` entry for `(current_module, name)`:
+    // importing `name` *through* a module that merely imports it (not a
+    // declaration there) interns a placeholder under that module, and trusting it
+    // would make a foreign aspect or type look local to the importing module.
+    let scope = names.scopes.get(current_module);
+    if let Some(binding) = scope.and_then(|s| s.explicit.get(name)) {
+        return Some(binding.symbol_id);
+    }
     if let Some(id) = names
         .symbols
         .get(&(current_module.to_vec(), name.to_string()))
     {
         return Some(*id);
     }
-    let scope = names.scopes.get(current_module)?;
-    if let Some(binding) = scope.explicit.get(name) {
-        return Some(binding.symbol_id);
-    }
+    let scope = scope?;
     let mut std_hit = None;
     for (tier, glob_module) in &scope.globs {
         if let Some(id) = names.symbols.get(&(glob_module.clone(), name.to_string())) {

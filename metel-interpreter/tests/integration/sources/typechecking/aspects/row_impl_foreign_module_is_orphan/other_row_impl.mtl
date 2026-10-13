@@ -1,0 +1,9 @@
+import describe_aspect::Describe;
+
+// An anonymous record shape has no owning module, so this module owns neither half
+// of the pair: a second module cannot add a competing row impl.
+extend<row R: { h: i64, .. }> { ..R }: Describe { // ERROR[T0014]
+    fun describe(&self) -> String { "h".to_string() }
+}
+
+public fun touch() {}

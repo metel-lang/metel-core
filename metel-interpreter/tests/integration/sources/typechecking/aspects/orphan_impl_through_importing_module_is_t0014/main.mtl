@@ -1,0 +1,10 @@
+// Regression: naming `Describe` *through* `importer` (which only imports it) used to
+// intern a placeholder `(importer, Describe)` symbol; coherence then resolved the
+// aspect inside `importer` to that placeholder, judged it local, skipped T0014, and
+// the program failed later with a misleading T0013 ("`Describe` and `Describe`").
+// An explicit import must win, so the orphan impl is reported as T0014.
+
+import describe_aspect::Describe;
+import importer::Describe as ImportedAgain;
+
+fun main() {}

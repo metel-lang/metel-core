@@ -1,0 +1,3 @@
+public aspect Describe {
+    fun describe(&self) -> String;
+}

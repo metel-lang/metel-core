@@ -1,0 +1,8 @@
+public aspect Describe {
+    fun describe(&self) -> String;
+}
+
+// The aspect's own module may implement it for every record with a `w` field.
+extend<row R: { w: i64, .. }> { ..R }: Describe {
+    fun describe(&self) -> String { "w".to_string() }
+}

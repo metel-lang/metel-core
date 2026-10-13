@@ -1,0 +1,9 @@
+[options]
+arch_verifies = ["arch.coherence.requirement-1"]
+error = ["T0014"]
+spec = ["spec.declarations.aspects.aspect-implementation-coherence.legality-5"]
+
+[expect]
+status = "typecheck_error"
+code = "T0014"
+line = 4
