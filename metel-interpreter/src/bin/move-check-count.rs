@@ -194,13 +194,13 @@ fn main() {
 
     println!(
         "fixtures_whose_violations_are_all_T_bracket={}",
-        fixtures_all_one_type(&per_fixture_types, "T[]")
+        fixtures_all_one_type(&per_fixture_types, "[T]")
     );
     println!(
         "fixtures_with_no_T_bracket_violation={}",
         per_fixture_types
             .values()
-            .filter(|types| !types.contains("T[]"))
+            .filter(|types| !types.contains("[T]"))
             .count()
     );
     println!("--- violations by moved-value type ---");

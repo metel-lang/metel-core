@@ -6,4 +6,4 @@ spec = ["spec.types.arrays.legality-1"]
 [expect]
 status = "typecheck_error"
 code = "T0019"
-contains = "it is borrowed from a `T[]` view"
+contains = "it is borrowed from a `[T]` view"

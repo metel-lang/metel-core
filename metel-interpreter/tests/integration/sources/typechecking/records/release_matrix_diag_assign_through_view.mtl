@@ -1,0 +1,4 @@
+fun set_first(xs: [i64]) {
+    xs[0] := 9; // ERROR[T0023]
+}
+fun main() {}

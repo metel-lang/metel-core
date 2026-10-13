@@ -42,7 +42,7 @@ pub enum TypeErrorCode {
     T0019, // Use of moved value
     T0021, // `break` or `continue` outside an enclosing loop
     T0022, // `extends Aspect` used outside parameter or return position
-    T0023, // Assignment through a non-owning view (`T[]`)
+    T0023, // Assignment through a non-owning view (`[T]`)
     T0024, // Read-copy of a non-`Copy` value out of a reference (RFC-0067a §3a)
     T0025, // Aspect is not object-safe, used in `dyn` position (RFC-0008 §3)
     T0026, // Closure capture-list error (RFC-0050)

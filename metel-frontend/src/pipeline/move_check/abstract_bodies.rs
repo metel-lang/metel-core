@@ -1507,7 +1507,7 @@ fn abstract_type_bucket(ty: &AbstractType) -> String {
         AbstractType::Parameter(_) => "abstract parameter".to_string(),
         AbstractType::Reference(_) => "&T".to_string(),
         AbstractType::MutReference(_) => "&var T".to_string(),
-        AbstractType::Array(_) => "T[]".to_string(),
+        AbstractType::Array(_) => "[T]".to_string(),
         AbstractType::SizedArray(_, _) => "[T; N]".to_string(),
         AbstractType::Tuple(_) => "tuple".to_string(),
         AbstractType::Record(_) | AbstractType::OpenRecord { .. } => "record".to_string(),

@@ -1159,7 +1159,7 @@ pub(crate) fn reject_unregisterable_impl_target(
     }
     let fix = match &ib.target_type {
         TypeExpr::Array(_) => {
-            "write it as `extend<T> T[]: Aspect { … }`, where `T` is the \
+            "write it as `extend<T> [T]: Aspect { … }`, where `T` is the \
              array's own element type, or use a named struct"
         }
         _ => "use a named struct",

@@ -83,7 +83,7 @@ fn whole_use_of_narrowed_value_is_intact(state: &FlowState, root: &str, ty: &Typ
 #[must_use]
 pub(crate) fn type_bucket(ty: &Type) -> String {
     match ty {
-        Type::Array(_) => "T[]".to_string(),
+        Type::Array(_) => "[T]".to_string(),
         Type::SizedArray(_, _) => "[T; N]".to_string(),
         Type::Tuple(_) => "tuple".to_string(),
         Type::Record(_) => "record".to_string(),
@@ -2412,7 +2412,7 @@ fn violation_message(violation: &MoveViolation) -> String {
             format_place(&violation.use_place),
         ),
         MoveViolationKind::BorrowedArrayElementMove => format!(
-            "cannot move `{}`: it is borrowed from a `T[]` view",
+            "cannot move `{}`: it is borrowed from a `[T]` view",
             format_place(&violation.use_place),
         ),
         MoveViolationKind::MovedMutReferenceWithoutReborrow => format!(

@@ -6,5 +6,5 @@ spec = ["spec.ownership.values-move-by-default.legality-1", "spec.types.fixed-si
 [expect]
 status = "typecheck_error"
 code = "T0019"
-contains = "borrowed from a"
+contains = "borrowed from a `[T]` view"
 line = 4

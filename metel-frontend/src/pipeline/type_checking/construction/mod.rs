@@ -2152,7 +2152,7 @@ fn typed_place_ty(
                 // binding that a `var` would fix).
                 Type::Array(_) => Err(MetelError::type_error(
                     TypeErrorCode::T0023,
-                    "cannot assign through `T[]`: array views are immutable; use `[T; N]` or `List<T>`",
+                    "cannot assign through `[T]`: array views are immutable; use `[T; N]` or `List<T>`",
                     span,
                 )),
                 _ => Err(MetelError::type_error(
