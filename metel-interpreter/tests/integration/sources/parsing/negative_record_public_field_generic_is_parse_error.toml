@@ -1,0 +1,10 @@
+[options]
+error = ["P0001"]
+spec = ["spec.declarations.records.legality-4"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+line = 3
+col = 5
+contains = "`public` is not written on field `data` of `record Box`"

@@ -6,7 +6,7 @@ fun copy_head<row R>(value: { id: i64, ..R }) -> i64 where all R: Copy {
     value.id
 }
 
-record CopyRow { public id: i64, public count: i64 }
+record CopyRow { id: i64, count: i64 }
 type CopyAlias := CopyRow;
 
 fun main() {

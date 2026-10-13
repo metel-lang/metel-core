@@ -14,7 +14,7 @@ extend<row R: { w: i64, h: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w * self.h }
 }
 
-record Rect { public w: i64, public h: i64 }
+record Rect { w: i64, h: i64 }
 
 fun total<T: Area>(x: &T) -> i64 { x.area() }
 

@@ -1,7 +1,7 @@
 // RFC-0121 item 2 (metel-core#1310): `where R = { auth: String, .. }` is a
 // real bound on the row-kinded parameter, checked at the call site.
 
-record Builder<row R> { public data: { ..R } }
+record Builder<row R> { data: { ..R } }
 
 fun auth_of<row R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
     b.data.auth

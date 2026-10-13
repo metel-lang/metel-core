@@ -1,4 +1,4 @@
-record Box<T> { public value: T }
+record Box<T> { value: T }
 
 fun clone_box<T: Clone>(value: Box<T>) -> Box<T> {
     value.clone()

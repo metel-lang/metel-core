@@ -4,7 +4,7 @@
 // only for a receiver whose row satisfies it. Disjoint conditions may reuse a
 // method name; dispatch follows the receiver's own row.
 
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 extend<row R: { token: String, .. }> Session<..R> {
     fun with_token(self) -> i64 { self.id }

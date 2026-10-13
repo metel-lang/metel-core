@@ -22,8 +22,8 @@ fun take<row R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
     rest
 }
 
-record Box<row R> { public data: { ..R } }
-record Credentials { public token: String, public name: String }
+record Box<row R> { data: { ..R } }
+record Credentials { token: String, name: String }
 extend<row R> Box<..R> {
     fun strip<row Rest>(self) -> { ..Rest }
     where R = { token: String, ..Rest } {

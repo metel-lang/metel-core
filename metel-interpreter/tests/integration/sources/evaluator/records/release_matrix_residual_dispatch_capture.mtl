@@ -1,4 +1,4 @@
-record Pair { public left: String, public right: String }
+record Pair { left: String, right: String }
 type PairAlias := Pair;
 type Restore := once var || -> PairAlias;
 

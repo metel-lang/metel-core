@@ -1,4 +1,4 @@
-record S { public a: String, public b: String }
+record S { a: String, b: String }
 fun main() {
     let s := S { a = "a", b = "b" };
     let x := s.a;

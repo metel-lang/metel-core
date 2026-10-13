@@ -9,8 +9,8 @@ struct StructPoint {
 }
 
 record RecordPoint {
-    public x: f64,
-    public y: f64,
+    x: f64,
+    y: f64,
 }
 
 extend StructPoint {

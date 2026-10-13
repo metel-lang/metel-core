@@ -2,7 +2,7 @@
 // row parameter. Constructing the nominal type infers the tail from the
 // record's fields that the extension does not name.
 
-record Wrap<row R> { public data: { x: i64, ..R } }
+record Wrap<row R> { data: { x: i64, ..R } }
 
 fun main() {
     var wrap := Wrap { data = { x = 1, y = 2 } };

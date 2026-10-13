@@ -1,4 +1,4 @@
-record User { public name: String }
+record User { name: String }
 aspect Describe { fun describe(&self) -> String; }
 extend User: Describe {
     fun describe(&self) -> String { self.name.clone() }

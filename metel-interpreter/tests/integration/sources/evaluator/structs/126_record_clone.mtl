@@ -1,6 +1,6 @@
 // #1350: records receive field-wise Clone when every field is Clone.
-record Inner { public value: i64 }
-record Outer { public name: String, public inner: Inner, public values: [i64] }
+record Inner { value: i64 }
+record Outer { name: String, inner: Inner, values: [i64] }
 struct Custom { value: i64 }
 
 extend Custom: Clone {

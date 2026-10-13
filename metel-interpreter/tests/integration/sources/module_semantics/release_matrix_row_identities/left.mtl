@@ -1,4 +1,4 @@
-public record LeftPacket<row R> { public data: { ..R } }
+public record LeftPacket<row R> { data: { ..R } }
 public aspect LeftRead { fun read(&self) -> i64; }
 extend<row R: { count: i64, .. }> LeftPacket<..R>: LeftRead {
     fun read(&self) -> i64 { self.data.count }

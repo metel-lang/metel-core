@@ -1,4 +1,4 @@
-record Notice { public title: String, public priority: i64 }
+record Notice { title: String, priority: i64 }
 aspect Summary { fun summary(&self) -> String; }
 
 extend<row R: { title: String, .. }> { ..R }: Summary {

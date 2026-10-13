@@ -1,6 +1,6 @@
 // RFC-0121 / #1381: anonymous row arguments are fresh in reusable type positions,
 // including return types and local annotations.
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 fun make() -> Session<..> {
     let typed: Session<..> := Session { id = 1, data = { n = 1 } };

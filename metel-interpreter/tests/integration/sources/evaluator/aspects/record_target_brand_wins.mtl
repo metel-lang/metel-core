@@ -5,8 +5,8 @@
 
 aspect Describe { fun describe(&self) -> String; }
 
-record Tagged { public w: i64 }
-record Plain { public w: i64, public z: i64 }
+record Tagged { w: i64 }
+record Plain { w: i64, z: i64 }
 
 extend Tagged: Describe {
     fun describe(&self) -> String { "brand".to_string() }

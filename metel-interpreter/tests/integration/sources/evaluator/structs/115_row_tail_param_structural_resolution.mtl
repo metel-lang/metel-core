@@ -8,7 +8,7 @@
 // value yet in this installment (not usable in a `where` equation or elsewhere
 // in the signature).
 
-record Point { public x: f64, public y: f64 }
+record Point { x: f64, y: f64 }
 
 fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
 

@@ -1,5 +1,5 @@
 struct Pair { left: String, right: String }
-record NamedPair { public left: String, public right: String }
+record NamedPair { left: String, right: String }
 struct Zero {}
 fun empty_pair(p: Pair.{}) -> Pair.{} { p }
 fun empty_named(p: NamedPair.{}) -> NamedPair.{} { p }

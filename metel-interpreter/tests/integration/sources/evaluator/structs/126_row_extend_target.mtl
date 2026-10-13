@@ -4,7 +4,7 @@
 // equation the method's result row is derived from the receiver's. The
 // derived and reverse-extension bodies are executed, including an empty tail.
 
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 extend<row R> Session<..R> {
     fun ident(self) -> i64 { self.id }

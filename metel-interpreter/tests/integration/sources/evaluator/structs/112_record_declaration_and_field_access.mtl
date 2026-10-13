@@ -5,15 +5,15 @@
 // 113_record_private_field_is_parse_error).
 
 record Handle {
-    public fd: i64,
-    public name: String,
+    fd: i64,
+    name: String,
 }
 
 record Empty {}
 
 record Pair<A, B> {
-    public first: A,
-    public second: B,
+    first: A,
+    second: B,
 }
 
 fun main() {

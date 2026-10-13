@@ -1,6 +1,6 @@
 // RFC-0121 item 2 (metel-core#1310): an anonymous row argument is accepted in
 // an instance method parameter type and receives a fresh row variable.
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 struct Tool { public n: i64 }
 
 extend Tool {

@@ -1,4 +1,4 @@
-record Packet<row R> { public data: { ..R } }
+record Packet<row R> { data: { ..R } }
 extend<row R: !{ token }> Packet<..R> { fun cleared(&self) -> i64 { 4 } }
 fun rejected<row R: !{ token: String }>(packet: &Packet<..R>) -> i64 {
     packet.cleared() // ERROR[T0035]

@@ -2,7 +2,7 @@
 // nominal type takes a closed record type as its argument; `Builder<..R>`
 // splices the row variable, and a `where R = { .. }` equation bounds it.
 
-record Builder<row R> { public name: String, public data: { ..R } }
+record Builder<row R> { name: String, data: { ..R } }
 
 struct Tagged<T, row R> { public v: T, public extra: { ..R } }
 

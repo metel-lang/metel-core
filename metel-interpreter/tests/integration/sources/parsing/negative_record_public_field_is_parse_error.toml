@@ -5,4 +5,6 @@ spec = ["spec.declarations.records.legality-4"]
 [expect]
 status = "parse_error"
 code = "P0001"
-contains = "must be `pub`"
+line = 6
+col = 5
+contains = "`public` is not written on field `fd` of `record Handle`"

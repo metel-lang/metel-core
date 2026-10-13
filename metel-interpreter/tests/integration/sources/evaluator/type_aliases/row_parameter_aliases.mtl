@@ -1,5 +1,5 @@
 // metel-core#1425: row tails are alias parameters, not free names after expansion.
-record Packet<row R> { public data: { ..R } }
+record Packet<row R> { data: { ..R } }
 type Row<row R> := { ..R };
 type Tagged<T, row R> := { tag: T, ..R };
 type PacketAlias<row R> := Packet<..R>;

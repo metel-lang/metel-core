@@ -705,7 +705,7 @@ fun main() {}
 fn abstract_ownership_checks_nominal_row_record_patterns_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
-record Packet<row R> { public id: i64, public data: { ..R } }
+record Packet<row R> { id: i64, data: { ..R } }
 extend<row R> Packet<..R> {
     fun packet_id(self) -> i64 {
         let { id, .. } := self;
@@ -733,7 +733,7 @@ fun main() {}
 fn abstract_ownership_consumes_unproved_nominal_record_copy_without_granting_it() {
     let report = move_report_for_source_with(
         r#"
-record Packet<row R> { public id: i64, public data: { ..R } }
+record Packet<row R> { id: i64, data: { ..R } }
 fun consume<row R>(value: Packet<..R>) { let moved := value; }
 fun duplicate<row R>(value: Packet<..R>) {
     let first := value;

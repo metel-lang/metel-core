@@ -1,0 +1,8 @@
+import shapes::Point;
+import shapes::counter;
+
+fun main() {
+    let p := Point { x = 3, y = 4 };
+    assert(p.x + p.y == 7);
+    assert(counter().total == 3);
+}

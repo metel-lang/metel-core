@@ -1,0 +1,7 @@
+// Fields are written bare, and are public because the declaration is a `record`.
+public record Point { x: i64, y: i64 }
+
+// A `struct`'s unmarked field stays module-private; `public` still means public there.
+public struct Counter { public total: i64, hidden: i64 }
+
+public fun counter() -> Counter { Counter { total = 3, hidden = 4 } }

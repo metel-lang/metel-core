@@ -1,4 +1,4 @@
-record Message { public text: String }
+record Message { text: String }
 aspect Render { fun render(&self) -> String; }
 extend Message: Render {
     fun render(&self) -> String { self.text.clone() }

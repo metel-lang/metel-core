@@ -1,7 +1,7 @@
 // RFC-0121 item 5 (metel-core#833): the impl's negative row bound `!{ token }`
 // forbids `token`, so a receiver whose row has it has no such method.
 
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 extend<row R: !{ token }> Session<..R> {
     fun send_data(self) -> i64 { self.id }

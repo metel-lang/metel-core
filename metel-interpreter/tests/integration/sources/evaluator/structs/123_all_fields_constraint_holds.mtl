@@ -8,7 +8,7 @@ aspect Tag { fun tag(self) -> i64; }
 extend i64: Tag { fun tag(self) -> i64 { 1 } }
 extend f64: Tag { fun tag(self) -> i64 { 2 } }
 
-record Item { public id: i64, public weight: f64 }
+record Item { id: i64, weight: f64 }
 
 fun id_of<row R>(p: { id: i64, ..R }) -> i64 where all R: Tag { p.id }
 

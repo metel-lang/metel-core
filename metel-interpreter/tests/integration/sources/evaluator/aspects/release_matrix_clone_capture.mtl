@@ -1,4 +1,4 @@
-record Ledger { public id: i64, public memo: String, public count: i64 }
+record Ledger { id: i64, memo: String, count: i64 }
 type LedgerAlias := Ledger;
 
 fun main() {

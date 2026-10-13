@@ -1,4 +1,4 @@
-record User { public id: i64, public name: String, public count: i64 }
+record User { id: i64, name: String, count: i64 }
 type UserAlias := User;
 type Callback := once || -> i64;
 

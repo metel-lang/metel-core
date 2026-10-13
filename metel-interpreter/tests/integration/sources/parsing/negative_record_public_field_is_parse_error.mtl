@@ -1,0 +1,10 @@
+// RFC-0120 §5 (metel-core#1440): a `record` publishes its row, so every field is public
+// by construction and takes no visibility modifier. A `public` written on one is a hard
+// syntax error, reported at the modifier. A `struct` has no such restriction.
+
+record Handle {
+    public fd: i64,
+    name: String,
+}
+
+fun main() {}

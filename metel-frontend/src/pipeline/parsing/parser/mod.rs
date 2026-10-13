@@ -507,22 +507,31 @@ fn parse_struct_decl(
             _ => {}
         }
     }
-    // RFC-0120 §5: a `record`'s declared row is its public interface -- a
-    // private field would make a row bound either a privacy oracle or
-    // unsatisfiable by the caller, so every field must be `pub`.
-    if kind == StructKind::Record
-        && let Some(private_field) = fields.iter().find(|f| f.visibility == Visibility::Private)
-    {
-        return Err(MetelError::parse(
-            ParseErrorCode::P0001,
-            format!(
-                "field `{}` of `record {name}` must be `pub` -- every field of a \
-                 record is public (declare this as a `struct` instead if `{}` \
-                 should stay private)",
-                private_field.name, private_field.name
-            ),
-            &private_field.span,
-        ));
+    // RFC-0120 §5: a `record`'s declared row is its public interface, so every field
+    // is public by construction and carries no visibility modifier. A field is
+    // `Public` here only if `public` was written (the unmarked default is `Private`),
+    // which is the one thing a record rejects; then the default is applied.
+    if kind == StructKind::Record {
+        if let Some(field) = fields.iter().find(|f| f.visibility == Visibility::Public) {
+            // The modifier is the field's first token, so its span is the field's own
+            // start, as wide as the keyword.
+            let mut modifier = field.span.clone();
+            modifier.end = modifier.start + "public".len();
+            return Err(MetelError::parse(
+                ParseErrorCode::P0001,
+                format!(
+                    "`public` is not written on field `{}` of `record {name}`: every \
+                     field of a record is public, so a record field takes no visibility \
+                     modifier -- remove `public` (declare a `struct` instead if `{}` \
+                     should stay private)",
+                    field.name, field.name
+                ),
+                &modifier,
+            ));
+        }
+        for field in &mut fields {
+            field.visibility = Visibility::Public;
+        }
     }
     Ok(StructDecl {
         visibility,

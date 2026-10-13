@@ -1,4 +1,4 @@
-record Batch { public samples: [i64; 3], public label: String }
+record Batch { samples: [i64; 3], label: String }
 type Samples := [i64; 3];
 type Sum := once || -> i64;
 

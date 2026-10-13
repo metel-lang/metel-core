@@ -2,8 +2,8 @@
 // inherent method visible within the generic body.
 
 record Session<row R> {
-    public id: i64,
-    public data: { ..R },
+    id: i64,
+    data: { ..R },
 }
 
 extend<row R: { token: String, .. }> Session<..R> {

@@ -1,4 +1,4 @@
-public record RightPacket<row R> { public data: { ..R } }
+public record RightPacket<row R> { data: { ..R } }
 public aspect RightRead { fun read(&self) -> i64; }
 extend<row R: { count: i64, .. }> RightPacket<..R>: RightRead {
     fun read(&self) -> i64 { self.data.count + 100 }

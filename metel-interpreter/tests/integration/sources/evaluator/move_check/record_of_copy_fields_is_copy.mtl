@@ -3,7 +3,7 @@
 // copied, not moved: it stays usable after `let b := a`, satisfies a `T: Copy` bound, and
 // can be passed by value twice. This holds for anonymous and nominal `record`s.
 
-record Pt { public x: i64, public y: i64 }
+record Pt { x: i64, y: i64 }
 
 fun dup<T: Copy>(v: T) -> T { v }
 

@@ -8,7 +8,7 @@
 // tail forgets must be `Copy` (RFC-0121 §4) -- hence `i64`, not `String`.
 
 struct Handle { fd: i64, flags: i64 }
-record Box { public fd: i64, public label: i64 }
+record Box { fd: i64, label: i64 }
 
 fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 fun get_box_fd<row R>(b: Box.{ fd, ..R }) -> i64 { b.fd }

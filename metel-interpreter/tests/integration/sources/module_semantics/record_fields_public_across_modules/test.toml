@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.declarations.records.legality-4"]
+
+[expect]
+status = "success"

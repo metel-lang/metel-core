@@ -1,5 +1,5 @@
 // RFC-0173 D1: an enclosing impl's row equation is a body fact for its methods.
-record Session<row R> { public data: { ..R } }
+record Session<row R> { data: { ..R } }
 
 extend<row R, row Rest> Session<..R> where R = { token: String, ..Rest } {
     fun read_removed(self, value: Session<..Rest>) -> String {

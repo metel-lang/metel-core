@@ -1,6 +1,6 @@
 // RFC-0121 item 2 (#1310): method signatures freshen anonymous row arguments
 // independently, just as free-function parameters do.
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 extend<row R> Session<..R> {
     fun total(self, left: Session<..>, right: Session<..>) -> i64 {

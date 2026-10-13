@@ -1,4 +1,4 @@
-record Packet<row R> { public data: { ..R } }
+record Packet<row R> { data: { ..R } }
 type EmptyRow := {};
 type EmptyPacket := Packet<{}>;
 type Envelope<T> := (T, i64);

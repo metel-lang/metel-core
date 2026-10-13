@@ -1,6 +1,6 @@
 // #1350: field-wise Clone remains available after a record is narrowed by a
 // partial move; the moved field is no longer present in the runtime payload.
-record Handle { public fd: i64, public name: String }
+record Handle { fd: i64, name: String }
 
 fun main() {
     let handle := Handle { fd = 3, name = "residual" };

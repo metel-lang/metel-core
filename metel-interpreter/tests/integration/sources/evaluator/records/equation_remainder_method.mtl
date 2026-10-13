@@ -1,4 +1,4 @@
-record Session<row R> { public data: { ..R } }
+record Session<row R> { data: { ..R } }
 extend<row R: !{ token }> Session<..R> {
     fun cleared(&self) -> i64 { 2 }
 }

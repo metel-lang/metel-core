@@ -21,8 +21,8 @@ fun copy_row(r: &{ x: i64, y: i64 }) -> { x: i64, y: i64 } {
 }
 
 record PublicPair {
-    public id: i64,
-    public extra: i64,
+    id: i64,
+    extra: i64,
 }
 
 fun nominal_remainder(pair: PublicPair) -> i64 {

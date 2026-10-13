@@ -1,4 +1,4 @@
-record Item { public name: String, public token: String }
+record Item { name: String, token: String }
 aspect Describe { fun describe(&self) -> String; }
 extend<row R: { name: String, .. }> { ..R }: Describe {
     fun describe(&self) -> String { self.name.clone() }

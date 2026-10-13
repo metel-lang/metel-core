@@ -2,8 +2,8 @@
 // generic body until the row parameter's declared bounds entail the condition.
 
 record Session<row R> {
-    public id: i64,
-    public data: { ..R },
+    id: i64,
+    data: { ..R },
 }
 
 extend<row R: { token: String, .. }> Session<..R> {

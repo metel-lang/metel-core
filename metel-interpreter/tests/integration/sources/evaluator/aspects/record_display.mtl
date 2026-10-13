@@ -3,7 +3,7 @@
 // have a `Display` impl of their own. The impl's body is a built-in standing in for RFC-0174's
 // `comptime for` (LIMIT-TYPES-003): fields print in label order as `{ label: value, .. }`.
 
-record Pt { public x: i64, public y: i64 }
+record Pt { x: i64, y: i64 }
 struct Tag { public v: i64 }
 extend Tag: Display {
     fun to_string(&self) -> String { "tag".to_string() }

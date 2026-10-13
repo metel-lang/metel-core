@@ -4,7 +4,7 @@
 
 aspect Describe { fun describe(self) -> i64; }
 
-record Session<row R> { public id: i64, public data: { ..R } }
+record Session<row R> { id: i64, data: { ..R } }
 
 extend Session<{ token: String }>: Describe {
     fun describe(self) -> i64 { 1 }

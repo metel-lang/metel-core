@@ -6,7 +6,7 @@ extend<row R: { x: f64, .. }> { ..R }: A {
     fun f(self) -> i64 { 1 }
 }
 
-record P { public x: f64 }
+record P { x: f64 }
 
 fun main() {
     assert({ x = 1.0, y = 2.0 }.f() == 1);

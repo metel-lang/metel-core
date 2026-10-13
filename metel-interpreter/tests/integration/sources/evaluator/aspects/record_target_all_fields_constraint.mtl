@@ -12,7 +12,7 @@ extend<row R> { ..R }: Label where all R: Mark {
     fun label(&self) -> String { "all marked".to_string() }
 }
 
-record Pair { public a: i64, public b: f64 }
+record Pair { a: i64, b: f64 }
 
 fun show<T: Label>(x: &T) -> String { x.label() }
 

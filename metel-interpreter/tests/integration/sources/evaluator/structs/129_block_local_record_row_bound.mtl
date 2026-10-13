@@ -6,7 +6,7 @@ fun needs_fd<record T: { fd: i64, .. }>(value: T) -> i64 {
 }
 
 fun main() {
-    record Handle { public fd: i64 }
+    record Handle { fd: i64 }
     let handle := Handle { fd = 3 };
     assert(needs_fd(handle) == 3);
     println("ok");

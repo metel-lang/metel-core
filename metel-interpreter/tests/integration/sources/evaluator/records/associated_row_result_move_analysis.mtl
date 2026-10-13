@@ -1,5 +1,5 @@
 aspect Source { type Item; fun take(self) -> Item; }
-record Holder<T> { public value: T }
+record Holder<T> { value: T }
 extend<T> Holder<T>: Source {
     type Item := T;
     fun take(self) -> T { self.value }

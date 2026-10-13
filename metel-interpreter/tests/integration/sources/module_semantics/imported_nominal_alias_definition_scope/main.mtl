@@ -2,7 +2,7 @@ import facade::EmptyPacket as Envelope;
 import facade::NumericBox as Container;
 import model::{make_packet, make_box};
 
-record Packet { public id: String }
+record Packet { id: String }
 struct Box { public value: String }
 fun inspect_packet(packet: Envelope) -> i64 { packet.id }
 fun inspect_box(value: Container) -> i64 { value.value }
