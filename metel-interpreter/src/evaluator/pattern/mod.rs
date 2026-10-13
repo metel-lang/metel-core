@@ -169,9 +169,16 @@ pub(super) fn match_pattern(
             rest_binding,
             ..
         } => {
-            let record_fields = match value {
-                Value::Record { fields, .. } | Value::Struct { fields, .. } => fields,
-                _ => return false,
+            let (Value::Record {
+                fields: record_fields,
+                ..
+            }
+            | Value::Struct {
+                fields: record_fields,
+                ..
+            }) = value
+            else {
+                return false;
             };
             if !rest && record_fields.len() != fields.len() + ignored_fields.len() {
                 return false;
