@@ -1,0 +1,14 @@
+// A projection of a `Copy` field copies it, so the source stays whole; projecting the non-`Copy`
+// field moves it, and the remaining `Copy` field is still readable (metel-core#1454, #1455).
+struct Handle { fd: i64, name: String }
+
+fun main() {
+    let h := Handle { fd = 3, name = "log".to_string() };
+    let a := h.{ fd };
+    assert(a.fd == 3);
+    assert(h.fd == 3);
+    assert(h.name == "log");        // `fd` was Copy: h is still whole
+    let b := h.{ name };
+    assert(b.name == "log");
+    assert(h.fd == 3);              // h : Handle.{ fd }
+}

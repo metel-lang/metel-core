@@ -1,0 +1,8 @@
+// Projecting every field moves the non-`Copy` ones too; only `Copy` fields stay readable.
+struct Handle { fd: i64, name: String }
+
+fun main() {
+    let h := Handle { fd = 3, name = "log".to_string() };
+    let all := h.{ fd, name };
+    println(h.name); // ERROR[T0003]
+}

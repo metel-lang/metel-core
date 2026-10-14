@@ -171,31 +171,65 @@ impl InferContext {
     /// access off a bare identifier narrows (anything else is left to
     /// `move_check` and the construction pass).
     pub(crate) fn note_consumed_infer(&mut self, expr: &crate::data::ast::Expr) {
-        let (root, label, projection) = match expr {
+        match expr {
             crate::data::ast::Expr::FieldAccess { object, field, .. } => {
                 let crate::data::ast::Expr::Ident(root, _) = object.as_ref() else {
                     return;
                 };
-                (
+                self.note_field_move_infer(
+                    expr,
                     root.clone(),
-                    Some(field.clone()),
+                    Some(field.as_str()),
                     Projection::field(field.clone()),
-                )
+                );
             }
             crate::data::ast::Expr::TupleAccess { object, index, .. } => {
                 let crate::data::ast::Expr::Ident(root, _) = object.as_ref() else {
                     return;
                 };
-                (root.clone(), None, Projection::TupleIndex(*index))
+                self.note_field_move_infer(
+                    expr,
+                    root.clone(),
+                    None,
+                    Projection::TupleIndex(*index),
+                );
             }
-            _ => return,
-        };
+            // metel-core#1454: `h.{ name }` moves every non-`Copy` field it names out of `h`,
+            // exactly as `h.name` does, so `h` narrows here too. Without this the inference
+            // pass accepted a later `h.name` and the construction pass, which does narrow,
+            // failed on it with an internal error.
+            crate::data::ast::Expr::RecordProjection { path, fields, .. } => {
+                let [root] = path.as_slice() else {
+                    return;
+                };
+                for field in fields {
+                    self.note_field_move_infer(
+                        expr,
+                        root.clone(),
+                        Some(field.as_str()),
+                        Projection::field(field.clone()),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Record one depth-1 field / tuple move of `root` unless the moved leaf is definitely
+    /// `Copy` (see [`Self::note_consumed_infer`]).
+    fn note_field_move_infer(
+        &mut self,
+        expr: &crate::data::ast::Expr,
+        root: String,
+        label: Option<&str>,
+        projection: Projection,
+    ) {
         let Some(root_ty) = self.lookup_mono_raw(&root) else {
             return;
         };
         let leaf_ty = match &root_ty {
             InferType::Named(brand, args, ..) => {
-                let Some(l) = label.as_ref() else { return };
+                let Some(l) = label else { return };
                 let Some(row) = self.resolve_infer_struct_row(brand, args) else {
                     return;
                 };
@@ -205,7 +239,7 @@ impl InferContext {
                 }
             }
             InferType::Residual { brand, .. } => {
-                let Some(l) = label.as_ref() else { return };
+                let Some(l) = label else { return };
                 let Some(row) = self.resolve_infer_struct_row(brand, &[]) else {
                     return;
                 };
@@ -215,7 +249,7 @@ impl InferContext {
                 }
             }
             InferType::Record(fields) => {
-                let Some(l) = label.as_ref() else { return };
+                let Some(l) = label else { return };
                 match fields.iter().find(|(name, _)| name == l) {
                     Some((_, ty)) => ty.clone(),
                     None => return,
