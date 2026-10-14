@@ -1,0 +1,8 @@
+// metel-core#1456: `!{ token: String }` only rules out a `String` `token`; the row may still hold
+// `token` at another type, so it is not an absent-label fact and a spread cannot rely on it
+// (spec.types.generics.open-rows.legality-4).
+fun add_token<row R: !{ token: String }>(d: { ..R }) -> { token: String, ..R } {
+    { token = "secret".to_string(), ..d } // ERROR[T0012]
+}
+
+fun main() {}

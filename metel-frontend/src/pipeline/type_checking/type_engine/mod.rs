@@ -6502,6 +6502,9 @@ impl InferContext {
 
     /// Whether `field` is absent by a row-decomposition fact for `tv`.
     #[must_use]
+    /// Whether `tv`'s row is known to carry no `field` *of any type*. Only a label-only
+    /// exclusion (`!{ token }`) proves that; a typed one (`!{ token: String }`) only rules out
+    /// one type, so the row may still hold the label at another type (metel-core#1456).
     pub fn row_excludes_field(&self, tv: TypeVar, field: &str) -> bool {
         let resolved = match self.cached_subst.apply(&InferType::Var(tv)) {
             InferType::Var(v) => v,
@@ -6523,7 +6526,7 @@ impl InferContext {
                 };
                 candidate_resolved == resolved && bounds.iter().any(|bound| matches!(
                     bound,
-                    GenericBound::Row(row) if row.fields.iter().any(|row_field| row_field.label == field)
+                    GenericBound::Row(row) if row.fields.iter().any(|row_field| row_field.label == field && row_field.ty.is_none())
                 ))
             })
     }
