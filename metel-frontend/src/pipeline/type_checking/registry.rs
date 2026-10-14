@@ -249,6 +249,41 @@ pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowC
     }
 }
 
+/// RFC-0123 `where all R: Aspect` on an `extend` whose target is a nominal type taking the
+/// declared `row` generic `R` as a row argument (`extend<row R> Packet<..R>: A`): every
+/// field of that row satisfies each aspect (metel-core#1444). Pairs each constrained row
+/// variable with its bound.
+pub(crate) fn impl_nominal_row_arg_all_fields(
+    ib: &crate::data::ast::ImplBlock,
+) -> Vec<(String, GenericBound)> {
+    let (TypeExpr::Named(_, args), Some(wc)) = (&ib.target_type, &ib.where_clause) else {
+        return vec![];
+    };
+    wc.field_wise
+        .iter()
+        .filter(|c| {
+            ib.generics.iter().any(|g| g.is_row && g.name == c.var)
+                && args
+                    .iter()
+                    .any(|a| matches!(a, TypeExpr::RowArg(t) if t.var.as_deref() == Some(c.var.as_str())))
+        })
+        .map(|c| {
+            (
+                c.var.clone(),
+                GenericBound::AllFields {
+                    aspects: c
+                        .bounds
+                        .iter()
+                        .filter(|b| b.polarity == Polarity::Positive)
+                        .filter_map(|b| b.aspect_name().map(str::to_string))
+                        .collect(),
+                    except: vec![],
+                },
+            )
+        })
+        .collect()
+}
+
 /// RFC-0123 `where all R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
 /// field of the receiver beyond the target's own named ones satisfies each aspect.
 pub(crate) fn record_target_all_fields(ib: &crate::data::ast::ImplBlock) -> Vec<GenericBound> {
@@ -1144,6 +1179,12 @@ fn register_generic_impl_method_schemes(
                 .entry(rest_tv)
                 .or_default()
                 .push((r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()));
+        }
+    }
+    // metel-core#1444: `where all R: A` on an impl whose target takes `R` as a row argument.
+    for (var, bound) in impl_nominal_row_arg_all_fields(ib) {
+        if let Some(&r_tv) = type_gen_map.get(var.as_str()) {
+            impl_row_bounds.entry(r_tv).or_default().push(bound);
         }
     }
     // RFC-0036: compute impl-level bounds from the impl block's generics + where clause.

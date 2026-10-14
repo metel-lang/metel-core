@@ -1043,6 +1043,29 @@ pub(super) fn collect_fun_type_var_bounds(
                     }));
             }
         }
+        // RFC-0123 / metel-core#1444: `where all R: A` on a row generic that is the row
+        // argument of a nominal type (`Packet<..R>`) constrains every field of that row.
+        // The constraint rides on `R`'s own type variable, like the equation above; an
+        // open-row parameter's tail (and a decomposition remainder) attaches through
+        // `field_wise_bounds` instead and is skipped here.
+        for (index, constraint) in wc.field_wise.iter().enumerate() {
+            if !field_wise_names_nominal_row_arg(fun, index) {
+                continue;
+            }
+            let Some(&tv) = generic_map.get(constraint.var.as_str()) else {
+                continue;
+            };
+            let aspects: Vec<String> = constraint
+                .bounds
+                .iter()
+                .filter(|b| b.polarity == crate::data::ast::Polarity::Positive)
+                .filter_map(|b| b.aspect_name().map(str::to_string))
+                .collect();
+            map.entry(tv).or_default().push(GenericBound::AllFields {
+                aspects,
+                except: vec![],
+            });
+        }
         for constraint in &wc.constraints {
             if let Some(&tv) = generic_map.get(constraint.name.as_str()) {
                 let names: Vec<GenericBound> = constraint
@@ -1276,8 +1299,49 @@ fn field_wise_bounds(
     Ok(out)
 }
 
+/// Whether `fun`'s `where all R: ..` constraint number `index` names a declared `row`
+/// generic that appears as the row argument of a nominal type in a parameter or the
+/// return type (`Packet<..R>`), the shape that has a row to walk without being an
+/// open-row parameter's tail (metel-core#1444).
+fn field_wise_names_nominal_row_arg(fun: &FunDecl, index: usize) -> bool {
+    let Some(constraint) = fun
+        .where_clause
+        .as_ref()
+        .and_then(|wc| wc.field_wise.get(index))
+    else {
+        return false;
+    };
+    if !fun
+        .generics
+        .iter()
+        .any(|g| g.is_row && g.name == constraint.var)
+    {
+        return false;
+    }
+    fun.params
+        .iter()
+        .filter_map(|param| param.type_ann.as_ref())
+        .chain(fun.return_type.as_ref())
+        .any(|ty| type_names_row_arg(ty, &constraint.var))
+}
+
+/// Whether `ty` contains `Nominal<.., ..R, ..>` for the row variable `var`.
+fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
+    match ty {
+        TypeExpr::Named(_, args) => args.iter().any(|arg| {
+            matches!(arg, TypeExpr::RowArg(tail) if tail.var.as_deref() == Some(var))
+                || type_names_row_arg(arg, var)
+        }),
+        TypeExpr::Reference(inner) | TypeExpr::MutReference(inner) | TypeExpr::Array(inner) => {
+            type_names_row_arg(inner, var)
+        }
+        TypeExpr::Tuple(items) => items.iter().any(|t| type_names_row_arg(t, var)),
+        _ => false,
+    }
+}
+
 /// Every `where all R: ..` must name the row tail of some open-row parameter (or
-/// a decomposition's remainder); a bare row generic has no fields to walk here.
+/// a decomposition's remainder), or a row generic used as a nominal type's row argument.
 fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), MetelError> {
     let Some(where_clause) = &fun.where_clause else {
         return Ok(());
@@ -1290,7 +1354,7 @@ fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), Me
             },
             &fun.generics,
         )?;
-        if !consumed.contains(&index) {
+        if !consumed.contains(&index) && !field_wise_names_nominal_row_arg(fun, index) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!(

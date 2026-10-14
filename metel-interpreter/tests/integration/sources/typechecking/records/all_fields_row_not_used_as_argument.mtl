@@ -1,0 +1,3 @@
+record Packet<row R> { data: { ..R } }
+fun unrelated<row R>(n: i64) -> i64 where all R: Copy { n } // ERROR[T0012]
+fun main() {}

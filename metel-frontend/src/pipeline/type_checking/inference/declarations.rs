@@ -1679,6 +1679,16 @@ pub(super) fn infer_impl_method(
         }
     }
 
+    // metel-core#1444: `where all R: A` on an impl whose target takes `R` as a row argument.
+    for (var, bound) in
+        crate::pipeline::type_checking::registry::impl_nominal_row_arg_all_fields(ib)
+    {
+        if let Some(&r_tv) = generic_map.get(var.as_str()) {
+            struct_bounds.entry(r_tv).or_default().push(bound.clone());
+            impl_row_bounds.entry(r_tv).or_default().push(bound);
+        }
+    }
+
     // RFC-0173 D1: the parameters declared by the enclosing struct are rigid in an
     // impl body only when the target names those parameters. A concrete target such as
     // `extend Box<i64>` is allowed to resolve Box's parameter to `i64`, whereas

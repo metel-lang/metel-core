@@ -1008,7 +1008,8 @@ fn check_impl_field_wise_constraints(
         _ => None,
     };
     for constraint in &wc.field_wise {
-        if tail != Some(constraint.var.as_str()) {
+        if tail != Some(constraint.var.as_str()) && !impl_target_row_arg_names(ib, &constraint.var)
+        {
             return Err(crate::data::error::MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
@@ -1034,6 +1035,16 @@ fn check_impl_field_wise_constraints(
         }
     }
     Ok(())
+}
+
+/// Whether `ib`'s target is a nominal type taking the declared `row` generic `var` as a row
+/// argument (`extend<row R> Packet<..R>: A`), the other impl shape with a row for
+/// `where all R: ..` to walk (metel-core#1444).
+fn impl_target_row_arg_names(ib: &crate::data::ast::ImplBlock, var: &str) -> bool {
+    use crate::data::ast::TypeExpr;
+    ib.generics.iter().any(|g| g.is_row && g.name == var)
+        && matches!(&ib.target_type, TypeExpr::Named(_, args)
+            if args.iter().any(|arg| matches!(arg, TypeExpr::RowArg(tail) if tail.var.as_deref() == Some(var))))
 }
 
 /// Whether a record target's written field types name one of the impl's own (non-`row`)
