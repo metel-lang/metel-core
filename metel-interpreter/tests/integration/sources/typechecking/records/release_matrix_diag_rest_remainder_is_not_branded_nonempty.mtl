@@ -1,0 +1,7 @@
+record Tok { value: String, id: i64, n: i64 }
+fun take(t: Tok.{ id, n }) -> i64 { t.id + t.n }
+fun main() {
+    let t := Tok { value = "x".to_string(), id = 1, n = 2 };
+    let { value: _, ..rest } := t;
+    assert(take(rest) == 3); // ERROR[T0001]
+}

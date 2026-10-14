@@ -1,0 +1,7 @@
+record Token { value: String }
+fun take(t: Token.{}) -> i64 { 1 }
+fun main() {
+    let t := Token { value = "x".to_string() };
+    let { value: _, ..rest } := t;
+    take(rest); // ERROR[T0001]
+}

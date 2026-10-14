@@ -1358,6 +1358,28 @@ fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String>
             row(f1),
             row(f2)
         )),
+        // metel-core#1445: an anonymous record with exactly the fields of a branded
+        // residual is what a record rest pattern (`..rest`) binds -- the spec says the
+        // remainder loses the nominal brand -- so it never unifies with `T.{ .. }`.
+        // Say why, and how to keep the brand, instead of a bare structural mismatch.
+        (InferType::Residual { brand, fields }, InferType::Record(record))
+        | (InferType::Record(record), InferType::Residual { brand, fields })
+            if fields.len() == record.len()
+                && fields
+                    .iter()
+                    .all(|(name, _)| record.iter().any(|(other, _)| other == name)) =>
+        {
+            let shape = if fields.is_empty() {
+                format!("{brand}.{{}}")
+            } else {
+                format!("{brand}.{{ {} }}", row(fields))
+            };
+            Some(format!(
+                "an anonymous record is not `{shape}`: a record rest pattern (`..rest`) \
+                 drops the nominal brand of what it destructures; move the fields out one at a \
+                 time (`let v := value.field;`) to keep the branded residual"
+            ))
+        }
         // No record-specific message: a narrowed anonymous record is just a
         // `Record` with fewer fields, structurally identical to any other
         // narrower record, so there is no unambiguous "was partially moved"

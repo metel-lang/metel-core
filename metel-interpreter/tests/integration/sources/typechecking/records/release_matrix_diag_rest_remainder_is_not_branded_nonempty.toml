@@ -1,0 +1,10 @@
+[options]
+move_check = true
+error = ["T0001"]
+spec = ["spec.expressions.record-rest-patterns.legality-1", "spec.ownership.narrowing.legality-4"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "an anonymous record is not `Tok.{ id, n }`"
+line = 6
