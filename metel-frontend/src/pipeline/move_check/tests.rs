@@ -1225,7 +1225,10 @@ fun main() {}
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
     assert!(
-        report.violations[0].use_span.col < report.violations[0].moved_span.col,
+        report.violations[0]
+            .moved_span
+            .as_ref()
+            .is_some_and(|moved| report.violations[0].use_span.col < moved.col),
         "{report:#?}"
     );
 }
@@ -4999,6 +5002,81 @@ let out := rr.eat();
     );
     assert_eq!(violations.len(), 1);
     assert_eq!(format_place(&violations[0].moved_place), "(*(*rr))");
+}
+
+// ── `moved_span` (#1447) ──
+//
+// An illegal move (out of a reference, out of a borrowed `[T]` view) has no earlier
+// move site. The report says so with `None` instead of a placeholder span, and a
+// genuine use-after-move still names its real move site.
+
+#[test]
+fn illegal_moves_have_no_moved_span_and_use_after_move_has_one() {
+    let from_reference = move_violations_for_source(
+        r#"
+struct Name { value: String }
+struct Item { name: Name }
+extend Item {
+fun peek(&self) -> String {
+    let v := self.name.value;
+    v
+}
+}
+fun main() {
+let item := Item { name = Name { value = "n" } };
+let _ := item.peek();
+}
+"#,
+    );
+    assert_eq!(from_reference.len(), 1, "{from_reference:#?}");
+    assert_eq!(
+        from_reference[0].kind,
+        MoveViolationKind::MoveOutOfReference
+    );
+    assert!(
+        from_reference[0].moved_span.is_none(),
+        "{from_reference:#?}"
+    );
+
+    let from_view = move_violations_for_source(
+        r#"
+record Row { name: String }
+fun main() {
+    let rows: [Row] := [Row { name = "a".to_string() }];
+    for (r in rows) { let n := r.name; }
+}
+"#,
+    );
+    assert!(
+        from_view.iter().all(|violation| violation.kind
+            != MoveViolationKind::BorrowedArrayElementMove
+            || violation.moved_span.is_none()),
+        "{from_view:#?}"
+    );
+    assert!(
+        from_view
+            .iter()
+            .any(|violation| violation.kind == MoveViolationKind::BorrowedArrayElementMove),
+        "{from_view:#?}"
+    );
+
+    let after_move = move_violations_for_source(
+        r#"
+fun consume(s: String) {}
+fun main() {
+    let s := "x".to_string();
+    consume(s);
+    consume(s);
+}
+"#,
+    );
+    assert_eq!(after_move.len(), 1, "{after_move:#?}");
+    assert_eq!(after_move[0].kind, MoveViolationKind::UseAfterMove);
+    let moved = after_move[0].moved_span.as_ref().expect("a real move site");
+    assert!(
+        moved.line > 0 && !moved.filename.starts_with("<place:"),
+        "{moved:?}"
+    );
 }
 
 // ── Moving a value out of a reference at non-receiver positions (#648) ──

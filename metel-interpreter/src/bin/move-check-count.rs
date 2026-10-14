@@ -92,7 +92,8 @@ fn main() {
             // expression, one iteration later (adr-0045). Anywhere else it is
             // a bug.
             assert!(
-                violation.use_span != violation.moved_span || violation.moved_in_previous_iteration,
+                violation.moved_span.as_ref() != Some(&violation.use_span)
+                    || violation.moved_in_previous_iteration,
                 "checker bug: move site reported as its own use for `{}` at {}:{}",
                 violation.binding,
                 violation.use_span.filename,
@@ -131,15 +132,17 @@ fn main() {
                 .iter()
                 .map(|violation| {
                     format!(
-                        "{}:{}:{}:{}:{}->{}:{}:{}",
+                        "{}:{}:{}:{}:{}->{}:{}",
                         violation.use_span.filename,
                         violation.use_span.line,
                         violation.use_span.col,
                         format_place(&violation.use_place),
                         violation.binding,
                         format_place(&violation.moved_place),
-                        violation.moved_span.line,
-                        violation.moved_span.col
+                        violation.moved_span.as_ref().map_or_else(
+                            || "none".to_string(),
+                            |span| format!("{}:{}", span.line, span.col)
+                        )
                     )
                 })
                 .collect();
@@ -224,7 +227,7 @@ fn is_projection_base_only_violation(violation: &move_check::MoveViolation) -> b
     let used = &violation.use_place;
     moved.root() == used.root()
         && !moved.projections().is_empty()
-        && violation.use_span == violation.moved_span
+        && violation.moved_span.as_ref() == Some(&violation.use_span)
         && used.projections().len() + 1 == moved.projections().len()
         && used
             .projections()

@@ -31,7 +31,10 @@ pub struct MoveViolation {
     /// message has to say so or it reads as pointing at itself.
     pub moved_in_previous_iteration: bool,
     pub use_span: Span,
-    pub moved_span: Span,
+    /// Where the value was moved. `None` for the illegal-move kinds (moving out of a
+    /// reference, out of a borrowed `[T]` view, ...), which have no earlier move site:
+    /// the value is rejected where it is used, never having been moved.
+    pub moved_span: Option<Span>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1629,7 +1632,7 @@ impl<'a> Checker<'a> {
                 moved_type: record.moved_type.clone(),
                 moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
-                moved_span: record.moved_span.clone(),
+                moved_span: Some(record.moved_span.clone()),
             });
             return true;
         }
@@ -1663,7 +1666,7 @@ impl<'a> Checker<'a> {
                 moved_type: record.moved_type.clone(),
                 moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
-                moved_span: record.moved_span.clone(),
+                moved_span: Some(record.moved_span.clone()),
             });
         }
     }
@@ -1833,7 +1836,7 @@ impl<'a> Checker<'a> {
             moved_type,
             moved_in_previous_iteration: false,
             use_span,
-            moved_span: dummy_span_from_place(place),
+            moved_span: None,
         });
     }
 
@@ -2419,7 +2422,10 @@ fn violation_message(violation: &MoveViolation) -> String {
             "use of moved `&var` binding `{}`: `{}` was moved by a non-reborrow use at {}",
             violation.binding,
             violation.binding,
-            format_span(&violation.moved_span)
+            violation
+                .moved_span
+                .as_ref()
+                .map_or_else(|| "an earlier use".to_string(), format_span)
         ),
         MoveViolationKind::MoveOutOfReference => format!(
             "cannot move `{}` out of a reference: a reference only grants access to the \
@@ -2435,14 +2441,17 @@ fn violation_message(violation: &MoveViolation) -> String {
 /// iteration earlier — so naming the location without naming the iteration
 /// would point the reader back at the line they are already looking at.
 fn moved_at_clause(violation: &MoveViolation) -> String {
-    let same_site = violation.use_span == violation.moved_span;
+    let Some(moved_span) = &violation.moved_span else {
+        return "never moved: this use is itself the illegal move".to_string();
+    };
+    let same_site = &violation.use_span == moved_span;
     match (violation.moved_in_previous_iteration, same_site) {
         (true, true) => "moved here on an earlier iteration".to_string(),
         (true, false) => format!(
             "moved at {} on an earlier iteration",
-            format_span(&violation.moved_span)
+            format_span(moved_span)
         ),
-        (false, _) => format!("moved at {}", format_span(&violation.moved_span)),
+        (false, _) => format!("moved at {}", format_span(moved_span)),
     }
 }
 
@@ -2500,16 +2509,6 @@ fn root_place_ty_from_expr(expr: &TypedExpr) -> Option<&Type> {
         | TypedExpr::TupleAccess { object, .. }
         | TypedExpr::Index { object, .. } => root_place_ty_from_expr(object),
         _ => None,
-    }
-}
-
-fn dummy_span_from_place(place: &Place) -> Span {
-    Span {
-        start: 0,
-        end: 0,
-        filename: format!("<place:{}>", place.root()),
-        line: 0,
-        col: 0,
     }
 }
 
