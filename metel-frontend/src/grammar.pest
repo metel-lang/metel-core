@@ -368,6 +368,7 @@ type_expr = {
   | bracket_array_type  // "[" Type (";" INT)? "]" — RFC-0171
   | unit_type
   | tuple_type
+  | open_record_projection_type  // parses everywhere so a misplaced use gets a targeted error (#1461)
   | record_projection_type
   | open_record_type
   | record_type

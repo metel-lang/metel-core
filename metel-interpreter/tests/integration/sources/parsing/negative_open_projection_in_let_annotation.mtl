@@ -1,0 +1,5 @@
+struct Handle { fd: i64, name: String }
+
+fun main() {
+    let x: Handle.{ ..R } := Handle { fd = 1, name = "n".to_string() }; // ERROR[P0001]
+}

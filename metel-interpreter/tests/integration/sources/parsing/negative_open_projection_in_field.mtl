@@ -1,0 +1,5 @@
+struct Handle { fd: i64, name: String }
+
+struct Holder<row R> { v: Handle.{ ..R } } // ERROR[P0001]
+
+fun main() {}

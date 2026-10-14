@@ -3069,6 +3069,23 @@ fn parse_type_expr(
                 .into_inner()
                 .next()
                 .ok_or_else(|| MetelError::internal("type_expr: missing inner rule"))?;
+            // metel-core#1461: a function parameter reaches its open projection directly
+            // (`fun_decl_param`), never through `type_expr`; here it sits in a return type,
+            // annotation, field or under a reference, which the type engine has no
+            // representation for yet (the follow-up is metel-core#1462).
+            if inner.as_rule() == Rule::open_record_projection_type {
+                let span = Span::of(&inner, filename);
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    format!(
+                        "an open projection `{}` is accepted only as a function parameter type; \
+                         use a row argument (`Session<..R>`), an open record (`{{ fd: i64, ..R }}`), \
+                         or a closed projection (`Handle.{{ fd }}`)",
+                        inner.as_str()
+                    ),
+                    &span,
+                ));
+            }
             parse_type_expr(inner, filename)
         }
         Rule::unit_type => Ok(TypeExpr::Unit),

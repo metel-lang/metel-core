@@ -837,10 +837,7 @@ pub(super) fn infer_fun_decl(
                 !matches!(
                     &fun.params[**index].type_ann,
                     Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
-                ) && !matches!(
-                    &fun.params[**index].type_ann,
-                    Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty()
-                )
+                ) && !param_names_no_fields(fun.params[**index].type_ann.as_ref())
             })
             .map(|(_, var)| *var)
             .collect(),
@@ -1327,10 +1324,7 @@ pub(super) fn infer_fun_decl(
             !matches!(
                 fun.params[**index].type_ann,
                 Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
-            ) && !matches!(
-                &fun.params[**index].type_ann,
-                Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty()
-            )
+            ) && !param_names_no_fields(fun.params[**index].type_ann.as_ref())
         })
         .filter_map(
             |(_, orig_tv)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
@@ -2789,4 +2783,18 @@ fn freshen_anonymous_row_args_with_vars(
         )),
         other => other.clone(),
     }
+}
+
+/// A by-value open-row parameter that names no fields of its own (`{ ..R }`, `Handle.{ ..R }`)
+/// forgets nothing: its tail absorbs the whole argument, so the RFC-0121 section 4 forget rule
+/// does not apply to it (metel-core#1460 -- the struct-residual form was missing from this
+/// exemption).
+fn param_names_no_fields(ann: Option<&TypeExpr>) -> bool {
+    matches!(
+        ann,
+        Some(TypeExpr::OpenRecord(fields, _)) if fields.is_empty()
+    ) || matches!(
+        ann,
+        Some(TypeExpr::OpenRecordProjection { fields, .. }) if fields.is_empty()
+    )
 }
