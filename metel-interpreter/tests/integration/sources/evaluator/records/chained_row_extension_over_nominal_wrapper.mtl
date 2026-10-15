@@ -1,0 +1,32 @@
+// metel-core#1472: each setter returns a wrapper whose row gained one field. Chaining two or
+// more used to leave the row nested, `{ port, ..{ host, ..{} } }`, and a field lookup only saw the
+// outer layer, so `host` was reported missing.
+record Req<row R> { data: { ..R } }
+
+fun add_host<row R: !{ host }>(r: Req<..R>, h: String) {
+    Req { data = { host = h, ..r.data } }
+}
+
+fun add_port<row R: !{ port }>(r: Req<..R>, p: i64) {
+    Req { data = { port = p, ..r.data } }
+}
+
+fun add_tls<row R: !{ tls }>(r: Req<..R>, t: i64) {
+    Req { data = { tls = t, ..r.data } }
+}
+
+extend<row R: { host: String, port: i64, .. }> Req<..R> {
+    fun url(self) -> String { self.data.host + ":" + self.data.port.to_string() }
+}
+
+fun main() {
+    let two := add_port(add_host(Req { data = {} }, "example.org".to_string()), 80);
+    assert(two.data.host == "example.org");
+    assert(two.data.port == 80);
+
+    let three := add_tls(two, 1);
+    assert(three.data.host == "example.org");
+    assert(three.data.port == 80);
+    assert(three.data.tls == 1);
+    assert(three.url() == "example.org:80");
+}

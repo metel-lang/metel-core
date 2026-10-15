@@ -1,0 +1,12 @@
+// metel-core#1472: flattening nested rows must not hide a duplicate label. Adding `host` a second
+// time is still rejected by the `!{ host }` bound, with or without a wrapper in between.
+record Req<row R> { data: { ..R } }
+
+fun add_host<row R: !{ host }>(r: Req<..R>, h: String) {
+    Req { data = { host = h, ..r.data } }
+}
+
+fun main() {
+    let first := add_host(Req { data = {} }, "a".to_string());
+    let second := add_host(first, "b".to_string());
+}
