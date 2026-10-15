@@ -2805,8 +2805,19 @@ pub(in crate::pipeline::type_checking) fn tail_returned_to_caller(
         }
         _ => None,
     };
+    // Only when this is the one parameter carrying the tail: with two parameters sharing
+    // `Rest`, returning one remainder would leave the other with no owner.
     match (tail, fun.return_type.as_ref()) {
-        (Some(var), Some(ret)) => type_expr_names_row_var(ret, var),
+        (Some(var), Some(ret)) => {
+            type_expr_names_row_var(ret, var)
+                && fun
+                    .params
+                    .iter()
+                    .filter_map(|p| p.type_ann.as_ref())
+                    .filter(|a| type_expr_names_row_var(a, var))
+                    .count()
+                    == 1
+        }
         _ => false,
     }
 }

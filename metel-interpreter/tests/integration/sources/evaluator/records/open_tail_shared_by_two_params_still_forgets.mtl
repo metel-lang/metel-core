@@ -1,0 +1,11 @@
+// metel-core#1469: returning a tail only counts when the tail belongs to a single parameter. With
+// two parameters sharing `Rest`, returning one remainder would leave the other with no owner.
+fun first<row Rest>(a: { id: i64, ..Rest }, b: { id: i64, ..Rest }) -> { ..Rest } {
+    let { id: _, ..ra } := a;
+    ra
+}
+
+fun main() {
+    let r := first({ id = 1, name = "a".to_string() }, { id = 2, name = "b".to_string() });
+    assert(r.name == "a");
+}
