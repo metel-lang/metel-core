@@ -1,0 +1,8 @@
+// metel-core#1469: the escape only applies when the tail comes back out. A tail the return type
+// does not name still forgets the remainder, so a non-`Copy` field is rejected.
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let r := { x = 1.0, label = "gone".to_string() };
+    let _ := get_x(r);
+}

@@ -838,6 +838,7 @@ pub(super) fn infer_fun_decl(
                     &fun.params[**index].type_ann,
                     Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
                 ) && !param_names_no_fields(fun.params[**index].type_ann.as_ref())
+                    && !tail_returned_to_caller(fun, fun.params[**index].type_ann.as_ref())
             })
             .map(|(_, var)| *var)
             .collect(),
@@ -1325,6 +1326,7 @@ pub(super) fn infer_fun_decl(
                 fun.params[**index].type_ann,
                 Some(TypeExpr::Reference(_) | TypeExpr::MutReference(_))
             ) && !param_names_no_fields(fun.params[**index].type_ann.as_ref())
+                && !tail_returned_to_caller(fun, fun.params[**index].type_ann.as_ref())
         })
         .filter_map(
             |(_, orig_tv)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
@@ -2789,6 +2791,58 @@ fn freshen_anonymous_row_args_with_vars(
 /// forgets nothing: its tail absorbs the whole argument, so the RFC-0121 section 4 forget rule
 /// does not apply to it (metel-core#1460 -- the struct-residual form was missing from this
 /// exemption).
+/// metel-core#1469: a named row tail that also appears in the return type is handed
+/// back to the caller, so the remainder keeps an owner and nothing is forgotten --
+/// the inline `{ token: String, ..Rest } -> { ..Rest }` spelling of the same
+/// decomposition the `where R = { token: String, ..Rest }` form already accepts.
+pub(in crate::pipeline::type_checking) fn tail_returned_to_caller(
+    fun: &FunDecl,
+    ann: Option<&TypeExpr>,
+) -> bool {
+    let tail = match ann {
+        Some(TypeExpr::OpenRecord(_, tail) | TypeExpr::OpenRecordProjection { tail, .. }) => {
+            tail.var.as_deref()
+        }
+        _ => None,
+    };
+    match (tail, fun.return_type.as_ref()) {
+        (Some(var), Some(ret)) => type_expr_names_row_var(ret, var),
+        _ => false,
+    }
+}
+
+fn type_expr_names_row_var(ty: &TypeExpr, var: &str) -> bool {
+    let tail_is = |tail: &crate::data::ast::RowTail| tail.var.as_deref() == Some(var);
+    match ty {
+        TypeExpr::OpenRecord(fields, tail) => {
+            tail_is(tail) || fields.iter().any(|(_, f)| type_expr_names_row_var(f, var))
+        }
+        TypeExpr::OpenRecordProjection { tail, .. } | TypeExpr::RowArg(tail) => tail_is(tail),
+        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => {
+            args.iter().any(|a| type_expr_names_row_var(a, var))
+        }
+        TypeExpr::Record(fields) => fields.iter().any(|(_, f)| type_expr_names_row_var(f, var)),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner)
+        | TypeExpr::ImplAspect { bound: inner, .. }
+        | TypeExpr::DynAspect { bound: inner, .. } => type_expr_names_row_var(inner, var),
+        TypeExpr::Fun {
+            params,
+            return_type,
+            ..
+        } => {
+            params.iter().any(|p| type_expr_names_row_var(p, var))
+                || return_type
+                    .as_deref()
+                    .is_some_and(|r| type_expr_names_row_var(r, var))
+        }
+        TypeExpr::Projection { base, .. } => type_expr_names_row_var(base, var),
+        TypeExpr::Unit | TypeExpr::RecordProjection { .. } => false,
+    }
+}
+
 fn param_names_no_fields(ann: Option<&TypeExpr>) -> bool {
     matches!(
         ann,

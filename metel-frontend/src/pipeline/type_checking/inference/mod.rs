@@ -1998,7 +1998,7 @@ fn canonical_generic_bound(bound: &Bound, env: &SignatureEnv) -> String {
 mod declarations;
 mod structural_binders;
 mod structural_definitions;
-pub(super) use declarations::collect_aspect_type_arguments;
+pub(super) use declarations::{collect_aspect_type_arguments, tail_returned_to_caller};
 use declarations::{infer_decl, rewrite_impl_aspect_returns, type_expr_contains_impl_aspect};
 
 mod narrowing;

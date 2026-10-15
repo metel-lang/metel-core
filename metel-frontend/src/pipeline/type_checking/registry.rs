@@ -1459,7 +1459,16 @@ fn desugar_method_open_row_params(
             param_vars.insert(i, type_var_gen.fresh());
         }
     }
-    let vars = param_vars.values().copied().collect();
+    let vars = param_vars
+        .iter()
+        .filter(|(index, _)| {
+            !super::inference::tail_returned_to_caller(
+                method,
+                method.params[**index].type_ann.as_ref(),
+            )
+        })
+        .map(|(_, var)| *var)
+        .collect();
     MethodOpenRowParams {
         param_vars,
         bounds,

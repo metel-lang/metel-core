@@ -1,0 +1,39 @@
+// metel-core#1469: a named row tail that the return type hands back keeps its owner, so a
+// non-`Copy` remainder is not forgotten -- the inline `{ f: T, ..Rest }` spelling agrees with the
+// `where R = { f: T, ..Rest }` equation form.
+fun strip<row Rest>(d: { token: String, ..Rest }) -> { ..Rest } {
+    let { token: _, ..rest } := d;
+    rest
+}
+
+fun strip_by_equation<row R, row Rest>(d: { ..R }) -> { ..Rest } where R = { token: String, ..Rest } {
+    let { token: _, ..rest } := d;
+    rest
+}
+
+fun rename_id<row R: !{ user_id }>(d: { id: i64, ..R }) -> { user_id: i64, ..R } {
+    let { id, ..rest } := d;
+    { user_id = id, ..rest }
+}
+
+struct Gate { n: i64 }
+
+extend Gate {
+    fun strip<row Rest>(self, d: { token: String, ..Rest }) -> { ..Rest } {
+        let { token: _, ..rest } := d;
+        rest
+    }
+}
+
+fun main() {
+    let a := strip({ token = "t".to_string(), user = "u".to_string() });
+    let b := strip_by_equation({ token = "t".to_string(), user = "u".to_string() });
+    assert(a.user == b.user);
+
+    let r := rename_id({ id = 3, name = "n".to_string() });
+    assert(r.user_id == 3);
+    assert(r.name == "n");
+
+    let c := Gate { n = 1 }.strip({ token = "t".to_string(), user = "m".to_string() });
+    assert(c.user == "m");
+}
