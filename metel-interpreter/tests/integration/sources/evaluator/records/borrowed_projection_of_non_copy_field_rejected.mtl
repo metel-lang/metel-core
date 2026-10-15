@@ -1,0 +1,12 @@
+// metel-core#1455: a projection moves its non-`Copy` fields, so there is nothing to lend; `&h.{ name }`
+// is rejected until a borrowing form exists (RFC-0109 / RFC-0122).
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun nm(h: &Self.{ name }) -> i64 { 1 }
+}
+
+fun main() {
+    var h := Handle { fd = 7, name = "a".to_string() };
+    let _n := Handle::nm(&h.{ name });
+}

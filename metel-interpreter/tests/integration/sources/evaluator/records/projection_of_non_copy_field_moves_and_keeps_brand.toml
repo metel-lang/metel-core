@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.ownership.narrowing.dynamics-1"]

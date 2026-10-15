@@ -1,0 +1,8 @@
+// metel-core#1455: the non-`Copy` field was moved by the first projection, so it cannot be projected again.
+struct Handle { fd: i64, name: String }
+
+fun main() {
+    var h := Handle { fd = 7, name = "a".to_string() };
+    let _p := h.{ name };
+    let _q := h.{ name };
+}

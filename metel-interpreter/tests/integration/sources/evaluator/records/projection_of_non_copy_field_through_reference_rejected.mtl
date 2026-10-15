@@ -1,0 +1,6 @@
+// metel-core#1455: projecting a non-`Copy` field out of a reference would move out of it.
+struct Handle { fd: i64, name: String }
+
+fun f(h: &Handle) { let _p := h.{ name }; }
+
+fun main() {}

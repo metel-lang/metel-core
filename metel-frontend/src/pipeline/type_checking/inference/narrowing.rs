@@ -115,7 +115,7 @@ impl InferContext {
     /// Whether `ty`, resolved against the substitution solved so far, is
     /// *definitely* `Copy`. An unresolved variable is not — narrowing holds a
     /// field until its type is known.
-    fn field_is_copy(&self, ty: &InferType) -> bool {
+    pub(super) fn field_is_copy(&self, ty: &InferType) -> bool {
         let resolved = self.apply_cached_subst(ty);
         // An unsuffixed numeric literal's var will default to a `Copy` primitive.
         if let InferType::Var(tv) = &resolved {

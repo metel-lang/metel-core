@@ -1,0 +1,12 @@
+// metel-core#1455: `h.{ name }` is a move of the named fields that keeps the brand: a `Copy`
+// field is copied, a non-`Copy` field is moved out and the source narrows by it.
+struct Handle { fd: i64, name: String }
+
+fun take(p: Handle.{ name }) -> i64 { 1 }
+
+fun main() {
+    var h := Handle { fd = 7, name = "a".to_string() };
+    let p := h.{ name };          // p : Handle.{ name }; h : Handle.{ fd }
+    assert(take(p) == 1);
+    assert(h.fd == 7);            // the Copy field is still readable from the narrowed source
+}

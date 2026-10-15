@@ -1,0 +1,7 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+
+[options]
+error = ["T0001"]
+spec = ["spec.ownership.narrowing.dynamics-1"]

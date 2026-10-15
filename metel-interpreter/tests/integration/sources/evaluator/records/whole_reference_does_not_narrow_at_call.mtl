@@ -1,0 +1,12 @@
+// metel-core#1455 / RFC-0137: there is no implicit truncation at the call boundary, so a whole
+// `&Handle` does not coerce to `&Handle.{ name }`.
+struct Handle { fd: i64, name: String }
+
+extend Handle {
+    fun nm(h: &Self.{ name }) -> i64 { 1 }
+}
+
+fun main() {
+    let h := Handle { fd = 7, name = "a".to_string() };
+    let _n := Handle::nm(&h);
+}

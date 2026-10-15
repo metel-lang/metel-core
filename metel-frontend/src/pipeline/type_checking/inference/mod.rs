@@ -2329,6 +2329,26 @@ fn infer_unaryop(
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
     let ty = infer_expr(operand, ctx, fun_generalizations)?;
+    // metel-core#1455: a projection moves its non-`Copy` fields (keeping the
+    // brand), so there is nothing to lend; a borrowing form is reserved for
+    // RFC-0109/0122. A projection of only `Copy` fields borrows its copy.
+    if matches!(op, UnaryOp::Ref | UnaryOp::RefMut)
+        && matches!(operand, Expr::RecordProjection { .. })
+    {
+        let resolved = ctx.solve()?.apply(&ty);
+        let all_copy = match &resolved {
+            InferType::Residual { fields, .. } => fields.iter().all(|(_, f)| ctx.field_is_copy(f)),
+            other => ctx.field_is_copy(other),
+        };
+        if !all_copy {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0001,
+                "cannot borrow a field projection that moves a non-`Copy` field: `h.{ f }` \
+                 moves the named fields; project into a binding first, then borrow that",
+                span,
+            ));
+        }
+    }
     match op {
         UnaryOp::Neg => Ok(ty),
         UnaryOp::Not => {
