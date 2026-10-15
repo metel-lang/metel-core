@@ -1,0 +1,12 @@
+// Second rerun (2026-10-15), OR x TA x NR: a transparent alias of a nominal struct passes
+// through an open projection parameter `Handle.{ ..R }` that absorbs the whole value, even
+// with a non-Copy remainder. (metel-core#1460, RFC-0160)
+struct Handle { fd: i64, name: String }
+type H := Handle;
+
+fun any_handle<row R>(h: Handle.{ ..R }) -> i64 { 1 }
+
+fun main() {
+    let h: H := Handle { fd = 3, name = "x".to_string() };
+    assert(any_handle(h) == 1);
+}

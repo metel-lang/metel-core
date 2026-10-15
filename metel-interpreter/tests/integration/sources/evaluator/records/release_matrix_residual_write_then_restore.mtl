@@ -1,0 +1,16 @@
+// Second rerun (2026-10-15), OW x NR: write a retained field through `&var` to a residual,
+// then the owner restores the moved field and the whole value is usable again.
+// (metel-core#1465)
+struct Handle { fd: i64, name: String }
+
+fun bump(p: &var Handle.{ fd }) { p.fd := p.fd + 1; }
+
+fun main() {
+    var h := Handle { fd = 1, name = "a".to_string() };
+    let name := h.name;
+    bump(&var h);
+    bump(&var h);
+    assert(h.fd == 3);
+    h.name := name;
+    assert(h.name == "a");
+}

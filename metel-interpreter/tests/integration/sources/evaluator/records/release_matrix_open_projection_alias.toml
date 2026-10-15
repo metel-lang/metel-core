@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.ownership.narrowing.dynamics-1"]

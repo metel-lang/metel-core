@@ -1,0 +1,14 @@
+// Second rerun (2026-10-15), OW x TA: a projection of only Copy fields may still be borrowed
+// (it borrows its copy) and leaves the source whole, through a transparent alias. (metel-core#1455)
+struct Handle { fd: i64, name: String }
+type H := Handle;
+
+extend Handle {
+    fun peek(h: &Self.{ fd }) -> i64 { h.fd }
+}
+
+fun main() {
+    let h: H := Handle { fd = 4, name = "n".to_string() };
+    assert(H::peek(&h.{ fd }) == 4);
+    assert(h.name == "n");
+}
