@@ -576,13 +576,13 @@ impl Substitution {
                     .map(|(name, ty)| (name.clone(), self.apply(ty)))
                     .collect(),
             ),
-            InferType::RowExtend { fields, tail } => InferType::RowExtend {
-                fields: fields
+            InferType::RowExtend { fields, tail } => flatten_row_extend(
+                fields
                     .iter()
                     .map(|(name, ty)| (name.clone(), self.apply(ty)))
                     .collect(),
-                tail: Box::new(self.apply(tail)),
-            },
+                self.apply(tail),
+            ),
             InferType::Array(t) => InferType::Array(Box::new(self.apply(t))),
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
             InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
@@ -898,6 +898,47 @@ fn contains_type_var(ty: &InferType) -> bool {
         } => args.iter().any(contains_type_var),
         InferType::Residual { fields, .. } => fields.iter().any(|(_, ty)| contains_type_var(ty)),
         InferType::Concrete(_) | InferType::Never => false,
+    }
+}
+
+/// Rebuild a row extension after its tail has been substituted, merging the
+/// tail's own fields in when it has resolved to a record or to another row
+/// extension (metel-core#1472).
+///
+/// Without this a second extension of the same row stays a nested
+/// `{ port, ..{ host, ..{} } }`, and a field lookup that only inspects the outer
+/// layer misses `host`. A closed record tail yields the closed record; an
+/// extension tail yields one extension over the inner tail. The merge is skipped
+/// when a label occurs on both sides: that is a duplicate-label error to report
+/// where it was introduced, and flattening would silently drop one of the two.
+/// A residual tail is left alone, since it carries a brand.
+fn flatten_row_extend(mut fields: Vec<(String, InferType)>, tail: InferType) -> InferType {
+    let disjoint = |inner: &[(String, InferType)], outer: &[(String, InferType)]| {
+        !inner
+            .iter()
+            .any(|(name, _)| outer.iter().any(|(other, _)| other == name))
+    };
+    match tail {
+        InferType::Record(mut inner) if disjoint(&inner, &fields) => {
+            inner.append(&mut fields);
+            inner.sort_by(|(left, _), (right, _)| left.cmp(right));
+            InferType::Record(inner)
+        }
+        InferType::RowExtend {
+            fields: mut inner,
+            tail: inner_tail,
+        } if disjoint(&inner, &fields) => {
+            inner.append(&mut fields);
+            inner.sort_by(|(left, _), (right, _)| left.cmp(right));
+            InferType::RowExtend {
+                fields: inner,
+                tail: inner_tail,
+            }
+        }
+        tail => InferType::RowExtend {
+            fields,
+            tail: Box::new(tail),
+        },
     }
 }
 
