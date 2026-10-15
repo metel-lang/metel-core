@@ -2183,6 +2183,20 @@ fn typed_place_field_ty(
                     field_span,
                 )
             }),
+        // metel-core#1465: a residual reached through `&var` is only writable at
+        // the fields it still has; widening back to the full brand needs the
+        // owning binding, not a reference.
+        Type::Residual { brand, fields } => fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on `{brand}.{{ .. }}`"),
+                    field_span,
+                )
+            }),
         Type::Named(struct_name, type_args, nominal_id) => {
             // metel-core#1222: prefer the identity the value's own type
             // already carries over a bare-name re-lookup, which conflates

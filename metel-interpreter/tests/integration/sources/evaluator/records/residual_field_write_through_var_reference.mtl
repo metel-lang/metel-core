@@ -1,0 +1,12 @@
+// metel-core#1465: a `&var` to a residual can write the fields the residual still has.
+struct Handle { fd: i64, name: String }
+
+fun set(p: &var Handle.{ fd }) { p.fd := 9; }
+
+fun main() {
+    var h := Handle { fd = 1, name = "a".to_string() };
+    let name := h.name;
+    set(&var h);
+    assert(h.fd == 9);
+    assert(name == "a");
+}

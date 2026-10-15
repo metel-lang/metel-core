@@ -2864,7 +2864,16 @@ fn infer_field_assign_type(
     // residual's row, so it is resolved against the brand's full declared row.
     // `Expr::Assign` calls `note_reassigned_infer` right after this to widen the
     // binding's type back.
-    if let InferType::Residual { brand, .. } = &peeled {
+    if let InferType::Residual { brand, fields } = &peeled {
+        // metel-core#1465: through a reference there is no owning binding to
+        // widen, so only the fields the residual still has are writable.
+        if is_through_mut_ptr && !fields.iter().any(|(name, _)| name == field) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!("no field `{field}` on `{brand}.{{ .. }}`"),
+                target_span,
+            ));
+        }
         if let Some(entry) = ctx
             .get_struct_fields(brand)
             .and_then(|fields| fields.iter().find(|e| e.name == field).cloned())

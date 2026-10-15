@@ -1,0 +1,7 @@
+// TYPECHECK_ERROR[T0003]
+// metel-core#1465: a reference cannot widen a residual back, so an absent field is rejected.
+struct Handle { fd: i64, name: String }
+
+fun rename(p: &var Handle.{ fd }) { p.name := "z".to_string(); }
+
+fun main() {}
