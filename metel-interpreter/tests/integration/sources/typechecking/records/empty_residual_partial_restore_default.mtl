@@ -4,5 +4,5 @@ fun main() {
     let l := p.left;
     let r := p.right;
     p.left := "back";
-    let missing := p.right; // ERROR[T0003]
+    let missing := p.right; // ERROR[T0019]
 }

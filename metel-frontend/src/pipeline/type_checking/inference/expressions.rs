@@ -1112,6 +1112,13 @@ fn infer_expr_inner(
                     .find(|(name, _)| name == field)
                     .map(|(_, ty)| ty.clone())
                     .ok_or_else(|| {
+                        if let InferType::Residual { brand, .. } = &peeled {
+                            let base = match object.as_ref() {
+                                Expr::Ident(name, _) => Some(name.as_str()),
+                                _ => None,
+                            };
+                            return residual_field_error(ctx, brand, base, field, "used", span);
+                        }
                         MetelError::type_error(
                             TypeErrorCode::T0003,
                             format!("no field `{field}` on {peeled}"),
@@ -2085,11 +2092,13 @@ fn infer_expr_inner(
             {
                 for field in fields {
                     if !res_fields.iter().any(|(n, _)| n == field) {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!(
-                                "field `{field}` was moved out of this `{brand}` and cannot be projected"
-                            ),
+                        let base = path.join(".");
+                        return Err(residual_field_error(
+                            ctx,
+                            brand,
+                            Some(base.as_str()),
+                            field,
+                            "projected",
                             span,
                         ));
                     }
@@ -2469,6 +2478,43 @@ fn infer_expr_inner(
             Ok(InferType::never())
         }
     }
+}
+
+/// The diagnostic for naming a field of a narrowed residual that is no longer in its row.
+///
+/// A field the brand declares but the residual lacks was moved out earlier, so using it is a
+/// use of a moved value (`T0019`, metel-core#1455). The narrowing is a type-level fact, so this
+/// is reported with or without `--move-check`. A name the brand never declared stays an
+/// ordinary unknown-field error.
+fn residual_field_error(
+    ctx: &InferContext,
+    brand: &str,
+    base: Option<&str>,
+    field: &str,
+    action: &str,
+    span: &crate::data::ast::Span,
+) -> MetelError {
+    let declared = ctx
+        .get_struct_fields(brand)
+        .is_some_and(|fields| fields.iter().any(|entry| entry.name == field));
+    if !declared {
+        return MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no field `{field}` on `{brand}`"),
+            span,
+        );
+    }
+    let subject = base.map_or_else(
+        || format!("field `{field}`"),
+        |base| format!("`{base}.{field}`"),
+    );
+    MetelError::type_error(
+        TypeErrorCode::T0019,
+        format!(
+            "use of moved value: {subject} was moved out of this `{brand}` and cannot be {action}"
+        ),
+        span,
+    )
 }
 
 fn require_spread_field_absent(
