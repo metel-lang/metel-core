@@ -3,5 +3,5 @@ fun main() {
     let s := S { a = "a", b = "b" };
     let x := s.a;
     let y := s.b;
-    println(s.a); // ERROR[T0003]
+    println(s.a); // ERROR[T0019]
 }

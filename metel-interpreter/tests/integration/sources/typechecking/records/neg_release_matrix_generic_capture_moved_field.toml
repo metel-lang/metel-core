@@ -1,8 +1,8 @@
 [options]
 move_check = true
-error = ["T0003"]
+error = ["T0019"]
 
 [expect]
 status = "typecheck_error"
-code = "T0003"
+code = "T0019"
 line = 5

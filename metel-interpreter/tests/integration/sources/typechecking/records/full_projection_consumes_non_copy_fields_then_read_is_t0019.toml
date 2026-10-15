@@ -1,9 +1,9 @@
 [options]
-error = ["T0003"]
+error = ["T0019"]
 spec = ["spec.ownership.narrowing.dynamics-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0003"
-contains = "no field `name` on Handle.{ fd: i64 }"
-line = 9
+code = "T0019"
+contains = "use of moved value"
+line = 7

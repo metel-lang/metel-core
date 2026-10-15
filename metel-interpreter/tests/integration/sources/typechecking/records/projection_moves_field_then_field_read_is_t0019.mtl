@@ -1,10 +1,10 @@
 // metel-core#1454: `h.{ name }` moves the non-`Copy` field out of `h` like a plain move does, so
-// reading `h.name` afterwards is the same T0003 as after `let a := h.name;` (it used to be an
+// reading `h.name` afterwards is the same T0019 as after `let a := h.name;` (it used to be an
 // internal error, I0001, from the construction pass).
 struct Handle { fd: i64, name: String }
 
 fun main() {
     let h := Handle { fd = 3, name = "log".to_string() };
     let p := h.{ name };
-    println(h.name); // ERROR[T0003]
+    println(h.name); // ERROR[T0019]
 }

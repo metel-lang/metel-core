@@ -1632,13 +1632,28 @@ pub(super) fn construct_expr(
                 } => {
                     for field in fields {
                         if !res_fields.iter().any(|(n, _)| n == field) {
-                            return Err(MetelError::type_error(
-                                TypeErrorCode::T0003,
-                                format!(
-                                    "field `{field}` was moved out of this `{brand}` and cannot be projected"
-                                ),
-                                span,
-                            ));
+                            // Mirrors the inference pass (metel-core#1455): a field the
+                            // brand declares but the residual lacks was moved out earlier.
+                            let declared = ctx
+                                .get_struct_fields(brand)
+                                .is_some_and(|all| all.iter().any(|(n, _, _)| n == field));
+                            return Err(if declared {
+                                MetelError::type_error(
+                                    TypeErrorCode::T0019,
+                                    format!(
+                                        "use of moved value: `{}.{field}` was moved out of this \
+                                         `{brand}` and cannot be projected",
+                                        path.join(".")
+                                    ),
+                                    span,
+                                )
+                            } else {
+                                MetelError::type_error(
+                                    TypeErrorCode::T0003,
+                                    format!("no field `{field}` on `{brand}`"),
+                                    span,
+                                )
+                            });
                         }
                     }
                     (
