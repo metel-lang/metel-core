@@ -2518,7 +2518,7 @@ fn is_same_declaring_module(
     declaring_module.is_some_and(|module| module.as_slice() == current_module_path)
 }
 
-fn check_field_visibility(
+pub(crate) fn check_field_visibility(
     field: &FieldEntry,
     type_name: &str,
     current_module_path: &[String],

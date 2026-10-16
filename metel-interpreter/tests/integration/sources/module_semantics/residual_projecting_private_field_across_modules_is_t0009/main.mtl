@@ -1,0 +1,7 @@
+// metel-core#1488: projecting a private field out of its declaring module is rejected.
+import ticket::make;
+
+fun main() {
+    let t := make();
+    let s := t.{ secret };
+}
