@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "cannot unify"
+line = 5

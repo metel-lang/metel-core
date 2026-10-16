@@ -1,0 +1,5 @@
+// metel-core#1478: an anonymous open record in a return type has no settled meaning (RFC-0181).
+fun make() -> { x: i64, .. } { // ERROR[T0032]
+    { x = 1, y = 2 }
+}
+fun main() { let _ := make(); }

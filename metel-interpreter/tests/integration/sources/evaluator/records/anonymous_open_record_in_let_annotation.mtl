@@ -1,0 +1,16 @@
+// metel-core#1478: an open record with an anonymous tail is a valid annotation on a `let` or
+// `var`. The tail is a fresh inference variable, so the binding has the initializer's full type
+// and the extra fields stay readable. It used to fail on an internal `<open-row>` placeholder.
+fun main() {
+    let a: { x: i64, .. } := { x = 1, y = "s".to_string() };
+    assert(a.x == 1);
+    assert(a.y == "s");
+
+    var b: { x: i64, .. } := { x = 1, y = 2 };
+    b.x := 9;
+    assert(b.x == 9 && b.y == 2);
+
+    // fixed-field annotations still steer literal types
+    let c: { x: u8, .. } := { x = 200, y = 2 };
+    assert(c.x == 200);
+}
