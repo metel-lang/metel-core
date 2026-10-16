@@ -1287,7 +1287,7 @@ impl Cx<'_> {
             ));
         }
 
-        let Some((_, struct_name, raw_fields)) = self
+        let Some((struct_id, struct_name, raw_fields)) = self
             .registry
             .projection_struct_fields(self.current_module, target)
         else {
@@ -1325,6 +1325,22 @@ impl Cx<'_> {
                     ),
                     span,
                 ));
+            }
+        }
+        // RFC-0032: a private field can only be named from its declaring module, here
+        // as much as in a pattern or a field access. Without this, a residual type
+        // written outside the module would spell a private field's name.
+        for field_name in fields {
+            if let Some(entry) = raw_fields.iter().find(|e| e.name == *field_name) {
+                super::inference::check_field_visibility(
+                    entry,
+                    struct_name,
+                    self.current_module,
+                    self.registry.struct_declaring_module_by_id(struct_id),
+                    self.registry.struct_visibility_by_id(struct_id),
+                    span,
+                    "project",
+                )?;
             }
         }
         Ok(())

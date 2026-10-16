@@ -1107,6 +1107,23 @@ fn infer_expr_inner(
             // Record does -- directly from its own field list, no struct-registry lookup
             // needed (it already carries each projected field's resolved type).
             if let InferType::Record(fields) | InferType::Residual { fields, .. } = &peeled {
+                // RFC-0032 / RFC-0109 §8: a residual keeps its brand, so the field's own
+                // visibility on the struct still applies wherever the value came from.
+                if let InferType::Residual { brand, .. } = &peeled
+                    && fields.iter().any(|(name, _)| name == field)
+                    && let Ok((entry, declaring_module, visibility, _)) =
+                        super::resolve_struct_field_by_identity(ctx, None, brand, field, span)
+                {
+                    check_field_visibility(
+                        &entry,
+                        brand,
+                        ctx.current_module_path(),
+                        declaring_module.as_ref(),
+                        visibility.as_ref(),
+                        span,
+                        "access",
+                    )?;
+                }
                 return fields
                     .iter()
                     .find(|(name, _)| name == field)
@@ -2185,6 +2202,24 @@ fn infer_expr_inner(
                 } else {
                     raw_ty
                 };
+                // RFC-0032: projecting a private field out of its declaring module
+                // would hand the caller a value of a type that names it.
+                let (_, declaring_module, visibility, _) = super::resolve_struct_field_by_identity(
+                    ctx,
+                    struct_id,
+                    &struct_name,
+                    field,
+                    span,
+                )?;
+                check_field_visibility(
+                    field_entry,
+                    &struct_name,
+                    ctx.current_module_path(),
+                    declaring_module.as_ref(),
+                    visibility.as_ref(),
+                    span,
+                    "project",
+                )?;
                 projected.push((field.clone(), ty));
             }
             // RFC-0137 (metel-core#857): branded, not a bare Record -- and a full-width

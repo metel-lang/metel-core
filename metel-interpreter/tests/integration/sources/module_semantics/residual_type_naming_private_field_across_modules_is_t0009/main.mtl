@@ -1,0 +1,6 @@
+// metel-core#1488: a residual type written outside the module cannot name a private field.
+import ticket::Ticket;
+
+fun take(t: Ticket.{ secret }) {}
+
+fun main() {}

@@ -1,0 +1,4 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+spec = ["spec.modules.visibility.legality-3"]

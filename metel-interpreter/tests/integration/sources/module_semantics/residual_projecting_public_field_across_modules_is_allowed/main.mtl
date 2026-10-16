@@ -1,0 +1,12 @@
+// metel-core#1488: the visibility check leaves public fields alone; a public-field residual
+// can be projected, named, and read from anywhere.
+import ticket::Ticket;
+import ticket::make;
+
+fun id_of(t: Ticket.{ id }) -> i64 { t.id }
+
+fun main() {
+    let t := make();
+    let just_id := t.{ id };
+    assert(id_of(just_id) == 1);
+}
