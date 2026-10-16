@@ -1,0 +1,9 @@
+// metel-core#1473 (RFC-0180): a label written in a literal row must be provably absent from the
+// tail, exactly as for a spread; `R` needs the bound `R: !{ host }`.
+record Req<row R> { data: { ..R } }
+
+fun add<row R>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
+    Req { data = { host = h, ..r.data } } // ERROR[T0012]
+}
+
+fun main() {}

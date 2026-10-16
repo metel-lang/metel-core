@@ -1,0 +1,7 @@
+// metel-core#1473 (RFC-0180): a closed literal row names exactly those fields; a value with an
+// extra field does not match it.
+record Req<row R> { data: { ..R } }
+
+fun main() {
+    let r: Req<..{ host: String }> := Req { data = { host = "x", port = 1 } }; // ERROR[T0001]
+}

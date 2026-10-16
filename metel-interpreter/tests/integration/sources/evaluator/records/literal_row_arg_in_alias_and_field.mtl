@@ -1,0 +1,17 @@
+// metel-core#1473 (RFC-0180): a literal row is an ordinary type argument inside an alias body
+// and in a record field's type.
+record Req<row R> { data: { ..R } }
+type WithHost<row R> := Req<..{ host: String, ..R }>;
+record Wrapped<row R> { inner: Req<..{ id: i64, ..R }> }
+
+fun add<row R: !{ host }>(r: Req<..R>, h: String) -> WithHost<..R> {
+    Req { data = { host = h, ..r.data } }
+}
+
+fun main() {
+    let r := add(Req { data = { port = 1 } }, "x");
+    assert(r.data.host == "x");
+    let w := Wrapped { inner = Req { data = { id = 1, name = "n".to_string() } } };
+    assert(w.inner.data.id == 1);
+    assert(w.inner.data.name == "n");
+}

@@ -1546,6 +1546,8 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             format!("{} .{{ {} }}", path.join("::"), fields.join(", "))
         }
         TypeExpr::DynAspect { bound, .. } => format!("dyn {}", runtime_type_key(bound)),
+        // RFC-0180: a literal row argument keys as the `..` plus the record it spells.
+        TypeExpr::RowArgLiteral(inner) => format!("..{}", runtime_type_key(inner)),
         // RFC-0121 item 6: an instance method may carry a record-tail
         // parameter (`{ x: f64, ..R }`); this function keys a *method's*
         // runtime dispatch signature, so spell the tail back out.

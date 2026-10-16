@@ -456,6 +456,7 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
                     .is_some_and(|r| type_expr_contains_impl_aspect(r))
         }
         TypeExpr::DynAspect { bound, .. } => type_expr_contains_impl_aspect(bound),
+        TypeExpr::RowArgLiteral(inner) => type_expr_contains_impl_aspect(inner),
         // RFC-0121 item 2 (metel-core#1310): a `Session<..R>` row splice
         // contains no `ImplAspect` of its own either, same as the others
         // here -- unlike `OpenRecord`/`OpenRecordProjection`, it *can*
@@ -579,6 +580,10 @@ pub(super) fn rewrite_impl_aspect_returns(
         // `ImplAspect` nested inside it to rewrite, so it passes through
         // unchanged, like `RecordProjection`/`Unit` above.
         TypeExpr::RowArg(_) => te.clone(),
+        // RFC-0180: the payload is an ordinary record type; rewrite inside it.
+        TypeExpr::RowArgLiteral(inner) => TypeExpr::RowArgLiteral(Box::new(
+            rewrite_impl_aspect_returns(inner, counter, replacements),
+        )),
     }
 }
 
@@ -2628,6 +2633,10 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
         // not `fun_decl_param`). A row splice carries no `Self` reference
         // to substitute, so it passes through unchanged.
         TypeExpr::RowArg(_) => te.clone(),
+        // RFC-0180: the payload is an ordinary record type; substitute inside it.
+        TypeExpr::RowArgLiteral(inner) => {
+            TypeExpr::RowArgLiteral(Box::new(substitute_structural_self(inner, replacement)))
+        }
     }
 }
 

@@ -1,0 +1,22 @@
+// metel-core#1473 (RFC-0180): a function that adds a field to a nominal's row can write its
+// return type with a literal row, `Req<..{ host: String, ..R }>`; `..{}` is the empty row.
+record Req<row R> { data: { ..R } }
+
+fun empty() -> Req<..{}> { Req { data = {} } }
+
+fun add_host<row R: !{ host }>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
+    Req { data = { host = h, ..r.data } }
+}
+
+fun add_port<row R: !{ port }>(r: Req<..R>, p: i64) -> Req<..{ port: i64, ..R }> {
+    Req { data = { port = p, ..r.data } }
+}
+
+// a parameter can name the row it needs; the tail carries everything else
+fun host_of<row R>(r: Req<..{ host: String, ..R }>) -> String { r.data.host }
+
+fun main() {
+    let r := add_port(add_host(empty(), "a.com"), 80);
+    assert(host_of(r) == "a.com");
+    assert(r.data.port == 80);
+}

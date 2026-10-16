@@ -435,7 +435,12 @@ named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 // or anonymous `Session<..>`) instead of an ordinary type. Anonymous splices
 // are freshened per signature; implementation coverage is tracked by
 // metel-core#1310.
-type_args  = { (row_tail | type_expr) ~ ("," ~ (row_tail | type_expr))* }
+// RFC-0180: a row argument may also be a literal row, `Req<..{ host: String, ..R }>`
+// (open) or `Req<..{ host: String }>` / `Req<..{}>` (closed). It is tried before
+// `row_tail`, which would otherwise match the bare `..` and leave the `{` unparsed.
+row_arg    = { row_literal | row_tail }
+row_literal = { ".." ~ (open_record_type | record_type) }
+type_args  = { (row_arg | type_expr) ~ ("," ~ (row_arg | type_expr))* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }
 
 // ── Terminals ─────────────────────────────────────────────────────────────────

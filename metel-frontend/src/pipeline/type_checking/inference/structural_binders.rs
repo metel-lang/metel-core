@@ -101,7 +101,9 @@ fn rename_type(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
         | TypeExpr::MutReference(inner)
-        | TypeExpr::Projection { base: inner, .. } => rename_type(inner, replacements),
+        | TypeExpr::Projection { base: inner, .. }
+        // RFC-0180: the payload is an ordinary record type.
+        | TypeExpr::RowArgLiteral(inner) => rename_type(inner, replacements),
         TypeExpr::ImplAspect { bound, .. } | TypeExpr::DynAspect { bound, .. } => {
             rename_aspect_arguments(bound, replacements);
         }

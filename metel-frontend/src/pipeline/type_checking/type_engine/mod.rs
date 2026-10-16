@@ -2585,6 +2585,11 @@ impl fmt::Display for GenericBound {
                     }
                     Ok(())
                 }
+                // RFC-0180: a literal row argument prints as the `..` plus the record.
+                TypeExpr::RowArgLiteral(inner) => {
+                    f.write_str("..")?;
+                    write_type_expr(f, inner)
+                }
             }
         }
 

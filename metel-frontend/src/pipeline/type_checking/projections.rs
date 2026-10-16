@@ -431,10 +431,13 @@ impl Cx<'_> {
                     let fits = if wants_row {
                         matches!(
                             a,
-                            TypeExpr::RowArg(_) | TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
+                            TypeExpr::RowArg(_)
+                                | TypeExpr::RowArgLiteral(_)
+                                | TypeExpr::Record(_)
+                                | TypeExpr::OpenRecord(..)
                         )
                     } else {
-                        !matches!(a, TypeExpr::RowArg(_))
+                        !matches!(a, TypeExpr::RowArg(_) | TypeExpr::RowArgLiteral(_))
                     };
                     if !fits {
                         return Err(MetelError::type_error(
@@ -522,7 +525,11 @@ impl Cx<'_> {
             TypeExpr::Array(inner)
             | TypeExpr::SizedArray(inner, _)
             | TypeExpr::Reference(inner)
-            | TypeExpr::MutReference(inner) => self.ty_at(
+            | TypeExpr::MutReference(inner)
+            // RFC-0180: `Req<..{ host: String, ..R }>`. The literal is an ordinary
+            // record type once bound, so its fields and tail are checked like a
+            // nested record's; the kind check above has already run.
+            | TypeExpr::RowArgLiteral(inner) => self.ty_at(
                 inner,
                 span,
                 field_of,

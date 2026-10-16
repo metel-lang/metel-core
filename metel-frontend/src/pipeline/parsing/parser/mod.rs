@@ -772,7 +772,7 @@ fn parse_extend_aspect(
                                 // list has no row-polymorphic meaning designed
                                 // yet -- reject explicitly rather than silently
                                 // dropping the argument.
-                                Rule::row_tail => {
+                                Rule::row_arg => {
                                     return Err(MetelError::parse(
                                         ParseErrorCode::P0001,
                                         "a row splice (`..R`) is not supported in an aspect's \
@@ -2473,7 +2473,7 @@ fn parse_type_args_pair(
             // explicit turbofish call's type arguments have no
             // row-polymorphic meaning designed yet -- reject explicitly
             // rather than silently dropping the argument.
-            Rule::row_tail => Some(Err(MetelError::parse(
+            Rule::row_arg => Some(Err(MetelError::parse(
                 ParseErrorCode::P0001,
                 "a row splice (`..R`) is not supported in an explicit call's \
                  type argument list",
@@ -3239,16 +3239,29 @@ fn parse_type_expr(
                             // only: `Session<..R>` / `Session<..>` -- a row
                             // splice slotted directly into this `Named`'s
                             // existing args list.
-                            Rule::row_tail => {
-                                let tail_span = Span::of(&arg, filename);
-                                let var = arg
-                                    .into_inner()
-                                    .find(|q| q.as_rule() == Rule::ident)
-                                    .map(|q| q.as_str().to_string());
-                                args.push(TypeExpr::RowArg(RowTail {
-                                    var,
-                                    span: tail_span,
-                                }));
+                            Rule::row_arg => {
+                                let row = arg.into_inner().next().ok_or_else(|| {
+                                    MetelError::internal("row_arg: expected a row")
+                                })?;
+                                if row.as_rule() == Rule::row_literal {
+                                    // RFC-0180: `..{ host: String, ..R }` / `..{}`.
+                                    let lit = row.into_inner().next().ok_or_else(|| {
+                                        MetelError::internal("row_literal: expected a record type")
+                                    })?;
+                                    args.push(TypeExpr::RowArgLiteral(Box::new(parse_type_expr(
+                                        lit, filename,
+                                    )?)));
+                                } else {
+                                    let tail_span = Span::of(&row, filename);
+                                    let var = row
+                                        .into_inner()
+                                        .find(|q| q.as_rule() == Rule::ident)
+                                        .map(|q| q.as_str().to_string());
+                                    args.push(TypeExpr::RowArg(RowTail {
+                                        var,
+                                        span: tail_span,
+                                    }));
+                                }
                             }
                             _ => {}
                         }

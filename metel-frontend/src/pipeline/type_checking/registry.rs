@@ -1029,7 +1029,7 @@ fn type_expr_contains_row_arg(ty: &crate::data::ast::TypeExpr) -> bool {
                     .is_some_and(type_expr_contains_row_arg)
         }
         TypeExpr::Projection { base, .. } => type_expr_contains_row_arg(base),
-        TypeExpr::RowArg(_) => true,
+        TypeExpr::RowArg(_) | TypeExpr::RowArgLiteral(_) => true,
         TypeExpr::Unit
         | TypeExpr::Record(_)
         | TypeExpr::OpenRecord(..)
@@ -1822,6 +1822,10 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         // type, parsed before `projections::check` gets a chance to reject
         // it. A row splice carries no `Self` reference to substitute.
         TypeExpr::RowArg(_) => te.clone(),
+        // RFC-0180: substitute inside the literal row's payload.
+        TypeExpr::RowArgLiteral(inner) => {
+            TypeExpr::RowArgLiteral(Box::new(substitute_structural_self(inner, replacement)))
+        }
     }
 }
 

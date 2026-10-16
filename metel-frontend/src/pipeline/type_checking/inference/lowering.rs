@@ -167,6 +167,11 @@ fn lower_impl_aspect_param_type(
         // likewise a leaf here -- no `impl Aspect` sugar can hide inside a
         // bare row splice. This runs before `projections::check` gets a
         // chance to reject a `RowArg`, so a leaf, not `unreachable!()`.
+        // RFC-0180: `impl Aspect` sugar could in principle sit in a literal row's field
+        // types; lower inside the payload like any record type.
+        TypeExpr::RowArgLiteral(inner) => TypeExpr::RowArgLiteral(Box::new(
+            lower_impl_aspect_param_type(inner, counter, extra_generics),
+        )),
         TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
         | TypeExpr::RowArg(_)
@@ -982,6 +987,8 @@ fn lower_projections_in_type(
         // likewise a leaf -- no `T::AssocType`-shaped `Named` can hide
         // inside it. This runs before `projections::check` gets a chance
         // to reject a `RowArg`, so a leaf, not `unreachable!()`.
+        // RFC-0180: a `T::Assoc` can sit in a literal row's field types.
+        TypeExpr::RowArgLiteral(inner) => TypeExpr::RowArgLiteral(Box::new(go(inner))),
         TypeExpr::Projection { .. }
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
@@ -1107,6 +1114,7 @@ fn substitute_type_params(
             bound: Box::new(go(bound)),
             span: span.clone(),
         },
+        TypeExpr::RowArgLiteral(inner) => TypeExpr::RowArgLiteral(Box::new(go(inner))),
         TypeExpr::ImplAspect { .. }
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
