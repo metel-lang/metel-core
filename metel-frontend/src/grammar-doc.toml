@@ -739,6 +739,16 @@ mode = "named"
 name = "NamedType"
 section = "Types"
 [[rule]]
+pest = "row_arg"
+mode = "named"
+name = "RowArg"
+section = "Types"
+[[rule]]
+pest = "row_literal"
+mode = "named"
+name = "RowLiteral"
+section = "Types"
+[[rule]]
 pest = "type_args"
 mode = "named"
 name = "TypeArgs"

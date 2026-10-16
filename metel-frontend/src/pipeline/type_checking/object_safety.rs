@@ -149,7 +149,9 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
-        | TypeExpr::MutReference(inner) => type_expr_violation(inner, assoc_type_names),
+        | TypeExpr::MutReference(inner)
+        // RFC-0180: a literal row's field types are checked like a record's.
+        | TypeExpr::RowArgLiteral(inner) => type_expr_violation(inner, assoc_type_names),
         TypeExpr::Fun {
             params,
             return_type: ret,

@@ -1111,6 +1111,12 @@ pub enum TypeExpr {
     /// anonymous splices in function and instance-method parameter signatures are
     /// freshened to a per-signature type variable.
     RowArg(RowTail),
+    /// RFC-0180: `Req<..{ host: String, ..R }>` -- a literal row in generic-argument
+    /// position. The payload is the `Record` / `OpenRecord` the row spells; the
+    /// wrapper survives so the kind check can reject a literal row where an
+    /// ordinary type parameter is expected, and is otherwise lowered as the
+    /// payload (a row argument is an ordinary record type once bound).
+    RowArgLiteral(Box<TypeExpr>),
 }
 
 // ── Literals ──────────────────────────────────────────────────────────────────

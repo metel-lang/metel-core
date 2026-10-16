@@ -1215,7 +1215,9 @@ fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
         | TypeExpr::MutReference(inner)
         | TypeExpr::ImplAspect { bound: inner, .. }
         | TypeExpr::DynAspect { bound: inner, .. }
-        | TypeExpr::Projection { base: inner, .. } => vec![inner.as_mut()],
+        | TypeExpr::Projection { base: inner, .. }
+        // RFC-0180: a literal row argument's payload is an ordinary record type.
+        | TypeExpr::RowArgLiteral(inner) => vec![inner.as_mut()],
         TypeExpr::Fun {
             params,
             return_type,

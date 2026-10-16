@@ -532,7 +532,9 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
-        | TypeExpr::MutReference(inner) => go(inner),
+        | TypeExpr::MutReference(inner)
+        // RFC-0180: a literal row's payload is an ordinary record type.
+        | TypeExpr::RowArgLiteral(inner) => go(inner),
         TypeExpr::Fun {
             params: ps,
             return_type: ret,
@@ -1673,6 +1675,7 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             *call_mutation,
         ),
         TypeExpr::ImplAspect { bound, .. } => go(bound),
+        TypeExpr::RowArgLiteral(inner) => go(inner),
         TypeExpr::Projection {
             base, assoc_name, ..
         } => {

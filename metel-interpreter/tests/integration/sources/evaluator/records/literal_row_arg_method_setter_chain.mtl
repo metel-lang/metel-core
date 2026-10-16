@@ -1,0 +1,27 @@
+// metel-core#1473 (RFC-0180): a typestate builder written as methods. Each setter returns a
+// `Req` whose row gained a field, so `build` only exists once `host` has been set.
+record Req<row R> { data: { ..R } }
+
+extend<row R: !{ host }> Req<..R> {
+    fun host(self, h: String) -> Req<..{ host: String, ..R }> {
+        Req { data = { host = h, ..self.data } }
+    }
+}
+
+extend<row R: !{ port }> Req<..R> {
+    fun port(self, p: i64) -> Req<..{ port: i64, ..R }> {
+        Req { data = { port = p, ..self.data } }
+    }
+}
+
+extend<row R: { host: String, .. }> Req<..R> {
+    fun build(self) -> String { "GET " + self.data.host }
+}
+
+fun main() {
+    let r := Req { data = {} }.host("a.com").port(80);
+    assert(r.build() == "GET a.com");
+    assert(r.data.port == 80);
+    let swapped := Req { data = {} }.port(1).host("b.com");
+    assert(swapped.build() == "GET b.com");
+}

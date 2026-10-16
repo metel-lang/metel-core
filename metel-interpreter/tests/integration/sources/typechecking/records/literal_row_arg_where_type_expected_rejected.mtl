@@ -1,0 +1,7 @@
+// metel-core#1473 (RFC-0180): a literal row where an ordinary type parameter is expected is a
+// kind error.
+record Box<T> { value: T }
+
+fun f(b: Box<..{ x: i64 }>) -> i64 { 0 } // ERROR[T0012]
+
+fun main() {}

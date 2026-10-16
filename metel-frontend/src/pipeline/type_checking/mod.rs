@@ -1212,7 +1212,7 @@ pub(crate) fn reject_unregisterable_impl_target(
         // already returned early above via `impl_target_head`, so this
         // match (which only ever sees the shapes `impl_target_head`
         // rejected) can never actually see one.
-        TypeExpr::RowArg(_) => {
+        TypeExpr::RowArg(_) | TypeExpr::RowArgLiteral(_) => {
             unreachable!("a RowArg can only appear nested inside a Named's own args")
         }
     };

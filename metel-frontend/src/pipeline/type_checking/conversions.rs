@@ -136,7 +136,8 @@ pub(crate) fn find_anonymous_open_record_tail(te: &TypeExpr) -> Option<&crate::d
         | TypeExpr::Reference(inner)
         | TypeExpr::MutReference(inner)
         | TypeExpr::ImplAspect { bound: inner, .. }
-        | TypeExpr::DynAspect { bound: inner, .. } => find_anonymous_open_record_tail(inner),
+        | TypeExpr::DynAspect { bound: inner, .. }
+        | TypeExpr::RowArgLiteral(inner) => find_anonymous_open_record_tail(inner),
         TypeExpr::Fun {
             params,
             return_type,
@@ -401,6 +402,11 @@ fn type_expr_to_infer_in_context(
         }
         TypeExpr::RecordProjection { path, fields, .. } => {
             resolve_record_projection_type(path, fields, self_ty_name, assoc_ctx)
+        }
+        // RFC-0180: `Req<..{ host: String, ..R }>` -- the row a literal spells lowers
+        // exactly as the same record type written without the `..`.
+        TypeExpr::RowArgLiteral(inner) => {
+            type_expr_to_infer_in_context(inner, generics, self_ty_name, assoc_ctx)
         }
         // RFC-0008: `dyn Aspect` — an existential type, not lowered away the way
         // `ImplAspect` is. `bound` is always a `named_type` (parser guarantees this

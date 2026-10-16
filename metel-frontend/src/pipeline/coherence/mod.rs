@@ -124,6 +124,8 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
                 .map(|(name, ty)| (name.clone(), go(ty)))
                 .collect(),
         ),
+        // RFC-0180: a literal row argument is canonicalized as the row it spells.
+        TypeExpr::RowArgLiteral(inner) => go(inner),
         TypeExpr::Array(inner) => CanonicalType::Array(Box::new(go(inner))),
         TypeExpr::SizedArray(inner, n) => CanonicalType::SizedArray(Box::new(go(inner)), *n),
         TypeExpr::Reference(inner) => CanonicalType::Reference(Box::new(go(inner))),
