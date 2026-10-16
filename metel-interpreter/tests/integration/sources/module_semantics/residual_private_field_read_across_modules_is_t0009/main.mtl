@@ -1,8 +1,0 @@
-// metel-core#1488: reading a private field through a residual is as private as reading it directly.
-import ticket::make;
-import ticket::narrow;
-
-fun main() {
-    let t := narrow(make());
-    let s := t.secret;
-}

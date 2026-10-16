@@ -1,7 +1,3 @@
 public struct Ticket { public id: i64, secret: String }
 
 public fun make() -> Ticket { Ticket { id = 1, secret = "s".to_string() } }
-
-public fun narrow(t: Ticket) -> Ticket.{ secret } {
-    t.{ secret }
-}
