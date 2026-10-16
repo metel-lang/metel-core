@@ -1,5 +1,6 @@
 [options]
 error = ["T0032"]
+spec = ["spec.types.generics.open-rows.legality-5"]
 
 [expect]
 status = "typecheck_error"

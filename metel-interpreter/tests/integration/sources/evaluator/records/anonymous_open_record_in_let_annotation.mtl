@@ -10,7 +10,8 @@ fun main() {
     b.x := 9;
     assert(b.x == 9 && b.y == 2);
 
-    // fixed-field annotations still steer literal types
+    // the annotation's fixed fields still type the initializer: `x` is a `u8`, not an `i64`
     let c: { x: u8, .. } := { x = 200, y = 2 };
-    assert(c.x == 200);
+    let d: u8 := c.x;
+    assert(d == 200);
 }

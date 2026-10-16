@@ -1,0 +1,9 @@
+[options]
+error = ["T0001"]
+spec = ["spec.types.generics.open-rows.legality-5"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "cannot unify u8 with i32"
+line = 5
