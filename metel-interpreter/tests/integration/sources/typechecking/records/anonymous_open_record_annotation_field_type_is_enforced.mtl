@@ -1,0 +1,6 @@
+// metel-core#1478: the fixed fields of an anonymous-tail annotation are real types. `x` is a `u8`,
+// so reading it where an `i32` is required is a mismatch.
+fun main() {
+    let c: { x: u8, .. } := { x = 200, y = 2 };
+    let e: i32 := c.x; // ERROR[T0001]
+}
