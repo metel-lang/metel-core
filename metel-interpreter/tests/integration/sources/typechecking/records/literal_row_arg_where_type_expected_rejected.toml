@@ -5,5 +5,5 @@ spec = ["spec.types.generics.open-rows.legality-1"]
 [expect]
 status = "typecheck_error"
 code = "T0012"
-contains = "ordinary type"
+contains = "ordinary type, not a `row`"
 line = 5

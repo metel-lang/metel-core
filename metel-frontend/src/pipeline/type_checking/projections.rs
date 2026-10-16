@@ -440,19 +440,26 @@ impl Cx<'_> {
                         !matches!(a, TypeExpr::RowArg(_) | TypeExpr::RowArgLiteral(_))
                     };
                     if !fits {
+                        let param = self
+                            .registry
+                            .struct_generic_names_for(self.current_module, name)
+                            .and_then(|names| names.get(i))
+                            .map_or_else(
+                                || format!("generic parameter {}", i + 1),
+                                |param| format!("generic parameter `{param}`"),
+                            );
                         return Err(MetelError::type_error(
                             TypeErrorCode::T0012,
                             if wants_row {
                                 format!(
-                                    "generic parameter {} of `{name}` is `row`-kinded; \
-                                     its argument must be a record type or `..R`",
-                                    i + 1
+                                    "{param} of `{name}` is `row`-kinded; its argument must be \
+                                     a record type, a row variable (`..R`) or a literal row \
+                                     (`..{{ x: T, .. }}`)"
                                 )
                             } else {
                                 format!(
-                                    "generic parameter {} of `{name}` is an ordinary \
-                                     type; a row argument (`..R`/`{{ .. }}`) is not allowed",
-                                    i + 1
+                                    "{param} of `{name}` is an ordinary type, not a `row`; \
+                                     a row argument (`..R` or `..{{ x: T }}`) is not allowed here"
                                 )
                             },
                             span,

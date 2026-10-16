@@ -2550,7 +2550,10 @@ fn require_spread_field_absent(
     if !absent {
         return Err(MetelError::type_error(
             TypeErrorCode::T0012,
-            format!("cannot prove field `{label}` absent from the spread row"),
+            format!(
+                "cannot prove field `{label}` absent from the spread row; \
+                 bound the row parameter with `!{{ {label} }}`"
+            ),
             span,
         ));
     }
