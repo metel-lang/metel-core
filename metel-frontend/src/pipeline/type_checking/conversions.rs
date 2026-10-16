@@ -108,6 +108,59 @@ fn resolve_record_projection_type(
 /// occurrence. Anywhere else `projections::check` has already rejected it.
 pub(crate) const ANONYMOUS_ROW_PLACEHOLDER: &str = "<row-arg>";
 
+/// The first open record in `te` with an anonymous tail (`{ .. }` / `{ x: T, .. }`), if any.
+///
+/// The tail of such a record is a fresh inference variable per occurrence, so syntax alone
+/// cannot give it a concrete type. A construction site that would turn the annotation into an
+/// expected type should leave the expectation to the (already unified) value instead, and the
+/// positions that do not support one report `T0032` at the returned tail (metel-core#1478).
+pub(crate) fn find_anonymous_open_record_tail(te: &TypeExpr) -> Option<&crate::data::ast::RowTail> {
+    match te {
+        TypeExpr::OpenRecord(fields, tail) => {
+            if tail.var.is_none() {
+                Some(tail)
+            } else {
+                fields
+                    .iter()
+                    .find_map(|(_, ty)| find_anonymous_open_record_tail(ty))
+            }
+        }
+        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => {
+            args.iter().find_map(find_anonymous_open_record_tail)
+        }
+        TypeExpr::Record(fields) => fields
+            .iter()
+            .find_map(|(_, ty)| find_anonymous_open_record_tail(ty)),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner)
+        | TypeExpr::ImplAspect { bound: inner, .. }
+        | TypeExpr::DynAspect { bound: inner, .. } => find_anonymous_open_record_tail(inner),
+        TypeExpr::Fun {
+            params,
+            return_type,
+            ..
+        } => params
+            .iter()
+            .find_map(find_anonymous_open_record_tail)
+            .or_else(|| {
+                return_type
+                    .as_deref()
+                    .and_then(find_anonymous_open_record_tail)
+            }),
+        TypeExpr::Projection { base, .. } => find_anonymous_open_record_tail(base),
+        TypeExpr::Unit
+        | TypeExpr::RecordProjection { .. }
+        | TypeExpr::OpenRecordProjection { .. }
+        | TypeExpr::RowArg(_) => None,
+    }
+}
+
+pub(crate) fn type_expr_has_anonymous_open_record(te: &TypeExpr) -> bool {
+    find_anonymous_open_record_tail(te).is_some()
+}
+
 // Exhaustive match over every TypeExpr variant; splitting it up would scatter
 // one coherent dispatch table across many small functions with no real gain
 // in clarity.
@@ -405,6 +458,40 @@ fn type_expr_to_infer_in_context(
                     })
                     .collect(),
                 tail: Box::new(InferType::Var(tail_var)),
+            }
+        }
+        // An anonymous tail (`{ .. }` / `{ x: T, .. }`) is the same fresh-per-occurrence
+        // row as the anonymous splice `Session<..>` (RFC-0121 item 2): keep the fixed
+        // fields and leave the tail as the shared placeholder, which
+        // `freshen_anonymous_row_args` turns into its own inference variable at each
+        // occurrence (metel-core#1478). Where the enclosing scope does not admit an
+        // anonymous row, `projections::check` has already rejected it.
+        TypeExpr::OpenRecord(fields, tail) if tail.var.is_none() => {
+            let placeholder = InferType::Named(
+                ANONYMOUS_ROW_PLACEHOLDER.to_string(),
+                vec![],
+                crate::data::types::NominalId::NONE,
+            );
+            if fields.is_empty() {
+                placeholder
+            } else {
+                InferType::RowExtend {
+                    fields: fields
+                        .iter()
+                        .map(|(name, ty)| {
+                            (
+                                name.clone(),
+                                type_expr_to_infer_in_context(
+                                    ty,
+                                    generics,
+                                    self_ty_name,
+                                    assoc_ctx,
+                                ),
+                            )
+                        })
+                        .collect(),
+                    tail: Box::new(placeholder),
+                }
             }
         }
         // A tail that does not name a row parameter is rejected by

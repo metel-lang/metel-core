@@ -220,10 +220,9 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     let expected_ty = ld
                         .type_ann
                         .as_ref()
-                        .map(|ann| {
-                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &ld.span)
-                        })
-                        .transpose()?;
+                        .map(|ann| ctx.annotation_expected_type(ann, &ld.span))
+                        .transpose()?
+                        .flatten();
                     let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {
@@ -256,10 +255,9 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     let expected_ty = md
                         .type_ann
                         .as_ref()
-                        .map(|ann| {
-                            resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &md.span)
-                        })
-                        .transpose()?;
+                        .map(|ann| ctx.annotation_expected_type(ann, &md.span))
+                        .transpose()?
+                        .flatten();
                     let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {

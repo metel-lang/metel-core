@@ -1,0 +1,5 @@
+// metel-core#1478: the annotation still requires its fixed fields.
+fun main() {
+    let _ := 1;
+    let a: { x: i64, .. } := { z = 1 }; // ERROR[T0001]
+}

@@ -1,0 +1,6 @@
+// metel-core#1478: a closure with an open-row parameter still requires the named fields at the call.
+fun main() {
+    let get := |p: { x: i64, .. }| { p.x };
+    let _ := get({ x = 1 });
+    let _ := get({ y = 1 }); // ERROR[T0001]
+}

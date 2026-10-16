@@ -1,0 +1,5 @@
+// metel-core#1478: nor does one in a written function type (RFC-0181).
+fun apply(f: |{ x: i64, .. }| -> i64) -> i64 { // ERROR[T0032]
+    1
+}
+fun main() { let _ := 1; }

@@ -654,6 +654,22 @@ impl<'a> ConstructCtx<'a> {
     /// to their `TypeVars` when `self.generic_params` is populated (construction-at-call-time).
     /// `Self` resolves through `current_self_type_name` when set (#774, revised) --
     /// e.g. a body-internal `let x: Self.{ field }` inside an impl-block method.
+    /// The type an annotation expects of its initializer, or `None` when the annotation has an
+    /// anonymous open-record tail (`let a: { x: i64, .. } := v`). That tail is a fresh inference
+    /// variable, so the annotation has no concrete type of its own; inference has already
+    /// unified it with the initializer, whose type is therefore the binding's type
+    /// (metel-core#1478).
+    fn annotation_expected_type(
+        &self,
+        ann: &TypeExpr,
+        span: &Span,
+    ) -> Result<Option<Type>, MetelError> {
+        if crate::pipeline::type_checking::conversions::type_expr_has_anonymous_open_record(ann) {
+            return Ok(None);
+        }
+        resolved_to_type(&self.type_expr_to_infer_ctx(ann), self.subst, span).map(Some)
+    }
+
     fn type_expr_to_infer_ctx(&self, te: &TypeExpr) -> InferType {
         let assoc_ctx = AssocResolveCtx {
             registry: self.registry,

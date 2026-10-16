@@ -342,6 +342,25 @@ impl Cx<'_> {
         )
     }
 
+    /// `T0032` for an anonymous open record (`{ x: T, .. }`) in a position whose meaning is not
+    /// settled: a return type or a written function type. Its tail would be a fresh variable at
+    /// each occurrence, which has no clear reading there (an existential for a return, a
+    /// rank-1 or rank-2 row for a function type). RFC-0181 owns those positions; until it is
+    /// decided they report a targeted error instead of failing later on an internal placeholder.
+    fn reject_anonymous_open_record(te: &TypeExpr, position: &str) -> Result<(), MetelError> {
+        match crate::pipeline::type_checking::conversions::find_anonymous_open_record_tail(te) {
+            Some(tail) => Err(MetelError::type_error(
+                TypeErrorCode::T0032,
+                format!(
+                    "an anonymous open record (`{{ x: T, .. }}`) is not supported in {position}; \
+                     name a `row`-kinded generic parameter (`..R`) instead (RFC-0181)"
+                ),
+                &tail.span,
+            )),
+            None => Ok(()),
+        }
+    }
+
     fn ty_return(
         &self,
         te: &TypeExpr,
@@ -351,6 +370,7 @@ impl Cx<'_> {
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
+        Self::reject_anonymous_open_record(te, "a return type")?;
         self.ty_at(
             te,
             span,
@@ -517,6 +537,12 @@ impl Cx<'_> {
                 return_type: ret,
                 ..
             } => {
+                for p in params {
+                    Self::reject_anonymous_open_record(p, "a function type")?;
+                }
+                if let Some(r) = ret {
+                    Self::reject_anonymous_open_record(r, "a function type")?;
+                }
                 for p in params {
                     self.ty_at(
                         p,

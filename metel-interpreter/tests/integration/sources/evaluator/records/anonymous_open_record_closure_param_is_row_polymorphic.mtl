@@ -1,0 +1,9 @@
+// metel-core#1478: a closure parameter annotated with an anonymous open record generalizes with
+// the closure, so one closure accepts records of different shapes. This is the only way to write
+// a row-polymorphic closure; `|p| { p.x }` cannot infer the struct.
+fun main() {
+    let get := |p: { x: i64, .. }| { p.x };
+    assert(get({ x = 1, y = 2 }) == 1);
+    assert(get({ x = 5 }) == 5);
+    assert(get({ x = 7, name = "n".to_string() }) == 7);
+}
