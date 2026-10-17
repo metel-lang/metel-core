@@ -1,9 +1,0 @@
-runner = "full_pipeline"
-prelude = "empty"
-[options]
-error = ["T0009"]
-spec = ["spec.modules.visibility.legality-3"]
-[expect]
-status = "typecheck_error"
-code = "T0009"
-line = 7

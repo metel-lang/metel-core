@@ -1,0 +1,10 @@
+// metel-core#1488: and so is a public inherent method.
+public struct Ticket { public id: i64, secret: String }
+
+extend Ticket {
+    public fun peek(self) -> Ticket.{ secret } { // ERROR[T0009]
+        self.{ secret }
+    }
+}
+
+fun main() {}

@@ -1,0 +1,5 @@
+// metel-core#1488: a public field of a public struct is part of its API too.
+public struct Ticket { public id: i64, secret: String }
+public struct Holder { public inner: Ticket.{ secret } } // ERROR[T0009]
+
+fun main() {}

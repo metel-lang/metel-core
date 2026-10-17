@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.modules.visibility.legality-8"]

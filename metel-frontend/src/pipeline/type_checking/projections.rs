@@ -30,7 +30,7 @@ use super::inference::primitive_type_from_name;
 use super::object_safety::check_object_safe;
 use crate::data::ast::{
     AspectDecl, AspectMethod, AssignTarget, Block, Bound, BoundHead, Decl, Expr, ForInit, FunDecl,
-    GenericParam, ImplBlock, Param, Program, Span, Stmt, TypeExpr, WhereClause,
+    GenericParam, ImplBlock, Param, Program, Span, Stmt, TypeExpr, Visibility, WhereClause,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::pipeline::type_checking::type_engine::{TypeDefinitionRegistry, VisibleTypeKind};
@@ -121,6 +121,10 @@ impl Cx<'_> {
                     local_types,
                 )?;
                 for f in &sd.fields {
+                    if sd.visibility == Visibility::Public && f.visibility == Visibility::Public {
+                        let what = format!("public field `{}` of `{}`", f.name, sd.name);
+                        self.no_private_names(&f.type_ann, &f.span, None, &what)?;
+                    }
                     // `at` marks this struct's own position, so a field projecting a
                     // struct declared later can be reported precisely.
                     self.ty_at(
@@ -171,8 +175,19 @@ impl Cx<'_> {
         self_allowed: bool,
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
-        anonymous_rows: bool,
+        public_api: bool,
     ) -> Result<(), MetelError> {
+        if public_api && fun.visibility == Visibility::Public {
+            let what = format!("public function `{}`", fun.name);
+            for p in &fun.params {
+                if let Some(t) = &p.type_ann {
+                    self.no_private_names(t, &p.span, self_target, &what)?;
+                }
+            }
+            if let Some(t) = &fun.return_type {
+                self.no_private_names(t, &fun.span, self_target, &what)?;
+            }
+        }
         let generics = Self::with_generics(inherited_generics, &fun.generics);
         self.bounds(
             &fun.generics,
@@ -187,9 +202,7 @@ impl Cx<'_> {
         // whole function scope so returns, locals, and nested annotations use the
         // same validation path as parameters.
         let mut param_generics = generics.clone();
-        if anonymous_rows {
-            param_generics.insert(ANONYMOUS_ROW_MARKER.to_string());
-        }
+        param_generics.insert(ANONYMOUS_ROW_MARKER.to_string());
         for p in &fun.params {
             self.param(p, &param_generics, self_allowed, self_target, local_types)?;
         }
@@ -719,7 +732,16 @@ impl Cx<'_> {
         for method in &ib.methods {
             // Method parameters use the same anonymous-row meaning as free-function
             // parameters: each `..` generic argument gets its own fresh scheme variable.
-            self.fun(method, &generics, true, self_target, local_types, true)?;
+            // An aspect impl's methods take their visibility from the aspect, so the
+            // public-signature rule is for the type's own inherent methods.
+            self.fun(
+                method,
+                &generics,
+                true,
+                self_target,
+                local_types,
+                ib.aspect_name.is_none(),
+            )?;
         }
         Ok(())
     }
@@ -1239,6 +1261,74 @@ impl Cx<'_> {
             format!("unknown aspect `{name}`"),
             span,
         )
+    }
+
+    /// A public signature (or public field) may not name a private field in a residual
+    /// type: the name would become part of the module's API. The residual is still
+    /// usable (a caller can pass it along), it just cannot be spelled with a private
+    /// field name. Names of another module's private fields are rejected by
+    /// [`Self::projection`] already.
+    fn no_private_names(
+        &self,
+        te: &TypeExpr,
+        span: &Span,
+        self_target: Option<&str>,
+        what: &str,
+    ) -> Result<(), MetelError> {
+        let go = |t: &TypeExpr| self.no_private_names(t, span, self_target, what);
+        match te {
+            TypeExpr::RecordProjection { path, fields, .. }
+            | TypeExpr::OpenRecordProjection { path, fields, .. } => {
+                let target = if path.len() == 1 && path[0] == "Self" {
+                    self_target.map_or_else(|| "Self".to_string(), str::to_string)
+                } else {
+                    path.join("::")
+                };
+                let Some((_, struct_name, raw_fields)) = self
+                    .registry
+                    .projection_struct_fields(self.current_module, &target)
+                else {
+                    return Ok(());
+                };
+                for field in fields {
+                    if raw_fields
+                        .iter()
+                        .any(|e| e.name == *field && e.visibility == Visibility::Private)
+                    {
+                        return Err(MetelError::type_error(
+                            TypeErrorCode::T0009,
+                            format!(
+                                "visibility error: {what} names private field `{field}` of \
+                                 `{struct_name}` in its signature; a private field name may \
+                                 not appear in a public signature"
+                            ),
+                            span,
+                        ));
+                    }
+                }
+                Ok(())
+            }
+            TypeExpr::Named(_, items) | TypeExpr::Tuple(items) => items.iter().try_for_each(go),
+            TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
+                fields.iter().try_for_each(|(_, t)| go(t))
+            }
+            TypeExpr::Array(inner)
+            | TypeExpr::SizedArray(inner, _)
+            | TypeExpr::Reference(inner)
+            | TypeExpr::MutReference(inner)
+            | TypeExpr::RowArgLiteral(inner)
+            | TypeExpr::Projection { base: inner, .. } => go(inner),
+            TypeExpr::Fun {
+                params,
+                return_type,
+                ..
+            } => {
+                params.iter().try_for_each(go)?;
+                return_type.as_deref().map_or(Ok(()), go)
+            }
+            TypeExpr::ImplAspect { bound, .. } | TypeExpr::DynAspect { bound, .. } => go(bound),
+            TypeExpr::Unit | TypeExpr::RowArg(_) => Ok(()),
+        }
     }
 
     fn projection(
