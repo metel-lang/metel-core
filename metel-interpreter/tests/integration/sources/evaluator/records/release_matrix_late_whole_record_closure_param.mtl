@@ -1,0 +1,9 @@
+// Whole-record open rows x closures (RFC-0179): a closure with an open-row parameter owns the
+// whole argument, so records with non-Copy fields of different shapes are all accepted.
+fun main() {
+    let describe := |p: { id: i64, .. }| { p.id };
+    let r := { id = 7, label = "owned".to_string(), tags = ["a".to_string()] };
+    assert(describe(r) == 7);
+    let r2 := { id = 9, other = 1 };
+    assert(describe(r2) == 9);
+}

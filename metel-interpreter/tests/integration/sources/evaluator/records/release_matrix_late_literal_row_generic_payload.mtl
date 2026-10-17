@@ -1,0 +1,17 @@
+// Literal rows x generic functions (RFC-0180): setters whose added field has a generic type,
+// chained so the earlier fields survive in the written return row.
+record Box<row R> { data: { ..R } }
+
+fun first<T, row R: !{ first }>(b: Box<..R>, t: T) -> Box<..{ first: T, ..R }> {
+    Box { data = { first = t, ..b.data } }
+}
+
+fun second<T, row R: !{ second }>(b: Box<..R>, t: T) -> Box<..{ second: T, ..R }> {
+    Box { data = { second = t, ..b.data } }
+}
+
+fun main() {
+    let b := second(first(Box { data = {} }, 5), "x".to_string());
+    assert(b.data.second == "x");
+    assert(b.data.first == 5);
+}

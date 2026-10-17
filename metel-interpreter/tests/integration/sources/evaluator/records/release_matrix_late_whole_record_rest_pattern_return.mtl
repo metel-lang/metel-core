@@ -1,0 +1,13 @@
+// Whole-record open rows x rest patterns x ownership (RFC-0179, RFC-0178): the callee owns the
+// whole record, destructures the remainder out and returns it; the caller owns the result.
+fun strip<row Rest>(d: { token: String, ..Rest }) -> { ..Rest } {
+    let { token: _, ..rest } := d;
+    rest
+}
+
+fun main() {
+    let d := { token = "t".to_string(), user = "u".to_string(), n = 3 };
+    let r := strip(d);
+    assert(r.user == "u");
+    assert(r.n == 3);
+}

@@ -1,0 +1,2 @@
+public struct Ticket { public id: i64, public label: String, secret: String }
+public fun make() -> Ticket { Ticket { id = 1, label = "l".to_string(), secret = "s".to_string() } }

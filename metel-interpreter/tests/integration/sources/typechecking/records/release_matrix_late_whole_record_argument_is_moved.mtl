@@ -1,0 +1,9 @@
+// Whole-record open rows x ownership (RFC-0179): the argument moves into the parameter whole, so
+// a later read of one of its non-Copy fields is a use of a moved value.
+fun take<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun main() {
+    let r := { x = 1, name = "s".to_string() };
+    let _ := take(r);
+    let _ := r.name; // ERROR[T0019]
+}

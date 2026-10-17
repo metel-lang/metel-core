@@ -1,0 +1,12 @@
+// Whole-record open rows x row-conditional impls (RFC-0179, RFC-0121 section 3): a method of a
+// conditional impl takes an open-row parameter whose remainder holds a String.
+record Cfg<row R> { data: { ..R } }
+
+extend<row R: { port: i64, .. }> Cfg<..R> {
+    fun with<row Q>(self, extra: { n: i64, ..Q }) -> i64 { self.data.port + extra.n }
+}
+
+fun main() {
+    let c := Cfg { data = { port = 80, host = "h".to_string() } };
+    assert(c.with({ n = 2, note = "x".to_string() }) == 82);
+}
