@@ -1,0 +1,8 @@
+// RFC-0179: an open-row parameter owns the whole argument. `label` is not `Copy`, and the
+// callee drops it with the parameter; nothing is rejected at the call.
+fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+
+fun main() {
+    let r := { x = 1.0, label = "gone".to_string() };
+    assert(get_x(r) == 1.0);
+}

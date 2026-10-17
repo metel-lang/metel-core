@@ -52,9 +52,10 @@ pub enum TypeErrorCode {
     T0030, // Borrow into enclosing closure environment (RFC-0050)
     T0031, // Invalid program entry point (RFC-0167)
     T0032, // Anonymous row generic argument outside function/method parameters (RFC-0121)
-    T0033, // By-value width subtyping would forget a non-`Copy` field (RFC-0121 §4)
+    T0033, // A record spread through a reference needs every field `Copy` (RFC-0178; was also RFC-0121 §4 by-value width subtyping until RFC-0179)
     T0034, // Duplicate method definition on overlapping inherent impls (#1322)
     T0035, // Use not granted by a generic definition's declared bounds (RFC-0173)
+    T0036, // By-value open-row parameter over a `Drop` brand would drop a narrowed residual (RFC-0179, #949)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -629,51 +629,35 @@ pub(super) fn check_fun_call_bounds(
     Ok(())
 }
 
-/// RFC-0121 §4, width subtyping, concrete case: an open-row-tailed parameter
-/// (`{ x, ..R }` / `Handle.{ fd, ..R }`) takes its argument *by value*, so the
-/// call narrows it to the named fields and silently forgets the rest. Sound
-/// only when every forgotten field is `Copy` -- a non-`Copy` field would have
-/// no owner left to drop it (or to discharge a linear field's use-once
-/// obligation). Borrow position carries no such restriction, but an
-/// open-row-tailed parameter's type is grammar-restricted to the top level of
-/// a `fun_decl_param` (never under `&`), so only the by-value case is
-/// reachable and this runs unconditionally for those parameters.
+/// RFC-0179: an open-row-tailed parameter (`{ x, ..R }` / `Handle.{ fd, ..R }`) takes its
+/// argument *by value and whole*. The callee owns the fields the parameter does not name and
+/// may move, return or drop them, so nothing is forgotten at the call and the remainder needs
+/// no `Copy` bound (this replaces RFC-0121 §4's width-subtyping rule).
 ///
-/// The abstract case -- the remainder is itself an unconstrained row inside a
-/// generic body -- has no fields to walk and needs RFC-0123's `all R: Copy`
-/// (metel-core#1302); an argument whose fields aren't structurally known is
-/// skipped here, not rejected.
+/// The one thing left to check is a nominal argument whose type has a `Drop` impl: dropping
+/// it inside the callee would need drop dispatch against a narrowed residual, which is not
+/// implemented (RFC-0137 §5, #949), so that case is rejected with its own code. A plain record
+/// that merely contains a `Drop` value is not affected, because dropping a whole value is
+/// ordinary.
 fn check_width_subtyping(
     concrete: &Type,
-    row: &RowConstraint,
+    _row: &RowConstraint,
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    let Some(record_fields) =
-        structural_fields_for_row_check(concrete, registry, current_module, span)
-    else {
-        return Ok(());
-    };
-    for (label, ty) in &record_fields {
-        if row.fields.iter().any(|required| &required.label == label) {
-            continue;
-        }
-        let is_copy = matches!(
-            ty,
-            Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
-        ) || registry.type_satisfies_aspect(current_module, ty, "Copy");
-        if !is_copy {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0033,
-                format!(
-                    "passing `{concrete}` by value to an open row parameter forgets field \
-                     `{label}` of type `{ty}`, which is not `Copy` -- no owner would be left \
-                     for it (RFC-0121 §4)"
-                ),
-                span,
-            ));
-        }
+    if matches!(concrete, Type::Named(..))
+        && registry.type_satisfies_aspect(current_module, concrete, "Drop")
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0036,
+            format!(
+                "passing `{concrete}` by value to an open row parameter would drop a narrowed \
+                 `{concrete}`; drop dispatch against a narrowed residual is not implemented \
+                 (RFC-0137 §5, #949)"
+            ),
+            span,
+        ));
     }
     Ok(())
 }
