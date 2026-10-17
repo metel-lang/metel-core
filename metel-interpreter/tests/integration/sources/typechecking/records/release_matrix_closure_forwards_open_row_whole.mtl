@@ -1,0 +1,13 @@
+// RFC-0179: a closure that captures an open-row parameter and passes it on forgets nothing, so
+// no `where all R: Copy` is needed.
+type Callback := once || -> i64;
+fun head<row R>(value: { id: i64, ..R }) -> i64 { value.id }
+fun accepted<row R>(value: { id: i64, ..R }) -> i64 {
+    let callback: Callback := [value] once || {
+        head(value)
+    };
+    callback()
+}
+fun main() {
+    assert(accepted({ id = 5, text = "kept".to_string() }) == 5);
+}

@@ -1,0 +1,14 @@
+// RFC-0179 section 1.5: only a nominal `Drop` brand is rejected. A plain record that merely
+// contains a `Drop` value in its remainder is dropped whole, which is ordinary.
+struct Handle { fd: i64 }
+
+extend Handle: Drop {
+    fun drop(&var self) { }
+}
+
+fun get_x<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun main() {
+    let r := { x = 7, handle = Handle { fd = 1 } };
+    assert(get_x(r) == 7);
+}

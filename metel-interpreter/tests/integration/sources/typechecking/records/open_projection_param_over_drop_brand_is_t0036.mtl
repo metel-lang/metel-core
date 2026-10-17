@@ -1,0 +1,14 @@
+// RFC-0179 section 1.5: passing a `Drop` brand to a projection-tailed parameter would drop a
+// narrowed `Handle.{ fd }`, which needs drop dispatch against a narrowed residual (#949).
+struct Handle { fd: i64, name: String }
+
+extend Handle: Drop {
+    fun drop(&var self) { }
+}
+
+fun read_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 3, name = "x".to_string() };
+    let _ := read_fd(h); // ERROR[T0036]
+}

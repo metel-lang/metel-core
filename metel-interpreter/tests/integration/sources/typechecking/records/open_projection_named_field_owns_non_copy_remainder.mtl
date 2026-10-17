@@ -1,0 +1,10 @@
+// RFC-0179: `Handle.{ fd, ..R }` given a whole `Handle` takes it whole; `name` is not `Copy` and
+// is the callee's to drop.
+struct Handle { fd: i64, name: String }
+
+fun read_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 3, name = "x".to_string() };
+    assert(read_fd(h) == 3);
+}

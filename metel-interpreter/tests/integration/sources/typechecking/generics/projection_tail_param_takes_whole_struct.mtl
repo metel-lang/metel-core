@@ -1,0 +1,10 @@
+// RFC-0179: the residual-projection tail form (`Handle.{ fd, ..R }`) owns the whole `Handle`
+// too, so the non-`Copy` `name` is not forgotten and the call is accepted.
+struct Handle { fd: i64, name: String }
+
+fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+
+fun main() {
+    let h := Handle { fd = 1, name = "gone".to_string() };
+    assert(get_fd(h) == 1);
+}

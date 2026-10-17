@@ -1,9 +1,9 @@
 [options]
-error = ["T0033"]
+error = ["T0036"]
 spec = ["spec.types.generics.open-rows.legality-3"]
 
 [expect]
 status = "typecheck_error"
-code = "T0033"
-contains = "abstract open-row parameter"
-line = 6
+code = "T0036"
+contains = "drop dispatch against a narrowed residual"
+line = 13

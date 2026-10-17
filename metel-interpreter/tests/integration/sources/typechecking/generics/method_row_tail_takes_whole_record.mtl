@@ -1,0 +1,13 @@
+// RFC-0179: a method's open-row parameter takes its argument whole, so a record with a
+// non-`Copy` field the parameter does not name is accepted; the callee owns `name`.
+struct Handle { fd: i64 }
+
+extend Handle {
+    fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+}
+
+fun main() {
+    let h := Handle { fd = 1 };
+    let r := { x = 2, name = "s".to_string() };
+    assert(h.add(r) == 3);
+}
