@@ -1,0 +1,5 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+move_check = true
+spec = ["spec.modules.visibility.legality-3", "spec.modules.visibility.legality-8", "spec.types.generics.open-rows.legality-3"]

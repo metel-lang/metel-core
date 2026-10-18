@@ -4303,8 +4303,19 @@ impl TypeDefinitionRegistry {
                 fields.sort_by(|(left, _), (right, _)| left.cmp(right));
                 Some(fields)
             }
-            InferType::Named(name, args, _) => {
-                let (id, _, templates) = self.projection_struct_fields(current_module, name)?;
+            InferType::Named(name, args, nominal) => {
+                // The value's own declaration identity, when it carries one, beats a name
+                // lookup from `current_module`: a generic body in another module (`println`
+                // in `std::core`, say) reconstructed for a record the caller declared cannot
+                // see that record's name.
+                let (id, templates) = if let Some(id) = nominal.get()
+                    && let Some(templates) = self.struct_fields_by_id(id)
+                {
+                    (id, templates)
+                } else {
+                    let (id, _, templates) = self.projection_struct_fields(current_module, name)?;
+                    (id, templates)
+                };
                 let mut subst = Substitution::new();
                 if let Some(params) = self.struct_type_params_by_id(id) {
                     for (&tv, concrete) in params.iter().zip(args.iter()) {

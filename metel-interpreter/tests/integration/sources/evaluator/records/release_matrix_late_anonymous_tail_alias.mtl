@@ -1,0 +1,12 @@
+// Anonymous-tail open records x type aliases x whole-record rows (RFC-0181, RFC-0160, RFC-0179):
+// an alias whose right-hand side has an anonymous tail is a fresh row at each use, as a
+// parameter and as a binding annotation, and the String remainder is carried whole.
+type Loose := { x: i64, .. };
+
+fun take(p: Loose) -> i64 { p.x }
+
+fun main() {
+    assert(take({ x = 1, s = "n".to_string() }) == 1);
+    let a: Loose := { x = 2, t = 3 };
+    assert(a.x == 2);
+}

@@ -1,0 +1,16 @@
+// Literal rows x ownership x patterns (RFC-0180): a consuming setter chain, then the result is
+// destructured field by field.
+record Req<row R> { data: { ..R } }
+
+extend<row R: !{ host }> Req<..R> {
+    fun host(self, h: String) -> Req<..{ host: String, ..R }> {
+        Req { data = { host = h, ..self.data } }
+    }
+}
+
+fun main() {
+    let r := Req { data = {} }.host("a".to_string());
+    let { data } := r;
+    let { host } := data;
+    assert(host == "a");
+}

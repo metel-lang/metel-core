@@ -1,0 +1,9 @@
+[options]
+error = ["T0009"]
+spec = ["spec.modules.visibility.legality-8"]
+
+[expect]
+status = "typecheck_error"
+code = "T0009"
+contains = "public function `peek`"
+line = 7

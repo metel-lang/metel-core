@@ -1334,6 +1334,14 @@ fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
             matches!(arg, TypeExpr::RowArg(tail) if tail.var.as_deref() == Some(var))
                 || type_names_row_arg(arg, var)
         }),
+        // RFC-0180: `Packet<..{ id: i64, ..R }>` -- the literal row's own tail is a row
+        // argument of the nominal type just as `..R` is.
+        TypeExpr::RowArgLiteral(inner) => {
+            matches!(inner.as_ref(), TypeExpr::OpenRecord(_, tail) if tail.var.as_deref() == Some(var))
+                || type_names_row_arg(inner, var)
+        }
+        TypeExpr::OpenRecord(fields, _) => fields.iter().any(|(_, t)| type_names_row_arg(t, var)),
+        TypeExpr::Record(fields) => fields.iter().any(|(_, t)| type_names_row_arg(t, var)),
         TypeExpr::Reference(inner) | TypeExpr::MutReference(inner) | TypeExpr::Array(inner) => {
             type_names_row_arg(inner, var)
         }

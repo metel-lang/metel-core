@@ -1,0 +1,9 @@
+[options]
+error = ["T0012"]
+spec = ["spec.types.generics.open-rows.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not implement `Copy`"
+line = 9

@@ -1,0 +1,16 @@
+// Literal rows x field-wise record aspects (RFC-0180, #1350): a record whose row was extended by
+// a literal-row setter is cloned field by field.
+record Req<row R> { data: { ..R } }
+
+extend<row R: !{ host }> Req<..R> {
+    fun host(self, h: String) -> Req<..{ host: String, ..R }> {
+        Req { data = { host = h, ..self.data } }
+    }
+}
+
+fun main() {
+    let r := Req { data = {} }.host("a".to_string());
+    let c := r.clone();
+    assert(c.data.host == "a");
+    assert(r.data.host == "a");
+}

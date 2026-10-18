@@ -1,0 +1,17 @@
+// Literal rows x closures x written function types (RFC-0180, RFC-0154): a written function
+// type whose parameter and return carry literal rows, implemented by an annotated closure.
+record Req<row R> { data: { ..R } }
+
+fun apply<row R: !{ host }>(
+    r: Req<..R>,
+    f: |Req<..R>| -> Req<..{ host: String, ..R }>,
+) -> Req<..{ host: String, ..R }> {
+    f(r)
+}
+
+fun main() {
+    let r := Req { data = { port = 1 } };
+    let out := apply(r, |q: Req<..{ port: i64 }>| { Req { data = { host = "h".to_string(), ..q.data } } });
+    assert(out.data.host == "h");
+    assert(out.data.port == 1);
+}

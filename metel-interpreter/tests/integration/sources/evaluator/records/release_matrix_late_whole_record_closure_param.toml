@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.open-rows.legality-3", "spec.types.generics.open-rows.legality-5"]

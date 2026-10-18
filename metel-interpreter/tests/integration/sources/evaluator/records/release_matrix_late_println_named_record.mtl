@@ -1,0 +1,10 @@
+// Named records x built-in Display (RFC-0120, #1338, metel-core#1492): println of a named
+// record. `println` is generic in std::core, so reconstructing its body for a record declared
+// elsewhere must find the record's row-conditional Display by the value's identity, not by name.
+record P { x: i64, y: i64 }
+
+fun main() {
+    let r := P { x = 1, y = 2 };
+    println(r.to_string());
+    println(r);
+}

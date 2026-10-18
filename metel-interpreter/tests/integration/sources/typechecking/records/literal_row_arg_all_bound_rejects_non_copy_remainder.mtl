@@ -1,0 +1,10 @@
+// metel-core#1493: the field-wise bound on a literal row's tail is enforced at the call, so a
+// remainder holding a non-Copy field is rejected.
+record Req<row R> { data: { ..R } }
+
+fun id_of<row R>(r: Req<..{ id: i64, ..R }>) -> i64 where all R: Copy { r.data.id }
+
+fun main() {
+    let r := Req { data = { id = 4, name = "n".to_string() } };
+    let _ := id_of(r); // ERROR[T0012]
+}

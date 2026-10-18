@@ -1,0 +1,4 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+move_check = true

@@ -1,0 +1,17 @@
+// Residual privacy x partial moves x whole-record open rows (metel-core#1488, RFC-0179): code
+// outside the module moves a public non-Copy field out, which narrows the value to a residual
+// that hides the private field; the residual is passed on generically and to a projection-tail
+// parameter that names only a public field.
+import ticket::Ticket;
+import ticket::make;
+
+fun id_of<row R>(t: Ticket.{ id, ..R }) -> i64 { t.id }
+fun pass<T>(x: T) -> T { x }
+
+fun main() {
+    let t := make();
+    let label := t.label;
+    let kept := pass(t);
+    assert(id_of(kept) == 1);
+    assert(label == "l");
+}
