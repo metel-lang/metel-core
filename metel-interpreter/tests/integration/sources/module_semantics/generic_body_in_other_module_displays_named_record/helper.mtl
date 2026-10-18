@@ -1,0 +1,1 @@
+public fun show<T: Display>(x: T) -> String { x.to_string() }

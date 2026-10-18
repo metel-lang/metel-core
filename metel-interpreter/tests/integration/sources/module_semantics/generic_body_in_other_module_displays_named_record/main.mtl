@@ -1,0 +1,10 @@
+// metel-core#1492: a generic body in another module, reconstructed for a record declared here,
+// finds the record's built-in Display through the value's identity.
+import helper::show;
+
+record P { x: i64, y: i64 }
+
+fun main() {
+    let r := P { x = 1, y = 2 };
+    assert(show(r) == "P { x: 1, y: 2 }");
+}
