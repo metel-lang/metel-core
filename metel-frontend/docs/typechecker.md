@@ -748,6 +748,35 @@ types rather than inventing erased type arguments. See ADR-0061.
 
 ---
 
+### Open-row parameters, literal rows and residual visibility (v0.14.0)
+
+**By-value open rows own the whole argument (RFC-0179).** A parameter with an open row tail
+(`{ x, ..R }`, `Handle.{ fd, ..R }`) takes its argument whole; the callee owns the
+unnamed fields. `check_width_subtyping` (construction/calls.rs) therefore checks nothing about
+the remainder's `Copy`-ness any more: it only rejects a nominal argument whose type has a
+`Drop` impl (`T0036`), because dropping it in the callee would need drop dispatch against a
+narrowed residual (#949). The generic-body counterpart in `inference/expressions.rs` no longer
+demands `where all R: Copy` to forward an abstract open-row parameter. `T0033` survives only
+for spreading a record through a reference.
+
+**Literal row arguments (RFC-0180).** `Req<..{ host: String, ..R }>` parses to
+`TypeExpr::RowArgLiteral(payload)` inside a `Named`'s arguments. The wrapper exists so
+`projections::check` can reject a literal row where an ordinary type parameter is expected;
+every other pass lowers it as its payload, the same `Record`/`OpenRecord` it spells, which the
+inference conversion turns into a `RowExtend` over the row variable. `type_names_row_arg`
+recognises the tail of a literal row as a nominal row argument for `where all R: ..`.
+
+**Field visibility through residuals (#1488).** A residual keeps its brand, so the RFC-0032
+check (`check_field_visibility`) runs on field access to a residual (the field is looked up on the
+brand's struct), on the projection expression and on the projection type. Separately,
+`projections.rs` rejects a `public` function, inherent method or public field of a public struct
+whose written type names a private field in a residual (`no_private_names`, `T0009`); aspect
+impl methods are exempt because their visibility comes from the aspect. Row conditions on a
+nominal receiver (`row_condition_fields`) resolve the type by its `NominalId` before falling
+back to a name lookup, so a generic body in another module can see the record's row (#1492).
+
+---
+
 ### Symbolic rows in ownership analysis
 
 Destructuring declarations observe a place initializer, then let the pattern
