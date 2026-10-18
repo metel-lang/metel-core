@@ -1,0 +1,2 @@
+[options]
+skip = "metel-core#1492 -- println of a named record raises I0001"

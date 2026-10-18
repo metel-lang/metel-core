@@ -1,0 +1,23 @@
+// Literal rows x dyn aspects (RFC-0180, RFC-0008): a record produced by a literal-row setter is
+// coerced to a `dyn` object and dispatched through a row-conditional impl.
+aspect Named {
+    fun name(&self) -> String;
+}
+
+record Req<row R> { data: { ..R } }
+
+extend<row R: { host: String, .. }> Req<..R>: Named {
+    fun name(&self) -> String { self.data.host.clone() }
+}
+
+extend<row R: !{ host }> Req<..R> {
+    fun host(self, h: String) -> Req<..{ host: String, ..R }> {
+        Req { data = { host = h, ..self.data } }
+    }
+}
+
+fun main() {
+    let r := Req { data = {} }.host("n".to_string());
+    let d: dyn Named := r;
+    assert(d.name() == "n");
+}

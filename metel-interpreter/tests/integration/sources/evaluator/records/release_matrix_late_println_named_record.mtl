@@ -1,0 +1,9 @@
+// Named records x built-in Display (RFC-0120, #1338): println of a named record. Documents
+// metel-core#1492 -- `println` raises I0001 although `r.to_string()` works.
+record P { x: i64, y: i64 }
+
+fun main() {
+    let r := P { x = 1, y = 2 };
+    println(r.to_string());
+    println(r);
+}

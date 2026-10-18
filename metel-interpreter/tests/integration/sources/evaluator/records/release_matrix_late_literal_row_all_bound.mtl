@@ -1,0 +1,12 @@
+// Literal rows x field-wise bounds (RFC-0180, RFC-0123). Documents metel-core#1493 -- `all R`
+// is rejected when R is the tail of a literal row argument.
+record Req<row R> { data: { ..R } }
+
+fun id_of<row R>(r: Req<..{ id: i64, ..R }>) -> (i64, i64) where all R: Copy {
+    (r.data.id, r.data.id)
+}
+
+fun main() {
+    let r := Req { data = { id = 4, n = 1 } };
+    assert(id_of(r).0 == 4);
+}

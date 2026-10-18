@@ -1,0 +1,2 @@
+[options]
+skip = "metel-core#1493 -- all R rejected for the tail of a literal row argument"
