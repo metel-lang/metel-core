@@ -1,0 +1,10 @@
+// Whole-record open rows x type aliases x generics (RFC-0179, RFC-0160): a row-parameterised
+// alias spells the open-row parameter, and a record with a String remainder is passed whole.
+type Wide<row R> := { x: i64, ..R };
+
+fun take<row R>(p: Wide<..R>) -> i64 { p.x }
+
+fun main() {
+    let r := { x = 1, name = "n".to_string() };
+    assert(take(r) == 1);
+}
