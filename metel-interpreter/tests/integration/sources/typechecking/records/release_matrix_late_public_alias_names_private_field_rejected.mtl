@@ -1,0 +1,11 @@
+// Residual privacy x type aliases (metel-core#1488, RFC-0160): an alias that spells a private
+// field does not hide it; the public signature using the alias is rejected after expansion.
+public struct Ticket { public id: i64, secret: String }
+
+type Peek := Ticket.{ secret };
+
+public fun peek(t: Ticket) -> Peek { // ERROR[T0009]
+    t.{ secret }
+}
+
+fun main() {}
