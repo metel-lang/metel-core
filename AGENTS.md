@@ -41,7 +41,8 @@ git submodule update --init docs
 
 - Language behavior: `docs/reference/spec/`.
 - RFC lifecycle and design history: `docs/rfcs/PROCESS.md` and the RFC file.
-- Implementation work and release assignment: GitHub issues and milestones.
+- Implementation work and release assignment: GitHub issues and milestones; the order of
+  planned themes and the milestone rules: `ROADMAP.md`.
 - Current code architecture: the crate docs named above and the code itself.
 - Versioning/release rules: `RELEASING.md`; release history:
   `docs/release-notes/changelog.md`.
@@ -139,8 +140,10 @@ than sharing one writable target directory concurrently.
 
 ## GitHub and branch workflow
 
-GitHub Issues are the task source of truth. Milestones are releases; dependencies are
-written as `Blocked by #N` / `Blocks #N` in issue bodies.
+GitHub Issues are the task source of truth. The one numbered milestone (`vX.Y.Z`) is the
+release in progress; later work sits in unnumbered **theme** milestones, and a version is
+chosen at the release cut (`ROADMAP.md`). Dependencies are written as `Blocked by #N` /
+`Blocks #N` in issue bodies.
 
 Normal implementation flow:
 
@@ -149,7 +152,7 @@ Normal implementation flow:
 3. One issue, branch, and pull request.
 4. Rebase onto `origin/develop`; never merge `develop` into the branch.
 5. Run Tier 3, open the PR to `develop`, and merge by local fast-forward.
-6. `main` moves only when a release milestone completes.
+6. `main` moves only when the numbered release milestone completes.
 
 GitHub's hosted merge buttons do not provide the required true fast-forward. After
 review:
