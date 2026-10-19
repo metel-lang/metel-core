@@ -80,7 +80,9 @@ asserts a concrete result:
 - `spec = ["…"]` tags citing every rule block the fixture exercises, for both features.
 
 If a fixture reveals a **bug** — wrong value, missing rejection, a panic, an internal
-error — stop writing fixtures, file an issue (`gh issue create`, milestone `$ARGUMENTS`),
+error — stop writing fixtures, file an issue (`gh issue create --label bug,severity:<soundness|incorrect|diagnostic>`; add
+`regression` if it worked in an earlier tag; milestone `$ARGUMENTS` for a soundness bug or a
+regression, otherwise `Backlog`; see `ROADMAP.md` § Bugs),
 and note it in the report. Do not fix it inline; it goes through `/start-issue` like any
 other. A fixture that documents the bug is committed `skip = "metel-core#N"` so the
 corpus records the gap.
@@ -141,7 +143,7 @@ Legend: fixture `path`, `n/a: <reason>`, `GAP→#N` (filled, fixture `path`),
 
 ## Findings
 
-- **#N** — <one line>. <fixed on #M | deferred, re-milestoned to vX.Y.Z>.
+- **#N** — <one line>. <fixed on #M | deferred to Backlog>.
 - (none) if nothing surfaced.
 
 ## Sign-off

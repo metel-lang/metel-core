@@ -26,6 +26,35 @@ changes the language. Until then nothing refers to a future number.
   blog and release notes say *planned*, or name the theme. They never name a version that
   has not been cut. A shipped feature gets its real version (`Since v0.14.0`).
 
+## Bugs
+
+Bugs are not planned work, so they are not scheduled into themes.
+
+- **What counts.** A bug is observable behaviour that contradicts the spec or a documented
+  guarantee: a wrong result, a program accepted that should be rejected (or the reverse), an
+  internal error (`I00xx`), a crash, or a wrong diagnostic. A known, intentional limitation
+  or a not-yet-built feature is a feature, not a bug; limitations ship as limitation
+  records with the issue linked. Defects in tooling (CI, doc checkers, release scripts) are
+  bugs too and also carry `tooling`.
+- **Where they live.** Every bug carries the `bug` label and one severity label, and sits in
+  the **Backlog** milestone. Backlog is never promoted or renamed. A bug is not placed in a
+  theme.
+- **Severity.**
+  - `severity:soundness`: accepts a program that breaks a language guarantee (type,
+    ownership, memory safety). Blocks the next release wherever it is found.
+  - `severity:incorrect`: wrong result, crash, internal error, or a spurious rejection.
+  - `severity:diagnostic`: wrong or misleading message only; the behaviour is right.
+- **Regressions.** A bug that worked in an earlier tag also carries `regression`, and is
+  fixed ahead of other bugs of the same severity.
+- **Entering a release.** A bug moves from Backlog into the numbered milestone only when we
+  commit to fixing it in that release. A soundness bug or a regression introduced since the
+  last tag is committed by default. Deferring one moves it back to Backlog, never to a theme.
+- **Release type.** A fix that changes only diagnostics or internals can ship in a patch. A
+  fix that changes which programs are accepted is language-visible and follows the versioning
+  rule above.
+- **Findings from `/milestone-integration-test`** are filed as bugs with a severity and go to
+  Backlog, except soundness bugs and regressions, which go to the numbered milestone.
+
 ## Order
 
 Horizon **now**

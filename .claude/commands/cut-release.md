@@ -44,6 +44,17 @@ gh issue list --milestone  --state open
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
 must be **re-milestoned to a later version** — not left silently attached to this one.
+A deferred **bug** goes back to the `Backlog` milestone, never to a theme.
+
+Then check bugs repo-wide, not just in this milestone:
+
+```bash
+gh issue list --label severity:soundness --state open
+gh issue list --label regression --state open
+```
+
+An open `severity:soundness` bug blocks the release wherever it is milestoned. An open
+`regression` introduced since the last tag blocks it unless the user explicitly defers it.
 Confirm closed issues had their acceptance criteria satisfied; a closed box is not proof.
 
 ## Step 1b — Integration session

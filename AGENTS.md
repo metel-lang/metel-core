@@ -145,6 +145,11 @@ release in progress; later work sits in unnumbered **theme** milestones, and a v
 chosen at the release cut (`ROADMAP.md`). Dependencies are written as `Blocked by #N` /
 `Blocks #N` in issue bodies.
 
+Bugs are not scheduled into themes. File them with the `bug` label, one `severity:*`
+label (`soundness`, `incorrect`, `diagnostic`), and the **Backlog** milestone; add
+`regression` if it worked in an earlier tag. A bug enters the numbered milestone only when we
+commit to fixing it in that release. Definitions: `ROADMAP.md` § Bugs.
+
 Normal implementation flow:
 
 1. Branch from current `develop`, never `main`.
