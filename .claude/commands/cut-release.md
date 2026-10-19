@@ -2,7 +2,10 @@
 
 Cut a release: run the release gate, fast-forward `main` to `develop`, tag, and publish.
 
-**Arguments:** `$ARGUMENTS` — the version, e.g. `v0.12.0`
+**Arguments:** `$ARGUMENTS` — the version, e.g. `v0.12.0`. The version is chosen here, by the
+rule in gate item 2, not when the work was planned (`ROADMAP.md`). If the release was
+built from a theme milestone, rename that milestone to `$ARGUMENTS` first (renaming keeps its
+issues); after the cut, promote the next theme the same way.
 
 **Nothing is pushed until every gate item passes.** The gate is defined in AGENTS.md
 § Release Workflow — this command runs it, it does not redefine it. If the two disagree,

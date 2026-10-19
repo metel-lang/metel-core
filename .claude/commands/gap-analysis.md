@@ -4,7 +4,8 @@ Analyse a version milestone's open issues for description gaps, scope ambiguitie
 missing work. Gather every question in a single batched pass, then update the issues so
 the milestone can be executed without further clarification.
 
-**Arguments:** `$ARGUMENTS` — the milestone, e.g. `v0.12.0`
+**Arguments:** `$ARGUMENTS` — the milestone: the numbered release in progress (`v0.14.1`) or a
+theme (`Ownership core`) about to be promoted to it (see `ROADMAP.md`).
 
 **Complete the full analysis before asking the user anything.** All questions are batched
 into one interaction, not asked one at a time.

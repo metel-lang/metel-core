@@ -2,7 +2,8 @@
 
 Exercise a completed milestone's features **in combination**, before `/cut-release`.
 
-**Arguments:** `$ARGUMENTS` — the version, e.g. `v0.13.0`
+**Arguments:** `$ARGUMENTS` — the version, e.g. `v0.13.0` (the numbered release milestone; a
+release built from a theme is renamed to its version before this session, see `ROADMAP.md`).
 
 The per-PR gate (AGENTS.md § Verification tiers) proves each diff in isolation.
 `/cut-release`'s Step 2 sweeps repository-wide hygiene. Neither exercises what happens
