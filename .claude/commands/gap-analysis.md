@@ -21,6 +21,11 @@ analyse, and no cycle object anywhere.
 gh issue list --milestone  --state open
 ```
 
+Bugs live in the `Backlog` milestone, not in themes (`ROADMAP.md` § Bugs). Also list
+`gh issue list --milestone Backlog --state open` and propose which to commit to this
+milestone (soundness bugs and regressions by default). Flag any bug found inside the
+milestone for moving to Backlog or committing.
+
 Read each issue in full (`gh issue view <N>`) — description, labels, referenced issue numbers.
 Then read `docs/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
 triggers) for anything bearing on this milestone, and the spec sections in
