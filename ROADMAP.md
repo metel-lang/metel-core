@@ -12,9 +12,14 @@ changes the language. Until then nothing refers to a future number.
   `/cut-release` run on it.
 - **Every other milestone is a theme**, named for the capability it delivers and carrying no
   version number. The first line of its description is `Horizon: next`, `later` or
-  `parallel`, then `Formerly vX.Y.Z` for the ones renamed from the old numbering, then the
-  scope. `parallel` is work that does not sit on the language critical path (website,
-  documentation, project).
+  `parallel`, then the outcome, the exit test (`Exit:`), what it must come `After:`, and
+  what it was `Formerly:`. `parallel` is work off the critical path (website, documentation,
+  project, and language additions with no ordering constraint): it can be taken whenever its
+  listed prerequisites are met.
+- **A theme is coherent.** It has one outcome in a sentence, an exit test, and every issue in
+  it is a necessary step to that outcome. An issue that is not goes to its nearest theme, to
+  Backlog if it is a bug, or stays without a milestone (with `needs-design` or
+  `rfc-tracking`) until it has a home.
 - **Promotion.** When a release is cut, pick the theme(s) that follow, choose the version
   by the versioning rule, and **rename the theme milestone to that version** (renaming keeps
   its issues and links). A theme can also be split: move its issues into the numbered
@@ -57,45 +62,58 @@ Bugs are not planned work, so they are not scheduled into themes.
 
 ## Order
 
-Horizon **now**
-1. `v0.14.1`: CI and documentation-tooling reliability, plus the language fixes already
-   assigned to it.
+The numbered list is the priority order: each theme comes after the ones it lists in its
+milestone description (`After:`). The tag is its horizon, how near it is.
 
-Horizon **next**
-2. **Copy/Clone settlement**: decisions only (RFC-0162, RFC-0135, RFC-0158, #741), before
-   the ownership implementation.
-3. **Ownership core**: real `Drop`, drop order, partial moves, ownership-faithful runtime
-   values, `Copy` migrations into the standard library.
+1. **v0.14.1** [now]: CI and documentation tooling stop failing for unrelated reasons; the pending-marker process exists.
+2. **Copy/Clone settlement** [next]: The Copy/Clone model is decided, so ownership work has a stable target.
+3. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
+4. **Move check default-on** [next]: The move check runs by default on every program.
+5. **Copy migration** [next]: Hardcoded Copy/Clone rules leave the typechecker and live in std.
+6. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
+7. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
+8. **Native contract** [next]: User libraries declare native functions through a backend-neutral contract.
+9. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
+10. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
+11. **Compiler-ready pipeline** [later]: Frozen, monomorphized instances, a frozen core surface and package design.
+12. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references.
+13. **Storage identity** [later]: Storage identity and brand types are settled.
+14. **Storage contract** [later]: Arrays, slices and List have one documented storage contract.
+15. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
+16. **Godot integration** [later]: Godot embeds Metel through the native contract.
+17. **Allocator foundation** [later]: Allocator-selected handles and placement.
+18. **Runtime value semantics** [later]: The evaluator stops deep-cloning and follows ownership.
+19. **Views and projections** [later]: Views and open projections work in every type position.
+20. **Metel-backed List** [later]: A runtime-sized buffer.
+21. **Tracing GC (experimental)** [later]: Local tracing GC.
+22. **Compiler expansion** [later]: Broad end-to-end code generation.
+23. **Compiler MVP** [later]: Standalone multi-module compilation.
+24. **Standard library redesign** [later]: A usable, separately versioned std API.
+25. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
+26. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
+27. **Metaprogramming and derive** [parallel]: Derive, comptime and attributes designed and built.
+28. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
+29. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
+30. **Concurrency, effects and linear types** [later]: Long-range design settlements.
+31. **Playground and interactive docs** [parallel]: Run Metel in the browser.
+32. **Website content and experience** [parallel]: The website and tutorials are current.
+33. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
+34. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
 
-Horizon **later** (in intended order, not a schedule)
-4. **Ownership on by default**: the move check on by default, B0 reference rules, spec
-   audit, native contract, Godot prototype.
-5. **Compiler-ready pipeline**: frontend monomorphization, frozen instances, core surface
-   freeze, package design, conformance corpus.
-6. **Compiled profile v0**: first end-to-end compiled program and the compiled Godot bridge.
-7. **Ownership extensions and views**: self-view narrowing, reference destructuring, nested
-   narrowing, function-type multiplicity.
-8. **Borrow checking**: RFC-0122 shared versus exclusive borrowing, NLL.
-9. **Lifetimes and abstract regions**: lifetime anchors, abstract regions and stored
-   references after borrow checking.
-10. **Storage identity**: storage identity and ownership stabilisation after borrowing.
-11. **Allocator foundation**: placement, allocator-selected handles, associated handle
-    families.
-12. **Language expansion**: language expansion and cleanup, metaprogramming design
-    settlements, outside the critical path.
-13. **Metel-backed List**: a runtime-sized buffer after allocation.
-14. **Tracing GC (experimental)**: local tracing GC after the allocator foundation.
-15. **Compiler expansion**: typed IR and broad end-to-end code generation.
-16. **Compiler MVP**: standalone multi-module compilation and release artifacts.
+Dependencies behind this order:
 
-Horizon **parallel**
-- **Website, docs and project**: website, documentation and project-foundation work; not a
-  dependency of the language or compiler themes.
+- Move check default-on and Copy migration wait on Copy/Clone settlement (#741).
+- Borrow checking (RFC-0122) is before the core-surface freeze, and Lifetimes and regions follow it.
+- Allocator foundation needs Borrow checking, Lifetimes and regions, and Storage identity.
+- Native declarations are part of the frozen core surface (#1358), so Native contract and Narrowed drop receivers precede the freeze; the Godot prototype follows it.
+- Parallel themes are off the critical path and can be taken whenever their prerequisites are met.
 
 ## Retired numbering
 
 The numbers below were used before 2026-10-19. They appear in older issues, RFCs and
-release notes; read them through this table.
+release notes; read them through this table. On 2026-10-20 the mixed theme milestones were
+regrouped (below); a number in an issue body names the old grouping, so the issue's current
+milestone is authoritative.
 
 | Old | Theme |
 |---|---|
@@ -115,3 +133,15 @@ release notes; read them through this table.
 | v0.23.0 | Tracing GC (experimental) |
 | v0.24.0 | Compiler expansion |
 | v0.25.0 | Compiler MVP |
+
+### Old themes after the regrouping
+
+| Old theme | Now |
+|---|---|
+| Ownership core | Drop and partial moves, Copy migration, Storage contract, Runtime value semantics, Aspects and generics, Standard library additions |
+| Ownership on by default | Move check default-on, Reference rules (B0), Borrow checking, Native contract, Narrowed drop receivers, Spec and audit hygiene, Patterns and receivers |
+| Ownership extensions and views | Views and projections, Narrowed drop receivers |
+| Borrow checking, Lifetimes and abstract regions | Borrow checking, Lifetimes and regions |
+| Compiler-ready pipeline | Compiler-ready pipeline, Godot integration |
+| Language expansion | Aspects and generics, Metaprogramming and derive, Records and surface syntax, Concurrency effects and linear types |
+| Website, docs and project | Playground and interactive docs, Website content and experience, Docs and RFC tooling, Engineering hygiene, Standard library additions |
