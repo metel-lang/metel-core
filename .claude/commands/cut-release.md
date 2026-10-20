@@ -39,7 +39,7 @@ That range is what this release ships. Read it — it is the input to every gate
 ## Step 1 — Milestone is actually complete
 
 ```bash
-gh issue list --milestone  --state open
+gh issue list --milestone "$ARGUMENTS" --state open
 ```
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
@@ -82,7 +82,7 @@ release date. Cross-check with:
 tools/changelog-status.sh
 ```
 
-**2. Version number chosen** — per `docs/internal/versioning.md`'s major/minor/patch rule:
+**2. Version number chosen** — per the major/minor/patch rule in `metel-docs-internal/internal/versioning.md`:
 a spec change requires at least a minor bump; a patch must not touch language-visible
 behaviour at all. Bump `metel-interpreter/Cargo.toml`'s `version` to match, in the same
 commit as the changelog finalization.

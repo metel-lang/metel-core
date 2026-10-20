@@ -2,7 +2,7 @@
 
 Planned work is organised by **theme**, not by version number. A version number is a
 statement about what shipped, so it is chosen when a release is cut (`/cut-release`), by
-the rule in `RELEASING.md`: a spec change needs at least a minor bump, a patch never
+the rule in `metel-docs-internal/internal/versioning.md`: a spec change needs at least a minor bump, a patch never
 changes the language. Until then nothing refers to a future number.
 
 ## How milestones work

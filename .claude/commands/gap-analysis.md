@@ -18,7 +18,7 @@ analyse, and no cycle object anywhere.
 ## Step 1 — Load milestone context
 
 ```bash
-gh issue list --milestone  --state open
+gh issue list --milestone "$ARGUMENTS" --state open
 ```
 
 Bugs live in the `Backlog` milestone, not in themes (`ROADMAP.md` § Bugs). Also list
@@ -27,20 +27,23 @@ milestone (soundness bugs and regressions by default). Flag any bug found inside
 milestone for moving to Backlog or committing.
 
 Read each issue in full (`gh issue view <N>`) — description, labels, referenced issue numbers.
-Then read `docs/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
-triggers) for anything bearing on this milestone, and the spec sections in
+Then read `ROADMAP.md` (the milestone's place in the order, the horizon, and its `After:`
+prerequisites in the milestone description) for anything bearing on this milestone. If the
+sibling `metel-docs-internal` checkout is present, also read
+`metel-docs-internal/reports/strategy/OBJECTIVES.md` §2 (current priorities) and §3 (open
+triggers); it is private and absent from a fresh clone. Read the spec sections in
 `docs/reference/spec/` the milestone's theme is likely to touch.
 
 ### 1a. RFC lifecycle pre-check (hard gate)
 
-Before analysing any individual issue, scan `docs/internal/rfcs/` for every RFC referenced
+Before analysing any individual issue, scan `docs/rfcs/` for every RFC referenced
 in a milestone issue (`rfc-NNNN`), plus every RFC at `2-accepted` or `3-integrated`.
 
 The RFC's **directory** is the source of truth for its stage; frontmatter `status` must
 match it. Run the mechanical check first:
 
 ```bash
-python3 docs/internal/rfcs/tools/rfc.py check
+python3 docs/rfcs/tools/rfc.py check
 ```
 
 Then report two classes of blocker at the top of the Step 4 output:
@@ -121,7 +124,7 @@ Flag if:
 ## Step 3 — Analyse the milestone as a whole
 
 ### 3a. Coverage
-Read the milestone's intent (from `OBJECTIVES.md` and the issues themselves). List every
+Read the milestone's intent (from `ROADMAP.md`, the milestone description, `OBJECTIVES.md` when available, and the issues themselves). List every
 concern it implies, and flag each one with no issue tracking it.
 
 ### 3b. Implementation order
@@ -138,8 +141,8 @@ Flag if the milestone needs any of these with no issue for it:
 
 ### 3d. Risk items
 Flag any issue that:
-- Touches `src/typeinference/mod.rs` or `src/typechecker/` (high blast radius)
-- Changes `src/grammar.pest` (ripples into parser and AST)
+- Touches `metel-frontend/src/pipeline/type_checking/` (inference, construction, projections; high blast radius)
+- Changes `metel-frontend/src/grammar.pest` (ripples into parser, AST and the generated `grammar.md`)
 - Introduces a static check over an existing fixture corpus — that has its own pattern,
   see AGENTS.md § Landing an Enforcement Pass Over an Existing Corpus
 - Has no prior art in the codebase
@@ -199,7 +202,7 @@ gh issue edit <N> --body "<rewritten body>"
 For each confirmed gap:
 
 ```bash
-gh issue create --title "<title>" --description "<full body>" --milestone $ARGUMENTS
+gh issue create --title "<title>" --body "<full body>" --milestone "$ARGUMENTS"
 ```
 
 Write the body in full from Steps 2–4, not as a stub. For gaps deferred past this
@@ -211,7 +214,7 @@ Run `gh` from the repository root, never from `docs/`.
 ## Step 7 — Verify and report
 
 ```bash
-gh issue list --milestone $ARGUMENTS --state open
+gh issue list --milestone "$ARGUMENTS" --state open
 ```
 
 ```
