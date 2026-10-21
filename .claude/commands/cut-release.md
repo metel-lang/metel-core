@@ -90,10 +90,12 @@ commit as the changelog finalization.
 **3. RFC state** —
 
 ```bash
-python3 docs/rfcs/tools/rfc.py check
+python3 docs/rfcs/tools/rfc.py check --strict
 ```
 
-Reports clean. Any RFC this release implements end-to-end moves to `4-implemented`
+Reports clean, with no warnings: on a pull request a due spec-block review or a scheduled
+RFC that is still a draft is only a warning (metel-core#1510), so the release is where it is
+enforced. Any RFC this release implements end-to-end moves to `4-implemented`
 (`rfc.py transition <id> --to implemented`) rather than being left at `3-integrated` with
 stale "Not yet implemented" spec callouts.
 
