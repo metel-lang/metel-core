@@ -151,6 +151,20 @@ jobs:
         working-directory: metel-website
         run: npm ci
 
+      # ADR-0064 / metel-core#1509: the Architecture Spec's evidence (links from each
+      # requirement and limitation record to the code) is produced when documentation is
+      # published, not stored in metel-docs. Render it into the docs working copy that the
+      # snapshot below freezes, pinned to this release's tag. The generator is the one in the
+      # pinned docs commit; `.` is this checkout of metel-core at the tag, which needs no
+      # history (a shallow checkout is enough). A failure here stops the chain before the
+      # website is tagged, so a broken generator never publishes empty evidence. A patch
+      # cuts no snapshot (see above), so there is nothing to render for it.
+      - name: Render the architecture evidence for the snapshot
+        if: steps.version.outputs.is_minor == 'true'
+        run: >-
+          python3 metel-website/docs/architecture/tools/generate_architecture_evidence.py
+          --core . --core-ref "$GITHUB_REF_NAME" --publish
+
       - name: Cut a new docs version
         if: steps.version.outputs.is_minor == 'true'
         working-directory: metel-website
