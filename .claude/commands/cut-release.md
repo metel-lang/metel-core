@@ -97,6 +97,17 @@ Reports clean. Any RFC this release implements end-to-end moves to `4-implemente
 (`rfc.py transition <id> --to implemented`) rather than being left at `3-integrated` with
 stale "Not yet implemented" spec callouts.
 
+**3b. Architecture reviews current** — a stale `last_reviewed` is only a warning on a pull
+request (metel-core#1417), so the release is where it is enforced:
+
+```bash
+python3 docs/architecture/tools/generate_architecture_evidence.py --core . --check --strict
+```
+
+Exits 0. Each warning names a requirement whose cited code changed after its recorded
+review: reread the claim against the code and bump its `last_reviewed`, or fix the claim.
+Do not tag with a warning outstanding.
+
 Also bump the spec's fixture-viewer ref to the tag being cut (metel-core#944): in the
 `metel-docs` working tree, set `SPEC_FIXTURE_REF` in `rfcs/tools/rfc.py` to `$ARGUMENTS`,
 run `python3 docs/rfcs/tools/rfc.py index --write-spec-origins`, and commit both on
