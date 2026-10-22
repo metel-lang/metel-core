@@ -75,6 +75,32 @@ pub(super) fn check(
     Ok(())
 }
 
+/// Where an anonymous open record was written, for the wording of its `T0032` (metel-core#1484).
+#[derive(Clone, Copy)]
+enum OpenRecordPosition {
+    ReturnType,
+    FunctionType,
+}
+
+impl OpenRecordPosition {
+    /// The rest of the message after "is not supported in": the position and what works there.
+    fn explanation(self) -> &'static str {
+        match self {
+            Self::ReturnType => {
+                "a return type; instead, omit the return type so the exact record is inferred \
+                 (private functions only; a `public` function needs an explicit type), write the \
+                 record in full (`-> { x: i64, y: i64 }`), or name a `row`-kinded generic parameter \
+                 when the row comes from an argument (`-> { x: i64, ..R }`) (RFC-0181)"
+            }
+            Self::FunctionType => {
+                "a function type; name a `row`-kinded generic parameter (`..R`) instead, and \
+                 share the one `R` between the parameter and the result when the callback maps \
+                 records of one shape (RFC-0181)"
+            }
+        }
+    }
+}
+
 struct Cx<'a> {
     registry: &'a TypeDefinitionRegistry,
     current_module: &'a [String],
@@ -358,15 +384,18 @@ impl Cx<'_> {
     /// `T0032` for an anonymous open record (`{ x: T, .. }`) in a position whose meaning is not
     /// settled: a return type or a written function type. Its tail would be a fresh variable at
     /// each occurrence, which has no clear reading there (an existential for a return, a
-    /// rank-1 or rank-2 row for a function type). RFC-0181 owns those positions; until it is
-    /// decided they report a targeted error instead of failing later on an internal placeholder.
-    fn reject_anonymous_open_record(te: &TypeExpr, position: &str) -> Result<(), MetelError> {
+    /// rank-1 or rank-2 row for a function type). RFC-0181 decides that both stay unsupported;
+    /// the message names what works instead, which differs by position (metel-core#1484).
+    fn reject_anonymous_open_record(
+        te: &TypeExpr,
+        position: OpenRecordPosition,
+    ) -> Result<(), MetelError> {
         match crate::pipeline::type_checking::conversions::find_anonymous_open_record_tail(te) {
             Some(tail) => Err(MetelError::type_error(
                 TypeErrorCode::T0032,
                 format!(
-                    "an anonymous open record (`{{ x: T, .. }}`) is not supported in {position}; \
-                     name a `row`-kinded generic parameter (`..R`) instead (RFC-0181)"
+                    "an anonymous open record (`{{ x: T, .. }}`) is not supported in {}",
+                    position.explanation()
                 ),
                 &tail.span,
             )),
@@ -383,7 +412,7 @@ impl Cx<'_> {
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        Self::reject_anonymous_open_record(te, "a return type")?;
+        Self::reject_anonymous_open_record(te, OpenRecordPosition::ReturnType)?;
         self.ty_at(
             te,
             span,
@@ -565,10 +594,10 @@ impl Cx<'_> {
                 ..
             } => {
                 for p in params {
-                    Self::reject_anonymous_open_record(p, "a function type")?;
+                    Self::reject_anonymous_open_record(p, OpenRecordPosition::FunctionType)?;
                 }
                 if let Some(r) = ret {
-                    Self::reject_anonymous_open_record(r, "a function type")?;
+                    Self::reject_anonymous_open_record(r, OpenRecordPosition::FunctionType)?;
                 }
                 for p in params {
                     self.ty_at(

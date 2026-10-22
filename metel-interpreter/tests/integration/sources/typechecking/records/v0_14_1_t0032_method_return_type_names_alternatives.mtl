@@ -1,0 +1,11 @@
+// metel-core#1484: a method's return type gets the same T0032 text as a free function's,
+// naming the alternatives that work.
+struct Box { n: i64 }
+
+extend Box {
+    fun view(&self) -> { x: i64, .. } { // ERROR[T0032]
+        { x = self.n, y = 1 }
+    }
+}
+
+fun main() { let _ := 1; }
