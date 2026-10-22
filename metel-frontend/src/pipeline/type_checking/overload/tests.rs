@@ -10,12 +10,12 @@ fn entry(params: Vec<Type>, ret: Type) -> OverloadEntry {
 }
 
 #[test]
-fn overload_symbol_ids_are_unique_and_in_range() {
+fn overload_symbol_ids_are_unique_and_of_the_overload_kind() {
     let a = next_overload_symbol();
     let b = next_overload_symbol();
     assert_ne!(a, b);
-    assert!(a.0 >= crate::identity::symbols::OVERLOAD_SYM_START);
-    assert!(b.0 >= crate::identity::symbols::OVERLOAD_SYM_START);
+    assert!(matches!(a, SymbolId::Overload(_)));
+    assert!(matches!(b, SymbolId::Overload(_)));
 }
 
 #[test]

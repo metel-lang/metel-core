@@ -127,7 +127,7 @@ impl Fixture {
             })
             .map(|(b, _)| *b)
             .collect();
-        v.sort();
+        v.sort_by_key(|b| format!("{b:?}"));
         v
     }
 
@@ -147,7 +147,7 @@ fn local_ids(map: &ResolutionMap) -> Vec<BindingId> {
         .copied()
         .filter(|b| matches!(b, BindingId::Local(_)))
         .collect();
-    v.sort();
+    v.sort_by_key(|b| format!("{b:?}"));
     v
 }
 
@@ -336,7 +336,7 @@ fn shadowing_at_each_nested_binding_level_resolves_to_the_innermost_binding() {
             "each nested x use resolves to its own binding"
         );
     }
-    ids.sort();
+    ids.sort_by_key(|b| format!("{b:?}"));
     ids.dedup();
     assert_eq!(ids.len(), 6);
 }
@@ -484,7 +484,7 @@ fun main( param ) {
     let b_ids: Vec<_> = names.iter().map(|name| b.binding_named(name)).collect();
     assert_eq!(a_ids, b_ids, "reformatting preserves every binding form");
     let mut distinct = a_ids.clone();
-    distinct.sort();
+    distinct.sort_by_key(|b| format!("{b:?}"));
     distinct.dedup();
     assert_eq!(
         distinct.len(),

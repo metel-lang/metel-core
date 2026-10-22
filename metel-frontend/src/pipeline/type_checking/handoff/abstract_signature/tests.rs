@@ -3,7 +3,7 @@ use crate::data::types::{CallMultiplicity, CallMutation, NominalId, Type, UseMul
 use crate::identity::SymbolId;
 
 fn binder(id: u32) -> BindingId {
-    BindingId::Global(SymbolId(id))
+    BindingId::Global(SymbolId::declared_for_test(id))
 }
 
 fn scheme(first: u32, second: u32) -> TypeScheme {
@@ -98,7 +98,7 @@ fn function_axes_references_and_nominal_identity_are_preserved() {
         Box::new(InferType::Named(
             "T".to_string(),
             vec![],
-            NominalId(Some(SymbolId(99))),
+            NominalId(Some(SymbolId::declared_for_test(99))),
         )),
         CallMultiplicity::Once,
         UseMultiplicity::Move,
@@ -122,10 +122,8 @@ fn function_axes_references_and_nominal_identity_are_preserved() {
     assert_eq!(mutation, CallMutation::Mutating);
     assert!(matches!(
         *result,
-        AbstractType::Named {
-            identity: NominalId(Some(SymbolId(99))),
-            ..
-        }
+        AbstractType::Named { identity, .. }
+            if identity == NominalId(Some(SymbolId::declared_for_test(99)))
     ));
 }
 

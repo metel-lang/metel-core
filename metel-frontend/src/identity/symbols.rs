@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::fmt;
+use std::sync::atomic::{AtomicU32, Ordering};
+
 /// A stable, opaque identity for a resolved symbol (a unique `(source_module, source_name)` pair).
 ///
 /// Assigned during name resolution and threaded through the compilation pipeline so that later
@@ -5,17 +9,68 @@
 /// Diagnostic output always uses the original path spelling; `SymbolId` is for structural identity
 /// only and is never surfaced to the user.
 ///
-/// # ID ranges
+/// The variants are the kinds of symbol, so two kinds cannot collide and no numeric range has to be
+/// kept apart from another (ADR-0065, replacing the declared ranges of metel-core#1542). The payloads
+/// are private index types: an id is compared, hashed, matched and passed, and is minted only by the
+/// allocator that owns its kind.
 ///
-/// | Range         | Purpose                                        |
-/// |---------------|------------------------------------------------|
-/// | 1 – 49        | Builtin types (primitives + core stdlib)       |
-/// | 50 – 99       | Builtin aspects                                |
-/// | 100 – 999     | Reserved for stdlib expansion                  |
-/// | 1000 +        | User-defined declarations (name-resolver IDs)  |
-/// | 0x4000_0000 + | Free-function overload definitions (METEL-180) |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct SymbolId(pub u32);
+/// | Variant | Minted by | Meaning |
+/// |---|---|---|
+/// | `Builtin` | nothing (a fixed set) | the primitives, core types and core aspects the language knows by id |
+/// | `Declared` | [`SymbolTable`] | a named top-level declaration, or an impl/aspect method key |
+/// | `BlockLocal` | [`BlockLocalAllocator`] | a struct or enum declared inside a block |
+/// | `Overload` | `type_checking::overload` | a free-function overload definition (METEL-180) |
+///
+/// `Overload` is one temporary variant fed by a process-global counter; ADR-0065 step 2 splits it into
+/// a structural per-module id and an id for the embedded `std::core` table.
+///
+/// There is deliberately no `Ord`: an order over kinds carries no meaning code should rely on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SymbolId {
+    Builtin(Builtin),
+    Declared(DeclaredIndex),
+    BlockLocal(BlockLocalIndex),
+    Overload(OverloadIndex),
+}
+
+/// Declares a private-payload index type. It prints as the bare number, so `SymbolId::Declared(42)`
+/// debugs as `Declared(42)`.
+macro_rules! symbol_index {
+    ($(#[$doc:meta])* $name:ident) => {
+        $(#[$doc])*
+        #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name(u32);
+
+        impl fmt::Debug for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                fmt::Debug::fmt(&self.0, f)
+            }
+        }
+    };
+}
+
+symbol_index!(
+    /// The index of a [`SymbolId::Declared`]; built only by [`SymbolTable`].
+    DeclaredIndex
+);
+symbol_index!(
+    /// The index of a [`SymbolId::BlockLocal`]; built only by [`BlockLocalAllocator`].
+    BlockLocalIndex
+);
+symbol_index!(
+    /// The index of a [`SymbolId::Overload`]; built only by [`allocate_overload`].
+    OverloadIndex
+);
+
+impl SymbolId {
+    /// A `Declared` id for a test, so unit tests inside this crate can name an id without
+    /// running the resolver. Tests in other crates intern through a [`SymbolTable`].
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) const fn declared_for_test(index: u32) -> SymbolId {
+        SymbolId::Declared(DeclaredIndex(index))
+    }
+}
 
 // ── The builtin symbols (metel-core#1542) ─────────────────────────────────────
 
@@ -26,18 +81,16 @@ pub enum BuiltinKind {
     Aspect,
 }
 
-/// Declares [`Builtin`] from one list: each entry gives the variant, its fixed id, its `std::core`
-/// name and its kind. The variant, the id, the name, the kind and [`Builtin::ALL`] come from that one
-/// line, so a builtin cannot be added to one of them and missed in another; two variants with the same
-/// id are a compile error (a duplicate enum discriminant), and `name` / `kind` are exhaustive matches.
+/// Declares [`Builtin`] from one list: each entry gives the variant, its `std::core` name and its
+/// kind. The variant, the name, the kind and [`Builtin::ALL`] come from that one line, so a builtin
+/// cannot be added to one of them and missed in another, and `name` / `kind` are exhaustive matches.
 macro_rules! builtins {
-    ($($variant:ident = $id:literal, $name:literal, $kind:ident;)*) => {
-        /// A symbol the language knows by a fixed id: the primitives, the core types and the core
-        /// aspects. The id is the enum discriminant.
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-        #[repr(u32)]
+    ($($variant:ident, $name:literal, $kind:ident;)*) => {
+        /// A symbol the language knows by identity: the primitives, the core types and the core
+        /// aspects.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
         pub enum Builtin {
-            $($variant = $id,)*
+            $($variant,)*
         }
 
         impl Builtin {
@@ -64,36 +117,34 @@ macro_rules! builtins {
 }
 
 builtins! {
-    // Types: 1–49; 19–49 are reserved for future stdlib types.
-    Boolean = 1, "boolean", Type;
-    String = 2, "String", Type;
-    Char = 3, "Char", Type;
-    I8 = 4, "i8", Type;
-    I16 = 5, "i16", Type;
-    I32 = 6, "i32", Type;
-    I64 = 7, "i64", Type;
-    U8 = 8, "u8", Type;
-    U16 = 9, "u16", Type;
-    U32 = 10, "u32", Type;
-    U64 = 11, "u64", Type;
-    F32 = 12, "f32", Type;
-    F64 = 13, "f64", Type;
-    List = 14, "List", Type;
-    Perhaps = 15, "Perhaps", Type;
-    Result = 16, "Result", Type;
-    Range = 17, "Range", Type;
-    RangeInclusive = 18, "RangeInclusive", Type;
-    // Aspects: 50–99; 53–99 are reserved for future aspects.
-    Display = 50, "Display", Aspect;
-    Iterable = 51, "Iterable", Aspect;
-    From = 52, "From", Aspect;
+    Boolean, "boolean", Type;
+    String, "String", Type;
+    Char, "Char", Type;
+    I8, "i8", Type;
+    I16, "i16", Type;
+    I32, "i32", Type;
+    I64, "i64", Type;
+    U8, "u8", Type;
+    U16, "u16", Type;
+    U32, "u32", Type;
+    U64, "u64", Type;
+    F32, "f32", Type;
+    F64, "f64", Type;
+    List, "List", Type;
+    Perhaps, "Perhaps", Type;
+    Result, "Result", Type;
+    Range, "Range", Type;
+    RangeInclusive, "RangeInclusive", Type;
+    Display, "Display", Aspect;
+    Iterable, "Iterable", Aspect;
+    From, "From", Aspect;
 }
 
 impl Builtin {
     /// The builtin's `SymbolId`.
     #[must_use]
     pub const fn id(self) -> SymbolId {
-        SymbolId(self as u32)
+        SymbolId::Builtin(self)
     }
 
     /// The builtin named `name` of `kind`, if there is one.
@@ -106,7 +157,7 @@ impl Builtin {
     }
 }
 
-// The named ids the rest of the code uses; each is its builtin's discriminant, not a second number.
+// The named ids the rest of the code uses.
 pub const SYM_TYPE_BOOLEAN: SymbolId = Builtin::Boolean.id();
 pub const SYM_TYPE_STRING: SymbolId = Builtin::String.id();
 pub const SYM_TYPE_CHAR: SymbolId = Builtin::Char.id();
@@ -129,168 +180,62 @@ pub const SYM_ASPECT_DISPLAY: SymbolId = Builtin::Display.id();
 pub const SYM_ASPECT_ITERABLE: SymbolId = Builtin::Iterable.id();
 pub const SYM_ASPECT_FROM: SymbolId = Builtin::From.id();
 
-// 100–999 reserved for stdlib expansion.
-
-// ── The ranges of the SymbolId space (metel-core#1542, Engineering Standard §11) ───────────────
-
-/// A named, half-open slice of the `SymbolId` space owned by one allocator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SymbolRange {
-    pub name: &'static str,
-    pub start: u32,
-    pub end: u32,
-}
-
-impl SymbolRange {
-    #[must_use]
-    pub const fn contains(&self, id: u32) -> bool {
-        self.start <= id && id < self.end
-    }
-}
-
-/// Builtin types: the primitives and the core types the language knows by id.
-pub const BUILTIN_TYPES: SymbolRange = SymbolRange {
-    name: "builtin types",
-    start: 1,
-    end: 50,
-};
-/// Builtin aspects.
-pub const BUILTIN_ASPECTS: SymbolRange = SymbolRange {
-    name: "builtin aspects",
-    start: 50,
-    end: 100,
-};
-/// Reserved for stdlib expansion; nothing allocates here yet.
-pub const STDLIB_RESERVED: SymbolRange = SymbolRange {
-    name: "stdlib reserved",
-    start: 100,
-    end: 1000,
-};
-/// User-defined declarations, allocated by the name resolver's [`SymbolTable`].
-pub const USER: SymbolRange = SymbolRange {
-    name: "user declarations",
-    start: 1000,
-    end: 0x4000_0000,
-};
-/// Free-function overload definitions (METEL-180), allocated upward from a process-global counter (see
-/// `type_checking::overload`; the counter itself is `LIMIT-NAME-RESOLUTION-002`).
-pub const OVERLOAD: SymbolRange = SymbolRange {
-    name: "overload definitions",
-    start: 0x4000_0000,
-    end: 0x8000_0000,
-};
-/// Block-local struct and enum declarations, minted by the type engine and allocated **downward** from
-/// the top of the range, so they stay clear of the two ascending allocators.
-pub const BLOCK_LOCAL: SymbolRange = SymbolRange {
-    name: "block-local types",
-    start: 0x8000_0000,
-    end: u32::MAX,
-};
-
-/// Every range, in order of start.
-pub const ALL_RANGES: [SymbolRange; 6] = [
-    BUILTIN_TYPES,
-    BUILTIN_ASPECTS,
-    STDLIB_RESERVED,
-    USER,
-    OVERLOAD,
-    BLOCK_LOCAL,
-];
-
-/// First `SymbolId` assigned to user-defined declarations by the name resolver.
-pub const USER_SYM_START: u32 = USER.start;
-
-/// Start of the range allocated to free-function overload definitions.
-pub const OVERLOAD_SYM_START: u32 = OVERLOAD.start;
-
-const fn ranges_are_ordered_and_disjoint(ranges: &[SymbolRange]) -> bool {
-    let mut i = 0;
-    while i < ranges.len() {
-        if ranges[i].start >= ranges[i].end {
-            return false;
-        }
-        if i > 0 && ranges[i - 1].end > ranges[i].start {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-// A range edited into its neighbour is a compile error, not a collision found later as a wrong id.
-const _: () = assert!(ranges_are_ordered_and_disjoint(&ALL_RANGES));
-
-/// Take the next id from `counter`, which hands out ids of `range`.
-///
-/// # Panics
-/// Panics when `range` is exhausted: stepping past its end would reuse an id of the next range, or
-/// wrap, either of which is a silent collision.
-pub fn allocate_from(counter: &AtomicU32, range: SymbolRange) -> SymbolId {
-    // A compare-exchange loop, not `fetch_update`/`try_update`: the former is deprecated on current
-    // stable and the latter is not on every toolchain this crate builds with.
-    let mut id = counter.load(Ordering::Relaxed);
-    loop {
-        assert!(
-            id < range.end,
-            "SymbolId range `{}` ({}..{}) is exhausted",
-            range.name,
-            range.start,
-            range.end
-        );
-        match counter.compare_exchange_weak(id, id + 1, Ordering::Relaxed, Ordering::Relaxed) {
-            Ok(_) => return SymbolId(id),
-            Err(current) => id = current,
-        }
-    }
-}
-
-/// Take the next id from `next`, which hands out ids of `range` counting **down**, and step it.
-///
-/// # Panics
-/// Panics when `range` is exhausted: stepping below its start would reuse an id of the previous range.
-pub fn allocate_down(next: &mut u32, range: SymbolRange) -> SymbolId {
-    assert!(
-        range.contains(*next),
-        "SymbolId range `{}` ({}..{}) is exhausted",
-        range.name,
-        range.start,
-        range.end
-    );
-    let id = *next;
-    // Wraps to a value outside every range when the bottom is reached, so the next call panics.
-    *next = id.wrapping_sub(1);
-    SymbolId(id)
-}
-
-/// The builtins are checked against the ranges at compile time: each lies in the range of its kind.
-const fn builtins_are_in_the_range_of_their_kind() -> bool {
-    let mut i = 0;
-    while i < Builtin::ALL.len() {
-        let builtin = Builtin::ALL[i];
-        let range = match builtin.kind() {
-            BuiltinKind::Type => BUILTIN_TYPES,
-            BuiltinKind::Aspect => BUILTIN_ASPECTS,
-        };
-        if !range.contains(builtin.id().0) {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-const _: () = assert!(builtins_are_in_the_range_of_their_kind());
-
 /// The well-known id of the builtin named `name` of `kind`, if there is one.
 #[must_use]
 pub fn builtin_symbol(name: &str, kind: BuiltinKind) -> Option<SymbolId> {
     Builtin::from_name(name, kind).map(Builtin::id)
 }
 
-// ── SymbolTable ───────────────────────────────────────────────────────────────
+// ── Allocators ────────────────────────────────────────────────────────────────
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+/// Mints [`SymbolId::BlockLocal`] ids for struct and enum declarations inside blocks.
+#[derive(Debug, Clone, Default)]
+pub struct BlockLocalAllocator {
+    next: u32,
+}
+
+impl BlockLocalAllocator {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The next unused block-local id.
+    ///
+    /// # Panics
+    /// Panics when the index space is exhausted rather than wrapping to an id already handed out.
+    pub fn fresh(&mut self) -> SymbolId {
+        let index = self.next;
+        self.next = index
+            .checked_add(1)
+            .expect("the block-local SymbolId space is exhausted");
+        SymbolId::BlockLocal(BlockLocalIndex(index))
+    }
+}
+
+/// Take the next [`SymbolId::Overload`] id from `counter`.
+///
+/// The counter is a process-global in `type_checking::overload` (`LIMIT-NAME-RESOLUTION-002`;
+/// ADR-0065 step 2 removes it).
+///
+/// # Panics
+/// Panics when the index space is exhausted rather than wrapping to an id already handed out.
+pub fn allocate_overload(counter: &AtomicU32) -> SymbolId {
+    // A compare-exchange loop, not `fetch_update`/`try_update`: the former is deprecated on current
+    // stable and the latter is not on every toolchain this crate builds with.
+    let mut index = counter.load(Ordering::Relaxed);
+    loop {
+        let next = index
+            .checked_add(1)
+            .expect("the overload SymbolId space is exhausted");
+        match counter.compare_exchange_weak(index, next, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return SymbolId::Overload(OverloadIndex(index)),
+            Err(current) => index = current,
+        }
+    }
+}
+
+// ── SymbolTable ───────────────────────────────────────────────────────────────
 
 /// Intern table: maps `(source_module, source_name)` → stable `SymbolId`.
 /// Pre-populated with builtin entries so that imports of stdlib names get the
@@ -316,31 +261,23 @@ impl SymbolTable {
             .iter()
             .map(|b| ((std_core(), b.name().to_string()), b.id()))
             .collect();
-        Self {
-            map,
-            next_id: USER.start,
-        }
+        Self { map, next_id: 0 }
     }
 
     /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign
     /// a fresh one. Two calls with identical arguments always return the same id.
     ///
     /// # Panics
-    /// Panics when the user range is exhausted: the next id would belong to the overload range.
+    /// Panics when the declared index space is exhausted rather than wrapping.
     // arch-implements: ["arch.name-resolution.requirement-1"]
     pub fn intern(&mut self, source_module: &[String], source_name: &str) -> SymbolId {
         let key = (source_module.to_vec(), source_name.to_string());
         *self.map.entry(key).or_insert_with(|| {
-            assert!(
-                self.next_id < USER.end,
-                "SymbolId range `{}` ({}..{}) is exhausted",
-                USER.name,
-                USER.start,
-                USER.end
-            );
-            let id = SymbolId(self.next_id);
-            self.next_id += 1;
-            id
+            let index = self.next_id;
+            self.next_id = index
+                .checked_add(1)
+                .expect("the declared SymbolId space is exhausted");
+            SymbolId::Declared(DeclaredIndex(index))
         })
     }
 
@@ -356,7 +293,7 @@ impl SymbolTable {
         self.map
     }
 
-    /// A table whose next user id is `next_id`, for tests that exercise the end of the range.
+    /// A table whose next declared index is `next_id`, for tests that exercise the end of the space.
     #[cfg(test)]
     fn with_next_id(next_id: u32) -> Self {
         Self {
@@ -385,92 +322,76 @@ mod architecture_evidence_tests {
 
     // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
-    fn user_declarations_are_allocated_from_the_user_range_below_the_overload_range() {
+    fn declared_symbols_are_distinct_from_every_builtin_and_allocated_in_order() {
         let mut table = SymbolTable::new();
         let first = table.intern(&["app".to_string()], "Widget");
         let second = table.intern(&["app".to_string()], "Gadget");
-        assert_eq!(first, SymbolId(USER_SYM_START));
-        assert_eq!(second, SymbolId(USER_SYM_START + 1));
-        assert!(
-            second.0 < OVERLOAD_SYM_START,
-            "overload-synthesized symbols have their own reserved range"
+        assert_eq!(first, SymbolId::Declared(DeclaredIndex(0)));
+        assert_eq!(second, SymbolId::Declared(DeclaredIndex(1)));
+        assert_eq!(
+            table.intern(&["app".to_string()], "Widget"),
+            first,
+            "interning the same key again returns the same id"
         );
-    }
-
-    // metel-core#1542: the ranges, the builtin table and the allocators are checked.
-
-    #[test]
-    fn the_declared_ranges_are_ordered_and_disjoint() {
-        assert!(ranges_are_ordered_and_disjoint(&ALL_RANGES));
-        assert_eq!(USER_SYM_START, USER.start);
-        assert_eq!(OVERLOAD_SYM_START, OVERLOAD.start);
-        for pair in ALL_RANGES.windows(2) {
-            assert!(
-                pair[0].end <= pair[1].start,
-                "{} overlaps {}",
-                pair[0].name,
-                pair[1].name
-            );
+        for builtin in Builtin::ALL {
+            assert_ne!(first, builtin.id());
+            assert_ne!(second, builtin.id());
         }
     }
 
     #[test]
-    fn an_overlap_an_empty_range_and_a_wrong_order_are_rejected() {
-        let a = SymbolRange {
-            name: "a",
-            start: 0,
-            end: 10,
-        };
-        let overlapping = SymbolRange {
-            name: "b",
-            start: 5,
-            end: 20,
-        };
-        let empty = SymbolRange {
-            name: "c",
-            start: 30,
-            end: 30,
-        };
-        assert!(ranges_are_ordered_and_disjoint(&[a]));
-        assert!(!ranges_are_ordered_and_disjoint(&[a, overlapping]));
-        assert!(!ranges_are_ordered_and_disjoint(&[empty]));
-        assert!(!ranges_are_ordered_and_disjoint(&[overlapping, a]));
+    fn the_same_index_in_two_kinds_is_two_different_symbols() {
+        let declared = SymbolId::Declared(DeclaredIndex(5));
+        let block_local = SymbolId::BlockLocal(BlockLocalIndex(5));
+        let overload = SymbolId::Overload(OverloadIndex(5));
+        assert_ne!(declared, block_local);
+        assert_ne!(declared, overload);
+        assert_ne!(block_local, overload);
+        let all: std::collections::HashSet<_> = [declared, block_local, overload].into();
+        assert_eq!(all.len(), 3, "and they hash apart as well");
     }
 
     #[test]
-    fn builtin_ids_and_names_are_unique_and_in_the_range_of_their_kind() {
-        // Duplicate discriminants do not compile, so this checks what the compiler cannot: names, the
-        // ids not drifting from the discriminants, and the kind ranges.
+    fn debug_output_names_the_kind() {
+        assert_eq!(
+            format!("{:?}", SymbolId::Declared(DeclaredIndex(42))),
+            "Declared(42)"
+        );
+        assert_eq!(
+            format!("{:?}", SymbolId::BlockLocal(BlockLocalIndex(7))),
+            "BlockLocal(7)"
+        );
+        assert_eq!(
+            format!("{:?}", SymbolId::Overload(OverloadIndex(3))),
+            "Overload(3)"
+        );
+        assert_eq!(format!("{SYM_TYPE_RESULT:?}"), "Builtin(Result)");
+    }
+
+    #[test]
+    fn builtin_ids_and_names_are_unique() {
         let mut ids = std::collections::HashSet::new();
         let mut names = std::collections::HashSet::new();
         for builtin in Builtin::ALL {
-            let (name, id) = (builtin.name(), builtin.id());
-            assert!(ids.insert(id.0), "duplicate builtin id {} ({name})", id.0);
+            let name = builtin.name();
+            assert!(ids.insert(builtin.id()), "duplicate builtin id ({name})");
             assert!(
                 names.insert((name, builtin.kind() as u8)),
                 "duplicate builtin name {name}"
             );
-            let range = match builtin.kind() {
-                BuiltinKind::Type => BUILTIN_TYPES,
-                BuiltinKind::Aspect => BUILTIN_ASPECTS,
-            };
-            assert!(
-                range.contains(id.0),
-                "{name} ({}) is outside {}",
-                id.0,
-                range.name
-            );
         }
         assert_eq!(Builtin::ALL.len(), 21);
+        let kinds = |k| Builtin::ALL.iter().filter(|b| b.kind() == k).count();
+        assert_eq!(kinds(BuiltinKind::Type), 18);
+        assert_eq!(kinds(BuiltinKind::Aspect), 3);
     }
 
     #[test]
-    fn the_named_ids_are_the_discriminants() {
-        assert_eq!(SYM_TYPE_BOOLEAN, SymbolId(1));
-        assert_eq!(SYM_TYPE_RANGE_INCLUSIVE, SymbolId(18));
-        assert_eq!(SYM_ASPECT_DISPLAY, SymbolId(50));
-        assert_eq!(SYM_ASPECT_FROM, SymbolId(52));
-        assert_eq!(Builtin::Result.id(), SYM_TYPE_RESULT);
+    fn the_named_ids_are_the_builtins() {
+        assert_eq!(SYM_TYPE_BOOLEAN, Builtin::Boolean.id());
+        assert_eq!(SYM_TYPE_RANGE_INCLUSIVE, Builtin::RangeInclusive.id());
+        assert_eq!(SYM_ASPECT_DISPLAY, Builtin::Display.id());
+        assert_eq!(SYM_ASPECT_FROM, Builtin::From.id());
     }
 
     /// Builtin types the language provides itself; they are not declared in `std::core`.
@@ -516,7 +437,7 @@ mod architecture_evidence_tests {
     }
 
     #[test]
-    fn the_table_is_seeded_with_exactly_the_builtins_at_their_ids() {
+    fn the_table_is_seeded_with_exactly_the_builtins() {
         let table = SymbolTable::new();
         assert_eq!(table.map().len(), Builtin::ALL.len());
         for builtin in Builtin::ALL {
@@ -544,51 +465,54 @@ mod architecture_evidence_tests {
     }
 
     #[test]
-    #[should_panic(expected = "SymbolId range `user declarations`")]
-    fn interning_past_the_end_of_the_user_range_panics_instead_of_entering_the_overload_range() {
-        let mut table = SymbolTable::with_next_id(USER.end - 1);
+    #[should_panic(expected = "the declared SymbolId space is exhausted")]
+    fn interning_past_the_end_of_the_declared_space_panics_instead_of_wrapping() {
+        let mut table = SymbolTable::with_next_id(u32::MAX - 1);
         let last = table.intern(&["app".to_string()], "Last");
-        assert!(USER.contains(last.0));
+        assert_eq!(last, SymbolId::Declared(DeclaredIndex(u32::MAX - 1)));
         let _ = table.intern(&["app".to_string()], "OneTooMany");
     }
 
     #[test]
-    #[should_panic(expected = "SymbolId range `overload definitions`")]
-    fn the_overload_allocator_panics_instead_of_wrapping() {
-        let counter = AtomicU32::new(OVERLOAD.end - 1);
+    fn the_block_local_allocator_hands_out_distinct_consecutive_ids() {
+        let mut alloc = BlockLocalAllocator::new();
+        let first = alloc.fresh();
+        let second = alloc.fresh();
+        assert_eq!(first, SymbolId::BlockLocal(BlockLocalIndex(0)));
+        assert_eq!(second, SymbolId::BlockLocal(BlockLocalIndex(1)));
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    #[should_panic(expected = "the block-local SymbolId space is exhausted")]
+    fn the_block_local_allocator_panics_at_the_end_instead_of_reusing_ids() {
+        let mut alloc = BlockLocalAllocator { next: u32::MAX - 1 };
+        let last = alloc.fresh();
+        assert_eq!(last, SymbolId::BlockLocal(BlockLocalIndex(u32::MAX - 1)));
+        let _ = alloc.fresh();
+    }
+
+    #[test]
+    fn the_overload_allocator_hands_out_consecutive_ids_from_the_counter() {
+        let counter = AtomicU32::new(10);
         assert_eq!(
-            allocate_from(&counter, OVERLOAD),
-            SymbolId(OVERLOAD.end - 1)
+            allocate_overload(&counter),
+            SymbolId::Overload(OverloadIndex(10))
         );
-        let _ = allocate_from(&counter, OVERLOAD);
-    }
-
-    #[test]
-    fn the_block_local_allocator_counts_down_and_stays_in_its_range() {
-        let mut next = BLOCK_LOCAL.end - 1;
-        let first = allocate_down(&mut next, BLOCK_LOCAL);
-        let second = allocate_down(&mut next, BLOCK_LOCAL);
-        assert_eq!(first, SymbolId(BLOCK_LOCAL.end - 1));
-        assert_eq!(second, SymbolId(BLOCK_LOCAL.end - 2));
-        assert!(BLOCK_LOCAL.contains(first.0) && BLOCK_LOCAL.contains(second.0));
-    }
-
-    #[test]
-    #[should_panic(expected = "SymbolId range `block-local types`")]
-    fn the_block_local_allocator_panics_at_the_bottom_instead_of_reusing_ids() {
-        let mut next = BLOCK_LOCAL.start;
-        let last = allocate_down(&mut next, BLOCK_LOCAL);
-        assert_eq!(last, SymbolId(BLOCK_LOCAL.start));
-        let _ = allocate_down(&mut next, BLOCK_LOCAL);
-    }
-
-    #[test]
-    fn the_overload_allocator_hands_out_consecutive_ids_from_its_start() {
-        let counter = AtomicU32::new(OVERLOAD.start);
-        assert_eq!(allocate_from(&counter, OVERLOAD), SymbolId(OVERLOAD.start));
         assert_eq!(
-            allocate_from(&counter, OVERLOAD),
-            SymbolId(OVERLOAD.start + 1)
+            allocate_overload(&counter),
+            SymbolId::Overload(OverloadIndex(11))
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "the overload SymbolId space is exhausted")]
+    fn the_overload_allocator_panics_at_the_end_instead_of_wrapping() {
+        let counter = AtomicU32::new(u32::MAX - 1);
+        assert_eq!(
+            allocate_overload(&counter),
+            SymbolId::Overload(OverloadIndex(u32::MAX - 1))
+        );
+        let _ = allocate_overload(&counter);
     }
 }
