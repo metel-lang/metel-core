@@ -166,12 +166,11 @@ impl Default for CorePrelude {
     /// All built-in function schemes (print, assert, `List::new`, …), derived
     /// from the embedded `std::core` source.
     ///
-    /// The generator starts at 10000 so that prelude `TypeVars` never collide
-    /// with the registry `TypeVars` allocated by `build_registry` (which starts
-    /// at 0 and typically allocates fewer than 100 vars). See ADR-0027.
+    /// The generator draws from the prelude range so that prelude `TypeVars` never collide
+    /// with the registry `TypeVars` allocated by `build_registry` (the local range). See ADR-0027.
     fn default() -> Self {
         let mut schemes = HashMap::new();
-        let mut type_var_gen = TypeVarGenerator::with_counter(10000);
+        let mut type_var_gen = TypeVarGenerator::in_range(type_engine::PRELUDE);
         registry::populate_std_schemes(&mut schemes, &mut type_var_gen);
         Self { schemes }
     }
@@ -417,11 +416,11 @@ pub fn check_graph_with_report(
     let mut warnings = Vec::new();
     // Exported schemes are alpha-renamed into a dedicated high TypeVar range so
     // their ids can never collide with any module's local generator (which
-    // restarts near 0 per module). Without this, an imported scheme whose
-    // quantified var id matches a live local var can produce a cyclic
-    // substitution and hang `Substitution::apply` (METEL-181; see ADR-0027 for
-    // the 10000-offset precedent and construct_generic_body's 1_000_000 range).
-    let mut export_gen = TypeVarGenerator::with_counter(2_000_000);
+    // restarts at the bottom of the local range per module). Without this, an imported
+    // scheme whose quantified var id matches a live local var can produce a cyclic
+    // substitution and hang `Substitution::apply` (METEL-181; the ranges are declared and
+    // checked in `type_engine::type_var_space`).
+    let mut export_gen = TypeVarGenerator::in_range(type_engine::EXPORT);
 
     for loaded in graph.modules() {
         let checked = check_one_module(
@@ -583,7 +582,7 @@ pub fn check_graph_collecting_diagnostics(
     let mut type_registry = TypeDefinitionRegistry::new();
     let mut timings = TypecheckPhaseTimings::default();
     let mut warnings = Vec::new();
-    let mut export_gen = TypeVarGenerator::with_counter(2_000_000);
+    let mut export_gen = TypeVarGenerator::in_range(type_engine::EXPORT);
     let mut diagnostics = Vec::new();
     let mut skipped: Vec<Vec<String>> = Vec::new();
     let mut failed: HashSet<Vec<String>> = HashSet::new();

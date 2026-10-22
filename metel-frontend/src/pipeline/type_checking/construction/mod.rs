@@ -852,7 +852,7 @@ fn construct_method_args(
     }
 }
 
-// limit: ["LIMIT-EVALUATION-001", "LIMIT-TYPE-INFERENCE-005"]
+// limit: ["LIMIT-EVALUATION-001"]
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
     params: &[crate::data::ast::Param],
@@ -867,10 +867,11 @@ pub(super) fn construct_generic_body(
         TypeVarGenerator, instantiate_with_renaming,
     };
 
-    // Use a high starting counter to avoid collisions with registry TypeVars (allocated
-    // starting from 0 during build_registry). The substitution built here would otherwise
+    // Draw from the construction range, disjoint from the registry TypeVars (the local range,
+    // allocated from 0 during build_registry). The substitution built here would otherwise
     // incorrectly resolve registry TypeVars when ConstructCtx::new applies it.
-    let mut type_var_gen = TypeVarGenerator::with_counter(1_000_000);
+    let mut type_var_gen =
+        TypeVarGenerator::in_range(crate::pipeline::type_checking::type_engine::CONSTRUCTION);
 
     let (instance, renaming) = instantiate_with_renaming(scheme, &mut type_var_gen);
     let InferType::Fun(param_infertypes, ret_infertype, ..) = instance else {
