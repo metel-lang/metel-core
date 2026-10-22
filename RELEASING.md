@@ -9,7 +9,7 @@ the workflows themselves are `.github/workflows/release.yml` here and
 
 For the release chain in the context of every other script and CI workflow across all
 four repos — including the per-PR checks and the manual docs-only path this document
-doesn't cover — see the [Operations Specification](docs/operations/index.md) (`PROCESSES.md` has the overview diagram).
+doesn't cover — see the [Operations Specification](docs/operations/index.md) (it draws both flows, checked for staleness).
 
 The contracts this chain keeps are stated in the
 [Operations Specification](docs/operations/spec/release.md) (`PROC-RELEASE-*`); this document
@@ -23,34 +23,27 @@ repo-wide release gate, which checks for that report). This document picks up at
 
 ## The chain
 
-```
-metel-core tag vX.Y.Z pushed
-        │
-        ▼
-release.yml (here, Stage A)
-  1. checks out this repo's docs submodule (metel-docs, public,
-     unauthenticated — ADR-0051 retired the private-submodule sync this step
-     used to perform first; metel-docs is directly edited, nothing to mirror)
-  2. reads this repo's own pinned docs submodule commit
-  3. in a fresh metel-website checkout: bumps its docs submodule pointer to
-     that commit; for a minor release (patch component 0) renders the
-     architecture evidence into that docs working copy, pinned to this tag
-     (ADR-0064), and runs `docusaurus docs:version X.Y.Z`; commits the generated
-     versioned_docs/ + versioned_sidebars/ + versions.json (skipped if nothing
-     changed), pushes to main. A patch release cuts no snapshot.
-  4. tags that commit vX.Y.Z in metel-website — skipped if the tag already
-     exists there (safe to re-run this whole workflow after fixing a failure)
-        │
-        ▼  (a real tag push — GitHub's own trigger, not a synthetic dispatch)
-deploy.yml (metel-website, Stage B)
-  1. builds the site once
-  2. deploys that build to Vercel staging, posts the URL to the run summary
-        │
-        ▼  (manual: a human reviews the staging URL, then runs promote.yml)
-promote.yml (metel-website, Stage C — workflow_dispatch only)
-  1. promotes that exact staged build (no rebuild) to production
-  2. verifies both the staging URL and https://metel-lang.org are reachable
-```
+The release flow is drawn in the Operations Specification
+([Flows](docs/operations/flows.md)), where it is checked against the workflows for staleness. In
+words, after the tag `vX.Y.Z` is pushed to `metel-core`:
+
+1. **`release.yml` (here, Stage A)**
+   1. checks out this repo's docs submodule (`metel-docs`, public, unauthenticated; ADR-0051
+      retired the private-submodule sync this step used to perform first);
+   2. reads this repo's own pinned docs submodule commit;
+   3. in a fresh `metel-website` checkout: bumps its docs submodule pointer to that commit; for a
+      minor release (patch component 0) renders the architecture evidence into that docs working
+      copy, pinned to this tag (ADR-0064), and runs `docusaurus docs:version X.Y.Z`; commits the
+      generated `versioned_docs/` + `versioned_sidebars/` + `versions.json` (skipped if nothing
+      changed) and pushes to `main`. A patch release cuts no snapshot;
+   4. tags that commit `vX.Y.Z` in `metel-website`, skipped if the tag already exists there (safe
+      to re-run this whole workflow after fixing a failure).
+2. **`deploy.yml` (`metel-website`, Stage B)**, started by that tag push, a real tag push and not a
+   synthetic dispatch: builds the site once and deploys it to Vercel staging, posting the URL to
+   the run summary.
+3. **`promote.yml` (`metel-website`, Stage C, `workflow_dispatch` only)**, run by a person who has
+   reviewed the staging URL: promotes that exact staged build (no rebuild) to production and
+   verifies that both the staging URL and https://metel-lang.org are reachable.
 
 ## Why it's split this way
 
