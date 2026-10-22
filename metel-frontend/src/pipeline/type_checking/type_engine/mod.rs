@@ -33,58 +33,8 @@ impl std::fmt::Display for TypeVar {
     }
 }
 
-/// Counter for generating fresh type variables.
-///
-/// # Invariant: `TypeVar` identity is global
-///
-/// `TypeVar` equality means identity — two vars with the same `u32` are the *same* variable.
-/// All `TypeVarGenerator` instances within a single type-check run must therefore be
-/// coordinated: each new generator must start past the highest counter value produced by
-/// any earlier generator.  Creating an independent `TypeVarGenerator::new()` in a call site
-/// that produces vars intended to be globally unique will cause collisions — the "fresh"
-/// var may be identical to an already-used one, producing self-referential substitutions
-/// and infinite recursion in `Substitution::apply`.
-///
-/// The correct pattern: `InferContext` owns the generator for Pass 1.  After Pass 1,
-/// call `ctx.split_gen()` to obtain a new generator that starts past all Pass 1 vars,
-/// then thread that single instance through Pass 2 (and any intermediate steps like
-/// `register_builtin_poly_schemes`).
-// limit: ["LIMIT-TYPE-INFERENCE-005", "LIMIT-TYPE-INFERENCE-006"]
-pub struct TypeVarGenerator {
-    counter: u32,
-}
-
-impl TypeVarGenerator {
-    /// Create a new type variable generator.
-    #[must_use]
-    pub fn new() -> Self {
-        TypeVarGenerator { counter: 0 }
-    }
-
-    #[must_use]
-    pub fn with_counter(start: u32) -> Self {
-        TypeVarGenerator { counter: start }
-    }
-
-    /// Generate a fresh type variable.
-    pub fn fresh(&mut self) -> TypeVar {
-        let var = TypeVar(self.counter);
-        self.counter += 1;
-        var
-    }
-
-    /// Get the current counter state (for testing).
-    #[must_use]
-    pub fn counter(&self) -> u32 {
-        self.counter
-    }
-}
-
-impl Default for TypeVarGenerator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+mod type_var_space;
+pub use type_var_space::{CONSTRUCTION, EXPORT, LOCAL, PRELUDE, TypeVarGenerator, TypeVarRange};
 
 // ── Phase 2: Inference Types ──────────────────────────────────────────────────
 
@@ -2329,7 +2279,10 @@ fn reserve_scheme_variables(scheme: &TypeScheme, type_var_gen: &mut TypeVarGener
         .map(|var| var.0)
         .max();
     if let Some(highest) = highest {
-        type_var_gen.counter = type_var_gen.counter.max(highest + 1);
+        // Only a variable of the generator's own range can collide with its output; the ranges are
+        // disjoint by construction (type_var_space), so an export, prelude or construction variable
+        // needs no reservation.
+        type_var_gen.reserve_past(TypeVar(highest));
     }
 }
 
@@ -7321,9 +7274,8 @@ impl InferContext {
     /// (Pass 2, `register_builtin_poly_schemes`) so that every `TypeVar` ever
     /// produced during a type-check run is globally unique.
     #[must_use]
-    // limit: ["LIMIT-TYPE-INFERENCE-005"]
     pub fn split_gen(&self) -> TypeVarGenerator {
-        TypeVarGenerator::with_counter(self.var_gen.counter())
+        self.var_gen.continuing()
     }
 
     /// Enter a new lexical scope (e.g. a function body or block).
@@ -8327,7 +8279,7 @@ mod row_remainder_tests {
             InferType::Var(TypeVar(21)),
         );
         let scheme = generalize(ty, &HashSet::new());
-        let mut generator = TypeVarGenerator::with_counter(21);
+        let mut generator = TypeVarGenerator::starting_at(21);
         let (_, renaming) = instantiate_with_renaming(&scheme, &mut generator);
         assert!(renaming.values().all(|var| var.0 > 22));
     }
