@@ -9,7 +9,7 @@ the workflows themselves are `.github/workflows/release.yml` here and
 
 For the release chain in the context of every other script and CI workflow across all
 four repos — including the per-PR checks and the manual docs-only path this document
-doesn't cover — see [`PROCESSES.md`](PROCESSES.md).
+doesn't cover — see the [Operations Specification](docs/operations/index.md) (`PROCESSES.md` has the overview diagram).
 
 The contracts this chain keeps are stated in the
 [Operations Specification](docs/operations/spec/release.md) (`PROC-RELEASE-*`); this document

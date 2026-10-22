@@ -11,7 +11,7 @@ the suppression with a `// clippy-allow: <reason>` comment (which is never
 counted), rather than adding a bare allow.
 
 This is the same grandfathered-baseline shape `rfc.py`'s COVERAGE-BASELINE.json
-uses, and it rides the same "policy checker in CI" slot as tools/check_inventory.sh.
+uses, and it rides the "policy checker in CI" slot of the other tools/check_*.py scripts.
 
 A suppression counts as **justified** when the token `clippy-allow:` appears in a
 `//` comment either trailing the attribute line or on the line immediately above
