@@ -206,9 +206,10 @@ metel-core/
   `typechecker.md`/`evaluator.md` in each crate's own `docs/`
 - **Decision Records:** [`docs/architecture/decisions/`](docs/architecture/decisions/)
   — why past decisions were made, and why some were reversed
-- **Scripts and CI:** [`PROCESSES.md`](PROCESSES.md) — every script and CI workflow
-  across this repo, `metel-docs`, `metel-docs-internal`, and `metel-website`: what
-  runs, what triggers it, and which repo owns which secret
+- **Scripts and CI:** the [Operations Specification](docs/operations/index.md) — every script
+  and CI workflow across this repo, `metel-docs`, `metel-docs-internal`, and `metel-website`:
+  what it guarantees, what triggers it, and which repo owns which secret
+  ([`PROCESSES.md`](PROCESSES.md) is the overview diagram)
 
 ## License
 

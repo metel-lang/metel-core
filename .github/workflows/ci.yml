@@ -209,7 +209,7 @@ jobs:
       # as it was configured (metel-core#693).
       #
       # release-notes/ and rfcs/ stay deliberately excluded; see
-      # PROCESSES.md § "What is deliberately not checked" for why neither is
+      # PROC-DOCS-010 in the Operations Specification for why neither is
       # a gap to close later.
       - name: check doc examples
         run: |
@@ -291,18 +291,6 @@ jobs:
             --title "develop (rolling build)" \
             --notes "Automated rolling build of \`develop\`@${{ github.sha }}. Not a stable release -- overwritten on every push to \`develop\` and may change or disappear without notice. Published so metel-docs' and metel-website's doc-example checkers can validate against current \`develop\` behavior without either repo paying a full build on every PR (metel-core#696)." \
             metel-linux-x86_64 metel-linux-x86_64.sha256
-
-  inventory:
-    name: inventory doc up to date
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # Guards only this repo's own slice of PROCESSES.md (metel-core#687) --
-      # see the script's own header for why metel-docs's and metel-website's
-      # workflows aren't checkable from here.
-      - name: check PROCESSES.md lists every workflow/script/command
-        run: tools/check_inventory.sh
 
   # metel-core#1511: tools/bump-docs.sh moves the docs gitlink and opens the PR. Its self-test
   # builds real git repositories in a temp directory; no network, no `gh`.
