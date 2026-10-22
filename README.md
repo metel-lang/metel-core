@@ -209,7 +209,7 @@ metel-core/
 - **Scripts and CI:** the [Operations Specification](docs/operations/index.md) — every script
   and CI workflow across this repo, `metel-docs`, `metel-docs-internal`, and `metel-website`:
   what it guarantees, what triggers it, and which repo owns which secret
-  ([`PROCESSES.md`](PROCESSES.md) is the overview diagram)
+  (its [flows](docs/operations/flows.md) are the diagrams)
 
 ## License
 
