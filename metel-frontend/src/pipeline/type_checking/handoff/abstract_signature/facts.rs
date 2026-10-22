@@ -496,7 +496,7 @@ mod tests {
     #[test]
     fn unresolved_associated_fact_is_not_an_abstract_nominal() {
         let parameter = AbstractParameterId {
-            binder: BindingId::Global(SymbolId(1)),
+            binder: BindingId::Global(SymbolId::declared_for_test(1)),
             index: 0,
         };
         let span = Span::new(1, 1, "associated_fact.mtl");

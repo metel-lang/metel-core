@@ -3072,10 +3072,9 @@ pub struct TypeDefinitionRegistry {
     /// time, not re-resolved at cleanup (the name may no longer resolve once its
     /// scope is being torn down). Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<SymbolId>>,
-    /// Next id to hand out for a block-local struct/enum declaration. Counts **down** from the top
-    /// of the block-local range (`symbols::BLOCK_LOCAL`) so a synthetic id can never collide with a
-    /// name-resolver `SymbolId` (which counts up from `USER_SYM_START`).
-    next_local_type_id: u32,
+    /// Mints the `SymbolId`s of block-local struct/enum declarations. They are their own kind
+    /// (`SymbolId::BlockLocal`), so they cannot collide with a name-resolver id.
+    local_type_ids: crate::identity::symbols::BlockLocalAllocator,
     /// Concrete (non-generic) method signatures. Key: (type `SymbolId`,
     /// `method_name`). Keyed by `SymbolId`, not surface name (metel-core#1124),
     /// for the same reason as `method_scheme_env` above.
@@ -3297,14 +3296,10 @@ impl TypeDefinitionRegistry {
         self.enum_env.get(&self.type_decl_ids.get(name).copied()?)
     }
 
-    /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn from the
-    /// block-local range counting down, so it can never collide with a name-resolver id (those
-    /// count up from `USER_SYM_START`) or an overload id. Panics rather than leave the range.
+    /// Mint a fresh `SymbolId` for a block-local struct/enum declaration. Its kind
+    /// (`SymbolId::BlockLocal`) keeps it distinct from a name-resolver or overload id.
     fn fresh_local_type_id(&mut self) -> SymbolId {
-        crate::identity::symbols::allocate_down(
-            &mut self.next_local_type_id,
-            crate::identity::symbols::BLOCK_LOCAL,
-        )
+        self.local_type_ids.fresh()
     }
 
     /// The `SymbolId` for a bare name with no true declaration at all --
@@ -3489,7 +3484,7 @@ impl TypeDefinitionRegistry {
             fun_open_row_params: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
-            next_local_type_id: crate::identity::symbols::BLOCK_LOCAL.end - 1,
+            local_type_ids: crate::identity::symbols::BlockLocalAllocator::new(),
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
             array_method_env: HashMap::new(),
@@ -8376,8 +8371,8 @@ mod registry_identity_tests {
     // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn same_named_structs_in_two_modules_keep_distinct_field_sets() {
-        let alpha = SymbolId(1000);
-        let beta = SymbolId(1001);
+        let alpha = SymbolId::declared_for_test(1000);
+        let beta = SymbolId::declared_for_test(1001);
         let mut reg = TypeDefinitionRegistry::new();
         reg.register_struct_fields(
             alpha,
@@ -8409,8 +8404,8 @@ mod registry_identity_tests {
     // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn merge_from_does_not_collapse_same_named_structs() {
-        let alpha = SymbolId(1000);
-        let beta = SymbolId(1001);
+        let alpha = SymbolId::declared_for_test(1000);
+        let beta = SymbolId::declared_for_test(1001);
 
         let mut base = TypeDefinitionRegistry::new();
         base.register_struct_fields(
@@ -8474,8 +8469,8 @@ mod registry_identity_tests {
 
     #[test]
     fn same_named_enums_in_two_modules_keep_distinct_variant_sets() {
-        let alpha = SymbolId(1000);
-        let beta = SymbolId(1001);
+        let alpha = SymbolId::declared_for_test(1000);
+        let beta = SymbolId::declared_for_test(1001);
         let mut base = TypeDefinitionRegistry::new();
         base.register_enum(
             alpha,

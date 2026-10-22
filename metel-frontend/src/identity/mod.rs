@@ -143,7 +143,7 @@ pub struct LabelId(pub u32);
 ///
 /// This is what a resolved value reference carries in the frozen IR. It is a
 /// closed set — a use is global or local, never "absent, guess from the name".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BindingId {
     /// A module-level declaration, method, constructor, or imported name
     /// resolved to its defining declaration.

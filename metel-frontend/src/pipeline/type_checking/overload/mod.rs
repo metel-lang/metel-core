@@ -9,7 +9,7 @@
 //! coercions do **not** participate in overload selection (decided in sprint 22).
 //!
 //! Implementation strategy: each overloaded definition is assigned a unique
-//! [`SymbolId`] from a dedicated range (see `symbols::OVERLOAD_SYM_START`).
+//! [`SymbolId`] of the `Overload` kind (see `symbols::allocate_overload`).
 //! Construction selects the matching candidate at each call site and stamps its
 //! id into `TypedExpr::Call::callee_id`; the evaluator registers each
 //! overloaded definition under its id and dispatches such calls through its
@@ -34,11 +34,11 @@ use super::conversions::{
 /// are built per module; the global counter keeps ids unique across the whole
 /// graph so the evaluator's symbol registry never collides.
 // limit: ["LIMIT-NAME-RESOLUTION-002"]
-static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(crate::identity::symbols::OVERLOAD_SYM_START);
+static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(0);
 // arch-implements: ["arch.type-construction.requirement-10"]
 
 fn next_overload_symbol() -> SymbolId {
-    crate::identity::symbols::allocate_from(&NEXT_OVERLOAD_SYM, crate::identity::symbols::OVERLOAD)
+    crate::identity::symbols::allocate_overload(&NEXT_OVERLOAD_SYM)
 }
 
 /// The overload table for the embedded `std::core` declarations, built once per

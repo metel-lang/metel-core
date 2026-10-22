@@ -3705,7 +3705,7 @@ fn eval_call_expr(
     let func_val = if let Some(id) = callee_id {
         match runtime.get_symbol_value(id).cloned() {
             Some(value) => value,
-            None if id.0 >= crate::identity::symbols::OVERLOAD_SYM_START => {
+            None if matches!(id, crate::identity::symbols::SymbolId::Overload(_)) => {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for overload symbol {id:?}"
                 )));
@@ -4864,9 +4864,15 @@ mod architecture_evidence_tests {
     use crate::data::ast::Span;
     use crate::data::error::MetelError;
     use crate::identity::LocalId;
-    use crate::identity::symbols::SymbolId;
+    use crate::identity::symbols::{SymbolId, SymbolTable};
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    /// `N` distinct ids, interned through the public table as the resolver would.
+    fn symbols<const N: usize>() -> [SymbolId; N] {
+        let mut table = SymbolTable::new();
+        std::array::from_fn(|i| table.intern(&[], &format!("sym{i}")))
+    }
 
     fn array(items: &[i64]) -> Rc<RefCell<Vec<Value>>> {
         Rc::new(RefCell::new(items.iter().map(|n| Value::I64(*n)).collect()))
@@ -4956,18 +4962,19 @@ mod architecture_evidence_tests {
     // arch-verifies: ["arch.evaluation.requirement-2"]
     #[test]
     fn same_named_types_dispatch_by_symbol_id_not_name() {
+        let [first, second, unregistered] = symbols();
         let mut registry = RuntimeRegistry::new();
-        registry.register_type_value(SymbolId(1), "Config", "new", native("alpha"));
-        registry.register_type_value(SymbolId(2), "Config", "new", native("beta"));
+        registry.register_type_value(first, "Config", "new", native("alpha"));
+        registry.register_type_value(second, "Config", "new", native("beta"));
         assert_eq!(
-            label_of(registry.get_type_value_by_id(SymbolId(1), "new")).as_deref(),
+            label_of(registry.get_type_value_by_id(first, "new")).as_deref(),
             Some("alpha")
         );
         assert_eq!(
-            label_of(registry.get_type_value_by_id(SymbolId(2), "new")).as_deref(),
+            label_of(registry.get_type_value_by_id(second, "new")).as_deref(),
             Some("beta")
         );
-        assert!(registry.get_type_value_by_id(SymbolId(3), "new").is_none());
+        assert!(registry.get_type_value_by_id(unregistered, "new").is_none());
     }
 
     // arch-verifies: ["arch.evaluation.requirement-3"]
@@ -4995,11 +5002,12 @@ mod architecture_evidence_tests {
     // arch-verifies: ["arch.evaluation.requirement-8"]
     #[test]
     fn dyn_aspect_value_rebuilds_its_dyn_type_without_exposing_the_concrete_value() {
+        let [type_id, aspect_id] = symbols();
         let value = Value::DynAspect {
             data: Rc::new(RefCell::new(Value::I64(5))),
-            type_id: Some(SymbolId(10)),
+            type_id: Some(type_id),
             concrete_type: crate::data::types::Type::I64,
-            aspect_id: SymbolId(11),
+            aspect_id,
             aspect_name: "Counter".to_string(),
             type_args: vec![],
         };

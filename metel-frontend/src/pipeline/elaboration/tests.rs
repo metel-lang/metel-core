@@ -9,8 +9,8 @@ fn display_owner() -> AspectDispatchOwner {
     }
 }
 
-const FOO_ID: SymbolId = SymbolId(9001);
-const BAR_ID: SymbolId = SymbolId(9002);
+const FOO_ID: SymbolId = SymbolId::declared_for_test(9001);
+const BAR_ID: SymbolId = SymbolId::declared_for_test(9002);
 
 // arch-verifies: ["arch.elaboration.requirement-1"]
 #[test]
