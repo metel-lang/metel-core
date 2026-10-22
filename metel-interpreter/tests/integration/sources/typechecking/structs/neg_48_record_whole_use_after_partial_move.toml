@@ -1,7 +1,7 @@
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify"
+contains = "the record is missing field `left` (expected `{ left: String, right: i64 }`, found `{ right: integer }`)"
 
 [options]
 error = ["T0001"]

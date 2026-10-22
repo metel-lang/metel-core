@@ -1,0 +1,4 @@
+// metel-core#1483: an extra field for a closed target.
+fun main() {
+    let a: { x: i64, y: i64 } := { x = 1, y = 2, z = 3 };
+}

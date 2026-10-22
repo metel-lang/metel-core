@@ -1,0 +1,7 @@
+[options]
+error = ["T0001"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "field `z` is not part of `{ x: i64, y: i64 }`"

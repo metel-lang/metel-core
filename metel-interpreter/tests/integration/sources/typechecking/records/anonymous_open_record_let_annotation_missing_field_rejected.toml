@@ -5,5 +5,5 @@ spec = ["spec.types.generics.open-rows.legality-5"]
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify"
+contains = "the record is missing field `x` (expected `{ x: i64, .. }`, found `{ z: integer }`)"
 line = 4

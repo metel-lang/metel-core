@@ -1469,6 +1469,186 @@ fn partial_move_mismatch_message(
     }
 }
 
+/// A type as a user should read it in a diagnostic (metel-core#1483): an unresolved integer or
+/// float literal prints as `integer` / `float`, an open row tail as `..`, and any other unresolved
+/// variable as `_`, never as an internal `?1` / `?t21`.
+fn render_for_user(
+    ty: &InferType,
+    integer_vars: &HashSet<TypeVar>,
+    float_vars: &HashSet<TypeVar>,
+    known: &HashMap<TypeVar, String>,
+) -> String {
+    let go = |t: &InferType| render_for_user(t, integer_vars, float_vars, known);
+    let fields = |fs: &[(String, InferType)]| {
+        fs.iter()
+            .map(|(n, t)| format!("{n}: {}", go(t)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match ty {
+        InferType::Var(v) => known.get(v).cloned().unwrap_or_else(|| {
+            if integer_vars.contains(v) {
+                "integer".to_string()
+            } else if float_vars.contains(v) {
+                "float".to_string()
+            } else {
+                "_".to_string()
+            }
+        }),
+        InferType::Record(fs) => format!("{{ {} }}", fields(fs)),
+        InferType::RowExtend { fields: fs, tail } => match tail.as_ref() {
+            InferType::Var(_) if fs.is_empty() => "{ .. }".to_string(),
+            InferType::Var(_) => format!("{{ {}, .. }}", fields(fs)),
+            other => format!("{{ {}, ..{} }}", fields(fs), go(other)),
+        },
+        InferType::Tuple(ts) => format!("({})", ts.iter().map(go).collect::<Vec<_>>().join(", ")),
+        InferType::Array(t) => format!("[{}]", go(t)),
+        InferType::SizedArray(t, n) => format!("[{}; {n}]", go(t)),
+        InferType::Reference(t) => format!("&{}", go(t)),
+        InferType::MutReference(t) => format!("&var {}", go(t)),
+        InferType::Named(name, args, ..) if !args.is_empty() => {
+            format!(
+                "{name}<{}>",
+                args.iter().map(go).collect::<Vec<_>>().join(", ")
+            )
+        }
+        _ => ty.to_string(),
+    }
+}
+
+/// The labelled fields of a record-shaped type and whether more fields may follow.
+fn record_shape(ty: &InferType) -> Option<(&[(String, InferType)], bool)> {
+    match ty {
+        InferType::Record(fields) => Some((fields.as_slice(), false)),
+        InferType::RowExtend { fields, .. } => Some((fields.as_slice(), true)),
+        _ => None,
+    }
+}
+
+/// A record diff for a failed unification of two record-shaped types (metel-core#1483): which
+/// field is missing, which is not part of a closed target, or which has the wrong type, in the
+/// wording of the row-bound messages (`T0012`), instead of the raw types. `None` when the two are
+/// not both records, or differ in a way this does not name (a nested mismatch), so the generic
+/// message stands. With the direction unknown (`found_then_expected` false) the message names the
+/// difference between the two without saying which one was expected.
+fn record_diff_message(
+    lhs: &InferType,
+    rhs: &InferType,
+    found_then_expected: bool,
+    integer_vars: &HashSet<TypeVar>,
+    float_vars: &HashSet<TypeVar>,
+    known: &HashMap<TypeVar, String>,
+) -> Option<String> {
+    let ((l_fields, l_open), (r_fields, r_open)) = (record_shape(lhs)?, record_shape(rhs)?);
+    let show = |t: &InferType| render_for_user(t, integer_vars, float_vars, known);
+    let quote = |labels: &[&str]| {
+        labels
+            .iter()
+            .map(|l| format!("`{l}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let has = |fields: &[(String, InferType)], label: &str| fields.iter().any(|(n, _)| n == label);
+    let mismatched: Vec<(&str, &InferType, &InferType)> = l_fields
+        .iter()
+        .filter_map(|(n, lt)| {
+            r_fields
+                .iter()
+                .find(|(m, _)| m == n)
+                .filter(|(_, rt)| unify(lt, rt).is_err())
+                .map(|(_, rt)| (n.as_str(), lt, rt))
+        })
+        .collect();
+    let mut parts: Vec<String> = Vec::new();
+    if found_then_expected {
+        // lhs is the value, rhs the type its position requires.
+        let missing: Vec<&str> = r_fields
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| !has(l_fields, n))
+            .collect();
+        let extra: Vec<&str> = l_fields
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| !has(r_fields, n))
+            .collect();
+        if !missing.is_empty() && !l_open {
+            let noun = if missing.len() == 1 {
+                "field"
+            } else {
+                "fields"
+            };
+            parts.push(format!("the record is missing {noun} {}", quote(&missing)));
+        }
+        if !extra.is_empty() && !r_open {
+            let (noun, verb) = if extra.len() == 1 {
+                ("field", "is")
+            } else {
+                ("fields", "are")
+            };
+            parts.push(format!(
+                "{noun} {} {verb} not part of `{}`",
+                quote(&extra),
+                show(rhs)
+            ));
+        }
+        for (name, found, expected) in &mismatched {
+            parts.push(format!(
+                "field `{name}`: expected `{}`, found `{}`",
+                show(expected),
+                show(found)
+            ));
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        // A wrong field type names the field and both types, and an extra field names the target;
+        // the whole records follow only when a label is missing.
+        if missing.is_empty() {
+            return Some(parts.join("; "));
+        }
+        Some(format!(
+            "{} (expected `{}`, found `{}`)",
+            parts.join("; "),
+            show(rhs),
+            show(lhs)
+        ))
+    } else {
+        let only_l: Vec<&str> = l_fields
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| !has(r_fields, n))
+            .collect();
+        let only_r: Vec<&str> = r_fields
+            .iter()
+            .map(|(n, _)| n.as_str())
+            .filter(|n| !has(l_fields, n))
+            .collect();
+        if !only_l.is_empty() && !r_open {
+            parts.push(format!("only the first has {}", quote(&only_l)));
+        }
+        if !only_r.is_empty() && !l_open {
+            parts.push(format!("only the second has {}", quote(&only_r)));
+        }
+        for (name, first, second) in &mismatched {
+            parts.push(format!(
+                "field `{name}` is `{}` in the first and `{}` in the second",
+                show(first),
+                show(second)
+            ));
+        }
+        if parts.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "the records `{}` and `{}` differ: {}",
+            show(lhs),
+            show(rhs),
+            parts.join("; ")
+        ))
+    }
+}
+
 /// As `operand_mismatch_error`, for a numeric literal bound to an incompatible type.
 fn literal_mismatch_error(
     operator: Option<&'static str>,
@@ -1547,6 +1727,20 @@ fn apply_constraint_with_coercion(
             if let Some(msg) =
                 partial_move_mismatch_message(&lhs, &rhs, constraint.found_then_expected)
             {
+                return MetelError::type_error(
+                    crate::data::error::TypeErrorCode::T0001,
+                    msg,
+                    &constraint.span,
+                );
+            }
+            if let Some(msg) = record_diff_message(
+                &lhs,
+                &rhs,
+                constraint.found_then_expected,
+                integer_literal_vars,
+                float_literal_vars,
+                known_names,
+            ) {
                 return MetelError::type_error(
                     crate::data::error::TypeErrorCode::T0001,
                     msg,
