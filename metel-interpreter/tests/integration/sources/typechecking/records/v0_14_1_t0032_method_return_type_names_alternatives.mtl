@@ -1,5 +1,5 @@
 // metel-core#1484: a method's return type gets the same T0032 text as a free function's,
-// naming the alternatives that work.
+// naming the alternatives that work for a method: omitting the type returns (), it does not infer.
 struct Box { n: i64 }
 
 extend Box {
