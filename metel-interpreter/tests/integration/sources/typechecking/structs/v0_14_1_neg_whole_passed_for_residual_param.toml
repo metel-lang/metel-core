@@ -1,0 +1,7 @@
+[options]
+error = ["T0001"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "is a whole value, but this position requires the narrowed"

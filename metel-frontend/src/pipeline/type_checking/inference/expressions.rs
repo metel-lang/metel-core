@@ -704,7 +704,7 @@ fn infer_expr_inner(
                 // candidate's parameter type so defaulted literal vars resolve
                 // to what selection assumed.
                 for (arg_ty, param) in arg_infer.iter().zip(&entry.params) {
-                    ctx.add_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
+                    ctx.add_expected_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
                 }
                 let ret_var = ctx.fresh_var();
                 ctx.add_constraint(ret_var.clone(), type_to_infer(&entry.ret), span.clone());
@@ -752,7 +752,7 @@ fn infer_expr_inner(
                 if let InferType::Fun(params, ret, ..) = instantiated_ty {
                     // Constrain arguments to match the instantiated function type
                     for (arg_ty, param) in arg_infer.iter().zip(params.iter()) {
-                        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                        ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
                     }
 
                     // Register aspect bounds and mark opacity guards for each opaque return
@@ -816,7 +816,7 @@ fn infer_expr_inner(
                         span,
                         ctx,
                     )?;
-                    ctx.add_constraint(arg_ty.clone(), param_ty.clone(), span.clone());
+                    ctx.add_expected_constraint(arg_ty.clone(), param_ty.clone(), span.clone());
                 }
                 return Ok(*ret);
             }
@@ -854,7 +854,7 @@ fn infer_expr_inner(
                     ));
                 }
                 for (arg_ty, param) in arg_tys.iter().zip(params.iter()) {
-                    ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                    ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
                 }
                 return Ok(*ret.clone());
             }
@@ -1342,7 +1342,7 @@ fn infer_expr_inner(
                         ));
                     }
                     for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
-                        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+                        ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
                     }
                     if let Some(receiver) = ctx.get_array_method_receiver_kind(method).cloned() {
                         ctx.record_definition_method_fact(
@@ -1776,7 +1776,7 @@ fn infer_expr_inner(
                 for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                     if let Some(ann) = &param.type_ann {
                         let param_ty = signature_type_expr_to_infer(ann, &env);
-                        ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
+                        ctx.add_expected_constraint(arg_ty.clone(), param_ty, span.clone());
                     }
                 }
 
@@ -1909,7 +1909,7 @@ fn infer_expr_inner(
                         for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
                             if let Some(ann) = &param.type_ann {
                                 let param_ty = signature_type_expr_to_infer(ann, &signature_env);
-                                ctx.add_constraint(arg_ty.clone(), param_ty, span.clone());
+                                ctx.add_expected_constraint(arg_ty.clone(), param_ty, span.clone());
                             }
                         }
 
@@ -2895,7 +2895,7 @@ fn infer_record_method_call_with_scheme(
         ));
     }
     for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
-        ctx.add_constraint(arg_ty.clone(), param.clone(), span.clone());
+        ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
     }
     if let (Some(receiver), Some(aspect)) = (
         selected_receiver,
