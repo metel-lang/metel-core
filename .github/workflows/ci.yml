@@ -117,6 +117,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 docs/architecture/tools/check_architecture.py --core . --check
 
+      # The Operations Specification (metel-docs/operations/) is checked against the
+      # assets reachable from here: this repo's workflows, tools and commands. Assets in
+      # repositories not checked out are skipped; /cut-release runs it with every
+      # repository present and --strict (metel-core#1507).
+      - name: Operations Specification matches the repository
+        run: python3 docs/architecture/tools/check_operations.py --check
+
   grammar-doc-check:
     name: grammar.md up to date
     runs-on: ubuntu-latest
