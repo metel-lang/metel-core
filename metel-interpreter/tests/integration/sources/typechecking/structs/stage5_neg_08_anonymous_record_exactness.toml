@@ -4,4 +4,4 @@ error = ["T0001"]
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify"
+contains = "field `y` is not part of `{ x: i64 }`"

@@ -1,0 +1,6 @@
+// metel-core#1483: a closed record parameter and an argument that lacks one of its fields.
+fun f(p: { x: i64, y: i64 }) -> i64 { 1 }
+
+fun main() {
+    f({ x = 1 });
+}
