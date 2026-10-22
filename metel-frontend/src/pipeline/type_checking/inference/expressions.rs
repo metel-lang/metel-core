@@ -2023,6 +2023,21 @@ fn infer_expr_inner(
                 ));
             }
 
+            // A function type is a known type with no methods: it satisfies no aspect, so there is
+            // no `Clone`, `Display` or any other method to dispatch to (GAP-FUNCTIONS-002/003).
+            // Saying "add a type annotation" here sends the user to a change that does nothing
+            // (metel-core#1242).
+            if matches!(peeled_recv_for_bounds, InferType::Fun(..)) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!(
+                        "no method `{method}` on `{peeled_recv_for_bounds}`: a function type implements no aspect, \
+                         so it has no methods"
+                    ),
+                    span,
+                ));
+            }
+
             Err(MetelError::type_error(
                 TypeErrorCode::T0002,
                 "cannot infer receiver type for method call; add a type annotation",

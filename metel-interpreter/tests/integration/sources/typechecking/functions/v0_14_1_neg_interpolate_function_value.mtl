@@ -1,0 +1,5 @@
+// metel-core#1242: string interpolation calls `to_string`, which a function type does not have.
+fun main() {
+    let f: |i64| -> i64 := |x: i64| -> i64 { x + 1 };
+    println("${f}");
+}
