@@ -185,8 +185,8 @@ git tag -a $ARGUMENTS -m "$ARGUMENTS: <theme>"
 git push origin $ARGUMENTS
 ```
 
-There is no release merge commit. Because every issue branch fast-forwarded into
-`develop`, `main` is by construction a prefix of it, and what a release contained is read
+There is no release merge commit. Because every issue branch is rebase-merged into
+`develop`, its history is linear and `main` is by construction a prefix of it, and what a release contained is read
 off the tags bracketing the range.
 
 The tag is created on `main` after the fast-forward, never before, and its name must match

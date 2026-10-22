@@ -158,28 +158,30 @@ Normal implementation flow:
 2. Use `<type>/<issue>-<slug>` (`feat`, `fix`, `refactor`, `test`, `docs`, `chore`).
 3. One issue, branch, and pull request.
 4. Rebase onto `origin/develop`; never merge `develop` into the branch.
-5. Run Tier 3, open the PR to `develop`, and merge by local fast-forward.
+5. Run Tier 3, open the PR to `develop`, and merge it with the hosting service's rebase merge.
 6. `main` moves only when the numbered release milestone completes.
 
-GitHub's hosted merge buttons do not provide the required true fast-forward. After
-review:
+After review and green checks, merge with a rebase merge:
 
 ```bash
-git fetch origin develop <branch>
-git switch develop
-git merge --ff-only origin/<branch>
-git push origin develop
+gh pr merge <number> --rebase
 ```
+
+A rebase merge replays the branch's commits onto `develop`, so history stays linear: there
+is no merge commit on `develop`, and `main` is a prefix of it at every release. The commits
+get new hashes, so do not cite a branch commit from another document; a `last_reviewed`
+that named one stops resolving and is re-recorded at the next review (a warning, not a
+failure). The pre-push hook still refuses a merge commit in a local push to `develop`.
 
 ### Branch retirement
 
 Retire a topic branch as part of handoff once its change has reached `develop`; do not
 accumulate merged branches as an archive. Before deleting a branch, fetch with
-`git fetch --prune origin`, confirm its PR is closed, and confirm its tip is an ancestor
-of `origin/develop`. Never delete `main`, `develop`, a branch with an open PR, an
+`git fetch --prune origin` and confirm its PR is merged (`gh pr view <branch> --json state`);
+a rebase merge rewrites the commits, so the tip is not an ancestor of `origin/develop`. Never delete `main`, `develop`, a branch with an open PR, an
 unmerged branch, or a branch checked out in any worktree.
 
-Delete the verified remote branch and its local counterpart after the fast-forward.
+Delete the verified remote branch and its local counterpart after the merge.
 Before each release, audit both the core and public-docs repositories for merged remote
 topic branches using the same criteria. Branch age alone is never sufficient evidence for
 deletion.
