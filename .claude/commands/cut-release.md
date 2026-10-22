@@ -124,6 +124,16 @@ it where `gh` is authenticated). For each: implement it (the marker leaves with 
 the issue to a later milestone, or convert the part to a `Gap`/`Limitation` record. Do not tag
 with a finding outstanding.
 
+**3d. Operations Specification current** — every requirement's cited assets exist and every
+process asset is mapped (metel-core#1507). On a pull request an asset in another repository is
+only a warning, so the release, with all four repositories checked out side by side, enforces it:
+
+```bash
+python3 docs/architecture/tools/check_operations.py --strict --workspace ..
+```
+
+Exits 0. Fix the asset or the specification; do not tag with a finding outstanding.
+
 Also bump the spec's fixture-viewer ref to the tag being cut (metel-core#944): in the
 `metel-docs` working tree, set `SPEC_FIXTURE_REF` in `rfcs/tools/rfc.py` to `$ARGUMENTS`,
 run `python3 docs/rfcs/tools/rfc.py index --write-spec-origins`, and commit both on
@@ -215,7 +225,7 @@ Lift the freeze on `develop` once both are confirmed green.
 ## $ARGUMENTS — released
 
 **Range:** <prev-tag>..$ARGUMENTS (<N> commits)
-**Gate:** integration session PASS + all 9 release-gate items passed.
+**Gate:** integration session PASS + all release-gate items passed.
 
 ### Shipped
 - #N: <title>
