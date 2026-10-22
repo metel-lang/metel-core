@@ -33,9 +33,11 @@ release.yml (here, Stage A)
      used to perform first; metel-docs is directly edited, nothing to mirror)
   2. reads this repo's own pinned docs submodule commit
   3. in a fresh metel-website checkout: bumps its docs submodule pointer to
-     that commit, runs `docusaurus docs:version X.Y.Z`, commits the generated
+     that commit; for a minor release (patch component 0) renders the
+     architecture evidence into that docs working copy, pinned to this tag
+     (ADR-0064), and runs `docusaurus docs:version X.Y.Z`; commits the generated
      versioned_docs/ + versioned_sidebars/ + versions.json (skipped if nothing
-     changed), pushes to main
+     changed), pushes to main. A patch release cuts no snapshot.
   4. tags that commit vX.Y.Z in metel-website — skipped if the tag already
      exists there (safe to re-run this whole workflow after fixing a failure)
         │
@@ -52,36 +54,23 @@ promote.yml (metel-website, Stage C — workflow_dispatch only)
 
 ## Why it's split this way
 
-Each step writes to exactly one repository, using a credential scoped to that repo
-alone:
+The rules are stated in the Operations Specification, `PROC-RELEASE-009` (each step writes to
+one repository, with a credential scoped to it) and `PROC-DEPLOY-003` (production changes only
+by promoting a reviewed staging build). The reasons behind them:
 
-| Secret | Lives in | Scope |
-|---|---|---|
-| `WEBSITE_TOKEN` | metel-core | Write, `metel-website` only |
-| `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` | metel-website | Vercel deploy access for this project |
-
-**`DOCS_REPO_TOKEN` and `DOCS_PUBLIC_TOKEN` are retired (ADR-0051).** `metel-docs` is
-public, so checking it out needs no credential at all, and `release.yml` doesn't write
-to it anymore — see `PROCESSES.md`'s Secrets section for the full explanation. Both
-secrets should be removed from `metel-core`'s repository settings, not just left
-provisioned and unused.
-
-No single credential spans more than one repository. `release.yml` triggers
-`deploy.yml` by pushing a real tag rather than a synthetic `repository_dispatch`
-event, so `metel-website`'s pipeline stays independently triggerable — pushing a
-`vX.Y.Z` tag directly to `metel-website` runs the exact same build-and-deploy
-pipeline on its own, useful for testing that side without cutting a `metel-core`
-release at all.
-
-Production promotion is a deliberate manual step (`promote.yml`, `workflow_dispatch`
-only) rather than fully unattended, specifically to preserve the review checkpoint the
-old manual process had implicitly (someone ran `docs:version`, looked at it, then
-deployed) — full automation shouldn't mean zero review before something goes live on
-`metel-lang.org`. This was originally designed as a GitHub Environment
-required-reviewer gate, but that feature needs a paid plan for private repos, which
-this org doesn't have (`422`: "Please ensure the billing plan supports the required
-reviewers protection rule") — a human manually running `promote.yml`, after reviewing
-the staging URL `deploy.yml`'s job summary prints, is the approval instead.
+- No single credential spans more than one repository. The secrets are `WEBSITE_TOKEN`
+  (`metel-core`, write to `metel-website` only) and the three Vercel secrets (`metel-website`).
+  `DOCS_REPO_TOKEN` and `DOCS_PUBLIC_TOKEN` are retired (ADR-0051): `metel-docs` is public and
+  `release.yml` no longer writes to it. They should be removed from `metel-core`'s repository
+  settings, not left provisioned and unused.
+- `release.yml` starts `deploy.yml` by pushing a real tag, not a synthetic `repository_dispatch`,
+  so `metel-website`'s pipeline stays independently triggerable: a `vX.Y.Z` tag pushed to
+  `metel-website` runs the same pipeline, which tests that side without a `metel-core` release.
+- Promotion is manual so that automation does not remove the review checkpoint before something
+  goes live on `metel-lang.org`. A GitHub Environment required-reviewer gate was the design, but
+  that feature needs a paid plan for private repositories (`422`: "Please ensure the billing plan
+  supports the required reviewers protection rule"), so a person running `promote.yml` after
+  reviewing the staging URL is the approval.
 
 ## Failure handling
 
