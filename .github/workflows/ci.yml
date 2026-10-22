@@ -110,7 +110,11 @@ jobs:
       # where the fixture corpus is unreachable (a documented no-op there, metel-core#1219).
       # This repo's checkout has both docs/ and metel-interpreter/tests/ side by side, so
       # --core . additionally validates every skipped fixture's LIMIT-* citation here.
-      - name: skipped-fixture LIMIT-* citations are current
+      # A fixture skipped with `skip = "pending: #N"` (metel-core#1514) is checked against the
+      # issue's state, a public read the built-in token covers.
+      - name: skipped-fixture LIMIT-* and pending citations are current
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 docs/architecture/tools/check_architecture.py --core . --check
 
   grammar-doc-check:

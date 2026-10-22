@@ -110,6 +110,20 @@ Exits 0. Each warning names a requirement whose cited code changed after its rec
 review: reread the claim against the code and bump its `last_reviewed`, or fix the claim.
 Do not tag with a warning outstanding.
 
+**3c. No pending part left in this release** — a `> **Pending** metel-core#N` marker in the
+Language Spec, or a fixture skipped with `skip = "pending: #N"`, says a part is not implemented
+yet and an issue tracks it (metel-core#1418, #1514):
+
+```bash
+python3 docs/architecture/tools/check_architecture.py --release-gate $ARGUMENTS --core .
+```
+
+Exits 0. It fails while a marker or fixture cites an issue still open in `$ARGUMENTS`, an issue
+with no milestone, a closed or missing issue, or one it could not verify (GitHub unreachable; run
+it where `gh` is authenticated). For each: implement it (the marker leaves with the issue), move
+the issue to a later milestone, or convert the part to a `Gap`/`Limitation` record. Do not tag
+with a finding outstanding.
+
 Also bump the spec's fixture-viewer ref to the tag being cut (metel-core#944): in the
 `metel-docs` working tree, set `SPEC_FIXTURE_REF` in `rfcs/tools/rfc.py` to `$ARGUMENTS`,
 run `python3 docs/rfcs/tools/rfc.py index --write-spec-origins`, and commit both on
