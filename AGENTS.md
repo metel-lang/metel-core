@@ -46,6 +46,8 @@ git submodule update --init docs
 - Current code architecture: the crate docs named above and the code itself.
 - Versioning/release rules: `RELEASING.md`; release history:
   `docs/release-notes/changelog.md`.
+- Process contracts (release, deployment, documentation, CI): the Operations Specification,
+  `docs/operations/index.md`.
 
 If these disagree, stop and resolve the inconsistency before implementing against it.
 

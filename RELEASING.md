@@ -11,6 +11,10 @@ For the release chain in the context of every other script and CI workflow acros
 four repos — including the per-PR checks and the manual docs-only path this document
 doesn't cover — see [`PROCESSES.md`](PROCESSES.md).
 
+The contracts this chain keeps are stated in the
+[Operations Specification](docs/operations/spec/release.md) (`PROC-RELEASE-*`); this document
+describes the chain, the specification states what must hold.
+
 **Before the tag:** the milestone passes two gates that this chain assumes are already
 green — `/milestone-integration-test <version>` (cross-feature testing, commits
 `docs/release-notes/integration/<version>.md`) and then `/cut-release <version>` (the
