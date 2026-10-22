@@ -222,6 +222,13 @@ Public docs changes are committed to the `metel-docs` repository first, then the
 gitlink is updated in the core issue branch. The core release pins an exact public-docs
 commit.
 
+To move the pin without writing the pull request by hand, run `tools/bump-docs.sh` (see
+`--help`; `--dry-run` previews). It branches from `origin/develop`, moves the gitlink with
+`git update-index --cacheinfo`, runs the docs-dependent checks on the new commit, pushes and
+opens the PR, and never merges. Use it when core work needs new docs content. The architecture
+evidence is rendered at publish time (ADR-0064), so a change to which code is cited needs no
+bump. The pin may otherwise lag `metel-docs` `main`.
+
 RFC stages are directories under `docs/rfcs/`:
 
 ```text
