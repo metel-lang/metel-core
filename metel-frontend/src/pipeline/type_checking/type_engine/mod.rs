@@ -1232,6 +1232,11 @@ pub struct Constraint {
     /// constraints so the failure can name the operator, which is the form
     /// `error-codes.md` documents for T0005.
     pub operator: Option<&'static str>,
+    /// `lhs` is the value found and `rhs` the type the position requires (a call argument against
+    /// its parameter, an initializer against its annotation). Constraints are otherwise
+    /// symmetric, so a diagnostic that depends on the direction of the mismatch can only be
+    /// worded for it when the site says so (metel-core#1458).
+    pub found_then_expected: bool,
 }
 
 impl Constraint {
@@ -1242,6 +1247,17 @@ impl Constraint {
             rhs,
             span,
             operator: None,
+            found_then_expected: false,
+        }
+    }
+
+    /// A constraint between the type of a value (`found`) and the type its position requires
+    /// (`expected`), so a failure can say which way the mismatch runs.
+    #[must_use]
+    pub fn expecting(found: InferType, expected: InferType, span: Span) -> Self {
+        Self {
+            found_then_expected: true,
+            ..Self::new(found, expected, span)
         }
     }
 
@@ -1253,6 +1269,7 @@ impl Constraint {
             rhs,
             span,
             operator: Some(op),
+            found_then_expected: false,
         }
     }
 }
@@ -1342,7 +1359,7 @@ fn operand_mismatch_error(
     // RFC-0137 slice 2 (metel-core#858): one side is a narrowed residual of the
     // brand the other side names in full (or wider) — a partially-moved value
     // used where more of it is required. Name that, not a bare shape mismatch.
-    if let Some(msg) = partial_move_mismatch_message(lhs, rhs) {
+    if let Some(msg) = partial_move_mismatch_message(lhs, rhs, constraint.found_then_expected) {
         return MetelError::type_error(
             crate::data::error::TypeErrorCode::T0001,
             msg,
@@ -1366,8 +1383,14 @@ fn operand_mismatch_error(
     }
 }
 
-/// A diagnostic for a residual meeting a wider row / whole brand of itself.
-fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String> {
+/// A diagnostic for a residual meeting a wider row / whole brand of itself. `found_then_expected`
+/// says that `a` is the value and `b` the type its position requires (metel-core#1458); without
+/// it the direction is unknown and the message is worded to be true either way.
+fn partial_move_mismatch_message(
+    a: &InferType,
+    b: &InferType,
+    found_then_expected: bool,
+) -> Option<String> {
     let row = |fields: &[(String, InferType)]| {
         fields
             .iter()
@@ -1380,10 +1403,26 @@ fn partial_move_mismatch_message(a: &InferType, b: &InferType) -> Option<String>
         | (InferType::Named(nb, ..), InferType::Residual { brand: rb, fields })
             if rb == nb =>
         {
-            Some(format!(
-                "a partially-moved `{rb}` (now `{rb}.{{ {} }}`) cannot be used where the whole `{rb}` is required",
-                row(fields)
-            ))
+            let residual_is_found = matches!(a, InferType::Residual { .. });
+            let (shape, names) = (format!("{rb}.{{ {} }}", row(fields)), row(fields));
+            Some(match (found_then_expected, residual_is_found) {
+                // a partially-moved value used where the whole is required
+                (true, true) => format!(
+                    "a partially-moved `{rb}` (now `{shape}`) cannot be used where the whole `{rb}` is required"
+                ),
+                // a whole value where a narrowed type is required: nothing was moved
+                (true, false) => format!(
+                    "`{rb}` is a whole value, but this position requires the narrowed `{shape}`; \
+                     narrowing happens through an explicit move or projection (`value.{{ {names} }}`), \
+                     not at a call or binding"
+                ),
+                // direction unknown
+                (false, _) => format!(
+                    "`{rb}` and `{shape}` do not match: a partially-moved `{rb}` cannot be used where \
+                     the whole `{rb}` is required, and a whole `{rb}` is not narrowed to `{shape}` \
+                     implicitly (use an explicit move or projection, `value.{{ {names} }}`)"
+                ),
+            })
         }
         (
             InferType::Residual {
@@ -1505,7 +1544,9 @@ fn apply_constraint_with_coercion(
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
         let rhs_field = singleton_coerce_field_ty(registry, &rhs);
         let mk_err = || {
-            if let Some(msg) = partial_move_mismatch_message(&lhs, &rhs) {
+            if let Some(msg) =
+                partial_move_mismatch_message(&lhs, &rhs, constraint.found_then_expected)
+            {
                 return MetelError::type_error(
                     crate::data::error::TypeErrorCode::T0001,
                     msg,
@@ -7575,6 +7616,13 @@ impl InferContext {
     /// Record that `lhs` and `rhs` must unify, tagged with its source location.
     pub fn add_constraint(&mut self, lhs: InferType, rhs: InferType, span: Span) {
         self.constraints.push(Constraint::new(lhs, rhs, span));
+    }
+
+    /// As `add_constraint`, for a value of type `found` flowing into a position that requires
+    /// `expected`; the direction is kept for diagnostics (metel-core#1458).
+    pub fn add_expected_constraint(&mut self, found: InferType, expected: InferType, span: Span) {
+        self.constraints
+            .push(Constraint::expecting(found, expected, span));
     }
 
     /// Record an operand-agreement constraint, tagged with the operator so a failure can

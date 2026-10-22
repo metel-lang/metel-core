@@ -1,0 +1,11 @@
+// metel-core#1458: nothing was moved here. A whole `Strings` is passed where the narrowed
+// `Strings.{ a, c }` is required, and the message says so, not that a partially-moved value
+// is used where the whole is required (the opposite direction, covered by neg_48).
+struct Strings { a: String, b: String, c: String }
+
+fun take(t: Strings.{ a, c }) -> i64 { 1 }
+
+fun main() {
+    let s := Strings { a = "a".to_string(), b = "b".to_string(), c = "c".to_string() };
+    take(s);
+}

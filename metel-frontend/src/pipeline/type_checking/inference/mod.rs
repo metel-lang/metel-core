@@ -2437,7 +2437,7 @@ fn constrain_with_read_copy(
     // Erasure is a declared-type boundary, not just a coercion check: retaining
     // the concrete initializer would expose methods absent from the dyn vtable.
     if contains_dyn_erasure(&declared) {
-        ctx.add_constraint(actual, declared.clone(), span);
+        ctx.add_expected_constraint(actual, declared.clone(), span);
         return declared;
     }
     // Note the `Var(_)` arm here is deliberately left inspecting the *raw* `declared`.
@@ -2450,7 +2450,7 @@ fn constrain_with_read_copy(
         declared,
         InferType::Reference(_) | InferType::MutReference(_) | InferType::Var(_)
     ) {
-        ctx.add_constraint(actual.clone(), declared, span);
+        ctx.add_expected_constraint(actual.clone(), declared, span);
         return actual;
     }
     // Decide whether to peel against the *substituted* type, not the raw one. Without
@@ -2476,7 +2476,7 @@ fn constrain_with_read_copy(
         any_peel = true;
     }
     if any_peel {
-        ctx.add_constraint(peeled, declared.clone(), span);
+        ctx.add_expected_constraint(peeled, declared.clone(), span);
         return declared;
     }
     // RFC-0053/RFC-0177: an owning fixed-size array may enter an explicitly
@@ -2484,7 +2484,7 @@ fn constrain_with_read_copy(
     // the declared view type in the environment so a later use cannot regain
     // the literal's length accidentally.
     if matches!(declared, InferType::Array(_)) && matches!(actual, InferType::SizedArray(_, _)) {
-        ctx.add_constraint(actual, declared.clone(), span);
+        ctx.add_expected_constraint(actual, declared.clone(), span);
         return declared;
     }
     // RFC-0078 §3.3: if `actual` is (plausibly) a singleton-coercible enum, bind
@@ -2501,7 +2501,7 @@ fn constrain_with_read_copy(
     )
     .is_some()
     {
-        ctx.add_constraint(actual, declared.clone(), span);
+        ctx.add_expected_constraint(actual, declared.clone(), span);
         return declared;
     }
     // RFC-0166: a written function type `|T| -> U` is move-only. At a declared-type
@@ -2512,10 +2512,10 @@ fn constrain_with_read_copy(
     // the ordinary `unify` check (first-order Copy→Move is legal there), so this
     // only changes which of two constrained-equal types names the binding.
     if matches!(declared, InferType::Fun(..)) {
-        ctx.add_constraint(actual, declared.clone(), span);
+        ctx.add_expected_constraint(actual, declared.clone(), span);
         return declared;
     }
-    ctx.add_constraint(actual.clone(), declared, span);
+    ctx.add_expected_constraint(actual.clone(), declared, span);
     actual
 }
 
@@ -2646,7 +2646,7 @@ fn infer_enum_variant_literal(
             other => other.clone(),
         };
         let expr_ty = infer_expr(expr, ctx, fun_generalizations)?;
-        ctx.add_constraint(expr_ty, decl_ty, span.clone());
+        ctx.add_expected_constraint(expr_ty, decl_ty, span.clone());
     }
     let type_args: Vec<InferType> = enum_info
         .type_params
@@ -2756,7 +2756,7 @@ fn infer_struct_literal(
         )?;
         let decl_ty = apply_remap(&field.ty);
         let expr_ty = infer_expr(expr, ctx, fun_generalizations)?;
-        ctx.add_constraint(expr_ty, decl_ty, span.clone());
+        ctx.add_expected_constraint(expr_ty, decl_ty, span.clone());
     }
     for field in &expected_fields {
         if !fields.iter().any(|(n, _)| n == &field.name) {
