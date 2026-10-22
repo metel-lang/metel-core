@@ -44,12 +44,15 @@ git submodule update --init docs
 - Implementation work and release assignment: GitHub issues and milestones; the order of
   planned themes and the milestone rules: `ROADMAP.md`.
 - Current code architecture: the crate docs named above and the code itself.
-- Versioning/release rules: `RELEASING.md`; release history:
+- Process contracts (work, release, deployment, documentation, CI): the Operations
+  Specification, `docs/operations/index.md`. Each requirement has an id (`PROC-<AREA>-<NNN>`);
+  cite the id instead of copying the contract.
+- How to run a release or recover a failed one: `RELEASING.md` (the runbook). The versioning
+  rule: `metel-docs-internal/internal/versioning.md`. Release history:
   `docs/release-notes/changelog.md`.
-- Process contracts (release, deployment, documentation, CI): the Operations Specification,
-  `docs/operations/index.md`.
 
-If these disagree, stop and resolve the inconsistency before implementing against it.
+If these disagree, stop and resolve the inconsistency before implementing against it. The
+specification wins over a document that states a process contract differently.
 
 ## Task workflow
 
@@ -77,8 +80,8 @@ is missing instead of continuing an open-ended search.
 
 ### Verification tiers
 
-Use the cheapest tier that can falsify the current edit. Full release verification is a
-merge gate, not an inner-loop command.
+Contract: `PROC-WORK-002`. Use the cheapest tier that can falsify the current edit. Full
+release verification is a merge gate, not an inner-loop command.
 
 **Tier 1 — iteration, after each meaningful edit**
 
@@ -114,12 +117,10 @@ Read the `test result:` and Clippy tails. If Tier 3 exposes a defect, fix it, re
 focused regression first, then rerun only the failed gate and finally one complete Tier
 3 pass. CI runs the same release-level gate.
 
-**Milestone gate — once per release, not per PR.** Tier 3 proves each diff in isolation.
-Before a milestone is declared finished, `/milestone-integration-test <version>` exercises
-its features *in combination* — the cross-feature cases no single PR's fixtures cover —
-and commits `docs/release-notes/integration/<version>.md`. `/cut-release` gates on that
-report (its Step 1b). Run order for a release: `/gap-analysis` → implement the issues →
-`/milestone-integration-test` → `/cut-release`.
+**Milestone gate — once per release, not per PR** (`PROC-WORK-007`). Tier 3 proves each
+diff in isolation. Run order for a release: `/gap-analysis` → implement the issues →
+`/milestone-integration-test <version>` (the features *in combination*; commits
+`docs/release-notes/integration/<version>.md`) → `/cut-release`, which gates on that report.
 
 ### Clippy suppressions
 
@@ -142,13 +143,13 @@ than sharing one writable target directory concurrently.
 
 ## GitHub and branch workflow
 
-GitHub Issues are the task source of truth. The one numbered milestone (`vX.Y.Z`) is the
-release in progress; later work sits in unnumbered **theme** milestones, and a version is
-chosen at the release cut (`ROADMAP.md`). Dependencies are written as `Blocked by #N` /
+GitHub Issues are the task source of truth (`PROC-WORK-001`). The one numbered milestone is the
+release in progress; later work sits in unnumbered theme milestones, and a version is chosen
+at the release cut (`PROC-WORK-004`, `ROADMAP.md`). Dependencies are written as `Blocked by #N` /
 `Blocks #N` in issue bodies.
 
-Bugs are not scheduled into themes. File them with the `bug` label, one `severity:*`
-label (`soundness`, `incorrect`, `diagnostic`), and the **Backlog** milestone; add
+Bugs are not scheduled into themes (`PROC-WORK-006`): file them with the `bug` label, one
+`severity:*` label (`soundness`, `incorrect`, `diagnostic`), and the **Backlog** milestone; add
 `regression` if it worked in an earlier tag. A bug enters the numbered milestone only when we
 commit to fixing it in that release. Definitions: `ROADMAP.md` § Bugs.
 
@@ -226,12 +227,10 @@ Public docs changes are committed to the `metel-docs` repository first, then the
 gitlink is updated in the core issue branch. The core release pins an exact public-docs
 commit.
 
-To move the pin without writing the pull request by hand, run `tools/bump-docs.sh` (see
-`--help`; `--dry-run` previews). It branches from `origin/develop`, moves the gitlink with
-`git update-index --cacheinfo`, runs the docs-dependent checks on the new commit, pushes and
-opens the PR, and never merges. Use it when core work needs new docs content. The architecture
-evidence is rendered at publish time (ADR-0064), so a change to which code is cited needs no
-bump. The pin may otherwise lag `metel-docs` `main`.
+To move the pin, run `tools/bump-docs.sh` (see `--help`; `--dry-run` previews) when core work
+needs new docs content (`PROC-DOCS-003`). It opens the pull request and never merges. A change
+to which code is cited needs no bump (`PROC-DOCS-004`); the pin may otherwise lag `metel-docs`
+`main`.
 
 RFC stages are directories under `docs/rfcs/`:
 
@@ -253,7 +252,7 @@ transition it to `4-implemented` in the same work.
 
 The specification contains current rules, not design rationale or issue history. Put
 rationale in RFCs/ADRs and issue state on GitHub. Add or update the changelog when a
-language-visible change lands, not at the end of the release.
+language-visible change lands, not at the end of the release (`PROC-WORK-003`).
 
 ## Architecture invariants
 
