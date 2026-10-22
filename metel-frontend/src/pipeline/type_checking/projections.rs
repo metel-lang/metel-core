@@ -76,9 +76,15 @@ pub(super) fn check(
 }
 
 /// Where an anonymous open record was written, for the wording of its `T0032` (metel-core#1484).
+/// The advice differs by position because what works does: a private free function and a
+/// closure infer the exact record when the return type is omitted, a method or an aspect method
+/// declaration that omits it returns `()`, and a closure cannot name a row parameter.
 #[derive(Clone, Copy)]
 enum OpenRecordPosition {
-    ReturnType,
+    FunctionReturn,
+    MethodReturn,
+    AspectMethodReturn,
+    ClosureReturn,
     FunctionType,
 }
 
@@ -86,11 +92,28 @@ impl OpenRecordPosition {
     /// The rest of the message after "is not supported in": the position and what works there.
     fn explanation(self) -> &'static str {
         match self {
-            Self::ReturnType => {
+            Self::FunctionReturn => {
                 "a return type; instead, omit the return type so the exact record is inferred \
                  (private functions only; a `public` function needs an explicit type), write the \
                  record in full (`-> { x: i64, y: i64 }`), or name a `row`-kinded generic parameter \
                  when the row comes from an argument (`-> { x: i64, ..R }`) (RFC-0181)"
+            }
+            Self::MethodReturn => {
+                "a return type; instead, write the record in full (`-> { x: i64, y: i64 }`), or \
+                 name a `row`-kinded generic parameter when the row comes from an argument \
+                 (`-> { x: i64, ..R }`). A method does not infer its return type: leaving it out \
+                 makes it return `()` (RFC-0181)"
+            }
+            Self::AspectMethodReturn => {
+                "a return type; instead, write the record in full (`-> { x: i64, y: i64 }`), or \
+                 name a `row`-kinded generic parameter when the row comes from an argument \
+                 (`-> { x: i64, ..R }`). An aspect method declaration does not infer its return \
+                 type: leaving it out makes it return `()` (RFC-0181)"
+            }
+            Self::ClosureReturn => {
+                "a return type; instead, omit the closure's return annotation so the exact record \
+                 is inferred, or write the record in full (`-> { x: i64, y: i64 }`). A closure \
+                 cannot name a row parameter (RFC-0181)"
             }
             Self::FunctionType => {
                 "a function type; name a `row`-kinded generic parameter (`..R`) instead, and \
@@ -233,6 +256,12 @@ impl Cx<'_> {
             self.param(p, &param_generics, self_allowed, self_target, local_types)?;
         }
         if let Some(t) = &fun.return_type {
+            let position = if self_target.is_some() {
+                OpenRecordPosition::MethodReturn
+            } else {
+                OpenRecordPosition::FunctionReturn
+            };
+            Self::reject_anonymous_open_record(t, position)?;
             self.ty_return(
                 t,
                 &fun.span,
@@ -412,7 +441,6 @@ impl Cx<'_> {
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        Self::reject_anonymous_open_record(te, OpenRecordPosition::ReturnType)?;
         self.ty_at(
             te,
             span,
@@ -816,6 +844,7 @@ impl Cx<'_> {
             self.param(param, &generics, true, None, local_types)?;
         }
         if let Some(ret) = &method.return_type {
+            Self::reject_anonymous_open_record(ret, OpenRecordPosition::AspectMethodReturn)?;
             self.ty_return(ret, &method.span, &generics, true, None, local_types)?;
         }
         if let Some(body) = &method.default_body {
@@ -1131,6 +1160,7 @@ impl Cx<'_> {
                     self.param(param, generics, self_allowed, self_target, local_types)?;
                 }
                 if let Some(ret) = return_type {
+                    Self::reject_anonymous_open_record(ret, OpenRecordPosition::ClosureReturn)?;
                     self.ty_return(ret, span, generics, self_allowed, self_target, local_types)?;
                 }
                 self.block(body, generics, self_allowed, self_target, local_types)
