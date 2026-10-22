@@ -3072,8 +3072,8 @@ pub struct TypeDefinitionRegistry {
     /// time, not re-resolved at cleanup (the name may no longer resolve once its
     /// scope is being torn down). Empty when outside any scoped block.
     struct_scope_stack: Vec<Vec<SymbolId>>,
-    /// Next id to hand out for a block-local struct/enum declaration. Counts
-    /// **down** from `u32::MAX` so a synthetic id can never collide with a
+    /// Next id to hand out for a block-local struct/enum declaration. Counts **down** from the top
+    /// of the block-local range (`symbols::BLOCK_LOCAL`) so a synthetic id can never collide with a
     /// name-resolver `SymbolId` (which counts up from `USER_SYM_START`).
     next_local_type_id: u32,
     /// Concrete (non-generic) method signatures. Key: (type `SymbolId`,
@@ -3297,14 +3297,14 @@ impl TypeDefinitionRegistry {
         self.enum_env.get(&self.type_decl_ids.get(name).copied()?)
     }
 
-    /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn
-    /// from the top of the `u32` space counting down so it can never collide
-    /// with a name-resolver id (those count up from `USER_SYM_START`).
-    // limit: ["LIMIT-NAME-RESOLUTION-003"]
+    /// Mint a fresh `SymbolId` for a block-local struct/enum declaration, drawn from the
+    /// block-local range counting down, so it can never collide with a name-resolver id (those
+    /// count up from `USER_SYM_START`) or an overload id. Panics rather than leave the range.
     fn fresh_local_type_id(&mut self) -> SymbolId {
-        let id = SymbolId(self.next_local_type_id);
-        self.next_local_type_id = self.next_local_type_id.saturating_sub(1);
-        id
+        crate::identity::symbols::allocate_down(
+            &mut self.next_local_type_id,
+            crate::identity::symbols::BLOCK_LOCAL,
+        )
     }
 
     /// The `SymbolId` for a bare name with no true declaration at all --
@@ -3489,7 +3489,7 @@ impl TypeDefinitionRegistry {
             fun_open_row_params: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
             struct_scope_stack: Vec::new(),
-            next_local_type_id: u32::MAX,
+            next_local_type_id: crate::identity::symbols::BLOCK_LOCAL.end - 1,
             method_env: HashMap::new(),
             method_receiver_env: HashMap::new(),
             array_method_env: HashMap::new(),
