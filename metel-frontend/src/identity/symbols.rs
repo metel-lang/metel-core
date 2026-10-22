@@ -17,34 +17,117 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct SymbolId(pub u32);
 
-// ── Builtin types (1–49) ──────────────────────────────────────────────────────
+// ── The builtin symbols (metel-core#1542) ─────────────────────────────────────
 
-pub const SYM_TYPE_BOOLEAN: SymbolId = SymbolId(1);
-pub const SYM_TYPE_STRING: SymbolId = SymbolId(2);
-pub const SYM_TYPE_CHAR: SymbolId = SymbolId(3);
-pub const SYM_TYPE_I8: SymbolId = SymbolId(4);
-pub const SYM_TYPE_I16: SymbolId = SymbolId(5);
-pub const SYM_TYPE_I32: SymbolId = SymbolId(6);
-pub const SYM_TYPE_I64: SymbolId = SymbolId(7);
-pub const SYM_TYPE_U8: SymbolId = SymbolId(8);
-pub const SYM_TYPE_U16: SymbolId = SymbolId(9);
-pub const SYM_TYPE_U32: SymbolId = SymbolId(10);
-pub const SYM_TYPE_U64: SymbolId = SymbolId(11);
-pub const SYM_TYPE_F32: SymbolId = SymbolId(12);
-pub const SYM_TYPE_F64: SymbolId = SymbolId(13);
-pub const SYM_TYPE_LIST: SymbolId = SymbolId(14);
-pub const SYM_TYPE_PERHAPS: SymbolId = SymbolId(15);
-pub const SYM_TYPE_RESULT: SymbolId = SymbolId(16);
-pub const SYM_TYPE_RANGE: SymbolId = SymbolId(17);
-pub const SYM_TYPE_RANGE_INCLUSIVE: SymbolId = SymbolId(18);
-// 19–49 reserved for future stdlib types.
+/// Whether a builtin names a type or an aspect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltinKind {
+    Type,
+    Aspect,
+}
 
-// ── Builtin aspects (50–99) ───────────────────────────────────────────────────
+/// Declares [`Builtin`] from one list: each entry gives the variant, its fixed id, its `std::core`
+/// name and its kind. The variant, the id, the name, the kind and [`Builtin::ALL`] come from that one
+/// line, so a builtin cannot be added to one of them and missed in another; two variants with the same
+/// id are a compile error (a duplicate enum discriminant), and `name` / `kind` are exhaustive matches.
+macro_rules! builtins {
+    ($($variant:ident = $id:literal, $name:literal, $kind:ident;)*) => {
+        /// A symbol the language knows by a fixed id: the primitives, the core types and the core
+        /// aspects. The id is the enum discriminant.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[repr(u32)]
+        pub enum Builtin {
+            $($variant = $id,)*
+        }
 
-pub const SYM_ASPECT_DISPLAY: SymbolId = SymbolId(50);
-pub const SYM_ASPECT_ITERABLE: SymbolId = SymbolId(51);
-pub const SYM_ASPECT_FROM: SymbolId = SymbolId(52);
-// 53–99 reserved for future aspects.
+        impl Builtin {
+            /// Every builtin, in declaration order.
+            pub const ALL: &'static [Builtin] = &[$(Builtin::$variant,)*];
+
+            /// The builtin's name in `std::core`.
+            #[must_use]
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $(Builtin::$variant => $name,)*
+                }
+            }
+
+            /// Whether the builtin is a type or an aspect.
+            #[must_use]
+            pub const fn kind(self) -> BuiltinKind {
+                match self {
+                    $(Builtin::$variant => BuiltinKind::$kind,)*
+                }
+            }
+        }
+    };
+}
+
+builtins! {
+    // Types: 1–49; 19–49 are reserved for future stdlib types.
+    Boolean = 1, "boolean", Type;
+    String = 2, "String", Type;
+    Char = 3, "Char", Type;
+    I8 = 4, "i8", Type;
+    I16 = 5, "i16", Type;
+    I32 = 6, "i32", Type;
+    I64 = 7, "i64", Type;
+    U8 = 8, "u8", Type;
+    U16 = 9, "u16", Type;
+    U32 = 10, "u32", Type;
+    U64 = 11, "u64", Type;
+    F32 = 12, "f32", Type;
+    F64 = 13, "f64", Type;
+    List = 14, "List", Type;
+    Perhaps = 15, "Perhaps", Type;
+    Result = 16, "Result", Type;
+    Range = 17, "Range", Type;
+    RangeInclusive = 18, "RangeInclusive", Type;
+    // Aspects: 50–99; 53–99 are reserved for future aspects.
+    Display = 50, "Display", Aspect;
+    Iterable = 51, "Iterable", Aspect;
+    From = 52, "From", Aspect;
+}
+
+impl Builtin {
+    /// The builtin's `SymbolId`.
+    #[must_use]
+    pub const fn id(self) -> SymbolId {
+        SymbolId(self as u32)
+    }
+
+    /// The builtin named `name` of `kind`, if there is one.
+    #[must_use]
+    pub fn from_name(name: &str, kind: BuiltinKind) -> Option<Builtin> {
+        Builtin::ALL
+            .iter()
+            .copied()
+            .find(|b| b.kind() == kind && b.name() == name)
+    }
+}
+
+// The named ids the rest of the code uses; each is its builtin's discriminant, not a second number.
+pub const SYM_TYPE_BOOLEAN: SymbolId = Builtin::Boolean.id();
+pub const SYM_TYPE_STRING: SymbolId = Builtin::String.id();
+pub const SYM_TYPE_CHAR: SymbolId = Builtin::Char.id();
+pub const SYM_TYPE_I8: SymbolId = Builtin::I8.id();
+pub const SYM_TYPE_I16: SymbolId = Builtin::I16.id();
+pub const SYM_TYPE_I32: SymbolId = Builtin::I32.id();
+pub const SYM_TYPE_I64: SymbolId = Builtin::I64.id();
+pub const SYM_TYPE_U8: SymbolId = Builtin::U8.id();
+pub const SYM_TYPE_U16: SymbolId = Builtin::U16.id();
+pub const SYM_TYPE_U32: SymbolId = Builtin::U32.id();
+pub const SYM_TYPE_U64: SymbolId = Builtin::U64.id();
+pub const SYM_TYPE_F32: SymbolId = Builtin::F32.id();
+pub const SYM_TYPE_F64: SymbolId = Builtin::F64.id();
+pub const SYM_TYPE_LIST: SymbolId = Builtin::List.id();
+pub const SYM_TYPE_PERHAPS: SymbolId = Builtin::Perhaps.id();
+pub const SYM_TYPE_RESULT: SymbolId = Builtin::Result.id();
+pub const SYM_TYPE_RANGE: SymbolId = Builtin::Range.id();
+pub const SYM_TYPE_RANGE_INCLUSIVE: SymbolId = Builtin::RangeInclusive.id();
+pub const SYM_ASPECT_DISPLAY: SymbolId = Builtin::Display.id();
+pub const SYM_ASPECT_ITERABLE: SymbolId = Builtin::Iterable.id();
+pub const SYM_ASPECT_FROM: SymbolId = Builtin::From.id();
 
 // 100–999 reserved for stdlib expansion.
 
@@ -174,81 +257,29 @@ pub fn allocate_down(next: &mut u32, range: SymbolRange) -> SymbolId {
     SymbolId(id)
 }
 
-// ── The builtin symbols, in one place ─────────────────────────────────────────
-
-/// Whether a builtin names a type or an aspect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltinKind {
-    Type,
-    Aspect,
-}
-
-/// Every builtin symbol: its `std::core` name, its kind and its fixed id. The name resolver seeds its
-/// table from this, and the evaluator looks builtins up here, so the three hand-kept mirrors of this
-/// list (the table seeding and two `match`es in the evaluator) are one. Ids are unique and lie in the
-/// range of their kind (checked below); the names are checked against the embedded `std::core` in the
-/// tests.
-pub const BUILTIN_SYMBOLS: [(&str, BuiltinKind, SymbolId); 21] = [
-    ("boolean", BuiltinKind::Type, SYM_TYPE_BOOLEAN),
-    ("String", BuiltinKind::Type, SYM_TYPE_STRING),
-    ("Char", BuiltinKind::Type, SYM_TYPE_CHAR),
-    ("i8", BuiltinKind::Type, SYM_TYPE_I8),
-    ("i16", BuiltinKind::Type, SYM_TYPE_I16),
-    ("i32", BuiltinKind::Type, SYM_TYPE_I32),
-    ("i64", BuiltinKind::Type, SYM_TYPE_I64),
-    ("u8", BuiltinKind::Type, SYM_TYPE_U8),
-    ("u16", BuiltinKind::Type, SYM_TYPE_U16),
-    ("u32", BuiltinKind::Type, SYM_TYPE_U32),
-    ("u64", BuiltinKind::Type, SYM_TYPE_U64),
-    ("f32", BuiltinKind::Type, SYM_TYPE_F32),
-    ("f64", BuiltinKind::Type, SYM_TYPE_F64),
-    ("List", BuiltinKind::Type, SYM_TYPE_LIST),
-    ("Perhaps", BuiltinKind::Type, SYM_TYPE_PERHAPS),
-    ("Result", BuiltinKind::Type, SYM_TYPE_RESULT),
-    ("Range", BuiltinKind::Type, SYM_TYPE_RANGE),
-    (
-        "RangeInclusive",
-        BuiltinKind::Type,
-        SYM_TYPE_RANGE_INCLUSIVE,
-    ),
-    ("Display", BuiltinKind::Aspect, SYM_ASPECT_DISPLAY),
-    ("Iterable", BuiltinKind::Aspect, SYM_ASPECT_ITERABLE),
-    ("From", BuiltinKind::Aspect, SYM_ASPECT_FROM),
-];
-
-/// Builtin ids are pairwise distinct and each lies in the range of its kind.
-const fn builtins_are_distinct_and_in_range() -> bool {
+/// The builtins are checked against the ranges at compile time: each lies in the range of its kind.
+const fn builtins_are_in_the_range_of_their_kind() -> bool {
     let mut i = 0;
-    while i < BUILTIN_SYMBOLS.len() {
-        let (_, kind, id) = BUILTIN_SYMBOLS[i];
-        let range = match kind {
+    while i < Builtin::ALL.len() {
+        let builtin = Builtin::ALL[i];
+        let range = match builtin.kind() {
             BuiltinKind::Type => BUILTIN_TYPES,
             BuiltinKind::Aspect => BUILTIN_ASPECTS,
         };
-        if !range.contains(id.0) {
+        if !range.contains(builtin.id().0) {
             return false;
-        }
-        let mut j = i + 1;
-        while j < BUILTIN_SYMBOLS.len() {
-            if BUILTIN_SYMBOLS[j].2.0 == id.0 {
-                return false;
-            }
-            j += 1;
         }
         i += 1;
     }
     true
 }
 
-const _: () = assert!(builtins_are_distinct_and_in_range());
+const _: () = assert!(builtins_are_in_the_range_of_their_kind());
 
 /// The well-known id of the builtin named `name` of `kind`, if there is one.
 #[must_use]
 pub fn builtin_symbol(name: &str, kind: BuiltinKind) -> Option<SymbolId> {
-    BUILTIN_SYMBOLS
-        .iter()
-        .find(|(n, k, _)| *n == name && *k == kind)
-        .map(|(_, _, id)| *id)
+    Builtin::from_name(name, kind).map(Builtin::id)
 }
 
 // ── SymbolTable ───────────────────────────────────────────────────────────────
@@ -276,9 +307,9 @@ impl SymbolTable {
     // limit: ["LIMIT-NAME-RESOLUTION-004"]
     pub fn new() -> Self {
         let std_core = || vec!["std".to_string(), "core".to_string()];
-        let map = BUILTIN_SYMBOLS
+        let map = Builtin::ALL
             .iter()
-            .map(|(name, _, id)| ((std_core(), (*name).to_string()), *id))
+            .map(|b| ((std_core(), b.name().to_string()), b.id()))
             .collect();
         Self {
             map,
@@ -403,15 +434,18 @@ mod architecture_evidence_tests {
 
     #[test]
     fn builtin_ids_and_names_are_unique_and_in_the_range_of_their_kind() {
+        // Duplicate discriminants do not compile, so this checks what the compiler cannot: names, the
+        // ids not drifting from the discriminants, and the kind ranges.
         let mut ids = std::collections::HashSet::new();
         let mut names = std::collections::HashSet::new();
-        for (name, kind, id) in BUILTIN_SYMBOLS {
+        for builtin in Builtin::ALL {
+            let (name, id) = (builtin.name(), builtin.id());
             assert!(ids.insert(id.0), "duplicate builtin id {} ({name})", id.0);
             assert!(
-                names.insert((name, kind as u8)),
+                names.insert((name, builtin.kind() as u8)),
                 "duplicate builtin name {name}"
             );
-            let range = match kind {
+            let range = match builtin.kind() {
                 BuiltinKind::Type => BUILTIN_TYPES,
                 BuiltinKind::Aspect => BUILTIN_ASPECTS,
             };
@@ -422,6 +456,16 @@ mod architecture_evidence_tests {
                 range.name
             );
         }
+        assert_eq!(Builtin::ALL.len(), 21);
+    }
+
+    #[test]
+    fn the_named_ids_are_the_discriminants() {
+        assert_eq!(SYM_TYPE_BOOLEAN, SymbolId(1));
+        assert_eq!(SYM_TYPE_RANGE_INCLUSIVE, SymbolId(18));
+        assert_eq!(SYM_ASPECT_DISPLAY, SymbolId(50));
+        assert_eq!(SYM_ASPECT_FROM, SymbolId(52));
+        assert_eq!(Builtin::Result.id(), SYM_TYPE_RESULT);
     }
 
     /// Builtin types the language provides itself; they are not declared in `std::core`.
@@ -456,7 +500,8 @@ mod architecture_evidence_tests {
                 _ => None,
             })
             .collect();
-        for (name, _, _) in BUILTIN_SYMBOLS {
+        for builtin in Builtin::ALL {
+            let name = builtin.name();
             let intrinsic = INTRINSIC_BUILTINS.contains(&name);
             assert!(
                 declared.contains(name) != intrinsic,
@@ -468,12 +513,13 @@ mod architecture_evidence_tests {
     #[test]
     fn the_table_is_seeded_with_exactly_the_builtins_at_their_ids() {
         let table = SymbolTable::new();
-        assert_eq!(table.map().len(), BUILTIN_SYMBOLS.len());
-        for (name, _, id) in BUILTIN_SYMBOLS {
+        assert_eq!(table.map().len(), Builtin::ALL.len());
+        for builtin in Builtin::ALL {
             assert_eq!(
-                table.map().get(&(std_core(), name.to_string())),
-                Some(&id),
-                "{name}"
+                table.map().get(&(std_core(), builtin.name().to_string())),
+                Some(&builtin.id()),
+                "{}",
+                builtin.name()
             );
         }
     }
