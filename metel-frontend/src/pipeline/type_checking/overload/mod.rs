@@ -16,7 +16,7 @@
 //! symbol registry. Names never disambiguate overloads anywhere in the pipeline.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 
 use crate::data::ast::{Decl, Expr, FunDecl, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
@@ -38,7 +38,7 @@ static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(crate::identity::symbols::O
 // arch-implements: ["arch.type-construction.requirement-10"]
 
 fn next_overload_symbol() -> SymbolId {
-    SymbolId(NEXT_OVERLOAD_SYM.fetch_add(1, Ordering::Relaxed))
+    crate::identity::symbols::allocate_from(&NEXT_OVERLOAD_SYM, crate::identity::symbols::OVERLOAD)
 }
 
 /// The overload table for the embedded `std::core` declarations, built once per

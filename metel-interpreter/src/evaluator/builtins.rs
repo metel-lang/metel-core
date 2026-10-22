@@ -960,12 +960,10 @@ pub(super) fn native_host_impl(key: NativeKey) -> RuntimeCallable {
 /// seeding register builtin aspect impls under the same id elaboration stamps into
 /// call sites, so aspect dispatch is purely id-based (METEL-185).
 pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::identity::symbols::SymbolId> {
-    match aspect_name {
-        "Display" => Some(crate::identity::symbols::SYM_ASPECT_DISPLAY),
-        "Iterable" => Some(crate::identity::symbols::SYM_ASPECT_ITERABLE),
-        "From" => Some(crate::identity::symbols::SYM_ASPECT_FROM),
-        _ => None,
-    }
+    crate::identity::symbols::builtin_symbol(
+        aspect_name,
+        crate::identity::symbols::BuiltinKind::Aspect,
+    )
 }
 
 /// The well-known `SymbolId` of a builtin `std::core` type, matching the id the
@@ -973,33 +971,7 @@ pub(super) fn builtin_aspect_id(aspect_name: &str) -> Option<crate::identity::sy
 /// seeding register builtin type entries under the same id the rest of the
 /// pipeline uses, so the runtime type registry is keyed purely by id (METEL-185).
 pub(super) fn builtin_type_id(type_name: &str) -> Option<crate::identity::symbols::SymbolId> {
-    use crate::identity::symbols::{
-        SYM_TYPE_BOOLEAN, SYM_TYPE_CHAR, SYM_TYPE_F32, SYM_TYPE_F64, SYM_TYPE_I8, SYM_TYPE_I16,
-        SYM_TYPE_I32, SYM_TYPE_I64, SYM_TYPE_LIST, SYM_TYPE_PERHAPS, SYM_TYPE_RANGE,
-        SYM_TYPE_RANGE_INCLUSIVE, SYM_TYPE_RESULT, SYM_TYPE_STRING, SYM_TYPE_U8, SYM_TYPE_U16,
-        SYM_TYPE_U32, SYM_TYPE_U64,
-    };
-    Some(match type_name {
-        "boolean" => SYM_TYPE_BOOLEAN,
-        "String" => SYM_TYPE_STRING,
-        "Char" => SYM_TYPE_CHAR,
-        "i8" => SYM_TYPE_I8,
-        "i16" => SYM_TYPE_I16,
-        "i32" => SYM_TYPE_I32,
-        "i64" => SYM_TYPE_I64,
-        "u8" => SYM_TYPE_U8,
-        "u16" => SYM_TYPE_U16,
-        "u32" => SYM_TYPE_U32,
-        "u64" => SYM_TYPE_U64,
-        "f32" => SYM_TYPE_F32,
-        "f64" => SYM_TYPE_F64,
-        "List" => SYM_TYPE_LIST,
-        "Perhaps" => SYM_TYPE_PERHAPS,
-        "Result" => SYM_TYPE_RESULT,
-        "Range" => SYM_TYPE_RANGE,
-        "RangeInclusive" => SYM_TYPE_RANGE_INCLUSIVE,
-        _ => return None,
-    })
+    crate::identity::symbols::builtin_symbol(type_name, crate::identity::symbols::BuiltinKind::Type)
 }
 
 fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {

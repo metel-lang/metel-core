@@ -223,7 +223,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
             scopes: &scopes,
             pub_surface: &pub_surface,
             declared_names: &declared_names,
-            symbols: &sym.map,
+            symbols: sym.map(),
             overloaded_names: &overloaded_names,
         },
     );
@@ -232,7 +232,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
         scopes,
         pub_surface,
         declared_names,
-        symbols: sym.map,
+        symbols: sym.into_map(),
         definitions,
         references,
     }))
