@@ -20,6 +20,12 @@ This doesn't replace those documents or duplicate their reasoning — it's the i
 *what exists*, so "what would break if I changed X" is a read, not a grep across three
 repos.
 
+**The contracts these processes keep are stated in the
+[Operations Specification](docs/operations/index.md)** (`operations/` in `metel-docs`): each
+workflow, script and command below implements one or more `PROC-*` requirements, and
+`docs/operations/inventory.md` maps them. This file lists *what exists*; it does not restate
+what must hold. When a change alters a contract, update the requirement in the same change.
+
 ## Keeping this current
 
 Any pull request that adds, removes, or changes a workflow, a `tools/` script, or a
@@ -169,6 +175,9 @@ workflows below, moved here from `metel-docs-internal` in the same change.
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
 | `.github/workflows/check-examples.yml` | push/PR to `main` | `getting-started`, `blog`, `reference`; metel-core's rolling **`develop-latest` pre-release binary** (metel-core#696 — not the latest stable release; see that repo's `publish-develop-binary` job); `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` (public reads only) |
+| `.github/workflows/architecture-check.yml` | push/PR to `main` | this repo; `GH_TOKEN` to resolve the issue state of `> **Pending**` markers | — | built-in `GITHUB_TOKEN` (read) |
+| `.github/scripts/wait-for-core-binary.sh` (+ `test_wait_for_core_binary.sh`) | invoked first by `check-examples.yml` | the PR description (`Depends-on:` lines), metel-core `develop` and its `develop-latest` release | the binary's commit (job summary) | built-in `GITHUB_TOKEN` (read) |
+| `architecture/tools/generate_architecture_evidence.py`, `check_architecture.py` (+ tests) | manual; `--check` by `architecture-check.yml` and metel-core CI; `--publish` by `release.yml` and `next.yml` (ADR-0064); `--strict` by `/cut-release` | `architecture/`, a metel-core checkout | with `--publish`, the evidence links in the working copy that is published (never committed) | — |
 | `.github/workflows/check-mdx.yml` | push/PR to `main` | `getting-started`, `reference`, `release-notes`, `blog`, via `tools/mdx-check-site` | — | — |
 | `.github/workflows/rfc-check.yml` | push/PR to `main` | this repo (`rfcs/` structural checks; the ADR-0049 coverage ratchet degrades to an informational skip here — `metel-interpreter/tests` isn't reachable from a bare checkout, see ADR-0049 §6; real enforcement is metel-core's `rfc-check` job, above) | — | — |
 | `rfcs/tools/rfc.py` | manual (`new`/`transition`/`supersede`/`check`/`index`) | `rfcs/`; `check`'s coverage ratchet also reads `metel-interpreter/tests` when reachable (see the metel-core `rfc-check` job, above) | `rfcs/` (moves files between lifecycle directories, edits frontmatter), `rfcs/INDEX.md`, `rfcs/REGISTRY.md` (`index --rebuild-registry`), `rfcs/COVERAGE-BASELINE.json` (`index --write-coverage-baseline`) | — |
@@ -219,6 +228,8 @@ of "Introducing Metel" is worse than editing an archived post when syntax moves.
 | Path | Trigger | Reads | Writes | Secret(s) |
 |---|---|---|---|---|
 | `.github/workflows/check-showcases.yml` | push/PR to `main` | `src/showcases/*.mtl`; metel-core's rolling `develop-latest` pre-release binary (metel-core#696); `tools/check_doc_examples.py` fetched live from metel-core `develop` | — | built-in `GITHUB_TOKEN` |
+| `.github/workflows/next.yml` | every 6 hours, `workflow_dispatch`, `repository_dispatch` (`docs-updated`; nothing sends it yet, metel-core#1294) | metel-docs `main`, metel-core `develop` (renders the architecture evidence, pinned to that commit) | the unreleased `/docs/next` view on production, only when `NEXT_DEPLOY_ENABLED` is `true`; a manual run defaults to a dry run | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
+| `.github/workflows/plugin-tests.yml` | push/PR to `main` | `src/remark/*.test.mjs`, `scripts/*.test.mjs` | — | — |
 | `.github/workflows/deploy.yml` | tag `vX.Y.Z` pushed (normally by `release.yml`, but a tag pushed here directly triggers the identical pipeline) | this repo, including the `docs` submodule | Vercel **staging** deployment | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 | `.github/workflows/promote.yml` | manual (`workflow_dispatch`, given a staging `deployment_url` + `tag`) | the named staging deployment | Vercel **production** alias (`metel-lang.org`) | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` |
 
