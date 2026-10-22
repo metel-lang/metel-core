@@ -119,6 +119,8 @@ all.
 | `.github/workflows/release.yml` — `release-chain` | after `validate-release` | `docs` submodule (reads this repo's own pinned commit, does not write to `metel-docs` — ADR-0051 removed the sync) | `metel-website` main + tag | `WEBSITE_TOKEN` |
 | `.github/workflows/release.yml` — `github-release` | after `validate-release` | `docs` submodule | this repo's GitHub Releases | built-in `GITHUB_TOKEN` |
 | `tools/check_doc_examples.py` | invoked by `doc-examples`, and fetched at runtime by both other repos' checkers | any path of `.md`/`.mdx`/`.mtl` files passed on the CLI | stdout only | — |
+| `tools/bump-docs.sh` (metel-core#1511) | manual: when core work needs new docs content (a claim id, a spec rule a fixture cites, a tool change); `--dry-run` previews | metel-docs `main` (or `--sha`), `.gitmodules`, `origin/develop` | a `chore/bump-docs-<sha>` branch moving the `docs` gitlink, pushed, and a PR (`gh`) | the person's own `git`/`gh` credentials; never merges |
+| `tools/test_bump_docs.sh` | manual; invoked by `ci.yml`'s `tools-selftest` job | temp git repositories | stdout | — |
 | `tools/changelog-status.sh` | manual (`/ship-issue`, `/cut-release`) | `docs/release-notes/changelog.md`, git log | stdout only | — |
 | `tools/check_inventory.sh` | invoked by `ci.yml`'s `inventory` job | this file, this repo's own workflows/tools/commands | stdout only | — |
 | `tools/clippy_allow_ratchet.py` | invoked by `ci.yml`'s `clippy-allow-ratchet` job (`--check`); manual `--list` / `--write-baseline` | `metel-frontend/src`, `metel-interpreter/src` (scans `#[allow(clippy::...)]`), `tools/clippy-allow-baseline.json` | `tools/clippy-allow-baseline.json` (`--write-baseline` only); stdout otherwise | — |
