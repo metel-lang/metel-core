@@ -226,17 +226,22 @@ const _: () = assert!(ranges_are_ordered_and_disjoint(&ALL_RANGES));
 /// Panics when `range` is exhausted: stepping past its end would reuse an id of the next range, or
 /// wrap, either of which is a silent collision.
 pub fn allocate_from(counter: &AtomicU32, range: SymbolRange) -> SymbolId {
-    let id = counter
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
-            (next < range.end).then(|| next + 1)
-        })
-        .unwrap_or_else(|_| {
-            panic!(
-                "SymbolId range `{}` ({}..{}) is exhausted",
-                range.name, range.start, range.end
-            )
-        });
-    SymbolId(id)
+    // A compare-exchange loop, not `fetch_update`/`try_update`: the former is deprecated on current
+    // stable and the latter is not on every toolchain this crate builds with.
+    let mut id = counter.load(Ordering::Relaxed);
+    loop {
+        assert!(
+            id < range.end,
+            "SymbolId range `{}` ({}..{}) is exhausted",
+            range.name,
+            range.start,
+            range.end
+        );
+        match counter.compare_exchange_weak(id, id + 1, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return SymbolId(id),
+            Err(current) => id = current,
+        }
+    }
 }
 
 /// Take the next id from `next`, which hands out ids of `range` counting **down**, and step it.
