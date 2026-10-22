@@ -1,0 +1,5 @@
+// metel-core#1484: and a closure's return annotation.
+fun main() {
+    let f := |a: i64| -> { x: i64, .. } { { x = a, y = 1 } }; // ERROR[T0032]
+    let _ := f(1);
+}

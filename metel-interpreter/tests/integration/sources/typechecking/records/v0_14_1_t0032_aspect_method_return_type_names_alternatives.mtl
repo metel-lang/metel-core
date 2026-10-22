@@ -1,0 +1,6 @@
+// metel-core#1484: and so does an aspect method declaration.
+aspect Source {
+    fun view(&self) -> { x: i64, .. }; // ERROR[T0032]
+}
+
+fun main() { let _ := 1; }

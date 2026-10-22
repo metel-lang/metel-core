@@ -1,0 +1,9 @@
+[options]
+error = ["T0032"]
+spec = ["spec.types.generics.open-rows.legality-5"]
+
+[expect]
+status = "typecheck_error"
+code = "T0032"
+contains = "omit the return type so the exact record is inferred"
+line = 3

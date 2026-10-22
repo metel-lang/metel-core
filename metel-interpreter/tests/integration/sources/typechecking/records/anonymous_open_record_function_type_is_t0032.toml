@@ -5,5 +5,5 @@ spec = ["spec.types.generics.open-rows.legality-5"]
 [expect]
 status = "typecheck_error"
 code = "T0032"
-contains = "function type"
+contains = "share the one `R` between the parameter and the result"
 line = 2
