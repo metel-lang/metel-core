@@ -135,7 +135,7 @@ all.
 | `metel-frontend/src/bin/gen_grammar.rs` (metel-core#720) | invoked by `ci.yml`'s `grammar-doc-check` job (`--check`); manual `cargo run --bin gen_grammar` to regenerate | `metel-frontend/src/grammar.pest` (via `pest_meta`, the same crate `pest_derive` uses to parse `.pest` files -- no hand-written grammar parser), `metel-frontend/src/grammar-doc.toml` (display name + doc section per rule) | `docs` submodule's `reference/spec/grammar.md` (not `--check`) | — |
 | `metel-frontend/src/bin/check_stdlib_docs.rs` (metel-core#718) | invoked by `ci.yml`'s `stdlib-doc-check` job; always read-only, nothing to regenerate | `metel-frontend/stdlib/{core,env,fs,process}.mtl` (via `metel_frontend::parser`, the interpreter's own frontend -- no separate Metel parser), `docs` submodule's `reference/spec/runtime.md` | stdout only | — |
 | `.claude/commands/start-issue.md` | manual slash command | issue body, `develop` | new issue branch | — |
-| `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, fast-forward merge | — |
+| `.claude/commands/ship-issue.md` | manual slash command | issue branch | PR to `develop`, rebase merge | — |
 | `.claude/commands/cut-release.md` | manual slash command | `develop` | tag on `main`, triggers `release.yml` | — |
 | `.claude/commands/gap-analysis.md` | manual slash command | milestone's open issues | edited/created issues | — |
 | `.claude/commands/milestone-integration-test.md` | manual slash command (once per milestone, after `/gap-analysis`, before `/cut-release`) | milestone's `4-implemented` RFCs + changelog in-progress section, fixture corpus | new cross-feature fixtures, `docs/release-notes/integration/<version>.md`, issues for findings | — |

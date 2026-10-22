@@ -1,7 +1,7 @@
 # /ship-issue
 
 Finish an issue: run the per-PR gate, open the pull request against `develop`,
-fast-forward it, and close the issue.
+rebase-merge it, and close the issue.
 
 **Arguments:** `$ARGUMENTS` — issue number, e.g. `314`
 
@@ -112,25 +112,23 @@ git rebase origin/develop
 git push --force-with-lease
 ```
 
-Rebase, never merge `develop` in — that creates the merge commit fast-forward-only
-merging exists to prevent. Then open the pull request **to `develop`**, never to `main`.
+Rebase, never merge `develop` in — that puts a merge commit on the branch, which the
+rebase merge would then replay. Then open the pull request **to `develop`**, never to `main`.
 
 For anything substantial — a new analysis pass, a type-system change, anything where being
 confidently wrong is worse than being incomplete — get an **adversarial review** first
 (AGENTS.md § Adversarial Review).
 
-## Step 5 — Merge by fast-forward
+## Step 5 — Merge with a rebase merge
 
-GitHub hosted merges do not provide a true fast-forward. After review, fast-forward locally and push the target branch:
+After review and green checks:
 
 ```bash
-git fetch origin <target> <branch>
-git switch <target>
-git merge --ff-only origin/<branch>
-git push origin <target>
+gh pr merge <number> --rebase
 ```
 
-A non-fast-forwardable branch fails this call instead of silently growing a merge commit.
+History stays linear: the branch's commits are replayed onto the target, with no merge
+commit. The commits get new hashes, so nothing should cite a branch commit.
 
 ## Step 6 — Clean up
 

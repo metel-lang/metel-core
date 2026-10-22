@@ -19,10 +19,9 @@ cargo test --workspace
 echo "pre-push: no flat module file beside its own directory"
 python3 tools/check_no_flat_module_dir_collision.py --check
 
-# AGENTS.md: develop only ever advances by local fast-forward, never a merge
-# commit (GitHub's hosted merge button doesn't give a true fast-forward).
-# Branch protection enforces this server-side; this catches it locally too,
-# before the push even leaves the machine.
+# AGENTS.md: develop's history is linear -- pull requests are rebase-merged, so a
+# merge commit never lands on it. This catches a merge commit in a local push to
+# develop before the push even leaves the machine.
 zero="0000000000000000000000000000000000000000"
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$remote_ref" = "refs/heads/develop" ] || continue
@@ -38,7 +37,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     if [ -n "$merges" ]; then
         echo "pre-push: refused -- merge commit(s) in this push to develop:" >&2
         echo "$merges" >&2
-        echo "AGENTS.md requires a local fast-forward merge, never a merge commit." >&2
+        echo "AGENTS.md requires develop to stay linear (rebase-merge the pull request), never a merge commit." >&2
         echo "See 'GitHub and branch workflow' in AGENTS.md for the correct procedure." >&2
         exit 1
     fi
