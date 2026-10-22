@@ -1525,6 +1525,29 @@ fn record_shape(ty: &InferType) -> Option<(&[(String, InferType)], bool)> {
     }
 }
 
+/// A record's labelled fields, the quoted names in `labels`, and whether `label` is among them.
+type Fields = [(String, InferType)];
+
+fn has_label(fields: &Fields, label: &str) -> bool {
+    fields.iter().any(|(n, _)| n == label)
+}
+
+fn quote_labels(labels: &[&str]) -> String {
+    labels
+        .iter()
+        .map(|l| format!("`{l}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The labels of `from` that `other` lacks.
+fn labels_not_in<'a>(from: &'a Fields, other: &Fields) -> Vec<&'a str> {
+    from.iter()
+        .map(|(n, _)| n.as_str())
+        .filter(|n| !has_label(other, n))
+        .collect()
+}
+
 /// A record diff for a failed unification of two record-shaped types (metel-core#1483): which
 /// field is missing, which is not part of a closed target, or which has the wrong type, in the
 /// wording of the row-bound messages (`T0012`), instead of the raw types. `None` when the two are
@@ -1541,14 +1564,7 @@ fn record_diff_message(
 ) -> Option<String> {
     let ((l_fields, l_open), (r_fields, r_open)) = (record_shape(lhs)?, record_shape(rhs)?);
     let show = |t: &InferType| render_for_user(t, integer_vars, float_vars, known);
-    let quote = |labels: &[&str]| {
-        labels
-            .iter()
-            .map(|l| format!("`{l}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let has = |fields: &[(String, InferType)], label: &str| fields.iter().any(|(n, _)| n == label);
+    // Fields both sides have, whose types cannot be made equal: (label, lhs type, rhs type).
     let mismatched: Vec<(&str, &InferType, &InferType)> = l_fields
         .iter()
         .filter_map(|(n, lt)| {
@@ -1562,23 +1578,18 @@ fn record_diff_message(
     let mut parts: Vec<String> = Vec::new();
     if found_then_expected {
         // lhs is the value, rhs the type its position requires.
-        let missing: Vec<&str> = r_fields
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .filter(|n| !has(l_fields, n))
-            .collect();
-        let extra: Vec<&str> = l_fields
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .filter(|n| !has(r_fields, n))
-            .collect();
+        let missing = labels_not_in(r_fields, l_fields);
+        let extra = labels_not_in(l_fields, r_fields);
         if !missing.is_empty() && !l_open {
             let noun = if missing.len() == 1 {
                 "field"
             } else {
                 "fields"
             };
-            parts.push(format!("the record is missing {noun} {}", quote(&missing)));
+            parts.push(format!(
+                "the record is missing {noun} {}",
+                quote_labels(&missing)
+            ));
         }
         if !extra.is_empty() && !r_open {
             let (noun, verb) = if extra.len() == 1 {
@@ -1588,7 +1599,7 @@ fn record_diff_message(
             };
             parts.push(format!(
                 "{noun} {} {verb} not part of `{}`",
-                quote(&extra),
+                quote_labels(&extra),
                 show(rhs)
             ));
         }
@@ -1604,49 +1615,42 @@ fn record_diff_message(
         }
         // A wrong field type names the field and both types, and an extra field names the target;
         // the whole records follow only when a label is missing.
-        if missing.is_empty() {
+        if missing.is_empty() || l_open {
             return Some(parts.join("; "));
         }
-        Some(format!(
+        return Some(format!(
             "{} (expected `{}`, found `{}`)",
             parts.join("; "),
             show(rhs),
             show(lhs)
-        ))
-    } else {
-        let only_l: Vec<&str> = l_fields
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .filter(|n| !has(r_fields, n))
-            .collect();
-        let only_r: Vec<&str> = r_fields
-            .iter()
-            .map(|(n, _)| n.as_str())
-            .filter(|n| !has(l_fields, n))
-            .collect();
-        if !only_l.is_empty() && !r_open {
-            parts.push(format!("only the first has {}", quote(&only_l)));
-        }
-        if !only_r.is_empty() && !l_open {
-            parts.push(format!("only the second has {}", quote(&only_r)));
-        }
-        for (name, first, second) in &mismatched {
-            parts.push(format!(
-                "field `{name}` is `{}` in the first and `{}` in the second",
-                show(first),
-                show(second)
-            ));
-        }
-        if parts.is_empty() {
-            return None;
-        }
-        Some(format!(
-            "the records `{}` and `{}` differ: {}",
-            show(lhs),
-            show(rhs),
-            parts.join("; ")
-        ))
+        ));
     }
+    let (only_l, only_r) = (
+        labels_not_in(l_fields, r_fields),
+        labels_not_in(r_fields, l_fields),
+    );
+    if !only_l.is_empty() && !r_open {
+        parts.push(format!("only the first has {}", quote_labels(&only_l)));
+    }
+    if !only_r.is_empty() && !l_open {
+        parts.push(format!("only the second has {}", quote_labels(&only_r)));
+    }
+    for (name, first, second) in &mismatched {
+        parts.push(format!(
+            "field `{name}` is `{}` in the first and `{}` in the second",
+            show(first),
+            show(second)
+        ));
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "the records `{}` and `{}` differ: {}",
+        show(lhs),
+        show(rhs),
+        parts.join("; ")
+    ))
 }
 
 /// As `operand_mismatch_error`, for a numeric literal bound to an incompatible type.
