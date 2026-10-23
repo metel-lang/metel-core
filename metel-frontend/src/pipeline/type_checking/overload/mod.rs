@@ -9,14 +9,16 @@
 //! coercions do **not** participate in overload selection (decided in sprint 22).
 //!
 //! Implementation strategy: each overloaded definition is assigned a unique
-//! [`SymbolId`] of the `Overload` kind (see `symbols::allocate_overload`).
-//! Construction selects the matching candidate at each call site and stamps its
+//! [`SymbolId`], derived from the program and not counted: in a user module it is the
+//! overloaded name's `Declared` symbol plus the definition's position among that name's
+//! overloads; in the embedded `std::core` it is the definition's index in declaration order.
+//! The same program therefore gets the same ids however many times it is compiled in a process
+//! (ADR-0065 step 2, `LIMIT-NAME-RESOLUTION-002`). Construction selects the matching candidate at each call site and stamps its
 //! id into `TypedExpr::Call::callee_id`; the evaluator registers each
 //! overloaded definition under its id and dispatches such calls through its
 //! symbol registry. Names never disambiguate overloads anywhere in the pipeline.
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU32;
 
 use crate::data::ast::{Decl, Expr, FunDecl, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
@@ -30,27 +32,68 @@ use super::conversions::{
     AssocResolveCtx, infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
 };
 
-/// Process-global allocator for overload-definition `SymbolIds`. Overload tables
-/// are built per module; the global counter keeps ids unique across the whole
-/// graph so the evaluator's symbol registry never collides.
-// limit: ["LIMIT-NAME-RESOLUTION-002"]
-static NEXT_OVERLOAD_SYM: AtomicU32 = AtomicU32::new(0);
 // arch-implements: ["arch.type-construction.requirement-10"]
 
-fn next_overload_symbol() -> SymbolId {
-    crate::identity::symbols::allocate_overload(&NEXT_OVERLOAD_SYM)
+/// Where the `SymbolId` of each overload definition comes from.
+enum OverloadIds<'a> {
+    /// The embedded `std::core` table: a definition's id is its index in declaration order.
+    Core { next: u32 },
+    /// A module's own table: a definition's id is the overloaded name's `Declared` symbol in
+    /// that module (from the resolver) and the definition's position among that name's overloads.
+    Module {
+        symbols: &'a HashMap<(Vec<String>, String), SymbolId>,
+        module: &'a [String],
+    },
+}
+
+impl OverloadIds<'_> {
+    fn id_for(&mut self, name: &str, ordinal: usize, span: &Span) -> Result<SymbolId, MetelError> {
+        let exhausted = || {
+            MetelError::internal(format!(
+                "too many overload definitions of `{name}` to number (at {span:?})"
+            ))
+        };
+        match self {
+            OverloadIds::Core { next } => {
+                let id = SymbolId::core_overload(*next);
+                *next = next.checked_add(1).ok_or_else(exhausted)?;
+                Ok(id)
+            }
+            OverloadIds::Module { symbols, module } => {
+                let group = symbols
+                    .get(&(module.to_vec(), name.to_string()))
+                    .copied()
+                    .ok_or_else(|| {
+                        MetelError::internal(format!(
+                            "overloaded function `{name}` has no resolved symbol in module {module:?}"
+                        ))
+                    })?;
+                let ordinal = u32::try_from(ordinal).map_err(|_| exhausted())?;
+                SymbolId::overload(group, ordinal).ok_or_else(|| {
+                    MetelError::internal(format!(
+                        "overloaded function `{name}` resolved to {group:?}, which is not a declared symbol"
+                    ))
+                })
+            }
+        }
+    }
 }
 
 /// The overload table for the embedded `std::core` declarations, built once per
 /// process so every module (and the single-program path) sees the SAME
 /// `SymbolId` for each `std::core` overload — call sites in any module and the
-/// runtime registration must agree on the id.
+/// runtime registration must agree on the id. The ids are indices in declaration
+/// order, so they are the same in every process and every compilation.
 pub(super) fn core_overload_table() -> &'static OverloadTable {
     use std::sync::OnceLock;
     static CORE: OnceLock<OverloadTable> = OnceLock::new();
     CORE.get_or_init(|| {
-        build_table_from_decls(&crate::stdlib::core_program().decls, None)
-            .expect("embedded std::core overloads must validate; they are compiled in")
+        build_table_from_decls(
+            &crate::stdlib::core_program().decls,
+            None,
+            &mut OverloadIds::Core { next: 0 },
+        )
+        .expect("embedded std::core overloads must validate; they are compiled in")
     })
 }
 
@@ -83,8 +126,16 @@ pub(super) fn build_overload_table(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
     imported: &OverloadTable,
+    symbols: &HashMap<(Vec<String>, String), SymbolId>,
 ) -> Result<OverloadTable, MetelError> {
-    let mut table = build_table_from_decls(decls, Some((registry, current_module)))?;
+    let mut table = build_table_from_decls(
+        decls,
+        Some((registry, current_module)),
+        &mut OverloadIds::Module {
+            symbols,
+            module: current_module,
+        },
+    )?;
     let core = core_overload_table();
 
     for (name, entries) in &mut table {
@@ -120,28 +171,39 @@ pub(super) fn build_overload_table(
 }
 
 /// Group a declaration list's same-name `fun`s into validated overload
-/// entries, allocating a fresh `SymbolId` per definition.
+/// entries, numbering each definition from `ids`.
 ///
 /// Errors if an overloaded function is generic, has an unannotated parameter, or
 /// collides with another overload on identical parameter types.
 fn build_table_from_decls(
     decls: &[Decl],
     assoc_ctx: Option<(&TypeDefinitionRegistry, &[String])>,
+    ids: &mut OverloadIds<'_>,
 ) -> Result<OverloadTable, MetelError> {
+    // Groups are walked in first-seen order, not `HashMap` order, so the ids the core table hands
+    // out do not depend on a per-process hash seed.
+    let mut order: Vec<&str> = Vec::new();
     let mut groups: HashMap<&str, Vec<&FunDecl>> = HashMap::new();
     for decl in decls {
         if let Decl::Fun(f) = decl {
-            groups.entry(f.name.as_str()).or_default().push(f);
+            groups
+                .entry(f.name.as_str())
+                .or_insert_with(|| {
+                    order.push(f.name.as_str());
+                    Vec::new()
+                })
+                .push(f);
         }
     }
 
     let mut table = OverloadTable::new();
-    for (name, funs) in groups {
+    for name in order {
+        let funs = &groups[name];
         if funs.len() < 2 {
             continue;
         }
         let mut entries: Vec<OverloadEntry> = Vec::new();
-        for f in funs {
+        for (ordinal, f) in funs.iter().enumerate() {
             if !f.generics.is_empty() {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0002,
@@ -169,7 +231,7 @@ fn build_table_from_decls(
             entries.push(OverloadEntry {
                 params,
                 ret,
-                symbol_id: next_overload_symbol(),
+                symbol_id: ids.id_for(name, ordinal, &f.span)?,
             });
         }
         table.insert(name.to_string(), entries);

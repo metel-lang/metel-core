@@ -1437,11 +1437,16 @@ fn check_impl_with_report(
     // hoist function names. The overload table must be installed before hoisting
     // so hoisting can skip overloaded names (they are dispatched by SymbolId).
     registry::register_primitive_type_bindings(&mut ctx, std_prelude);
+    // The module graph always supplies the resolver's symbols; only the unused `check_impl` wrapper
+    // can pass none, in which case an overloaded name has no `Declared` symbol to be numbered from
+    // and the table builder reports that.
+    let no_symbols = HashMap::new();
     let overloads = overload::build_overload_table(
         &program.decls,
         ctx.registry(),
         current_module_path,
         imported_overloads,
+        symbols.unwrap_or(&no_symbols),
     )?;
     ctx.set_overloads(overloads.clone());
     inference::hoist_fun_decls(&program.decls, &mut ctx);
