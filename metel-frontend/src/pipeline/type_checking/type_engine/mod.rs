@@ -2930,6 +2930,20 @@ pub(crate) struct AspectEntry {
     pub assoc_type_decls: Vec<AssocTypeDecl>,
 }
 
+/// A type registered in a lexical scope, and the bare-name bindings it replaced there.
+///
+/// Registering a type overwrites the registry's bare-name entry for that name. When the scope
+/// closes the entry is removed, or, if an outer type of the same name was shadowed, put back
+/// (metel-core#1561).
+#[derive(Debug, Clone, Copy)]
+struct ScopedType {
+    id: SymbolId,
+    /// What `type_decl_ids` held for the name before this registration.
+    shadowed_decl: Option<SymbolId>,
+    /// What `local_type_decl_ids` held for the name before this registration.
+    shadowed_local: Option<SymbolId>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct `SymbolId` → fields with declaration spans.
@@ -3072,10 +3086,11 @@ pub struct TypeDefinitionRegistry {
     /// `(aspect, assoc_name, expected_type)` equality constraints.
     fun_assoc_eq_constraints: HashMap<String, AssocEqConstraints>,
     /// Tracks which struct `SymbolId`s were registered in each lexical scope so
-    /// they can be removed on scope exit. The id is captured at registration
+    /// they can be removed on scope exit, together with the binding each one
+    /// shadowed so it can be put back. The id is captured at registration
     /// time, not re-resolved at cleanup (the name may no longer resolve once its
     /// scope is being torn down). Empty when outside any scoped block.
-    struct_scope_stack: Vec<Vec<SymbolId>>,
+    struct_scope_stack: Vec<Vec<ScopedType>>,
     /// Mints the `SymbolId`s of block-local struct/enum declarations. They are their own kind
     /// (`SymbolId::BlockLocal`), so they cannot collide with a name-resolver id.
     local_type_ids: crate::identity::symbols::BlockLocalAllocator,
@@ -3649,10 +3664,14 @@ impl TypeDefinitionRegistry {
         }
         self.struct_decl_modules.insert(owner, declaring_module);
         self.struct_visibility.insert(owner, visibility);
-        self.type_decl_ids.insert(name.clone(), owner);
+        let shadowed_decl = self.type_decl_ids.insert(name.clone(), owner);
         self.type_decl_names.insert(owner, name);
         if let Some(scope) = self.struct_scope_stack.last_mut() {
-            scope.push(owner);
+            scope.push(ScopedType {
+                id: owner,
+                shadowed_decl,
+                shadowed_local: None,
+            });
         }
     }
 
@@ -3679,7 +3698,14 @@ impl TypeDefinitionRegistry {
             visibility,
             is_record,
         );
-        self.local_type_decl_ids.insert(name.clone(), owner);
+        let shadowed_local = self.local_type_decl_ids.insert(name.clone(), owner);
+        if let Some(entry) = self
+            .struct_scope_stack
+            .last_mut()
+            .and_then(|scope| scope.last_mut())
+        {
+            entry.shadowed_local = shadowed_local;
+        }
         self.archived_local_type_decl_ids
             .entry(name)
             .or_default()
@@ -3746,8 +3772,15 @@ impl TypeDefinitionRegistry {
     }
 
     pub fn pop_struct_scope(&mut self) {
-        if let Some(ids) = self.struct_scope_stack.pop() {
-            for id in ids {
+        if let Some(scoped) = self.struct_scope_stack.pop() {
+            // Undo in reverse, so a name declared twice in one scope unwinds to what the
+            // enclosing scope had.
+            for ScopedType {
+                id,
+                shadowed_decl,
+                shadowed_local,
+            } in scoped.into_iter().rev()
+            {
                 // Keep the id-keyed declaration metadata after lexical lookup
                 // ends.  Runtime generic-body reconstruction can receive a
                 // value of this block-local type later, carrying the synthetic
@@ -3756,10 +3789,16 @@ impl TypeDefinitionRegistry {
                 // (#1307).  Only the bare-name indexes are scope-local.
                 if let Some(name) = self.type_decl_names.get(&id).cloned() {
                     if self.type_decl_ids.get(&name) == Some(&id) {
-                        self.type_decl_ids.remove(&name);
+                        match shadowed_decl {
+                            Some(outer) => self.type_decl_ids.insert(name.clone(), outer),
+                            None => self.type_decl_ids.remove(&name),
+                        };
                     }
                     if self.local_type_decl_ids.get(&name) == Some(&id) {
-                        self.local_type_decl_ids.remove(&name);
+                        match shadowed_local {
+                            Some(outer) => self.local_type_decl_ids.insert(name, outer),
+                            None => self.local_type_decl_ids.remove(&name),
+                        };
                     }
                 }
             }
@@ -5335,15 +5374,20 @@ impl TypeDefinitionRegistry {
         decl_span: Span,
     ) {
         let owner = self.fresh_local_type_id();
+        let shadowed_decl = self.type_decl_ids.get(&name).copied();
         self.register_enum(owner, name.clone(), info, declaring_module);
         self.local_type_decl_spans.insert(owner, decl_span);
-        self.local_type_decl_ids.insert(name.clone(), owner);
+        let shadowed_local = self.local_type_decl_ids.insert(name.clone(), owner);
         self.archived_local_type_decl_ids
             .entry(name)
             .or_default()
             .push(owner);
         if let Some(scope) = self.struct_scope_stack.last_mut() {
-            scope.push(owner);
+            scope.push(ScopedType {
+                id: owner,
+                shadowed_decl,
+                shadowed_local,
+            });
         }
     }
 
@@ -8544,6 +8588,36 @@ mod registry_identity_tests {
         register_local(&mut reg, "P", 10, &["x"], true);
         register_local(&mut reg, "P", 10, &["x"], true);
         assert_eq!(reg.archived_local_type_id_declared_at("P", &at(10)), None);
+    }
+
+    // metel-core#1561: closing a scope puts back the type an inner declaration shadowed.
+    #[test]
+    fn closing_a_scope_restores_the_type_it_shadowed() {
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.push_struct_scope();
+        register_local(&mut reg, "P", 10, &["x"], false);
+        let outer = reg.type_id_for_decl_name("P").unwrap();
+        reg.push_struct_scope();
+        register_local(&mut reg, "P", 20, &["y"], false);
+        let inner = reg.type_id_for_decl_name("P").unwrap();
+        assert_ne!(inner, outer);
+        reg.pop_struct_scope();
+        assert_eq!(reg.type_id_for_decl_name("P"), Some(outer));
+        reg.pop_struct_scope();
+        assert_eq!(reg.type_id_for_decl_name("P"), None);
+    }
+
+    #[test]
+    fn a_name_declared_twice_in_one_scope_unwinds_to_the_enclosing_scope() {
+        let mut reg = TypeDefinitionRegistry::new();
+        reg.push_struct_scope();
+        register_local(&mut reg, "P", 10, &["x"], false);
+        let outer = reg.type_id_for_decl_name("P").unwrap();
+        reg.push_struct_scope();
+        register_local(&mut reg, "P", 20, &["y"], false);
+        register_local(&mut reg, "P", 30, &["z"], false);
+        reg.pop_struct_scope();
+        assert_eq!(reg.type_id_for_decl_name("P"), Some(outer));
     }
 
     // metel-core#1546: block-local ids are minted per registry, and each module's registry absorbs

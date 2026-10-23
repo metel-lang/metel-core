@@ -1,0 +1,34 @@
+// metel-core#1561: an inner block that declares a local struct, record or enum with the name of an
+// outer one shadows it only while the inner block runs. After the block the outer type is nameable
+// again, and a second level of shadowing unwinds one level at a time.
+fun main() {
+    struct P { x: i64 }
+    record R { a: i64 }
+    enum E { A, B }
+    if (true) {
+        struct P { y: i64 }
+        record R { b: i64 }
+        enum E { Z }
+        if (true) {
+            struct P { z: i64 }
+            let deep := P { z = 3 };
+            assert(deep.z == 3);
+        }
+        let q := P { y = 1 };
+        let r := R { b = 2 };
+        let e := E::Z;
+        assert(q.y == 1);
+        assert(r.b == 2);
+    }
+    let p := P { x = 2 };
+    let r := R { a = 4 };
+    var s := 0;
+    match (E::B) {
+        E::A => { s := 1; },
+        E::B => { s := 2; },
+    }
+    assert(p.x == 2);
+    assert(r.a == 4);
+    assert(s == 2);
+    println("ok");
+}
