@@ -3705,7 +3705,12 @@ fn eval_call_expr(
     let func_val = if let Some(id) = callee_id {
         match runtime.get_symbol_value(id).cloned() {
             Some(value) => value,
-            None if matches!(id, crate::identity::symbols::SymbolId::Overload(_)) => {
+            None if matches!(
+                id,
+                crate::identity::symbols::SymbolId::Overload(_)
+                    | crate::identity::symbols::SymbolId::CoreOverload(_)
+            ) =>
+            {
                 return Err(MetelError::internal(format!(
                     "no runtime value registered for overload symbol {id:?}"
                 )));

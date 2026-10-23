@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicU32, Ordering};
 
 /// A stable, opaque identity for a resolved symbol (a unique `(source_module, source_name)` pair).
 ///
@@ -22,32 +21,39 @@ use std::sync::atomic::{AtomicU32, Ordering};
 /// | `Builtin` | nothing (a fixed set) | the primitives, core types and core aspects the language knows by id |
 /// | `Declared` | [`SymbolTable`] | a named top-level declaration, or an impl/aspect method key |
 /// | `BlockLocal` | [`BlockLocalAllocator`] | a struct or enum declared inside a block |
-/// | `Overload` | `type_checking::overload` | a free-function overload definition (METEL-180) |
+/// | `Overload` | `type_checking::overload` | a free-function overload definition in a user module (METEL-180): the name's `Declared` symbol and the definition's position among that name's overloads |
+/// | `CoreOverload` | `type_checking::overload` | an overload definition in the embedded `std::core`: its index in that table's declaration order |
 ///
-/// `Overload` is one temporary variant fed by a process-global counter; ADR-0065 step 2 splits it into
-/// a structural per-module id and an id for the embedded `std::core` table.
+/// Neither overload kind comes from a counter, so an overload's id is a function of the program, not of
+/// what was compiled before it in the process (ADR-0065 step 2, `LIMIT-NAME-RESOLUTION-002`).
 ///
 /// There is deliberately no `Ord`: an order over kinds carries no meaning code should rely on.
 ///
-/// Code outside this crate cannot build a payload, or call the allocator that would mint an
-/// `Overload`, from a number (these are the regression guards for ADR-0065 Decision 2):
+/// Code outside this crate cannot build a payload, or call the constructors that mint an overload id,
+/// from a number (these are the regression guards for ADR-0065 Decision 2):
 ///
 /// ```compile_fail,E0423
 /// use metel_frontend::identity::symbols::{DeclaredIndex, SymbolId};
 /// let _ = SymbolId::Declared(DeclaredIndex(1));
 /// ```
 ///
-/// ```compile_fail,E0603
-/// use metel_frontend::identity::symbols::allocate_overload;
-/// use std::sync::atomic::AtomicU32;
-/// let _ = allocate_overload(&AtomicU32::new(12345));
+/// ```compile_fail,E0624
+/// use metel_frontend::identity::symbols::SymbolId;
+/// let _ = SymbolId::core_overload(1);
+/// ```
+///
+/// ```compile_fail,E0624
+/// use metel_frontend::identity::symbols::{SymbolId, SymbolTable};
+/// let group = SymbolTable::new().intern(&[], "f");
+/// let _ = SymbolId::overload(group, 0);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SymbolId {
     Builtin(Builtin),
     Declared(DeclaredIndex),
     BlockLocal(BlockLocalIndex),
-    Overload(OverloadIndex),
+    Overload(OverloadId),
+    CoreOverload(CoreOverloadIndex),
 }
 
 /// Declares a private-payload index type. It prints as the bare number, so `SymbolId::Declared(42)`
@@ -75,11 +81,49 @@ symbol_index!(
     BlockLocalIndex
 );
 symbol_index!(
-    /// The index of a [`SymbolId::Overload`]; built only by `allocate_overload`, which is crate-private.
-    OverloadIndex
+    /// The index of a [`SymbolId::CoreOverload`] in the embedded `std::core` overload table's
+    /// declaration order; built only by the crate-private [`SymbolId::core_overload`].
+    CoreOverloadIndex
 );
 
+/// The payload of a [`SymbolId::Overload`]: the `Declared` symbol of the overloaded name in the module
+/// that defines it, and the definition's position among that name's overloads in source order. Built
+/// only by the crate-private [`SymbolId::overload`].
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OverloadId {
+    group: DeclaredIndex,
+    ordinal: u32,
+}
+
+impl fmt::Debug for OverloadId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}#{}", self.group, self.ordinal)
+    }
+}
+
 impl SymbolId {
+    /// The id of the `ordinal`-th overload definition, in source order, of the function named by
+    /// `group`, which must be the `Declared` symbol of that name in the module that defines it.
+    /// `None` when `group` is not a `Declared` symbol.
+    ///
+    /// The result depends only on the arguments, so compiling the same program twice yields the same
+    /// ids, and two modules that overload the same name get different ones because their `group`s
+    /// differ.
+    #[must_use]
+    pub(crate) fn overload(group: SymbolId, ordinal: u32) -> Option<SymbolId> {
+        match group {
+            SymbolId::Declared(group) => Some(SymbolId::Overload(OverloadId { group, ordinal })),
+            _ => None,
+        }
+    }
+
+    /// The id of the `index`-th overload definition in the embedded `std::core` table, counted in
+    /// that table's declaration order.
+    #[must_use]
+    pub(crate) const fn core_overload(index: u32) -> SymbolId {
+        SymbolId::CoreOverload(CoreOverloadIndex(index))
+    }
+
     /// A `Declared` id for a test, so unit tests inside this crate can name an id without
     /// running the resolver. Tests in other crates intern through a [`SymbolTable`].
     #[cfg(test)]
@@ -242,28 +286,6 @@ impl BlockLocalAllocator {
     }
 }
 
-/// Take the next [`SymbolId::Overload`] id from `counter`.
-///
-/// The counter is a process-global in `type_checking::overload` (`LIMIT-NAME-RESOLUTION-002`;
-/// ADR-0065 step 2 removes it).
-///
-/// # Panics
-/// Panics when the index space is exhausted rather than wrapping to an id already handed out.
-pub(crate) fn allocate_overload(counter: &AtomicU32) -> SymbolId {
-    // A compare-exchange loop, not `fetch_update`/`try_update`: the former is deprecated on current
-    // stable and the latter is not on every toolchain this crate builds with.
-    let mut index = counter.load(Ordering::Relaxed);
-    loop {
-        let next = index
-            .checked_add(1)
-            .expect("the overload SymbolId space is exhausted");
-        match counter.compare_exchange_weak(index, next, Ordering::Relaxed, Ordering::Relaxed) {
-            Ok(_) => return SymbolId::Overload(OverloadIndex(index)),
-            Err(current) => index = current,
-        }
-    }
-}
-
 // ── SymbolTable ───────────────────────────────────────────────────────────────
 
 /// Intern table: maps `(source_module, source_name)` → stable `SymbolId`.
@@ -372,12 +394,16 @@ mod architecture_evidence_tests {
     fn the_same_index_in_two_kinds_is_two_different_symbols() {
         let declared = SymbolId::Declared(DeclaredIndex(5));
         let block_local = SymbolId::BlockLocal(BlockLocalIndex(5));
-        let overload = SymbolId::Overload(OverloadIndex(5));
-        assert_ne!(declared, block_local);
-        assert_ne!(declared, overload);
-        assert_ne!(block_local, overload);
-        let all: std::collections::HashSet<_> = [declared, block_local, overload].into();
-        assert_eq!(all.len(), 3, "and they hash apart as well");
+        let overload = SymbolId::overload(declared, 5).unwrap();
+        let core_overload = SymbolId::core_overload(5);
+        let kinds = [declared, block_local, overload, core_overload];
+        for (i, a) in kinds.iter().enumerate() {
+            for b in &kinds[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+        let all: std::collections::HashSet<_> = kinds.into();
+        assert_eq!(all.len(), 4, "and they hash apart as well");
     }
 
     #[test]
@@ -391,8 +417,15 @@ mod architecture_evidence_tests {
             "BlockLocal(7)"
         );
         assert_eq!(
-            format!("{:?}", SymbolId::Overload(OverloadIndex(3))),
-            "Overload(3)"
+            format!(
+                "{:?}",
+                SymbolId::overload(SymbolId::Declared(DeclaredIndex(42)), 3).unwrap()
+            ),
+            "Overload(42#3)"
+        );
+        assert_eq!(
+            format!("{:?}", SymbolId::core_overload(3)),
+            "CoreOverload(3)"
         );
         assert_eq!(format!("{SYM_TYPE_RESULT:?}"), "Builtin(Result)");
     }
@@ -556,26 +589,40 @@ mod architecture_evidence_tests {
     }
 
     #[test]
-    fn the_overload_allocator_hands_out_consecutive_ids_from_the_counter() {
-        let counter = AtomicU32::new(10);
+    fn an_overload_id_is_a_pure_function_of_its_group_and_ordinal() {
+        let group = SymbolId::Declared(DeclaredIndex(7));
+        let other_group = SymbolId::Declared(DeclaredIndex(8));
+        let id = SymbolId::overload(group, 2).unwrap();
         assert_eq!(
-            allocate_overload(&counter),
-            SymbolId::Overload(OverloadIndex(10))
+            id,
+            SymbolId::overload(group, 2).unwrap(),
+            "same inputs, same id"
         );
-        assert_eq!(
-            allocate_overload(&counter),
-            SymbolId::Overload(OverloadIndex(11))
+        assert_ne!(
+            id,
+            SymbolId::overload(group, 3).unwrap(),
+            "another overload of one name"
+        );
+        assert_ne!(
+            id,
+            SymbolId::overload(other_group, 2).unwrap(),
+            "the same ordinal of another name"
         );
     }
 
     #[test]
-    #[should_panic(expected = "the overload SymbolId space is exhausted")]
-    fn the_overload_allocator_panics_at_the_end_instead_of_wrapping() {
-        let counter = AtomicU32::new(u32::MAX - 1);
-        assert_eq!(
-            allocate_overload(&counter),
-            SymbolId::Overload(OverloadIndex(u32::MAX - 1))
-        );
-        let _ = allocate_overload(&counter);
+    fn only_a_declared_symbol_can_be_the_group_of_an_overload() {
+        let declared = SymbolId::Declared(DeclaredIndex(1));
+        assert!(SymbolId::overload(declared, 0).is_some());
+        assert!(SymbolId::overload(SYM_TYPE_STRING, 0).is_none());
+        assert!(SymbolId::overload(SymbolId::BlockLocal(BlockLocalIndex(1)), 0).is_none());
+        assert!(SymbolId::overload(SymbolId::core_overload(1), 0).is_none());
+        assert!(SymbolId::overload(SymbolId::overload(declared, 0).unwrap(), 0).is_none());
+    }
+
+    #[test]
+    fn core_overload_ids_are_their_index_in_the_table() {
+        assert_eq!(SymbolId::core_overload(0), SymbolId::core_overload(0));
+        assert_ne!(SymbolId::core_overload(0), SymbolId::core_overload(1));
     }
 }
