@@ -1,0 +1,8 @@
+// metel-core#1556: the same for a local enum's variant constructor.
+aspect Tag { fun t(&self) -> i64; }
+struct No {}
+
+fun main() {
+    enum Wrap<T: Tag> { Has { v: T }, Empty }
+    let w := Wrap::Has { v = No {} };
+}

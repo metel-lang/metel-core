@@ -6,8 +6,8 @@ use super::conversions::{
     type_expr_to_infer_with_generics, type_expr_to_infer_with_self,
 };
 use crate::data::ast::{
-    AspectDecl, AspectMethod, Decl, GenericParam, Polarity, Program, Span, StructKind, TypeExpr,
-    WhereClause,
+    AspectDecl, AspectMethod, Decl, EnumDecl, GenericParam, Polarity, Program, Span, StructDecl,
+    StructKind, TypeExpr, WhereClause,
 };
 use crate::identity::symbols::SymbolId;
 use crate::pipeline::name_resolution::name_resolver::ModuleScope;
@@ -531,6 +531,96 @@ pub(super) fn build_registry(
     registry
 }
 
+/// A fresh type variable for each generic parameter of a type declaration, by name and in order.
+pub(super) fn fresh_generic_params(
+    type_var_gen: &mut TypeVarGenerator,
+    generics: &[GenericParam],
+) -> (HashMap<String, TypeVar>, Vec<TypeVar>) {
+    let mut by_name = HashMap::new();
+    let mut in_order = Vec::new();
+    for gp in generics {
+        let tv = type_var_gen.fresh();
+        by_name.insert(gp.name.clone(), tv);
+        in_order.push(tv);
+    }
+    (by_name, in_order)
+}
+
+/// Everything the registry records about a generic struct beyond its fields, keyed by the
+/// declaration's `SymbolId`: type parameters, their names, aspect arguments, row and record kinds,
+/// and bounds. Shared by module-level structs and block-local ones (metel-core#1556).
+pub(super) fn register_struct_generic_metadata(
+    registry: &mut TypeDefinitionRegistry,
+    sym: SymbolId,
+    sd: &StructDecl,
+    gen_map: &HashMap<String, TypeVar>,
+    type_params: Vec<TypeVar>,
+) {
+    registry.register_struct_type_params(sym, type_params);
+    registry.register_type_param_aspect_arguments(
+        sym,
+        super::inference::collect_aspect_type_arguments(
+            sd.generics.iter(),
+            sd.where_clause.iter(),
+            gen_map,
+        ),
+    );
+    registry
+        .register_struct_generic_names(sym, sd.generics.iter().map(|g| g.name.clone()).collect());
+    let row_kinds: Vec<bool> = sd.generics.iter().map(|g| g.is_row).collect();
+    if row_kinds.iter().any(|flag| *flag) {
+        registry.register_type_param_row_kinds(sym, row_kinds);
+    }
+    let record_kinds = collect_type_param_record_kinds(&sd.generics, sd.where_clause.as_ref());
+    if record_kinds.iter().any(|flag| *flag) {
+        registry.register_type_param_record_kinds(sym, record_kinds);
+    }
+    let bounds = collect_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
+    if bounds.iter().any(|b| !b.is_empty()) {
+        registry.register_type_param_bounds(sym, bounds);
+    }
+    let neg_bounds = collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
+    if neg_bounds.iter().any(|b| !b.is_empty()) {
+        registry.register_neg_type_param_bounds(sym, neg_bounds);
+    }
+}
+
+/// The enum counterpart of [`register_struct_generic_metadata`]. The type parameters themselves
+/// live in the enum's `EnumInfo`, so they are not passed here.
+pub(super) fn register_enum_generic_metadata(
+    registry: &mut TypeDefinitionRegistry,
+    sym: SymbolId,
+    ed: &EnumDecl,
+    gen_map: &HashMap<String, TypeVar>,
+) {
+    registry
+        .register_struct_generic_names(sym, ed.generics.iter().map(|g| g.name.clone()).collect());
+    registry.register_type_param_aspect_arguments(
+        sym,
+        super::inference::collect_aspect_type_arguments(
+            ed.generics.iter(),
+            ed.where_clause.iter(),
+            gen_map,
+        ),
+    );
+    let row_kinds: Vec<bool> = ed.generics.iter().map(|g| g.is_row).collect();
+    if row_kinds.iter().any(|flag| *flag) {
+        registry.register_type_param_row_kinds(sym, row_kinds);
+    }
+    let record_kinds = collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());
+    if record_kinds.iter().any(|flag| *flag) {
+        registry.register_type_param_record_kinds(sym, record_kinds);
+    }
+    let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
+    if bounds.iter().any(|b| !b.is_empty()) {
+        registry.register_type_param_bounds(sym, bounds);
+    }
+    let neg_bounds = collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
+    if neg_bounds.iter().any(|b| !b.is_empty()) {
+        registry.register_neg_type_param_bounds(sym, neg_bounds);
+    }
+}
+
 /// Register a program's type-level declarations (structs, enums, aspects, impl
 /// signatures) into the registry. Used both for the module being checked and
 /// for the embedded `std::core` decls, which seed every module's registry.
@@ -583,13 +673,7 @@ fn register_program_decls(
                 let Some(sym) = registry.resolve_type_id(current_module_path, &sd.name) else {
                     continue;
                 };
-                let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
-                let mut type_params = vec![];
-                for gp in &sd.generics {
-                    let tv = type_var_gen.fresh();
-                    gen_map.insert(gp.name.clone(), tv);
-                    type_params.push(tv);
-                }
+                let (gen_map, type_params) = fresh_generic_params(type_var_gen, &sd.generics);
                 let fields: Vec<FieldEntry> = sd
                     .fields
                     .iter()
@@ -614,47 +698,11 @@ fn register_program_decls(
                     sd.visibility.clone(),
                     sd.kind == StructKind::Record,
                 );
-                registry.register_struct_type_params(sym, type_params);
-                registry.register_type_param_aspect_arguments(
-                    sym,
-                    super::inference::collect_aspect_type_arguments(
-                        sd.generics.iter(),
-                        sd.where_clause.iter(),
-                        &gen_map,
-                    ),
-                );
-                registry.register_struct_generic_names(
-                    sym,
-                    sd.generics.iter().map(|g| g.name.clone()).collect(),
-                );
-                let row_kinds: Vec<bool> = sd.generics.iter().map(|g| g.is_row).collect();
-                if row_kinds.iter().any(|flag| *flag) {
-                    registry.register_type_param_row_kinds(sym, row_kinds);
-                }
-                let record_kinds =
-                    collect_type_param_record_kinds(&sd.generics, sd.where_clause.as_ref());
-                if record_kinds.iter().any(|flag| *flag) {
-                    registry.register_type_param_record_kinds(sym, record_kinds);
-                }
-                let bounds = collect_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
-                if bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_type_param_bounds(sym, bounds);
-                }
-                let neg_bounds =
-                    collect_negative_type_param_bounds(&sd.generics, sd.where_clause.as_ref());
-                if neg_bounds.iter().any(|b| !b.is_empty()) {
-                    registry.register_neg_type_param_bounds(sym, neg_bounds);
-                }
+                register_struct_generic_metadata(registry, sym, sd, &gen_map, type_params);
             }
             Decl::Enum(ed) => {
                 let enum_sym = registry.resolve_type_id(current_module_path, &ed.name);
-                let mut gen_map: HashMap<String, TypeVar> = HashMap::new();
-                let mut type_params = vec![];
-                for gp in &ed.generics {
-                    let tv = type_var_gen.fresh();
-                    gen_map.insert(gp.name.clone(), tv);
-                    type_params.push(tv);
-                }
+                let (gen_map, type_params) = fresh_generic_params(type_var_gen, &ed.generics);
                 let variants = ed
                     .variants
                     .iter()
@@ -675,29 +723,6 @@ fn register_program_decls(
                     })
                     .collect();
                 if let Some(sym) = enum_sym {
-                    registry.register_struct_generic_names(
-                        sym,
-                        ed.generics.iter().map(|g| g.name.clone()).collect(),
-                    );
-                    registry.register_type_param_aspect_arguments(
-                        sym,
-                        super::inference::collect_aspect_type_arguments(
-                            ed.generics.iter(),
-                            ed.where_clause.iter(),
-                            &gen_map,
-                        ),
-                    );
-                }
-                if let Some(sym) = enum_sym {
-                    let row_kinds: Vec<bool> = ed.generics.iter().map(|g| g.is_row).collect();
-                    if row_kinds.iter().any(|flag| *flag) {
-                        registry.register_type_param_row_kinds(sym, row_kinds);
-                    }
-                }
-                let record_kinds =
-                    collect_type_param_record_kinds(&ed.generics, ed.where_clause.as_ref());
-                let bounds = collect_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
-                if let Some(sym) = enum_sym {
                     registry.register_enum(
                         sym,
                         ed.name.clone(),
@@ -707,17 +732,7 @@ fn register_program_decls(
                         },
                         current_module_path.to_vec(),
                     );
-                    if record_kinds.iter().any(|flag| *flag) {
-                        registry.register_type_param_record_kinds(sym, record_kinds);
-                    }
-                    if bounds.iter().any(|b| !b.is_empty()) {
-                        registry.register_type_param_bounds(sym, bounds);
-                    }
-                    let neg_bounds =
-                        collect_negative_type_param_bounds(&ed.generics, ed.where_clause.as_ref());
-                    if neg_bounds.iter().any(|b| !b.is_empty()) {
-                        registry.register_neg_type_param_bounds(sym, neg_bounds);
-                    }
+                    register_enum_generic_metadata(registry, sym, ed, &gen_map);
                 }
             }
             Decl::Aspect(ad) => {

@@ -1,0 +1,11 @@
+// metel-core#1556: a bound on a local type's parameter is satisfied by an implementing type.
+aspect Tag { fun t(&self) -> i64; }
+struct Yes {}
+extend Yes: Tag { fun t(&self) -> i64 { 1 } }
+
+fun main() {
+    struct Box<T: Tag> { x: T }
+    let b := Box { x = Yes {} };
+    enum Wrap<T: Tag> { Has { v: T }, Empty }
+    let w := Wrap::Has { v = Yes {} };
+}
