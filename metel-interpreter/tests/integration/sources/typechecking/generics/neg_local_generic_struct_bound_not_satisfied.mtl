@@ -1,0 +1,8 @@
+// metel-core#1556: a bound on a local type's parameter is checked where the type is constructed.
+aspect Tag { fun t(&self) -> i64; }
+struct No {}
+
+fun main() {
+    struct Box<T: Tag> { x: T }
+    let b := Box { x = No {} };
+}

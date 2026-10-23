@@ -315,6 +315,16 @@ impl<'a> ConstructCtx<'a> {
         }
     }
 
+    /// The identity of the block-local struct, record or enum `name` names in the current
+    /// block, if it names one. Types written in annotations carry no nominal id, and the
+    /// registry's bare-name index no longer has block-local names by now.
+    fn local_type_id(&self, name: &str) -> Option<SymbolId> {
+        self.local_struct_ids
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
     /// The variants of the enum `name` names here: a block-local enum in scope first, then the
     /// module-level registry.
     fn enum_info_named(&self, name: &str) -> Option<&EnumInfo> {
@@ -327,8 +337,42 @@ impl<'a> ConstructCtx<'a> {
     }
 
     fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
-        self.registry
-            .type_param_record_kinds_for(self.current_module, name)
+        match self.local_type_id(name) {
+            Some(id) => self.registry.type_param_record_kinds_by_id(id),
+            None => self
+                .registry
+                .type_param_record_kinds_for(self.current_module, name),
+        }
+    }
+
+    /// The declared generic parameter names of the struct or enum `name` names here.
+    fn generic_names_named(&self, name: &str) -> Option<&Vec<String>> {
+        match self.local_type_id(name) {
+            Some(id) => self.registry.struct_generic_names_by_id(id),
+            None => self
+                .registry
+                .struct_generic_names_for(self.current_module, name),
+        }
+    }
+
+    /// The declared bounds on the type parameters of the struct or enum `name` names here.
+    fn type_param_bounds_named(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
+        match self.local_type_id(name) {
+            Some(id) => self.registry.type_param_bounds_by_id(id),
+            None => self
+                .registry
+                .type_param_bounds_for(self.current_module, name),
+        }
+    }
+
+    /// The declared negative bounds on the type parameters of the struct or enum `name` names here.
+    fn neg_type_param_bounds_named(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
+        match self.local_type_id(name) {
+            Some(id) => self.registry.neg_type_param_bounds_by_id(id),
+            None => self
+                .registry
+                .neg_type_param_bounds_for(self.current_module, name),
+        }
     }
 
     fn get_struct_fields(&self, name: &str) -> Option<&Vec<(String, Type, Span)>> {

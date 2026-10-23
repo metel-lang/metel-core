@@ -3,8 +3,10 @@
 //! Implements Hindley-Milner type inference with let-polymorphism.
 //! See `metel-frontend/docs/typechecker.md` for theory and implementation notes.
 
+use super::conversions::type_expr_to_infer_with_generics;
 use crate::data::ast::{
-    AspectMethod, AssocTypeDecl, ReceiverKind, RowBound, Span, TypeExpr, Visibility,
+    AspectMethod, AssocTypeDecl, EnumDecl, ReceiverKind, RowBound, Span, StructDecl, StructKind,
+    TypeExpr, Visibility,
 };
 use crate::data::error::MetelError;
 use crate::data::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
@@ -3687,7 +3689,7 @@ impl TypeDefinitionRegistry {
         visibility: Visibility,
         is_record: bool,
         decl_span: Span,
-    ) {
+    ) -> SymbolId {
         let owner = self.fresh_local_type_id();
         self.local_type_decl_spans.insert(owner, decl_span);
         self.register_struct_fields(
@@ -3710,6 +3712,7 @@ impl TypeDefinitionRegistry {
             .entry(name)
             .or_default()
             .push(owner);
+        owner
     }
 
     /// The ids of every block-local type registered under `name` in this registry, in no
@@ -3892,6 +3895,30 @@ impl TypeDefinitionRegistry {
     ) -> Option<&AspectTypeArguments> {
         self.type_param_aspect_arguments
             .get(&self.resolve_type_key_broad(module, name)?)
+    }
+
+    /// The declared generic parameter names of the struct or enum registered under `id`.
+    #[must_use]
+    pub fn struct_generic_names_by_id(&self, id: SymbolId) -> Option<&Vec<String>> {
+        self.struct_generic_names.get(&id)
+    }
+
+    /// The declared bounds on each type parameter of the type registered under `id`.
+    #[must_use]
+    pub fn type_param_bounds_by_id(&self, id: SymbolId) -> Option<&Vec<Vec<GenericBound>>> {
+        self.type_param_bounds.get(&id)
+    }
+
+    /// The declared negative bounds on each type parameter of the type registered under `id`.
+    #[must_use]
+    pub fn neg_type_param_bounds_by_id(&self, id: SymbolId) -> Option<&Vec<Vec<GenericBound>>> {
+        self.neg_type_param_bounds.get(&id)
+    }
+
+    /// Which type parameters of the type registered under `id` are record-kinded.
+    #[must_use]
+    pub fn type_param_record_kinds_by_id(&self, id: SymbolId) -> Option<&Vec<bool>> {
+        self.type_param_record_kinds.get(&id)
     }
 
     #[must_use]
@@ -5372,7 +5399,7 @@ impl TypeDefinitionRegistry {
         info: EnumInfo,
         declaring_module: Vec<String>,
         decl_span: Span,
-    ) {
+    ) -> SymbolId {
         let owner = self.fresh_local_type_id();
         let shadowed_decl = self.type_decl_ids.get(&name).copied();
         self.register_enum(owner, name.clone(), info, declaring_module);
@@ -5389,6 +5416,7 @@ impl TypeDefinitionRegistry {
                 shadowed_local,
             });
         }
+        owner
     }
 
     #[must_use]
@@ -6614,23 +6642,39 @@ impl InferContext {
 
     /// Register a struct declared inside a block body (see `infer_block`'s
     /// hoist pass). These have no name-resolver symbol, so the registry mints a
-    /// synthetic local id.
-    pub fn register_struct_fields(
-        &mut self,
-        name: String,
-        fields: Vec<crate::pipeline::type_checking::type_engine::FieldEntry>,
-        visibility: Visibility,
-        is_record: bool,
-        decl_span: Span,
-    ) {
-        self.registry.register_local_struct_fields(
-            name,
+    /// synthetic local id. A generic one gets the same type parameters, bounds and
+    /// kinds a module-level generic struct does (metel-core#1556).
+    pub fn register_local_struct(&mut self, sd: &StructDecl) {
+        let (gen_map, type_params) =
+            super::registry::fresh_generic_params(&mut self.var_gen, &sd.generics);
+        let fields = sd
+            .fields
+            .iter()
+            .map(|f| FieldEntry {
+                name: f.name.clone(),
+                ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
+                span: f.span.clone(),
+                visibility: f.visibility.clone(),
+                id: None,
+            })
+            .collect();
+        let owner = self.registry.register_local_struct_fields(
+            sd.name.clone(),
             fields,
             self.current_module_path.clone(),
-            visibility,
-            is_record,
-            decl_span,
+            sd.visibility.clone(),
+            sd.kind == StructKind::Record,
+            sd.span.clone(),
         );
+        if !sd.generics.is_empty() {
+            super::registry::register_struct_generic_metadata(
+                &mut self.registry,
+                owner,
+                sd,
+                &gen_map,
+                type_params,
+            );
+        }
     }
 
     #[must_use]
@@ -6701,10 +6745,47 @@ impl InferContext {
 
     /// Register an enum declared inside a block body (see `infer_block`'s hoist
     /// pass). These have no name-resolver symbol, so the registry mints a
-    /// synthetic local id.
-    pub fn register_enum(&mut self, name: String, info: EnumInfo, decl_span: Span) {
-        self.registry
-            .register_local_enum(name, info, self.current_module_path.clone(), decl_span);
+    /// synthetic local id. A generic one gets the same type parameters, bounds and
+    /// kinds a module-level generic enum does (metel-core#1556).
+    pub fn register_local_enum(&mut self, ed: &EnumDecl) {
+        let (gen_map, type_params) =
+            super::registry::fresh_generic_params(&mut self.var_gen, &ed.generics);
+        let variants = ed
+            .variants
+            .iter()
+            .map(|v| VariantInfo {
+                name: v.name.clone(),
+                fields: v
+                    .fields
+                    .iter()
+                    .map(|f| FieldEntry {
+                        name: f.name.clone(),
+                        ty: type_expr_to_infer_with_generics(&f.type_ann, &gen_map),
+                        span: f.span.clone(),
+                        visibility: f.visibility.clone(),
+                        id: None,
+                    })
+                    .collect(),
+                id: None,
+            })
+            .collect();
+        let owner = self.registry.register_local_enum(
+            ed.name.clone(),
+            EnumInfo {
+                type_params,
+                variants,
+            },
+            self.current_module_path.clone(),
+            ed.span.clone(),
+        );
+        if !ed.generics.is_empty() {
+            super::registry::register_enum_generic_metadata(
+                &mut self.registry,
+                owner,
+                ed,
+                &gen_map,
+            );
+        }
     }
 
     #[must_use]

@@ -1,0 +1,7 @@
+// metel-core#1556: a record is Copy only if its fields are, so Box<String> moves.
+fun main() {
+    record Box<T> { x: T }
+    let a := Box { x = "s" };
+    let b := a;
+    let c := a;
+}

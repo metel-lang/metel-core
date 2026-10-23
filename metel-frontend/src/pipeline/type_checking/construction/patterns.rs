@@ -875,8 +875,7 @@ pub(super) fn construct_enum_literal_ty(
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
     let generic_types_by_name: HashMap<String, Type> = ctx
-        .registry
-        .struct_generic_names_for(ctx.current_module, enum_name)
+        .generic_names_named(enum_name)
         .into_iter()
         .flatten()
         .cloned()
@@ -886,10 +885,7 @@ pub(super) fn construct_enum_literal_ty(
         .get_type_param_record_kinds(enum_name)
         .cloned()
         .unwrap_or_else(|| vec![false; concrete_args.len()]);
-    if let Some(param_bounds) = ctx
-        .registry
-        .type_param_bounds_for(ctx.current_module, enum_name)
-    {
+    if let Some(param_bounds) = ctx.type_param_bounds_named(enum_name) {
         for (i, bounds) in param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if bounds.is_empty() && !record_kind {
@@ -912,10 +908,7 @@ pub(super) fn construct_enum_literal_ty(
     }
     // T0012 negative bounds: check each resolved type arg does NOT implement
     // the declared negative bounds (RFC-0072, issue #243).
-    if let Some(neg_param_bounds) = ctx
-        .registry
-        .neg_type_param_bounds_for(ctx.current_module, enum_name)
-    {
+    if let Some(neg_param_bounds) = ctx.neg_type_param_bounds_named(enum_name) {
         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if neg_bounds.is_empty() && !record_kind {

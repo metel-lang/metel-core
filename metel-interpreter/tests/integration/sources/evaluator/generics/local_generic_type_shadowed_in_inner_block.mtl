@@ -1,0 +1,12 @@
+// metel-core#1556, #1561: an inner block's generic local type shadows an outer one of the same name
+// with different parameters and fields, and the outer one is back afterwards.
+fun main() {
+    struct Box<T> { x: T }
+    let outer := Box { x = 1 };
+    if (true) {
+        struct Box<T> { y: T, z: T }
+        let inner := Box { y = 2, z = 3 };
+        assert(inner.z == 3);
+    }
+    assert(outer.x == 1);
+}

@@ -926,10 +926,13 @@ pub(super) fn construct_expr(
             // metel-core#1222: prefer the identity the value's own type already
             // carries over a bare-name re-lookup, which conflates same-named
             // structs declared in different modules.
-            let struct_id = nominal_id.get().or_else(|| {
-                ctx.registry
-                    .resolve_type_id(ctx.current_module, &struct_name)
-            });
+            let struct_id = nominal_id
+                .get()
+                .or_else(|| {
+                    ctx.registry
+                        .resolve_type_id(ctx.current_module, &struct_name)
+                })
+                .or_else(|| ctx.local_type_id(&struct_name));
             let field_ty = if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
@@ -1464,8 +1467,14 @@ pub(super) fn construct_expr(
                     // recovered from the field values. Inference already solved it from
                     // the expected type, so take it from there when that type is this
                     // same struct. A parameter a field fixed is never overridden.
-                    if let Some(Type::Named(_, expected_args, nominal)) = expected_ty
-                        && nominal.get() == type_id
+                    // An annotation naming a block-local type carries no nominal id, so there the
+                    // name has to match instead.
+                    if let Some(Type::Named(expected_name, expected_args, nominal)) = expected_ty
+                        && (nominal.get() == type_id
+                            || (nominal.get().is_none()
+                                && type_id.is_some()
+                                && expected_name == type_name
+                                && ctx.local_type_id(type_name) == type_id))
                         && expected_args.len() == type_params.len()
                     {
                         for (tp, expected_arg) in type_params.iter().zip(expected_args) {
@@ -1484,8 +1493,7 @@ pub(super) fn construct_expr(
                         .collect::<Result<_, _>>()?;
                     // T0012: check each resolved type arg satisfies the declared bounds.
                     let generic_types_by_name: HashMap<String, Type> = ctx
-                        .registry
-                        .struct_generic_names_for(ctx.current_module, type_name)
+                        .generic_names_named(type_name)
                         .into_iter()
                         .flatten()
                         .cloned()
@@ -1495,10 +1503,7 @@ pub(super) fn construct_expr(
                         .get_type_param_record_kinds(type_name)
                         .cloned()
                         .unwrap_or_else(|| vec![false; type_args.len()]);
-                    if let Some(param_bounds) = ctx
-                        .registry
-                        .type_param_bounds_for(ctx.current_module, type_name)
-                    {
+                    if let Some(param_bounds) = ctx.type_param_bounds_named(type_name) {
                         for (i, bounds) in param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
                             if bounds.is_empty() && !record_kind {
@@ -1521,10 +1526,7 @@ pub(super) fn construct_expr(
                     }
                     // T0012 negative bounds: check each resolved type arg does NOT
                     // implement the declared negative bounds (RFC-0072, issue #243).
-                    if let Some(neg_param_bounds) = ctx
-                        .registry
-                        .neg_type_param_bounds_for(ctx.current_module, type_name)
-                    {
+                    if let Some(neg_param_bounds) = ctx.neg_type_param_bounds_named(type_name) {
                         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
                             if neg_bounds.is_empty() && !record_kind {

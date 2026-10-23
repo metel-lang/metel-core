@@ -1,0 +1,6 @@
+// metel-core#1556: the parameter is real: a Box built from an i64 is not a Box<String>.
+fun main() {
+    struct Box<T> { x: T }
+    let b := Box { x = 1 };
+    let c: Box<String> := b;
+}

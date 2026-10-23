@@ -8,8 +8,8 @@ use crate::data::ast::{
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
 use crate::pipeline::type_checking::type_engine::{
-    AspectAssumptions, EnumInfo, FieldEntry, GenericBound, InferContext, InferType, RowConstraint,
-    RowConstraintField, Substitution, TypeScheme, TypeVar, VariantInfo, free_vars, generalize,
+    AspectAssumptions, FieldEntry, GenericBound, InferContext, InferType, RowConstraint,
+    RowConstraintField, Substitution, TypeScheme, TypeVar, free_vars, generalize,
 };
 
 use super::FunGeneralization;
@@ -2025,55 +2025,8 @@ fn infer_block(
     // so they can be referenced anywhere within the block regardless of order.
     for decl in &block.stmts {
         match decl {
-            Decl::Struct(sd) => {
-                let fields = sd
-                    .fields
-                    .iter()
-                    .map(|f| FieldEntry {
-                        name: f.name.clone(),
-                        ty: type_expr_to_infer(&f.type_ann),
-                        span: f.span.clone(),
-                        visibility: f.visibility.clone(),
-                        id: None,
-                    })
-                    .collect();
-                ctx.register_struct_fields(
-                    sd.name.clone(),
-                    fields,
-                    sd.visibility.clone(),
-                    sd.kind == crate::data::ast::StructKind::Record,
-                    sd.span.clone(),
-                );
-            }
-            Decl::Enum(ed) => {
-                let variants = ed
-                    .variants
-                    .iter()
-                    .map(|v| VariantInfo {
-                        name: v.name.clone(),
-                        fields: v
-                            .fields
-                            .iter()
-                            .map(|f| FieldEntry {
-                                name: f.name.clone(),
-                                ty: type_expr_to_infer(&f.type_ann),
-                                span: f.span.clone(),
-                                visibility: f.visibility.clone(),
-                                id: None,
-                            })
-                            .collect(),
-                        id: None,
-                    })
-                    .collect();
-                ctx.register_enum(
-                    ed.name.clone(),
-                    EnumInfo {
-                        type_params: vec![],
-                        variants,
-                    },
-                    ed.span.clone(),
-                );
-            }
+            Decl::Struct(sd) => ctx.register_local_struct(sd),
+            Decl::Enum(ed) => ctx.register_local_enum(ed),
             _ => {}
         }
     }
