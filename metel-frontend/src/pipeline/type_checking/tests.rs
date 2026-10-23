@@ -84,6 +84,7 @@ fn prelude_schemes_cover_embedded_core_natives() {
 // so it also fails if `check_graph` stops threading one registry chain through the modules, which a
 // test of `merge_from` alone cannot catch (and which no program output shows, because nothing
 // observable depended on the overwritten entry).
+// arch-verifies: ["arch.type-inference.requirement-2"]
 #[test]
 fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     use crate::pipeline::coherence;
