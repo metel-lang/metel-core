@@ -1187,6 +1187,36 @@ fn an_annotation_naming_a_block_local_type_carries_its_declaration() {
     }
 }
 
+// metel-core#1571: an impl method's id is keyed by the impl's target and aspect *with* their type
+// arguments, so impls for different instantiations no longer share one id.
+#[test]
+fn impl_methods_for_different_instantiations_get_different_symbol_ids() {
+    let typed = typecheck_source(
+        "method_keys/main.mtl",
+        "aspect Tag { fun t(&self) -> i64; }
+        aspect Conv<X> { fun conv(&self, x: X) -> i64; }
+        struct W<T> { v: T }
+        struct S {}
+        extend W<i64>: Tag { fun t(&self) -> i64 { 1 } }
+        extend W<String>: Tag { fun t(&self) -> i64 { 2 } }
+        extend S: Conv<i64> { fun conv(&self, x: i64) -> i64 { x } }
+        extend S: Conv<String> { fun conv(&self, x: String) -> i64 { 0 } }
+        extend S { fun plain(&self) -> i64 { 3 } }
+        fun main() {}",
+    );
+    let id = |key: &str| {
+        *typed
+            .names
+            .symbols
+            .get(&(vec![], key.to_string()))
+            .unwrap_or_else(|| panic!("no symbol for `{key}`"))
+    };
+    assert_ne!(id("W<i64>::Tag::t"), id("W<String>::Tag::t"));
+    assert_ne!(id("S::Conv<i64>::conv"), id("S::Conv<String>::conv"));
+    // A target with no arguments keeps its bare name.
+    id("S::plain");
+}
+
 struct TypedFixture {
     report: CheckGraphReport,
     normalized: NormalizedModuleGraph,
