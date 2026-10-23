@@ -1,0 +1,5 @@
+// metel-core#1560: structs, enums, aspects and type aliases share one namespace.
+struct Foo { x: i64 }
+enum Foo { A }
+
+fun main() {}

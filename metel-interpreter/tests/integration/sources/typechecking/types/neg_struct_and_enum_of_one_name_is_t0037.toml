@@ -1,0 +1,7 @@
+[options]
+error = ["T0037"]
+
+[expect]
+status = "typecheck_error"
+code = "T0037"
+contains = "duplicate declaration of type `Foo`"

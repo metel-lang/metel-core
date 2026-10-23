@@ -1,0 +1,6 @@
+// metel-core#1560: an alias is expanded away before name resolution, so it is checked against the
+// module's other types where it is collected.
+struct Foo { x: i64 }
+type Foo := i64;
+
+fun main() {}

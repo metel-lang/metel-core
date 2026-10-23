@@ -1,0 +1,6 @@
+// metel-core#1560: two top-level declarations of one name in the type namespace. The second used to
+// share the first one's SymbolId and silently go unseen.
+struct Foo { x: i64 }
+struct Foo { y: i64 }
+
+fun main() {}
