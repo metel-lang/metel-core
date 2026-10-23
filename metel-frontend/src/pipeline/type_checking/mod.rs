@@ -8,7 +8,7 @@ use crate::data::error::MetelError;
 use crate::data::error::TypeErrorCode;
 use crate::data::typed_ast::{TypedDecl, TypedModule, TypedModuleGraph};
 use crate::identity::FrozenIdentity;
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::Namespace;
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::parsing::module_loader::LoadedModule;
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
@@ -294,7 +294,7 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
     for decl in &loaded.program.decls {
         match decl {
             Decl::Fun(fd) if fd.visibility == Visibility::Public => {
-                if !pub_surface.contains(fd.name.as_str()) {
+                if !pub_surface.contains(&(Namespace::Value, fd.name.clone())) {
                     continue;
                 }
                 // Native (stdlib host-backed) functions are exempt: their
@@ -717,17 +717,27 @@ fn build_import_schemes(
     }
 
     // Explicit imports (higher priority — overwrite globs).
-    for (local_name, binding) in &scope.explicit {
-        if let Some(scheme) =
-            global_exports.get_scheme(&binding.source_module, &binding.source_name)
+    for ((namespace, local_name), binding) in &scope.explicit {
+        // A function scheme belongs to the value namespace; a type-namespace binding of the same
+        // name (`struct Foo` beside `fun Foo`) adds no scheme of its own.
+        if *namespace == Namespace::Value
+            && let Some(scheme) =
+                global_exports.get_scheme(&binding.source_module, &binding.source_name)
         {
             env.insert(local_name.clone(), scheme.clone());
         } else {
-            // No function scheme — check if it is a public struct/enum/aspect (type-only import).
-            let is_pub_type = names
-                .pub_surface
-                .get(&binding.source_module)
-                .is_some_and(|surface| surface.contains(binding.source_name.as_str()));
+            // No function scheme — check if the name is public in either namespace (a public
+            // struct/enum/aspect, or a function without a scheme such as an overload set). A name
+            // imported in both namespaces is importable as long as one of them is public.
+            let is_pub_type =
+                names
+                    .pub_surface
+                    .get(&binding.source_module)
+                    .is_some_and(|surface| {
+                        [Namespace::Type, Namespace::Value]
+                            .into_iter()
+                            .any(|ns| surface.contains(&(ns, binding.source_name.clone())))
+                    });
             if is_pub_type {
                 // Valid public struct/enum/aspect import — no scheme needed; type registry
                 // handles these via type_context. Skip silently.
@@ -743,7 +753,11 @@ fn build_import_schemes(
                 let name_exists = names
                     .declared_names
                     .get(&binding.source_module)
-                    .is_some_and(|s| s.contains(binding.source_name.as_str()));
+                    .is_some_and(|s| {
+                        [Namespace::Type, Namespace::Value]
+                            .into_iter()
+                            .any(|ns| s.contains(&(ns, binding.source_name.clone())))
+                    });
                 if name_exists {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0009,
@@ -822,9 +836,10 @@ fn build_import_overloads(
     // Explicit imports (higher priority — overwrite globs), keyed by local
     // name so an aliased overloaded import (`import alpha::tag as t;`) is
     // visible under its alias, matching `build_import_schemes`.
-    for (local_name, binding) in &scope.explicit {
-        if let Some(entries) =
-            global_exports.overload_entries(&binding.source_module, &binding.source_name)
+    for ((namespace, local_name), binding) in &scope.explicit {
+        if *namespace == Namespace::Value
+            && let Some(entries) =
+                global_exports.overload_entries(&binding.source_module, &binding.source_name)
         {
             result.insert(local_name.clone(), entries.to_vec());
         }
@@ -880,15 +895,16 @@ fn filter_pub_schemes(
     // Locally-declared pub names from this module's inference output.
     let mut result: SchemeEnv = scheme_env
         .iter()
-        .filter(|(name, _)| pub_names.contains(name.as_str()))
+        .filter(|(name, _)| pub_names.contains(&(Namespace::Value, (*name).clone())))
         .map(|(name, scheme)| (name.clone(), scheme.clone()))
         .collect();
 
     // Re-exported names: present in pub_surface but not in scheme_env.
     // Pull their schemes from the source module's GlobalExports entry.
     if let Some(scope) = names.scopes.get(&loaded.module_path) {
-        for (local_name, binding) in &scope.re_exports {
-            if pub_names.contains(local_name.as_str())
+        for ((namespace, local_name), binding) in &scope.re_exports {
+            if *namespace == Namespace::Value
+                && pub_names.contains(&(Namespace::Value, local_name.clone()))
                 && !result.contains_key(local_name)
                 && let Some(scheme) =
                     global_exports.get_scheme(&binding.source_module, &binding.source_name)
@@ -924,7 +940,7 @@ fn filter_pub_overloads(
     };
     overloads
         .iter()
-        .filter(|(name, _)| pub_names.contains(name.as_str()))
+        .filter(|(name, _)| pub_names.contains(&(Namespace::Value, (*name).clone())))
         .map(|(name, entries)| (name.clone(), entries.clone()))
         .collect()
 }
@@ -1362,7 +1378,7 @@ fn check_impl(
     base_registry: &TypeDefinitionRegistry,
     std_prelude: &CorePrelude,
     current_module_path: &[String],
-    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Option<&crate::identity::symbols::SymbolMap>,
     references: Option<&crate::pipeline::name_resolution::reference_resolver::ReferenceTable>,
 ) -> Result<(Vec<TypedDecl>, SchemeEnv, TypeDefinitionRegistry), MetelError> {
     let report = check_impl_with_report(
@@ -1390,7 +1406,7 @@ fn check_impl_with_report(
     base_registry: &TypeDefinitionRegistry,
     std_prelude: &CorePrelude,
     current_module_path: &[String],
-    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Option<&crate::identity::symbols::SymbolMap>,
     references: Option<&crate::pipeline::name_resolution::reference_resolver::ReferenceTable>,
     scopes: Option<
         &HashMap<Vec<String>, crate::pipeline::name_resolution::name_resolver::ModuleScope>,

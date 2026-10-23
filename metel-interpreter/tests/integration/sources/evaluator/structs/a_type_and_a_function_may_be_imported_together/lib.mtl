@@ -1,0 +1,9 @@
+// metel-core#1571: a module exporting a struct and a function of one name. Each has its own
+// SymbolId, so a single `import lib::Foo;` brings both into scope and each use finds its own.
+public struct Foo {
+    public x: i64,
+}
+
+public fun Foo() -> i64 {
+    5
+}

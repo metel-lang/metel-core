@@ -1,3 +1,4 @@
+use crate::identity::symbols::Namespace;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -34,9 +35,10 @@ fn sym(
     names: &crate::pipeline::name_resolution::name_resolver::ResolvedNames,
     name: &str,
 ) -> super::SymbolId {
-    *names
-        .symbols
-        .get(&(vec![], name.to_string()))
+    // A test name is a type or a value; try the value namespace first.
+    *[Namespace::Value, Namespace::Type]
+        .into_iter()
+        .find_map(|ns| names.symbols.get(&(vec![], ns, name.to_string())))
         .unwrap_or_else(|| panic!("`{name}` interned"))
 }
 

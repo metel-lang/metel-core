@@ -10,7 +10,7 @@ use crate::data::ast::{
 };
 use crate::data::error::MetelError;
 use crate::data::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::identity::{BindingSpans, FieldId, MemberTable, VariantId};
 use crate::pipeline::name_resolution::name_resolver::{
     GlobTier, ModuleScope, resolve_name_provided_by_module,
@@ -3197,7 +3197,7 @@ pub struct TypeDefinitionRegistry {
     /// instantiation.
     neg_impl_env: HashMap<(SymbolId, String), Vec<Vec<Type>>>,
     /// Global `(module, name) -> SymbolId` table. See `impl_aspect_env`'s doc.
-    symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Rc<crate::identity::symbols::SymbolMap>,
     /// Every module's resolved import scope. See `impl_aspect_env`'s doc.
     scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
     /// (`target_type_id`, `aspect_name`) → assoc-type-name → concrete Type, RFC-0082 §2.
@@ -3235,8 +3235,10 @@ impl TypeDefinitionRegistry {
         let binding = scope
             .explicit
             .iter()
-            .find(|(_, b)| b.source_name == short_name)
-            .map(|(local, b)| (local.as_str(), b));
+            .find(|((namespace, _), b)| {
+                *namespace == Namespace::Type && b.source_name == short_name
+            })
+            .map(|((_, local), b)| (local.as_str(), b));
         Some((short_name, binding))
     }
 
@@ -3384,7 +3386,11 @@ impl TypeDefinitionRegistry {
             );
         }
         if !name.contains("::") {
-            let binding = self.scopes.get(current_module)?.explicit.get(name)?;
+            let binding = self
+                .scopes
+                .get(current_module)?
+                .explicit
+                .get(&(Namespace::Type, name.to_string()))?;
             return Some(
                 self.declared_type_name_for_id(binding.symbol_id)
                     .unwrap_or_else(|| binding.source_name.clone()),
@@ -3543,7 +3549,7 @@ impl TypeDefinitionRegistry {
     /// call repeatedly (an `Rc` clone, not a deep copy of either map).
     pub fn set_symbol_resolution(
         &mut self,
-        symbols: Rc<HashMap<(Vec<String>, String), SymbolId>>,
+        symbols: Rc<crate::identity::symbols::SymbolMap>,
         scopes: Rc<HashMap<Vec<String>, ModuleScope>>,
     ) {
         self.symbols = symbols;
@@ -3559,21 +3565,25 @@ impl TypeDefinitionRegistry {
     /// hasn't been wired up — the single-program/no-resolver path, if it's ever used
     /// with this registry, degrades to no impl-aspect tracking rather than panicking).
     fn resolve_type_position_id(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
-        if let Some(id) = self
-            .symbols
-            .get(&(current_module.to_vec(), name.to_string()))
+        if let Some(id) =
+            self.symbols
+                .get(&(current_module.to_vec(), Namespace::Type, name.to_string()))
         {
             return Some(*id);
         }
         let scope = self.scopes.get(current_module)?;
-        if let Some(binding) = scope.explicit.get(name) {
+        if let Some(binding) = scope.explicit.get(&(Namespace::Type, name.to_string())) {
             return Some(binding.symbol_id);
         }
         let mut std_hit = None;
         for (tier, glob_module) in &scope.globs {
-            if let Some(id) =
-                resolve_name_provided_by_module(glob_module, name, &self.symbols, &self.scopes)
-            {
+            if let Some(id) = resolve_name_provided_by_module(
+                glob_module,
+                name,
+                Namespace::Type,
+                &self.symbols,
+                &self.scopes,
+            ) {
                 match tier {
                     GlobTier::User => return Some(id),
                     GlobTier::Std => std_hit = std_hit.or(Some(id)),
@@ -3608,7 +3618,7 @@ impl TypeDefinitionRegistry {
             );
         }
 
-        let binding = scope.explicit.get(first)?;
+        let binding = scope.explicit.get(&(Namespace::Type, first.clone()))?;
         if !matches!(
             binding.kind,
             crate::pipeline::name_resolution::name_resolver::BindingKind::Module
@@ -3618,12 +3628,16 @@ impl TypeDefinitionRegistry {
         let mut module_path = binding.source_module.clone();
         module_path.extend_from_slice(rest);
         self.symbols
-            .get(&(module_path.clone(), short_name.to_string()))
+            .get(&(module_path.clone(), Namespace::Type, short_name.to_string()))
             .copied()
             .or_else(|| {
                 self.scopes
                     .get(&module_path)
-                    .and_then(|module_scope| module_scope.re_exports.get(short_name))
+                    .and_then(|module_scope| {
+                        module_scope
+                            .re_exports
+                            .get(&(Namespace::Type, short_name.to_string()))
+                    })
                     .map(|binding| binding.symbol_id)
             })
     }
@@ -3643,9 +3657,14 @@ impl TypeDefinitionRegistry {
                 .then(|| spelling.to_string());
         }
         let id = self.resolve_type_position_id(current_module, spelling)?;
-        self.symbols.iter().find_map(|((_, name), candidate_id)| {
-            (*candidate_id == id && declarations.contains_key(name)).then(|| name.clone())
-        })
+        self.symbols
+            .iter()
+            .find_map(|((_, namespace, name), candidate_id)| {
+                (*namespace == Namespace::Type
+                    && *candidate_id == id
+                    && declarations.contains_key(name))
+                .then(|| name.clone())
+            })
     }
 
     /// Register a struct's fields under its declaration `SymbolId`. `name` is
@@ -5719,7 +5738,11 @@ impl TypeDefinitionRegistry {
         let id = self.resolve_type_position_id(current_module, name)?;
         entries.iter().find(|e| {
             self.symbols
-                .get(&(e.declaring_module.clone(), name.to_string()))
+                .get(&(
+                    e.declaring_module.clone(),
+                    Namespace::Type,
+                    name.to_string(),
+                ))
                 .copied()
                 == Some(id)
         })
@@ -8360,7 +8383,7 @@ impl Default for InferContext {
 /// The name resolver's canonical `(module path, name) -> SymbolId` table
 /// (metel-core#1125). Aliased purely to keep `TypeCtx::symbols`'s type
 /// under clippy's `type_complexity` threshold once wrapped in `Option<Rc<_>>`.
-pub type SymbolTable = HashMap<(Vec<String>, String), SymbolId>;
+pub type SymbolTable = crate::identity::symbols::SymbolMap;
 
 /// Type context carried by generic closures to support construction-at-call-time.
 ///

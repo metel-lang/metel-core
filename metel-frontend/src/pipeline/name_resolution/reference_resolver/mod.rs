@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use crate::data::ast::{
     AssignTarget, Block, Decl, Expr, ForInit, FunDecl, MatchArm, Pattern, Span, Stmt,
 };
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::name_resolution::name_resolver::{
     GlobTier, ModuleScope, resolve_name_provided_by_module,
 };
@@ -54,11 +54,11 @@ pub(crate) struct ResolveInputs<'a> {
     /// Per-module import scope (explicit imports + glob tiers).
     pub scopes: &'a HashMap<Vec<String>, ModuleScope>,
     /// Public names per module — used to resolve glob-imported references.
-    pub pub_surface: &'a HashMap<Vec<String>, HashSet<String>>,
+    pub pub_surface: &'a HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     /// All top-level declared names per module — used to resolve same-module references.
-    pub declared_names: &'a HashMap<Vec<String>, HashSet<String>>,
+    pub declared_names: &'a HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     /// Canonical `(module, name)` → `SymbolId` table.
-    pub symbols: &'a HashMap<(Vec<String>, String), SymbolId>,
+    pub symbols: &'a crate::identity::symbols::SymbolMap,
     /// Names declared via more than one `fn` in the same module (overload sets).
     /// `symbols`'s entry for such a name is a leftover single-declaration artifact of
     /// the initial interning pass, not a stable identity for the name as a whole — an
@@ -119,25 +119,35 @@ impl Walker<'_, '_> {
     /// declaration in the current module wins, then an explicit import, then a
     /// glob-visible name (user globs before `std::core`).
     fn resolve_name(&self, name: &str) -> Option<SymbolId> {
+        // A bare name in expression position is a value (a function, `let`, `var`), or failing
+        // that a type used as a value (a unit struct). A module may declare both under one name;
+        // the value wins, as the type is not what an expression names.
+        self.resolve_name_in(name, Namespace::Value)
+            .or_else(|| self.resolve_name_in(name, Namespace::Type))
+    }
+
+    fn resolve_name_in(&self, name: &str, namespace: Namespace) -> Option<SymbolId> {
+        let key = (namespace, name.to_string());
         // Same-module top-level declaration — but not an overloaded one (ADR-0042):
         // there's no single unambiguous declaration to point at until argument types
         // are known, so this falls through to imports/globs below instead, the same
         // as a name this module doesn't declare at all.
-        let is_overloaded = self
-            .inputs
-            .overloaded_names
-            .get(self.module_path)
-            .is_some_and(|names| names.contains(name));
+        let is_overloaded = namespace == Namespace::Value
+            && self
+                .inputs
+                .overloaded_names
+                .get(self.module_path)
+                .is_some_and(|names| names.contains(name));
         if !is_overloaded
             && self
                 .inputs
                 .declared_names
                 .get(self.module_path)
-                .is_some_and(|names| names.contains(name))
-            && let Some(id) = self
-                .inputs
-                .symbols
-                .get(&(self.module_path.to_vec(), name.to_string()))
+                .is_some_and(|names| names.contains(&key))
+            && let Some(id) =
+                self.inputs
+                    .symbols
+                    .get(&(self.module_path.to_vec(), namespace, name.to_string()))
         {
             return Some(*id);
         }
@@ -145,7 +155,7 @@ impl Walker<'_, '_> {
         let scope = self.inputs.scopes.get(self.module_path)?;
 
         // Explicit import binding.
-        if let Some(binding) = scope.explicit.get(name) {
+        if let Some(binding) = scope.explicit.get(&key) {
             return Some(binding.symbol_id);
         }
 
@@ -158,13 +168,14 @@ impl Walker<'_, '_> {
                 .inputs
                 .pub_surface
                 .get(glob_module)
-                .is_some_and(|names| names.contains(name));
+                .is_some_and(|names| names.contains(&key));
             if !provides {
                 continue;
             }
             if let Some(id) = resolve_name_provided_by_module(
                 glob_module,
                 name,
+                namespace,
                 self.inputs.symbols,
                 self.inputs.scopes,
             ) {

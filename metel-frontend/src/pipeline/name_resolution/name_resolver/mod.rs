@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::data::ast::{Decl, ImportTree, PathRoot, Span, TypeExpr, Visibility};
 use crate::data::error::{MetelError, TypeErrorCode};
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -27,7 +27,10 @@ pub struct ImportBinding {
     /// The name as declared in the source module.
     pub source_name: String,
     pub kind: BindingKind,
-    /// Stable identity for the `(source_module, source_name)` declaration.
+    /// Which namespace of the source module the declaration lives in. A name declared in both
+    /// namespaces is imported as two bindings, one per namespace.
+    pub namespace: Namespace,
+    /// Stable identity for the `(source_module, namespace, source_name)` declaration.
     /// Two bindings with the same `symbol_id` refer to the same declaration,
     /// regardless of local alias or path spelling.
     pub symbol_id: SymbolId,
@@ -44,16 +47,16 @@ pub enum BindingKind {
 /// The resolved import scope for a single module.
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
-    /// Explicit bindings: `local_name` → `ImportBinding`.
-    /// Two explicit bindings with the same `local_name` are a compile error.
-    pub explicit: HashMap<String, ImportBinding>,
+    /// Explicit bindings: `(namespace, local_name)` → `ImportBinding`.
+    /// Two explicit bindings with the same namespace and `local_name` are a compile error.
+    pub explicit: HashMap<(Namespace, String), ImportBinding>,
     /// Glob-imported module paths (`import path::*`), tagged with their priority tier.
     /// Names from these modules are in scope at lower priority than explicit imports.
     /// T0011 fires only for same-tier conflicts; `User` silently wins over `Std`.
     pub globs: Vec<(GlobTier, Vec<String>)>,
-    /// Re-exported names: `local_name` → source binding.
+    /// Re-exported names: `(namespace, local_name)` → source binding.
     /// These names are part of this module's public API surface for callers.
-    pub re_exports: HashMap<String, ImportBinding>,
+    pub re_exports: HashMap<(Namespace, String), ImportBinding>,
 }
 
 /// The output of the name resolution pass: one scope per loaded module.
@@ -62,14 +65,14 @@ pub struct ResolvedNames {
     pub scopes: HashMap<Vec<String>, ModuleScope>,
     /// Combined public surface per module: local declarations + re-exports.
     /// Used by callers to check import visibility.
-    pub pub_surface: HashMap<Vec<String>, HashSet<String>>,
+    pub pub_surface: HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     /// All top-level declared names per module, regardless of visibility.
     /// Used by the typechecker to distinguish T0009 (private) from T0003 (absent).
-    pub declared_names: HashMap<Vec<String>, HashSet<String>>,
-    /// Canonical symbol table: `(source_module, source_name)` → stable `SymbolId`.
+    pub declared_names: HashMap<Vec<String>, HashSet<(Namespace, String)>>,
+    /// Canonical symbol table: `(source_module, namespace, source_name)` → stable `SymbolId`.
     /// Every `ImportBinding` carries an id drawn from this table; two bindings with the
     /// same id refer to the same declaration.
-    pub symbols: HashMap<(Vec<String>, String), SymbolId>,
+    pub symbols: crate::identity::symbols::SymbolMap,
     /// Maps each top-level declared `SymbolId` to the span of its declaration.
     /// Used by diagnostics and tooling (e.g. LSP goto-definition) to locate the
     /// definition site of any resolved symbol. See RFC-0059.
@@ -132,7 +135,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
         .collect();
 
     // First pass: collect locally-declared names per module (public and all).
-    let mut pub_surface: HashMap<Vec<String>, HashSet<String>> = graph
+    let mut pub_surface: HashMap<Vec<String>, HashSet<(Namespace, String)>> = graph
         .modules
         .iter()
         .map(|m| {
@@ -141,7 +144,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
         })
         .collect();
 
-    let declared_names: HashMap<Vec<String>, HashSet<String>> = graph
+    let declared_names: HashMap<Vec<String>, HashSet<(Namespace, String)>> = graph
         .modules
         .iter()
         .map(|m| {
@@ -187,7 +190,8 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
     // fresh one under the re-exporting module's own path. Simple single-pass (no
     // support for transitive re-export chains — a re-export of a re-export; that's
     // future work, same as before).
-    let mut all_re_exports: HashMap<Vec<String>, HashMap<String, ImportBinding>> = HashMap::new();
+    let mut all_re_exports: HashMap<Vec<String>, HashMap<(Namespace, String), ImportBinding>> =
+        HashMap::new();
     for loaded in &graph.modules {
         let re_exported =
             collect_re_exports(loaded, &known_modules, &pub_surface, path_aliases, &mut sym)?;
@@ -205,6 +209,7 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
             loaded,
             &known_modules,
             &all_re_exports,
+            &declared_names,
             path_aliases,
             &mut sym,
         )?;
@@ -277,16 +282,17 @@ pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> S
 pub(crate) fn resolve_name_provided_by_module(
     module: &[String],
     name: &str,
-    symbols: &HashMap<(Vec<String>, String), SymbolId>,
+    namespace: Namespace,
+    symbols: &crate::identity::symbols::SymbolMap,
     scopes: &HashMap<Vec<String>, ModuleScope>,
 ) -> Option<SymbolId> {
     symbols
-        .get(&(module.to_vec(), name.to_string()))
+        .get(&(module.to_vec(), namespace, name.to_string()))
         .copied()
         .or_else(|| {
             scopes
                 .get(module)
-                .and_then(|s| s.re_exports.get(name))
+                .and_then(|s| s.re_exports.get(&(namespace, name.to_string())))
                 .map(|binding| binding.symbol_id)
         })
 }
@@ -411,23 +417,32 @@ pub fn impl_method_symbol_name(ib: &crate::data::ast::ImplBlock, method: &str) -
 /// regression test pins this).
 // limit: ["LIMIT-NAME-RESOLUTION-005"]
 fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Span>) {
-    let mut pending: Vec<(Vec<String>, String, Option<Span>)> = Vec::new();
+    let mut pending: Vec<(Vec<String>, Namespace, String, Option<Span>)> = Vec::new();
     for loaded in &graph.modules {
         for decl in &loaded.program.decls {
-            if let Some(name) = decl_any_name(decl) {
-                pending.push((loaded.module_path.clone(), name, decl_span(decl).cloned()));
+            if let Some((namespace, name)) = decl_any_name(decl) {
+                pending.push((
+                    loaded.module_path.clone(),
+                    namespace,
+                    name,
+                    decl_span(decl).cloned(),
+                ));
             }
             // METEL-185 step 3a: give every impl/aspect method a stable SymbolId so
             // later passes can dispatch method selection by id rather than by name.
             collect_method_symbol_keys(decl, &loaded.module_path, &mut pending);
         }
     }
-    pending.sort_by(|(am, an, _), (bm, bn, _)| am.cmp(bm).then_with(|| an.cmp(bn)));
+    pending.sort_by(|(am, ans, an, _), (bm, bns, bn, _)| {
+        am.cmp(bm)
+            .then_with(|| ans.cmp(bns))
+            .then_with(|| an.cmp(bn))
+    });
 
     let mut sym = SymbolTable::new();
     let mut definitions: HashMap<SymbolId, Span> = HashMap::new();
-    for (module_path, name, span) in pending {
-        let id = sym.intern(&module_path, &name);
+    for (module_path, namespace, name, span) in pending {
+        let id = sym.intern(&module_path, namespace, &name);
         if let Some(span) = span {
             definitions.entry(id).or_insert(span);
         }
@@ -445,7 +460,7 @@ fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Sp
 fn collect_method_symbol_keys(
     decl: &Decl,
     module_path: &[String],
-    out: &mut Vec<(Vec<String>, String, Option<Span>)>,
+    out: &mut Vec<(Vec<String>, Namespace, String, Option<Span>)>,
 ) {
     match decl {
         Decl::Impl(ib) => {
@@ -453,25 +468,27 @@ fn collect_method_symbol_keys(
                 let Some(key) = impl_method_symbol_name(ib, &method.name) else {
                     return;
                 };
-                out.push((module_path.to_vec(), key, Some(method.span.clone())));
+                out.push((
+                    module_path.to_vec(),
+                    Namespace::Value,
+                    key,
+                    Some(method.span.clone()),
+                ));
             }
         }
         Decl::Aspect(ad) => {
             for method in &ad.methods {
                 let key = method_symbol_name(&ad.name, None, &method.name);
-                out.push((module_path.to_vec(), key, Some(method.span.clone())));
+                out.push((
+                    module_path.to_vec(),
+                    Namespace::Value,
+                    key,
+                    Some(method.span.clone()),
+                ));
             }
         }
         _ => {}
     }
-}
-
-/// The namespace a top-level declaration's name lives in. Types and values do not collide with
-/// each other (`struct Foo` and `fun Foo` coexist); two declarations in one namespace do.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-enum Namespace {
-    Type,
-    Value,
 }
 
 /// A top-level declaration's namespace, name and span, if it declares a name.
@@ -542,30 +559,28 @@ fn decl_span(decl: &Decl) -> Option<&Span> {
     }
 }
 
-/// Returns the name of a declaration if it is public.
-fn decl_pub_name(decl: &Decl) -> Option<String> {
+/// Returns the namespace and name of a declaration if it is public.
+fn decl_pub_name(decl: &Decl) -> Option<(Namespace, String)> {
     match decl {
-        Decl::Fun(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
-        Decl::Struct(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
-        Decl::Enum(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
-        Decl::Aspect(d) if d.visibility == Visibility::Public => Some(d.name.clone()),
+        Decl::Fun(d) if d.visibility == Visibility::Public => {
+            Some((Namespace::Value, d.name.clone()))
+        }
+        Decl::Struct(d) if d.visibility == Visibility::Public => {
+            Some((Namespace::Type, d.name.clone()))
+        }
+        Decl::Enum(d) if d.visibility == Visibility::Public => {
+            Some((Namespace::Type, d.name.clone()))
+        }
+        Decl::Aspect(d) if d.visibility == Visibility::Public => {
+            Some((Namespace::Type, d.name.clone()))
+        }
         _ => None,
     }
 }
 
-/// Returns the name of a declaration regardless of visibility.
-// limit: ["LIMIT-NAME-RESOLUTION-005"]
-fn decl_any_name(decl: &Decl) -> Option<String> {
-    match decl {
-        Decl::Fun(d) => Some(d.name.clone()),
-        Decl::Struct(d) => Some(d.name.clone()),
-        Decl::Enum(d) => Some(d.name.clone()),
-        Decl::Aspect(d) => Some(d.name.clone()),
-        Decl::Let(d) => Some(d.name.clone()),
-        Decl::Mut(d) => Some(d.name.clone()),
-        Decl::TypeAlias(d) => Some(d.name.clone()),
-        Decl::LetPattern(_) | Decl::Impl(_) | Decl::Stmt(_) => None,
-    }
+/// Returns the namespace and name of a declaration regardless of visibility.
+fn decl_any_name(decl: &Decl) -> Option<(Namespace, String)> {
+    namespaced_decl(decl).map(|(namespace, name, _)| (namespace, name.to_string()))
 }
 
 // ── Per-module resolution ─────────────────────────────────────────────────────
@@ -574,7 +589,8 @@ fn decl_any_name(decl: &Decl) -> Option<String> {
 fn resolve_module(
     loaded: &LoadedModule,
     known_modules: &HashSet<Vec<String>>,
-    all_re_exports: &HashMap<Vec<String>, HashMap<String, ImportBinding>>,
+    all_re_exports: &HashMap<Vec<String>, HashMap<(Namespace, String), ImportBinding>>,
+    declared_names: &HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     path_aliases: &HashMap<Vec<String>, Vec<String>>,
     sym: &mut SymbolTable,
 ) -> Result<ModuleScope, MetelError> {
@@ -596,9 +612,12 @@ fn resolve_module(
         process_tree(
             &base,
             &import.path.tree,
-            known_modules,
-            all_re_exports,
-            path_aliases,
+            &ImportContext {
+                known_modules,
+                all_re_exports,
+                declared_names,
+                path_aliases,
+            },
             &mut scope,
             &import.span,
             sym,
@@ -614,16 +633,50 @@ fn resolve_module(
     Ok(scope)
 }
 
+/// What an import walk needs to know about the other modules.
+struct ImportContext<'a> {
+    known_modules: &'a HashSet<Vec<String>>,
+    all_re_exports: &'a HashMap<Vec<String>, HashMap<(Namespace, String), ImportBinding>>,
+    declared_names: &'a HashMap<Vec<String>, HashSet<(Namespace, String)>>,
+    path_aliases: &'a HashMap<Vec<String>, Vec<String>>,
+}
+
+/// The namespaces in which `base` provides `name`: declared there, or re-exported by it. A name
+/// `base` does not provide at all is reported as a `Type` import so the typechecker, which owns
+/// the existence and visibility checks, still finds a binding to complain about (T0003/T0009).
+fn provided_namespaces(
+    base: &[String],
+    name: &str,
+    declared_names: &HashMap<Vec<String>, HashSet<(Namespace, String)>>,
+    all_re_exports: &HashMap<Vec<String>, HashMap<(Namespace, String), ImportBinding>>,
+) -> Vec<Namespace> {
+    let found: Vec<Namespace> = [Namespace::Type, Namespace::Value]
+        .into_iter()
+        .filter(|ns| {
+            let key = (*ns, name.to_string());
+            declared_names.get(base).is_some_and(|d| d.contains(&key))
+                || all_re_exports
+                    .get(base)
+                    .is_some_and(|r| r.contains_key(&key))
+        })
+        .collect();
+    if found.is_empty() {
+        vec![Namespace::Type]
+    } else {
+        found
+    }
+}
+
 /// Collect re-exported names from a module's `export` declarations.
-/// Returns a map of `local_name` → binding for each successfully resolved export.
+/// Returns a map of `(namespace, local_name)` → binding for each successfully resolved export.
 fn collect_re_exports(
     loaded: &LoadedModule,
     known_modules: &HashSet<Vec<String>>,
-    pub_surface: &HashMap<Vec<String>, HashSet<String>>,
+    pub_surface: &HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     path_aliases: &HashMap<Vec<String>, Vec<String>>,
     sym: &mut SymbolTable,
-) -> Result<HashMap<String, ImportBinding>, MetelError> {
-    let mut re_exports: HashMap<String, ImportBinding> = HashMap::new();
+) -> Result<HashMap<(Namespace, String), ImportBinding>, MetelError> {
+    let mut re_exports: HashMap<(Namespace, String), ImportBinding> = HashMap::new();
 
     for export in &loaded.program.exports {
         let base = absolute_base(&export.path.root, &loaded.module_path);
@@ -648,9 +701,9 @@ fn process_export_tree(
     base: &[String],
     tree: &ImportTree,
     known_modules: &HashSet<Vec<String>>,
-    pub_surface: &HashMap<Vec<String>, HashSet<String>>,
+    pub_surface: &HashMap<Vec<String>, HashSet<(Namespace, String)>>,
     path_aliases: &HashMap<Vec<String>, Vec<String>>,
-    re_exports: &mut HashMap<String, ImportBinding>,
+    re_exports: &mut HashMap<(Namespace, String), ImportBinding>,
     export_span: &Span,
     sym: &mut SymbolTable,
 ) -> Result<(), MetelError> {
@@ -661,14 +714,15 @@ fn process_export_tree(
         ImportTree::Glob => {
             // Re-export all public names from the base module.
             if let Some(names) = pub_surface.get(base) {
-                for name in names {
-                    let symbol_id = sym.intern(base, name);
+                for (namespace, name) in names {
+                    let symbol_id = sym.intern(base, *namespace, name);
                     re_exports.insert(
-                        name.clone(),
+                        (*namespace, name.clone()),
                         ImportBinding {
                             source_module: base.to_vec(),
                             source_name: name.clone(),
                             kind: BindingKind::Item,
+                            namespace: *namespace,
                             symbol_id,
                         },
                     );
@@ -677,47 +731,16 @@ fn process_export_tree(
         }
 
         ImportTree::Name { name, alias } => {
-            let local = alias.as_deref().unwrap_or(name.as_str()).to_string();
-            let mut module_candidate = base.to_vec();
-            module_candidate.push(name.clone());
-
-            if known_modules.contains(&module_candidate) {
-                // Re-exporting a module handle (unusual but allowed).
-                let symbol_id = sym.intern(&module_candidate, name);
-                re_exports.insert(
-                    local,
-                    ImportBinding {
-                        source_module: module_candidate,
-                        source_name: name.clone(),
-                        kind: BindingKind::Module,
-                        symbol_id,
-                    },
-                );
-            } else {
-                // Item re-export: verify it's public in the source module.
-                if let Some(surface) = pub_surface.get(base)
-                    && !surface.contains(name.as_str())
-                {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0009,
-                        format!(
-                            "visibility error: cannot re-export `{name}` — it is not public in module `{}`",
-                            base.join("::")
-                        ),
-                        export_span,
-                    ));
-                }
-                let symbol_id = sym.intern(base, name);
-                re_exports.insert(
-                    local,
-                    ImportBinding {
-                        source_module: base.to_vec(),
-                        source_name: name.clone(),
-                        kind: BindingKind::Item,
-                        symbol_id,
-                    },
-                );
-            }
+            export_named_item(
+                base,
+                name,
+                alias.as_deref(),
+                known_modules,
+                pub_surface,
+                re_exports,
+                export_span,
+                sym,
+            )?;
         }
 
         ImportTree::Path { name, tree } => {
@@ -753,6 +776,76 @@ fn process_export_tree(
     Ok(())
 }
 
+/// Re-export one named item (`export path::name;`), once per namespace it is public in.
+#[allow(clippy::too_many_arguments)] // mirrors `process_export_tree`'s resolution context
+fn export_named_item(
+    base: &[String],
+    name: &String,
+    alias: Option<&str>,
+    known_modules: &HashSet<Vec<String>>,
+    pub_surface: &HashMap<Vec<String>, HashSet<(Namespace, String)>>,
+    re_exports: &mut HashMap<(Namespace, String), ImportBinding>,
+    export_span: &Span,
+    sym: &mut SymbolTable,
+) -> Result<(), MetelError> {
+    let local = alias.unwrap_or(name.as_str()).to_string();
+    let mut module_candidate = base.to_vec();
+    module_candidate.push(name.clone());
+
+    if known_modules.contains(&module_candidate) {
+        // Re-exporting a module handle (unusual but allowed). A module handle binds in the
+        // type namespace, like the module-handle import it mirrors.
+        let symbol_id = sym.intern(&module_candidate, Namespace::Type, name);
+        re_exports.insert(
+            (Namespace::Type, local),
+            ImportBinding {
+                source_module: module_candidate,
+                source_name: name.clone(),
+                kind: BindingKind::Module,
+                namespace: Namespace::Type,
+                symbol_id,
+            },
+        );
+    } else {
+        // Item re-export: verify it's public in the source module, in at least one
+        // namespace. A name public in both namespaces is re-exported in both.
+        let surface = pub_surface.get(base);
+        let namespaces: Vec<Namespace> = [Namespace::Type, Namespace::Value]
+            .into_iter()
+            .filter(|ns| surface.is_some_and(|s| s.contains(&(*ns, name.clone()))))
+            .collect();
+        if surface.is_some() && namespaces.is_empty() {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0009,
+                format!(
+                    "visibility error: cannot re-export `{name}` — it is not public in module `{}`",
+                    base.join("::")
+                ),
+                export_span,
+            ));
+        }
+        let namespaces = if namespaces.is_empty() {
+            vec![Namespace::Type]
+        } else {
+            namespaces
+        };
+        for namespace in namespaces {
+            let symbol_id = sym.intern(base, namespace, name);
+            re_exports.insert(
+                (namespace, local.clone()),
+                ImportBinding {
+                    source_module: base.to_vec(),
+                    source_name: name.clone(),
+                    kind: BindingKind::Item,
+                    namespace,
+                    symbol_id,
+                },
+            );
+        }
+    }
+    Ok(())
+}
+
 /// Compute the absolute path prefix corresponding to a path root,
 /// given the importing module's own path. Delegates to the canonical
 /// implementation in [`crate::data::ast::PathRoot::resolve`]. See ADR-0023.
@@ -760,18 +853,15 @@ fn absolute_base(root: &PathRoot, current: &[String]) -> Vec<String> {
     root.resolve(current)
 }
 
-#[allow(clippy::too_many_arguments)] // recursive walker threading full resolution context
 fn process_tree(
     base: &[String],
     tree: &ImportTree,
-    known_modules: &HashSet<Vec<String>>,
-    all_re_exports: &HashMap<Vec<String>, HashMap<String, ImportBinding>>,
-    path_aliases: &HashMap<Vec<String>, Vec<String>>,
+    cx: &ImportContext<'_>,
     scope: &mut ModuleScope,
     import_span: &Span,
     sym: &mut SymbolTable,
 ) -> Result<(), MetelError> {
-    let canon_base = canonical_path(base, path_aliases);
+    let canon_base = canonical_path(base, cx.path_aliases);
     let base = canon_base.as_slice();
 
     match tree {
@@ -787,64 +877,60 @@ fn process_tree(
             let mut module_candidate = base.to_vec();
             module_candidate.push(name.clone());
 
-            let binding = if known_modules.contains(&module_candidate) {
-                ImportBinding {
-                    symbol_id: sym.intern(&module_candidate, name),
+            if cx.known_modules.contains(&module_candidate) {
+                // A module handle binds in the type namespace (paths such as `math::sin` start
+                // from it).
+                let binding = ImportBinding {
+                    symbol_id: sym.intern(&module_candidate, Namespace::Type, name),
                     source_module: module_candidate,
                     source_name: name.clone(),
                     kind: BindingKind::Module,
-                }
-            } else if let Some(re_export) =
-                all_re_exports.get(base).and_then(|m| m.get(name.as_str()))
-            {
-                // `base` re-exports `name` rather than declaring it directly — reuse
-                // the re-export's own binding (already chased to its real source
-                // module/id by `collect_re_exports`) instead of minting a fresh
-                // symbol under `(base, name)`, which would never match anything
-                // Pass 1b actually registers a runtime value under.
-                re_export.clone()
+                    namespace: Namespace::Type,
+                };
+                add_explicit(scope, (Namespace::Type, local), binding, import_span)?;
             } else {
-                // Record the binding regardless of visibility. See ADR-0024.
-                // Visibility (T0009) and existence (T0003) are checked by the typechecker
-                // in build_import_schemes, which has access to the full graph and GlobalExports.
-                ImportBinding {
-                    symbol_id: sym.intern(base, name),
-                    source_module: base.to_vec(),
-                    source_name: name.clone(),
-                    kind: BindingKind::Item,
+                // One binding per namespace the source module provides the name in; a name it
+                // provides in both is imported as both. Record the binding regardless of
+                // visibility. See ADR-0024. Visibility (T0009) and existence (T0003) are checked
+                // by the typechecker in build_import_schemes, which has access to the full graph
+                // and GlobalExports.
+                for namespace in
+                    provided_namespaces(base, name, cx.declared_names, cx.all_re_exports)
+                {
+                    let binding = if let Some(re_export) = cx
+                        .all_re_exports
+                        .get(base)
+                        .and_then(|m| m.get(&(namespace, name.clone())))
+                    {
+                        // `base` re-exports `name` rather than declaring it directly — reuse
+                        // the re-export's own binding (already chased to its real source
+                        // module/id by `collect_re_exports`) instead of minting a fresh
+                        // symbol under `(base, name)`, which would never match anything
+                        // Pass 1b actually registers a runtime value under.
+                        re_export.clone()
+                    } else {
+                        ImportBinding {
+                            symbol_id: sym.intern(base, namespace, name),
+                            source_module: base.to_vec(),
+                            source_name: name.clone(),
+                            kind: BindingKind::Item,
+                            namespace,
+                        }
+                    };
+                    add_explicit(scope, (namespace, local.clone()), binding, import_span)?;
                 }
-            };
-
-            add_explicit(scope, local, binding, import_span)?;
+            }
         }
 
         ImportTree::Path { name, tree } => {
             let mut new_base = base.to_vec();
             new_base.push(name.clone());
-            process_tree(
-                &new_base,
-                tree,
-                known_modules,
-                all_re_exports,
-                path_aliases,
-                scope,
-                import_span,
-                sym,
-            )?;
+            process_tree(&new_base, tree, cx, scope, import_span, sym)?;
         }
 
         ImportTree::Group(items) => {
             for item in items {
-                process_tree(
-                    base,
-                    item,
-                    known_modules,
-                    all_re_exports,
-                    path_aliases,
-                    scope,
-                    import_span,
-                    sym,
-                )?;
+                process_tree(base, item, cx, scope, import_span, sym)?;
             }
         }
     }
@@ -855,11 +941,12 @@ fn process_tree(
 // arch-implements: ["arch.name-resolution.requirement-2"]
 fn add_explicit(
     scope: &mut ModuleScope,
-    local_name: String,
+    key: (Namespace, String),
     binding: ImportBinding,
     import_span: &Span,
 ) -> Result<(), MetelError> {
-    if let Some(existing) = scope.explicit.get(&local_name) {
+    if let Some(existing) = scope.explicit.get(&key) {
+        let local_name = &key.1;
         return Err(MetelError::type_error(
             TypeErrorCode::T0011,
             format!(
@@ -875,7 +962,7 @@ fn add_explicit(
             import_span,
         ));
     }
-    scope.explicit.insert(local_name, binding);
+    scope.explicit.insert(key, binding);
     Ok(())
 }
 

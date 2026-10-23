@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use crate::data::ast::{Decl, ImplBlock, Polarity, Span, TypeExpr, WhereClause};
 use crate::data::error::{MetelError, TypeErrorCode};
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::name_resolution::name_resolver::{GlobTier, ResolvedNames};
 use crate::pipeline::path_normalization::NormalizedModuleGraph;
 use crate::pipeline::type_checking::type_engine::{
@@ -36,19 +36,25 @@ fn resolve_id(names: &ResolvedNames, current_module: &[String], name: &str) -> O
     // declaration there) interns a placeholder under that module, and trusting it
     // would make a foreign aspect or type look local to the importing module.
     let scope = names.scopes.get(current_module);
-    if let Some(binding) = scope.and_then(|s| s.explicit.get(name)) {
+    if let Some(binding) = scope.and_then(|s| s.explicit.get(&(Namespace::Type, name.to_string())))
+    {
         return Some(binding.symbol_id);
     }
-    if let Some(id) = names
-        .symbols
-        .get(&(current_module.to_vec(), name.to_string()))
+    if let Some(id) =
+        names
+            .symbols
+            .get(&(current_module.to_vec(), Namespace::Type, name.to_string()))
     {
         return Some(*id);
     }
     let scope = scope?;
     let mut std_hit = None;
     for (tier, glob_module) in &scope.globs {
-        if let Some(id) = names.symbols.get(&(glob_module.clone(), name.to_string())) {
+        if let Some(id) =
+            names
+                .symbols
+                .get(&(glob_module.clone(), Namespace::Type, name.to_string()))
+        {
             match tier {
                 GlobTier::User => return Some(*id),
                 GlobTier::Std => std_hit = std_hit.or(Some(*id)),
@@ -67,7 +73,7 @@ fn declaring_modules(names: &ResolvedNames) -> HashMap<SymbolId, Vec<String>> {
     names
         .symbols
         .iter()
-        .map(|((module, _name), id)| (*id, module.clone()))
+        .map(|((module, _namespace, _name), id)| (*id, module.clone()))
         .collect()
 }
 
@@ -1155,8 +1161,12 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
     // not inherit this rule. If either is absent (a program compiled without
     // the prelude) there is nothing to enforce.
     let std_core = vec!["std".to_string(), "core".to_string()];
-    let copy_id = names.symbols.get(&(std_core.clone(), "Copy".to_string()));
-    let drop_id = names.symbols.get(&(std_core, "Drop".to_string()));
+    let copy_id = names
+        .symbols
+        .get(&(std_core.clone(), Namespace::Type, "Copy".to_string()));
+    let drop_id = names
+        .symbols
+        .get(&(std_core, Namespace::Type, "Drop".to_string()));
     if let (Some(&copy_id), Some(&drop_id)) = (copy_id, drop_id) {
         let positive_impls_of = |id: SymbolId| {
             impls

@@ -22,6 +22,7 @@ use std::collections::HashMap;
 
 use crate::data::ast::Span;
 
+use super::symbols::Namespace;
 use super::{FieldId, NameId, NameInterner, SymbolId, VariantId};
 
 /// What is known about one nominal member (a struct field or an enum variant).
@@ -166,7 +167,10 @@ pub fn collect_members(
         for decl in *decls {
             match decl {
                 Decl::Struct(sd) => {
-                    let Some(&owner) = names.symbols.get(&(module_path.clone(), sd.name.clone()))
+                    let Some(&owner) =
+                        names
+                            .symbols
+                            .get(&(module_path.clone(), Namespace::Type, sd.name.clone()))
                     else {
                         continue;
                     };
@@ -175,7 +179,10 @@ pub fn collect_members(
                     }
                 }
                 Decl::Enum(ed) => {
-                    let Some(&owner) = names.symbols.get(&(module_path.clone(), ed.name.clone()))
+                    let Some(&owner) =
+                        names
+                            .symbols
+                            .get(&(module_path.clone(), Namespace::Type, ed.name.clone()))
                     else {
                         continue;
                     };
