@@ -32,8 +32,6 @@ use super::conversions::{
     AssocResolveCtx, infer_type_to_type, type_expr_to_infer, type_expr_to_infer_with_assoc_ctx,
 };
 
-// arch-implements: ["arch.type-construction.requirement-10"]
-
 /// Where the `SymbolId` of each overload definition comes from.
 enum OverloadIds<'a> {
     /// The embedded `std::core` table: a definition's id is its index in declaration order.
@@ -47,6 +45,7 @@ enum OverloadIds<'a> {
 }
 
 impl OverloadIds<'_> {
+    // arch-implements: ["arch.type-construction.requirement-10"]
     fn id_for(&mut self, name: &str, ordinal: usize, span: &Span) -> Result<SymbolId, MetelError> {
         let exhausted = || {
             MetelError::internal(format!(
