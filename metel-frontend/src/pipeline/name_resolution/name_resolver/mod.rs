@@ -85,11 +85,11 @@ pub struct ResolvedNames {
 // ── Symbol interning ──────────────────────────────────────────────────────────
 
 // The interning table is `crate::identity::symbols::SymbolTable`, which pre-seeds the builtin
-// `std::core` types and aspects with their well-known `SYM_*` ids and allocates
-// user declarations from `USER_SYM_START`. Using it here (rather than a private
-// counter from 1) makes the `SYM_TYPE_*` / `SYM_ASPECT_*` constants the *actual*
-// ids that flow through the pipeline, so runtime seeding can register builtin
-// impls under those same ids. See METEL-185 / ADR-0041.
+// `std::core` types and aspects as `Builtin` ids (the `SYM_*` constants are aliases of
+// them) and gives every other declaration a `Declared` id. Using it here (rather than a
+// private counter) makes the `SYM_TYPE_*` / `SYM_ASPECT_*` constants the *actual* ids that
+// flow through the pipeline, so runtime seeding can register builtin impls under those same
+// ids. See METEL-185 / ADR-0041 / ADR-0065.
 use crate::identity::symbols::SymbolTable;
 
 // ── Path alias dereferencing ──────────────────────────────────────────────────
