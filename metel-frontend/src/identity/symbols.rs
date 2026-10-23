@@ -25,6 +25,20 @@ use std::sync::atomic::{AtomicU32, Ordering};
 /// a structural per-module id and an id for the embedded `std::core` table.
 ///
 /// There is deliberately no `Ord`: an order over kinds carries no meaning code should rely on.
+///
+/// Code outside this crate cannot build a payload, or call the allocator that would mint an
+/// `Overload`, from a number (these are the regression guards for ADR-0065 Decision 2):
+///
+/// ```compile_fail,E0423
+/// use metel_frontend::identity::symbols::{DeclaredIndex, SymbolId};
+/// let _ = SymbolId::Declared(DeclaredIndex(1));
+/// ```
+///
+/// ```compile_fail,E0603
+/// use metel_frontend::identity::symbols::allocate_overload;
+/// use std::sync::atomic::AtomicU32;
+/// let _ = allocate_overload(&AtomicU32::new(12345));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SymbolId {
     Builtin(Builtin),
@@ -58,7 +72,7 @@ symbol_index!(
     BlockLocalIndex
 );
 symbol_index!(
-    /// The index of a [`SymbolId::Overload`]; built only by [`allocate_overload`].
+    /// The index of a [`SymbolId::Overload`]; built only by `allocate_overload`, which is crate-private.
     OverloadIndex
 );
 
@@ -220,7 +234,7 @@ impl BlockLocalAllocator {
 ///
 /// # Panics
 /// Panics when the index space is exhausted rather than wrapping to an id already handed out.
-pub fn allocate_overload(counter: &AtomicU32) -> SymbolId {
+pub(crate) fn allocate_overload(counter: &AtomicU32) -> SymbolId {
     // A compare-exchange loop, not `fetch_update`/`try_update`: the former is deprecated on current
     // stable and the latter is not on every toolchain this crate builds with.
     let mut index = counter.load(Ordering::Relaxed);
