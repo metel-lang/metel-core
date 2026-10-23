@@ -251,6 +251,7 @@ fn type_expr_to_infer_for_overload(
         registry,
         current_module,
         current_aspect: None,
+        local_types: &[],
     };
     type_expr_to_infer_with_assoc_ctx(te, &HashMap::<String, TypeVar>::new(), None, &assoc_ctx)
 }

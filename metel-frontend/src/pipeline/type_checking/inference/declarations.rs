@@ -1899,6 +1899,7 @@ pub(super) fn infer_impl_method(
                 registry: ctx.registry(),
                 current_module: ctx.current_module_path(),
                 current_aspect: ib.aspect_name.as_deref(),
+                local_types: &[],
             };
             type_expr_to_infer_with_assoc_ctx(te, &generic_map, Some(target_name), &assoc_ctx)
         })

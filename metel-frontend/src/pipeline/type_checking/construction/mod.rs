@@ -29,6 +29,7 @@ use super::conversions::{
 use super::handoff::ResolvedInferenceFacts;
 
 type ConcreteFields = Vec<(String, Type, Span)>;
+// resolution-freeze-allow: construction's concrete struct field environment, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
 type ConcreteStructEnv = HashMap<String, ConcreteFields>;
 /// metel-core#736 / RFC-0138: a generic `FunDecl`'s own shape, keyed by name in
 /// `ConstructCtx::fn_table`. See that field's doc comment.
@@ -99,15 +100,18 @@ pub(super) fn build_concrete_method_env(
 struct ConstructCtx<'a> {
     subst: &'a Substitution,
     scheme_env: &'a SchemeEnv,
+    // resolution-freeze-allow: construction's value environment, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
     env: Vec<HashMap<String, Type>>,
     /// Binding mutability mirrors `env`; capture-list checking needs the declaration-site
     /// fact for `[&var name]`, even though ordinary construction only needs the type.
+    // resolution-freeze-allow: construction's mutability environment, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
     mut_env: Vec<HashMap<String, bool>>,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
     /// Declaration identities for block-local structs, parallel to
     /// `struct_scopes`. The registry retains archived candidates, while this
     /// stack selects the candidate belonging to the current lexical block.
+    // resolution-freeze-allow: the one place a written block-local type name becomes an id (`written_type_id`, and the annotation converter via `AssocResolveCtx::local_types`); every later use reads the id off the type (metel-core#1568).
     local_struct_ids: Vec<HashMap<String, SymbolId>>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
     registry: &'a TypeDefinitionRegistry,
@@ -124,9 +128,11 @@ struct ConstructCtx<'a> {
     loop_depth: usize,
     /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
+    // resolution-freeze-allow: construction's generic parameter scope, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
     generic_params: HashMap<String, TypeVar>,
     /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
     /// `None` for single-module pipelines that don't go through `check_graph`.
+    // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
     symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
@@ -139,6 +145,7 @@ struct ConstructCtx<'a> {
     /// Resolved bare-`Ident` reference table (METEL-187 / ADR-0041): reference-site
     /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
     /// top-level functions dispatch by id. `None` for the single-program path.
+    // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
     references: Option<&'a HashMap<Span, SymbolId>>,
     /// Concrete semantic decisions frozen at the inference/construction boundary.
     resolved_facts: &'a ResolvedInferenceFacts,
@@ -163,6 +170,7 @@ struct ConstructCtx<'a> {
     /// function (`let alias = identity;`) recover `identity`'s own `params`/
     /// `return_type`/`body` to build a `GenericClosure` node from, the same shape
     /// `construct_decl`'s closure-literal special case already builds one from.
+    // resolution-freeze-allow: construction's nested function table, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
     fn_table: Vec<HashMap<String, FnDeclShape>>,
     /// By-value capture names for each enclosing closure body. This is the
     /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
@@ -184,9 +192,11 @@ impl<'a> ConstructCtx<'a> {
         scheme_env: &'a SchemeEnv,
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
+        // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
         symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
         overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
+        // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
         references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
         identity: Option<FrozenIdentity<'a>>,
@@ -315,92 +325,64 @@ impl<'a> ConstructCtx<'a> {
         }
     }
 
-    /// The identity of the block-local struct, record or enum `name` names in the current
-    /// block, if it names one. Types written in annotations carry no nominal id, and the
-    /// registry's bare-name index no longer has block-local names by now.
-    fn local_type_id(&self, name: &str) -> Option<SymbolId> {
+    /// The identity of the type a *written* name refers to, resolved where it is written:
+    /// a block-local declaration in scope first (it shadows), then the module-level one.
+    ///
+    /// This is the one place construction turns a spelling into a block-local id. Everything
+    /// downstream reads the id off the type (`type_id_of` and the `*_of` accessors); a block-local
+    /// name is out of the registry's scope by now and must not be looked up again by spelling
+    /// (ADR-0054, metel-core#1568).
+    fn written_type_id(&self, name: &str) -> Option<SymbolId> {
         self.local_struct_ids
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+            .or_else(|| self.registry.resolve_type_id(self.current_module, name))
     }
 
-    /// The declaration a struct-typed value's type refers to: the identity the type already
-    /// carries, and only for a type written in an annotation (which carries none for a
-    /// block-local name) the block-local scope, then the registry, by name.
-    fn struct_id_of(&self, ty: &Type) -> Option<SymbolId> {
+    /// The identity of the enum a written `name` refers to.
+    fn written_enum_id(&self, name: &str) -> Option<SymbolId> {
+        self.written_type_id(name)
+            .filter(|id| self.registry.enum_info_by_id(*id).is_some())
+            .or_else(|| self.registry.enum_id(self.current_module, name))
+    }
+
+    /// The declaration a value's type refers to: the identity the type carries, which annotations
+    /// and constructors stamp where the name is written. A type without one is module-level and
+    /// resolves through the registry.
+    fn type_id_of(&self, ty: &Type) -> Option<SymbolId> {
         let Type::Named(name, _, nominal) = ty else {
             return None;
         };
         nominal
             .get()
-            .or_else(|| self.local_type_id(name))
             .or_else(|| self.registry.resolve_type_id(self.current_module, name))
+            .or_else(|| self.registry.enum_id(self.current_module, name))
     }
 
-    /// The fields of the struct or record `ty` is an instance of (metel-core#1565).
+    /// The fields of the struct or record `ty` is an instance of.
     fn struct_fields_of(
         &self,
         ty: &Type,
     ) -> Option<&Vec<crate::pipeline::type_checking::type_engine::FieldEntry>> {
-        self.registry.struct_fields_by_id(self.struct_id_of(ty)?)
+        self.registry.struct_fields_by_id(self.type_id_of(ty)?)
     }
 
     /// The type parameters of the struct or record `ty` is an instance of.
     fn struct_type_params_of(&self, ty: &Type) -> Option<&Vec<TypeVar>> {
         self.registry
             .raw_struct_type_params()
-            .get(&self.struct_id_of(ty)?)
+            .get(&self.type_id_of(ty)?)
     }
 
-    /// The variants of the enum `name` names here: a block-local enum in scope first, then the
-    /// module-level registry.
-    fn enum_info_named(&self, name: &str) -> Option<&EnumInfo> {
-        self.local_struct_ids
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(name))
-            .and_then(|id| self.registry.enum_info_by_id(*id))
+    /// The variants and type parameters of the enum `ty` is an instance of.
+    fn enum_info_of(&self, ty: &Type) -> Option<&EnumInfo> {
+        let Type::Named(name, ..) = ty else {
+            return None;
+        };
+        self.type_id_of(ty)
+            .and_then(|id| self.registry.enum_info_by_id(id))
             .or_else(|| self.registry.enum_info(self.current_module, name))
-    }
-
-    fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
-        match self.local_type_id(name) {
-            Some(id) => self.registry.type_param_record_kinds_by_id(id),
-            None => self
-                .registry
-                .type_param_record_kinds_for(self.current_module, name),
-        }
-    }
-
-    /// The declared generic parameter names of the struct or enum `name` names here.
-    fn generic_names_named(&self, name: &str) -> Option<&Vec<String>> {
-        match self.local_type_id(name) {
-            Some(id) => self.registry.struct_generic_names_by_id(id),
-            None => self
-                .registry
-                .struct_generic_names_for(self.current_module, name),
-        }
-    }
-
-    /// The declared bounds on the type parameters of the struct or enum `name` names here.
-    fn type_param_bounds_named(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
-        match self.local_type_id(name) {
-            Some(id) => self.registry.type_param_bounds_by_id(id),
-            None => self
-                .registry
-                .type_param_bounds_for(self.current_module, name),
-        }
-    }
-
-    /// The declared negative bounds on the type parameters of the struct or enum `name` names here.
-    fn neg_type_param_bounds_named(&self, name: &str) -> Option<&Vec<Vec<GenericBound>>> {
-        match self.local_type_id(name) {
-            Some(id) => self.registry.neg_type_param_bounds_by_id(id),
-            None => self
-                .registry
-                .neg_type_param_bounds_for(self.current_module, name),
-        }
     }
 
     fn get_struct_fields(&self, name: &str) -> Option<&Vec<(String, Type, Span)>> {
@@ -509,18 +491,7 @@ impl<'a> ConstructCtx<'a> {
         // Block-local declarations have synthetic ids rather than entries in
         // the name-resolver symbol table.  Resolve those directly from the
         // registry so runtime values preserve their declaration identity.
-        if let Some(id) = self
-            .registry
-            .resolve_type_id(self.current_module, type_name)
-        {
-            return Some(id);
-        }
-        if let Some(id) = self
-            .local_struct_ids
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(type_name).copied())
-        {
+        if let Some(id) = self.written_type_id(type_name) {
             return Some(id);
         }
         let symbols = self.symbols?;
@@ -796,6 +767,7 @@ impl<'a> ConstructCtx<'a> {
             registry: self.registry,
             current_module: self.current_module,
             current_aspect: None,
+            local_types: &self.local_struct_ids,
         };
         type_expr_to_infer_with_assoc_ctx(
             te,
@@ -828,7 +800,7 @@ fn resolve_expected_enum<'a>(
     })?;
     match expected_ty {
         Type::Named(enum_name, ..) => {
-            let enum_info = ctx.enum_info_named(enum_name).ok_or_else(|| {
+            let enum_info = ctx.enum_info_of(expected_ty).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0001,
                     format!("expected enum type, found `{expected_ty}`"),
@@ -1104,6 +1076,7 @@ pub(super) fn construct_generic_body(
     // resolve to concrete types. scheme.param_names[i] corresponds to quantified_vars[i],
     // and renaming maps original TypeVar → fresh TypeVar.
     if !scheme.param_names.is_empty() {
+        // resolution-freeze-allow: construction's generic parameter scope for a signature, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
         let mut gp: HashMap<String, TypeVar> = HashMap::new();
         for (orig_var, name) in scheme.quantified_vars.iter().zip(scheme.param_names.iter()) {
             if let Some(&fresh_var) = renaming.get(orig_var) {
@@ -1140,9 +1113,11 @@ pub(super) fn construct_program(
     scheme_env: &SchemeEnv,
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
+    // resolution-freeze-allow: the resolver's symbol table passed into construction; ADR-0054 step 6.
     symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
     overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
+    // resolution-freeze-allow: the resolver's reference map passed into construction; ADR-0054 step 6.
     references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,
     identity: Option<FrozenIdentity<'_>>,

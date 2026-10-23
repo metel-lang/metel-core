@@ -1,0 +1,27 @@
+// metel-core#1568: a value is matched by the declaration its type carries, not by whichever block-local
+// type of that name is innermost. `o` is an outer `Mode`; inside the inner block a different `Mode`
+// is in scope, and the bare-variant patterns still resolve against the scrutinee's own enum. Looking
+// the scrutinee up by its name picked the inner enum and took no arm.
+fun main() {
+    enum Mode { A, B }
+    struct P { a: i64 }
+    let o := Mode::B;
+    let po := P { a = 7 };
+    var seen := 0;
+    if (true) {
+        enum Mode { Z }
+        struct P { z: String }
+        match (o) {
+            A => { seen := 1; },
+            B => { seen := 2; },
+        }
+        assert(po.a == 7);
+        let inner := Mode::Z;
+        var z := 0;
+        match (inner) {
+            Z => { z := 9; },
+        }
+        assert(z == 9);
+    }
+    assert(seen == 2);
+}

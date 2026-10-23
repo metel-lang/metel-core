@@ -1,6 +1,7 @@
 use crate::data::ast::{Span, TypeExpr};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
+use crate::identity::symbols::SymbolId;
 use crate::pipeline::type_checking::type_engine::{
     InferType, Substitution, TypeDefinitionRegistry, TypeVar,
 };
@@ -15,6 +16,23 @@ pub(super) struct AssocResolveCtx<'a> {
     /// Set when converting an ASPECT's own method signature (§1.2 bare-name sugar):
     /// the aspect currently being processed, so `Item` alone resolves as `Self::Item`.
     pub current_aspect: Option<&'a str>,
+    /// The enclosing function bodies' block-local type declarations, innermost last. A block-local
+    /// name is out of the registry's scope once inference has left its block, so a written type
+    /// name is resolved here first, at the annotation, and the id travels on the type from then on
+    /// (metel-core#1568). Empty wherever no block is being constructed.
+    pub local_types: &'a [HashMap<String, SymbolId>],
+}
+
+impl AssocResolveCtx<'_> {
+    /// The identity of the type a written `name` refers to: a block-local declaration in scope
+    /// first, then the module-level one.
+    fn written_type_id(&self, name: &str) -> Option<SymbolId> {
+        self.local_types
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+            .or_else(|| self.registry.resolve_type_id(self.current_module, name))
+    }
 }
 
 /// The stand-in produced when a record projection cannot be resolved to a real row.
@@ -262,12 +280,10 @@ fn type_expr_to_infer_in_context(
                     // the real declaration instead of guessing by name.
                     let id = assoc_ctx
                         .and_then(|ctx| {
-                            ctx.registry
-                                .resolve_type_id(ctx.current_module, name)
-                                .or_else(|| {
-                                    ctx.registry
-                                        .resolve_type_id(ctx.current_module, &resolved_name)
-                                })
+                            ctx.written_type_id(name).or_else(|| {
+                                ctx.registry
+                                    .resolve_type_id(ctx.current_module, &resolved_name)
+                            })
                         })
                         .map_or(
                             crate::data::types::NominalId::NONE,

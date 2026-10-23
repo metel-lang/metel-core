@@ -16,6 +16,7 @@ use super::{
     type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
     typed_place_ty, unify, unqualified_variant_needs_annotation_error,
 };
+use crate::identity::symbols::SymbolId;
 
 // arch-implements: ["arch.move-check.requirement-3"]
 fn verify_closure_capture_list(
@@ -926,13 +927,10 @@ pub(super) fn construct_expr(
             // metel-core#1222: prefer the identity the value's own type already
             // carries over a bare-name re-lookup, which conflates same-named
             // structs declared in different modules.
-            let struct_id = nominal_id
-                .get()
-                .or_else(|| {
-                    ctx.registry
-                        .resolve_type_id(ctx.current_module, &struct_name)
-                })
-                .or_else(|| ctx.local_type_id(&struct_name));
+            let struct_id = nominal_id.get().or_else(|| {
+                ctx.registry
+                    .resolve_type_id(ctx.current_module, &struct_name)
+            });
             let field_ty = if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
@@ -1351,6 +1349,9 @@ pub(super) fn construct_expr(
             symbol_id,
             span,
         } => {
+            // The enum a bare `Variant { .. }` resolves to comes from the expected type, so its
+            // identity is read off that type rather than looked up by the name it spells.
+            let mut expected_enum_id: Option<SymbolId> = None;
             let resolved_path = if path.len() == 1
                 && ctx.can_be_unqualified_variant(&path[0])
                 && !ctx.has_struct_named(&path[0])
@@ -1363,6 +1364,7 @@ pub(super) fn construct_expr(
                     .iter()
                     .any(|variant| variant.name == path[0])
                 {
+                    expected_enum_id = ctx.type_id_of(expected_ty);
                     vec![enum_name.clone(), path[0].clone()]
                 } else {
                     return Err(MetelError::type_error(
@@ -1425,7 +1427,11 @@ pub(super) fn construct_expr(
                 .collect::<Result<_, _>>()?;
 
             let ty = if resolved_path.len() == 2 {
+                let enum_id = expected_enum_id
+                    .or(*symbol_id)
+                    .or_else(|| ctx.written_enum_id(&resolved_path[0]));
                 construct_enum_literal_ty(
+                    enum_id,
                     &resolved_path[0],
                     &resolved_path[1],
                     &typed_fields,
@@ -1467,14 +1473,8 @@ pub(super) fn construct_expr(
                     // recovered from the field values. Inference already solved it from
                     // the expected type, so take it from there when that type is this
                     // same struct. A parameter a field fixed is never overridden.
-                    // An annotation naming a block-local type carries no nominal id, so there the
-                    // name has to match instead.
-                    if let Some(Type::Named(expected_name, expected_args, nominal)) = expected_ty
-                        && (nominal.get() == type_id
-                            || (nominal.get().is_none()
-                                && type_id.is_some()
-                                && expected_name == type_name
-                                && ctx.local_type_id(type_name) == type_id))
+                    if let Some(Type::Named(_, expected_args, nominal)) = expected_ty
+                        && nominal.get() == type_id
                         && expected_args.len() == type_params.len()
                     {
                         for (tp, expected_arg) in type_params.iter().zip(expected_args) {
@@ -1492,18 +1492,20 @@ pub(super) fn construct_expr(
                         })
                         .collect::<Result<_, _>>()?;
                     // T0012: check each resolved type arg satisfies the declared bounds.
-                    let generic_types_by_name: HashMap<String, Type> = ctx
-                        .generic_names_named(type_name)
+                    let generic_types_by_name: HashMap<String, Type> = type_id
+                        .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
                         .into_iter()
                         .flatten()
                         .cloned()
                         .zip(type_args.iter().cloned())
                         .collect();
-                    let record_kinds = ctx
-                        .get_type_param_record_kinds(type_name)
+                    let record_kinds = type_id
+                        .and_then(|id| ctx.registry.type_param_record_kinds_by_id(id))
                         .cloned()
                         .unwrap_or_else(|| vec![false; type_args.len()]);
-                    if let Some(param_bounds) = ctx.type_param_bounds_named(type_name) {
+                    if let Some(param_bounds) =
+                        type_id.and_then(|id| ctx.registry.type_param_bounds_by_id(id))
+                    {
                         for (i, bounds) in param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
                             if bounds.is_empty() && !record_kind {
@@ -1526,7 +1528,9 @@ pub(super) fn construct_expr(
                     }
                     // T0012 negative bounds: check each resolved type arg does NOT
                     // implement the declared negative bounds (RFC-0072, issue #243).
-                    if let Some(neg_param_bounds) = ctx.neg_type_param_bounds_named(type_name) {
+                    if let Some(neg_param_bounds) =
+                        type_id.and_then(|id| ctx.registry.neg_type_param_bounds_by_id(id))
+                    {
                         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
                             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
                             if neg_bounds.is_empty() && !record_kind {
@@ -1799,7 +1803,13 @@ pub(super) fn construct_expr(
                     });
                 }
                 // Also check enum variants via enum_env.
-                if let Some(info) = ctx.enum_info_named(type_name.as_str())
+                let written_enum = ctx.written_enum_id(type_name);
+                if let Some(info) = written_enum
+                    .and_then(|id| ctx.registry.enum_info_by_id(id))
+                    .or_else(|| {
+                        ctx.registry
+                            .enum_info(ctx.current_module, type_name.as_str())
+                    })
                     && let Some(variant) = info.variants.iter().find(|v| &v.name == member_name)
                 {
                     if variant.fields.is_empty() {
@@ -1815,7 +1825,7 @@ pub(super) fn construct_expr(
                             ty: Type::Named(
                                 type_name.clone(),
                                 vec![],
-                                crate::data::types::NominalId::NONE,
+                                crate::data::types::NominalId(type_id),
                             ),
                             type_id,
                             variant_id: ctx.variant_id_for(type_id, member_name),
@@ -1827,19 +1837,20 @@ pub(super) fn construct_expr(
                         .iter()
                         .map(|field| infer_type_to_type(&field.ty, span))
                         .collect::<Result<_, _>>()?;
+                    // metel-core#1093: a tuple-variant constructor carries
+                    // both the owning enum's SymbolId and the variant's own
+                    // VariantId, same helpers as the unit-variant literal
+                    // above. The enum's identity also travels on the type it
+                    // builds (metel-core#1568).
+                    let type_id = ctx.type_symbol_id(type_name);
                     let ty = crate::data::types::default_fun_type(
                         field_types,
                         Type::Named(
                             type_name.clone(),
                             vec![],
-                            crate::data::types::NominalId::NONE,
+                            crate::data::types::NominalId(type_id),
                         ),
                     );
-                    // metel-core#1093: a tuple-variant constructor carries
-                    // both the owning enum's SymbolId and the variant's own
-                    // VariantId, same helpers as the unit-variant literal
-                    // above.
-                    let type_id = ctx.type_symbol_id(type_name);
                     return Ok(TypedExpr::Path {
                         segments: segments.clone(),
                         type_id,
