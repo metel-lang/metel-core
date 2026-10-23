@@ -11,8 +11,11 @@ use std::sync::atomic::{AtomicU32, Ordering};
 ///
 /// The variants are the kinds of symbol, so two kinds cannot collide and no numeric range has to be
 /// kept apart from another (ADR-0065, replacing the declared ranges of metel-core#1542). The payloads
-/// are private index types: an id is compared, hashed, matched and passed, and is minted only by the
-/// allocator that owns its kind.
+/// are private index types: an id is compared, hashed, matched and passed, and a particular index
+/// cannot be forged from a number outside this module. Ids are minted by an allocator of their kind,
+/// and `SymbolTable` and `BlockLocalAllocator` are public, so a second one mints ids equal to the
+/// pipeline's. Uniqueness within a kind therefore holds only along the one allocator (or registry
+/// chain) the pipeline threads; across kinds it holds by construction.
 ///
 /// | Variant | Minted by | Meaning |
 /// |---|---|---|

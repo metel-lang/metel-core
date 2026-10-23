@@ -3679,6 +3679,21 @@ impl TypeDefinitionRegistry {
             .push(owner);
     }
 
+    /// The ids of every block-local type registered under `name` in this registry, in no
+    /// particular order. Unlike [`archived_local_type_ids`](Self::archived_local_type_ids) this
+    /// includes the types merged in from dependency modules, so a test can check that they kept
+    /// distinct ids (metel-core#1546).
+    #[cfg(test)]
+    pub(crate) fn block_local_ids_named(&self, name: &str) -> Vec<SymbolId> {
+        self.type_decl_names
+            .iter()
+            .filter(|(id, declared)| {
+                matches!(id, SymbolId::BlockLocal(_)) && declared.as_str() == name
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
     /// Identity-only fallback for construction; ordinary lexical name
     /// resolution deliberately does not consult this archived index.
     pub(crate) fn archived_local_type_ids(&self, name: &str) -> &[SymbolId] {
