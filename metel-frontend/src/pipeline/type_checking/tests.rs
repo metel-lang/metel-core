@@ -140,6 +140,7 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
 // come from a process-global counter, so compiling the same program a second time numbered its
 // overloads differently; this compiles program A, then an unrelated program B, then A again, and
 // requires A's overload ids to come out identical both times.
+// arch-verifies: ["arch.type-construction.requirement-10"]
 #[test]
 fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
     use crate::pipeline::coherence;
