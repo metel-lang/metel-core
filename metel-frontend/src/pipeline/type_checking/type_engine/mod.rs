@@ -8423,6 +8423,7 @@ mod registry_identity_tests {
     // its dependencies' with `merge_from`. The allocator has to move past what the dependencies
     // handed out; otherwise the next module's first local type reuses the first one's id and
     // overwrites its definition (`BlockLocal(0)` twice, found by the ADR-0065 adversarial review).
+    // arch-verifies: ["arch.type-inference.requirement-2"]
     #[test]
     fn merge_from_keeps_block_local_ids_unique_across_a_chain_of_modules() {
         fn first_local_id(reg: &TypeDefinitionRegistry, name: &str) -> SymbolId {
