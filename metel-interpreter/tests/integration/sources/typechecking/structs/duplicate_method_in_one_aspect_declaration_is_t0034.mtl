@@ -1,0 +1,8 @@
+// metel-core#1229: the same method name declared twice in one `aspect`.
+aspect Tag {
+    fun t(&self) -> i64;
+    fun t(&self) -> i64;
+}
+struct S {}
+extend S: Tag { fun t(&self) -> i64 { 1 } }
+fun main() { let s := S {}; println("${s.t()}"); }

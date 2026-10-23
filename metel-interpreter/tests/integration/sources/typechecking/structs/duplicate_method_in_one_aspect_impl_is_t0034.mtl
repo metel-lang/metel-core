@@ -1,0 +1,9 @@
+// metel-core#1229: a method defined twice in one aspect impl. The later definition used to
+// replace the earlier one silently, so `s.t()` answered 2.
+aspect Tag { fun t(&self) -> i64; }
+struct S {}
+extend S: Tag {
+    fun t(&self) -> i64 { 1 }
+    fun t(&self) -> i64 { 2 }
+}
+fun main() { let s := S {}; println("${s.t()}"); }
