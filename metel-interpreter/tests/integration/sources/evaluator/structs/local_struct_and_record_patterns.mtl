@@ -27,6 +27,16 @@ fun main() {
         Box { v } => { assert(v + 1 == 8); },
     }
 
+    // A scrutinee typed by an annotation carries no identity of its own: the written name is
+    // resolved in the block, once, and the pattern binds against that declaration.
+    let annotated: Box<i64> := Box { v = 9 };
+    match (annotated) {
+        Box { v } => { assert(v == 9); },
+    }
+    match (&annotated) {
+        Box { v } => { assert(v == 9); },
+    }
+
     // An inner block's type of the same name is matched as itself, and the outer one after it.
     if (true) {
         struct Point { z: String }
