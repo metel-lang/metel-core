@@ -1,0 +1,41 @@
+// metel-core#1565: a struct pattern naming a type declared in a function body. It used to be an
+// internal error (`invalid pattern path`): construction looked the type up by name in the finished
+// registry, where a block-local name is already out of scope.
+fun main() {
+    struct Point { x: i64, y: String }
+    let p := Point { x = 1, y = "s" };
+    match (p) {
+        Point { x, y } => {
+            assert(x == 1);
+            assert(y == "s");
+        },
+    }
+    match (p) {
+        Point { x, .. } => { assert(x == 1); },
+    }
+
+    record Pair { a: i64, b: i64 }
+    let q := Pair { a = 2, b = 3 };
+    match (q) {
+        Pair { a, b } => { assert(a + b == 5); },
+    }
+
+    // A generic local type binds its fields at the scrutinee's type arguments.
+    struct Box<T> { v: T }
+    let b := Box { v = 7 };
+    match (b) {
+        Box { v } => { assert(v + 1 == 8); },
+    }
+
+    // An inner block's type of the same name is matched as itself, and the outer one after it.
+    if (true) {
+        struct Point { z: String }
+        let inner := Point { z = "in" };
+        match (inner) {
+            Point { z } => { assert(z == "in"); },
+        }
+    }
+    match (p) {
+        Point { y, .. } => { assert(y == "s"); },
+    }
+}

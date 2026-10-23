@@ -325,6 +325,28 @@ impl<'a> ConstructCtx<'a> {
             .find_map(|scope| scope.get(name).copied())
     }
 
+    /// The fields of the struct or record `name` names here: a block-local one in scope first,
+    /// then the module-level registry (metel-core#1565).
+    fn struct_fields_named(
+        &self,
+        name: &str,
+    ) -> Option<&Vec<crate::pipeline::type_checking::type_engine::FieldEntry>> {
+        match self.local_type_id(name) {
+            Some(id) => self.registry.struct_fields_by_id(id),
+            None => self.registry.struct_fields(self.current_module, name),
+        }
+    }
+
+    /// The type parameters of the struct or record `name` names here.
+    fn struct_type_params_named(&self, name: &str) -> Option<&Vec<TypeVar>> {
+        match self.local_type_id(name) {
+            Some(id) => self.registry.raw_struct_type_params().get(&id),
+            None => self
+                .registry
+                .struct_type_params_for(self.current_module, name),
+        }
+    }
+
     /// The variants of the enum `name` names here: a block-local enum in scope first, then the
     /// module-level registry.
     fn enum_info_named(&self, name: &str) -> Option<&EnumInfo> {
