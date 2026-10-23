@@ -1,0 +1,9 @@
+// metel-core#1561: restoring a shadowed type must not keep the inner one alive: after the inner
+// block `P` is the outer struct, which has no field `y`.
+fun main() {
+    struct P { x: i64 }
+    if (true) {
+        struct P { y: i64 }
+    }
+    let p := P { y = 1 };
+}

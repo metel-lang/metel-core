@@ -1,6 +1,6 @@
 // metel-core#1557: an inner block's enum shadows an outer one of the same name while the inner
-// block runs; each construction and match resolves its own enum. (The outer enum is used only
-// before the inner block: naming it afterwards is metel-core#1561.)
+// block runs; each construction and match resolves its own enum, and the outer one can be named
+// again once the inner block ends (metel-core#1561).
 fun main() {
     enum Mode { A, B }
     var outer := 0;
@@ -17,4 +17,10 @@ fun main() {
         }
         assert(inner == 9);
     }
+    var again := 0;
+    match (Mode::A) {
+        Mode::A => { again := 1; },
+        Mode::B => { again := 2; },
+    }
+    assert(again == 1);
 }
