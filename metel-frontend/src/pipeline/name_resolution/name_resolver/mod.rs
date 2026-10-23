@@ -246,9 +246,9 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
 
 /// Build the canonical symbol-table name for an `impl`/`aspect` method (METEL-185).
 ///
-/// These keys live in the same `(module, name)` symbol namespace as ordinary
-/// declarations but are disambiguated by their `::`-joined shape so they never
-/// collide with a plain declaration name:
+/// These keys live in the value namespace beside ordinary functions but are
+/// disambiguated by their `::`-joined shape so they never collide with a plain
+/// declaration name:
 ///
 /// - inherent impl method: `Target::method`
 /// - aspect impl method:   `Target::Aspect::method`
@@ -257,7 +257,6 @@ pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
 /// Both the resolver (which assigns the id) and later consumers (which look it up)
 /// must build keys through this function so the identities agree.
 #[must_use]
-// limit: ["LIMIT-NAME-RESOLUTION-005"]
 pub fn method_symbol_name(target: &str, aspect: Option<&str>, method: &str) -> String {
     match aspect {
         Some(aspect) => format!("{target}::{aspect}::{method}"),
@@ -415,7 +414,6 @@ pub fn impl_method_symbol_name(ib: &crate::data::ast::ImplBlock, method: &str) -
 /// to visit them in (metel-core#1129's own "verify empirically" repro:
 /// reversing `graph.modules` and re-resolving used to change `SymbolId`s; a
 /// regression test pins this).
-// limit: ["LIMIT-NAME-RESOLUTION-005"]
 fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Span>) {
     let mut pending: Vec<(Vec<String>, Namespace, String, Option<Span>)> = Vec::new();
     for loaded in &graph.modules {
@@ -509,7 +507,6 @@ fn namespaced_decl(decl: &Decl) -> Option<(Namespace, &str, &Span)> {
 /// check the second declaration silently shared the first one's `SymbolId` and one of the two was
 /// invisible to everything keyed by it. Two `fun`s of one name are an overload set, whose
 /// duplicates (same parameter types) are `T0011`'s, so they are not reported here.
-// limit: ["LIMIT-NAME-RESOLUTION-005"]
 fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
     for loaded in &graph.modules {
         let mut seen: HashMap<(Namespace, &str), (&Decl, &Span)> = HashMap::new();
