@@ -5332,9 +5332,11 @@ impl TypeDefinitionRegistry {
         name: String,
         info: EnumInfo,
         declaring_module: Vec<String>,
+        decl_span: Span,
     ) {
         let owner = self.fresh_local_type_id();
         self.register_enum(owner, name.clone(), info, declaring_module);
+        self.local_type_decl_spans.insert(owner, decl_span);
         self.local_type_decl_ids.insert(name.clone(), owner);
         self.archived_local_type_decl_ids
             .entry(name)
@@ -6656,9 +6658,9 @@ impl InferContext {
     /// Register an enum declared inside a block body (see `infer_block`'s hoist
     /// pass). These have no name-resolver symbol, so the registry mints a
     /// synthetic local id.
-    pub fn register_enum(&mut self, name: String, info: EnumInfo) {
+    pub fn register_enum(&mut self, name: String, info: EnumInfo, decl_span: Span) {
         self.registry
-            .register_local_enum(name, info, self.current_module_path.clone());
+            .register_local_enum(name, info, self.current_module_path.clone(), decl_span);
     }
 
     #[must_use]

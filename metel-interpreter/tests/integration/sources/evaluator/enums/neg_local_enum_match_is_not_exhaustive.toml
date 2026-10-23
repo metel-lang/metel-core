@@ -1,0 +1,7 @@
+[options]
+error = ["T0008"]
+
+[expect]
+status = "typecheck_error"
+code = "T0008"
+contains = "non-exhaustive match"

@@ -2071,6 +2071,7 @@ fn infer_block(
                         type_params: vec![],
                         variants,
                     },
+                    ed.span.clone(),
                 );
             }
             _ => {}

@@ -298,6 +298,34 @@ impl<'a> ConstructCtx<'a> {
         }
     }
 
+    /// Bind a block-local enum's name to its archived identity for the current block.
+    ///
+    /// Inference registered the enum under a synthetic id when it hoisted the block; the name is
+    /// out of scope in the finished registry by now, so construction keeps its own scope map for
+    /// it, found by where the enum was declared (metel-core#1557).
+    fn register_local_enum(&mut self, name: String, decl_span: &Span) {
+        if let Some(owner) = self
+            .registry
+            .archived_local_type_id_declared_at(&name, decl_span)
+        {
+            self.local_struct_ids
+                .last_mut()
+                .unwrap()
+                .insert(name, owner);
+        }
+    }
+
+    /// The variants of the enum `name` names here: a block-local enum in scope first, then the
+    /// module-level registry.
+    fn enum_info_named(&self, name: &str) -> Option<&EnumInfo> {
+        self.local_struct_ids
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .and_then(|id| self.registry.enum_info_by_id(*id))
+            .or_else(|| self.registry.enum_info(self.current_module, name))
+    }
+
     fn get_type_param_record_kinds(&self, name: &str) -> Option<&Vec<bool>> {
         self.registry
             .type_param_record_kinds_for(self.current_module, name)
@@ -728,16 +756,13 @@ fn resolve_expected_enum<'a>(
     })?;
     match expected_ty {
         Type::Named(enum_name, ..) => {
-            let enum_info = ctx
-                .registry
-                .enum_info(ctx.current_module, enum_name)
-                .ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0001,
-                        format!("expected enum type, found `{expected_ty}`"),
-                        span,
-                    )
-                })?;
+            let enum_info = ctx.enum_info_named(enum_name).ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0001,
+                    format!("expected enum type, found `{expected_ty}`"),
+                    span,
+                )
+            })?;
             Ok((enum_name, enum_info))
         }
         _ => Err(MetelError::type_error(
@@ -1145,6 +1170,9 @@ fn construct_block(
                 })
                 .collect::<Result<_, MetelError>>()?;
             ctx.register_local_struct(sd.name.clone(), fields, &sd.span);
+        }
+        if let Decl::Enum(ed) = decl {
+            ctx.register_local_enum(ed.name.clone(), &ed.span);
         }
     }
     // metel-core#736 / RFC-0138: hoist this block's own nested `FunDecl`s the same
