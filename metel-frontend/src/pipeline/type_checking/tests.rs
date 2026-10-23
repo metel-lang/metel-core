@@ -77,3 +77,60 @@ fn prelude_schemes_cover_embedded_core_natives() {
     }
     assert!(native_count > 0, "core.mtl should declare native functions");
 }
+
+// metel-core#1546: block-local ids are unique across the whole module graph. Each module's registry
+// starts with a fresh allocator and absorbs its dependencies' definitions through `merge_from`;
+// this runs the real pipeline over two modules that each declare a local type with the same name,
+// so it also fails if `check_graph` stops threading one registry chain through the modules, which a
+// test of `merge_from` alone cannot catch (and which no program output shows, because nothing
+// observable depended on the overwritten entry).
+#[test]
+fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
+    use crate::pipeline::coherence;
+    use crate::pipeline::name_resolution::name_resolver;
+    use crate::pipeline::parsing::module_loader;
+    use crate::pipeline::path_normalization;
+
+    let dir = std::env::temp_dir().join(format!("metel_block_local_ids_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    std::fs::write(
+        dir.join("helper.mtl"),
+        "public fun from_helper() -> i64 {\n    record Handle { pad: i64, fd: i64 }\n    let h := Handle { pad = 100, fd = 3 };\n    h.fd\n}\n",
+    )
+    .expect("write helper");
+    std::fs::write(
+        dir.join("main.mtl"),
+        "import helper::from_helper;\nfun main() {\n    record Handle { name: String, fd: i64 }\n    let h := Handle { name = \"n\", fd = 42 };\n    assert(from_helper() == 3);\n    assert(h.fd == 42);\n}\n",
+    )
+    .expect("write main");
+
+    let result = (|| {
+        let graph = module_loader::load_root(&dir.join("main.mtl"))?;
+        let names = name_resolver::resolve(&graph)?;
+        let normalized = path_normalization::normalize(graph, names)?;
+        coherence::check(&normalized)?;
+        check_graph(&normalized, &CorePrelude::default())
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    let typed = result.expect("the two-module program type-checks");
+
+    let ids = typed.type_registry.block_local_ids_named("Handle");
+    assert_eq!(
+        ids.len(),
+        2,
+        "each module's local `Handle` needs its own id in the final registry, got {ids:?}"
+    );
+    let shapes: Vec<_> = ids
+        .iter()
+        .map(|id| {
+            typed
+                .type_registry
+                .struct_fields_by_id(*id)
+                .map(|fields| fields[0].name.clone())
+        })
+        .collect();
+    assert!(
+        shapes.contains(&Some("pad".to_string())) && shapes.contains(&Some("name".to_string())),
+        "both modules' definitions must survive, got first fields {shapes:?}"
+    );
+}
