@@ -846,9 +846,9 @@ struct InherentImpl<'a> {
     methods: Vec<(&'a str, &'a Span)>,
 }
 
-/// T0034 (metel-core#1322): a method name defined twice where both definitions can apply
-/// to one receiver -- twice in one `extend` block, or in two inherent blocks of one type
-/// whose coverage overlaps. Before this check the later definition silently replaced the
+/// T0034 (metel-core#1322, #1229): a method name defined twice where both definitions can apply
+/// to one receiver -- twice in one `extend` block (inherent or aspect impl) or `aspect`
+/// declaration, or in two inherent blocks of one type whose coverage overlaps. Before this check the later definition silently replaced the
 /// earlier one at dispatch.
 ///
 /// Two blocks whose coverage is provably disjoint (`extend W<i64>` / `extend W<String>`,
@@ -863,10 +863,24 @@ fn check_inherent_method_duplicates(
     let mut inherent: Vec<InherentImpl> = Vec::new();
     for module in graph.modules() {
         for decl in &module.program.decls {
-            let Decl::Impl(ib) = decl else { continue };
-            if ib.aspect_name.is_some() || ib.polarity != Polarity::Positive {
+            if let Decl::Aspect(ad) = decl {
+                let mut seen: HashMap<&str, &Span> = HashMap::new();
+                for method in &ad.methods {
+                    if let Some(first) = seen.insert(method.name.as_str(), &method.span) {
+                        return Err(duplicate_method_error(
+                            &method.name,
+                            &method.span,
+                            first,
+                            "in this `aspect` declaration",
+                        ));
+                    }
+                }
                 continue;
             }
+            let Decl::Impl(ib) = decl else { continue };
+            // A name twice in one block is a duplicate whatever the block implements; only the
+            // cross-block check below is limited to inherent blocks (two aspect impls that
+            // can both apply to one type are T0015's).
             let mut seen: HashMap<&str, &Span> = HashMap::new();
             for method in &ib.methods {
                 if let Some(first) = seen.insert(method.name.as_str(), &method.span) {
@@ -877,6 +891,9 @@ fn check_inherent_method_duplicates(
                         "in this `extend` block",
                     ));
                 }
+            }
+            if ib.aspect_name.is_some() || ib.polarity != Polarity::Positive {
+                continue;
             }
             let canonical_target = canonicalize_impl_target(names, &module.module_path, ib);
             inherent.push(InherentImpl {
