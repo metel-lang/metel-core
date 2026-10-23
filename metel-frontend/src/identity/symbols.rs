@@ -225,6 +225,18 @@ impl BlockLocalAllocator {
             .expect("the block-local SymbolId space is exhausted");
         SymbolId::BlockLocal(BlockLocalIndex(index))
     }
+
+    /// Move this allocator past every id `other` has handed out, so ids minted from here on cannot
+    /// repeat one `other` minted. Never moves backwards: an allocator already ahead of `other`
+    /// stays where it is.
+    ///
+    /// A block-local id is minted by the registry of the module being checked, and that registry
+    /// absorbs its dependencies' definitions with `merge_from`. Without this, each module's fresh
+    /// registry would start again at index 0 and its first local type would overwrite the
+    /// dependency's entry for the same id.
+    pub fn advance_past(&mut self, other: &BlockLocalAllocator) {
+        self.next = self.next.max(other.next);
+    }
 }
 
 /// Take the next [`SymbolId::Overload`] id from `counter`.
@@ -495,6 +507,40 @@ mod architecture_evidence_tests {
         assert_eq!(first, SymbolId::BlockLocal(BlockLocalIndex(0)));
         assert_eq!(second, SymbolId::BlockLocal(BlockLocalIndex(1)));
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn advancing_past_another_allocator_skips_the_ids_it_handed_out() {
+        let mut dependency = BlockLocalAllocator::new();
+        let first = dependency.fresh();
+        let second = dependency.fresh();
+
+        let mut module = BlockLocalAllocator::new();
+        module.advance_past(&dependency);
+        let own = module.fresh();
+        assert_ne!(own, first);
+        assert_ne!(own, second);
+        assert_eq!(own, SymbolId::BlockLocal(BlockLocalIndex(2)));
+    }
+
+    #[test]
+    fn advancing_past_never_moves_an_allocator_backwards() {
+        let behind = BlockLocalAllocator::new();
+        let mut ahead = BlockLocalAllocator::new();
+        let _ = ahead.fresh();
+        let _ = ahead.fresh();
+        let _ = ahead.fresh();
+
+        ahead.advance_past(&behind);
+        assert_eq!(ahead.fresh(), SymbolId::BlockLocal(BlockLocalIndex(3)));
+
+        let mut same = ahead.clone();
+        same.advance_past(&ahead);
+        assert_eq!(
+            same.fresh(),
+            ahead.fresh(),
+            "advancing past an equal allocator is a no-op"
+        );
     }
 
     #[test]

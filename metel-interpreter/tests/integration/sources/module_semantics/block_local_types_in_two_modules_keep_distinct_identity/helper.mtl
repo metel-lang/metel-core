@@ -1,0 +1,13 @@
+// A block-local record in an imported module. Its identity must stay distinct from the
+// same-named record declared in the importing module (metel-core#1546: block-local ids are
+// unique across the whole module graph, not restarted per module).
+
+public fun needs_fd<record T: { fd: i64, .. }>(value: T) -> i64 {
+    value.fd
+}
+
+public fun from_helper() -> i64 {
+    record Handle { pad: i64, fd: i64 }
+    let h := Handle { pad = 100, fd = 3 };
+    needs_fd(h)
+}
