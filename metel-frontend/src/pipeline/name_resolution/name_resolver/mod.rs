@@ -291,36 +291,107 @@ pub(crate) fn resolve_name_provided_by_module(
         })
 }
 
-/// Extract the surface type name of an impl target (`extend Foo { … }` → `Foo`).
-/// Returns `None` for non-named targets (which the typechecker rejects elsewhere).
-fn impl_target_name(target: &TypeExpr) -> Option<&str> {
-    match target {
-        TypeExpr::Named(name, _) => Some(name.as_str()),
-        // `extend<T> T[]: Aspect { ... }` — the structural array-pattern
-        // target, keyed under a synthetic owner name (metel-core#1101).
-        // This SymbolId is never surfaced for dispatch (impl methods still
-        // carry no top-level identity, same as a named-type impl's own
-        // methods — see `method_fun_decl`); it exists only so the identity
-        // walk has a real owner to hash each method body's locals against,
-        // instead of silently skipping these bodies the way it used to.
-        //
-        // Deliberately NOT the bare string "Array": that collided with a
-        // literal `extend Array: Aspect { ... }` (a real, reachable nominal
-        // impl target — Metel accepts `Array` as a type name in written-type
-        // position, see `conversions.rs`'s `("Array", 1)` case), which
-        // `TypeExpr::Named(name, _) => Some(name.as_str())` above also maps
-        // to the identical string "Array" (metel-core#1121). `[]` can't
-        // appear in a Metel identifier, so no `TypeExpr::Named` target can
-        // ever collide with this one; `identity/allocate.rs`'s `Decl::Impl`
-        // arm must keep computing this exact same string.
-        TypeExpr::Array(_) => Some("[]Array"),
-        // An impl on a record target (`extend<row R> { ..R }: Aspect`, RFC-0121 §3):
-        // the same synthetic-owner treatment, for the same reason. `{}` cannot appear
-        // in an identifier either, and `identity/allocate.rs` must compute this exact
-        // string.
-        TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => Some("{}Record"),
-        _ => None,
+/// Render a type expression as a canonical key fragment: structure only, no spans, record labels
+/// sorted, and an impl's own type parameters named by position so `extend<T> W<T>` and
+/// `extend<U> W<U>` agree. Two different instantiations (`W<i64>`, `W<String>`) render differently.
+fn render_type_key(te: &TypeExpr, params: &[&str]) -> String {
+    let list = |items: &[TypeExpr]| {
+        items
+            .iter()
+            .map(|t| render_type_key(t, params))
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    let fields = |fs: &[(String, TypeExpr)]| {
+        let mut rendered: Vec<String> = fs
+            .iter()
+            .map(|(label, t)| format!("{label}:{}", render_type_key(t, params)))
+            .collect();
+        rendered.sort();
+        rendered.join(",")
+    };
+    match te {
+        TypeExpr::Named(name, args) => {
+            if args.is_empty() {
+                params
+                    .iter()
+                    .position(|p| p == name)
+                    .map_or_else(|| name.clone(), |i| format!("${i}"))
+            } else {
+                format!("{name}<{}>", list(args))
+            }
+        }
+        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Tuple(items) => format!("({})", list(items)),
+        TypeExpr::Record(fs) => format!("{{{}}}", fields(fs)),
+        TypeExpr::OpenRecord(fs, tail) => {
+            let tail = tail.var.as_deref().map_or_else(
+                || "..".to_string(),
+                |v| {
+                    params
+                        .iter()
+                        .position(|p| *p == v)
+                        .map_or_else(|| format!("..{v}"), |i| format!("..${i}"))
+                },
+            );
+            format!("{{{},{tail}}}", fields(fs))
+        }
+        TypeExpr::Array(elem) => format!("[{}]", render_type_key(elem, params)),
+        TypeExpr::SizedArray(elem, n) => format!("[{};{n}]", render_type_key(elem, params)),
+        TypeExpr::Reference(inner) => format!("&{}", render_type_key(inner, params)),
+        TypeExpr::MutReference(inner) => format!("&var {}", render_type_key(inner, params)),
+        TypeExpr::Fun {
+            params: ps,
+            return_type,
+            ..
+        } => format!(
+            "fun({})->{}",
+            list(ps),
+            return_type
+                .as_deref()
+                .map_or_else(|| "()".to_string(), |r| render_type_key(r, params))
+        ),
+        // Forms that are lowered away before name resolution or cannot head an impl target.
+        _ => "?".to_string(),
     }
+}
+
+/// The owner name an impl method is interned under (`extend Foo { fun m }` -> `Foo::m`,
+/// `extend W<i64>: Tag { fun t }` -> `W<i64>::Tag::t`). `None` for a target that is not a nameable
+/// type (which the typechecker rejects elsewhere).
+///
+/// The key carries the target's and the aspect's type arguments, so two impls for different
+/// instantiations get different ids instead of sharing `W::Tag::t` (metel-core#1571). A target with
+/// no arguments keeps its bare name. The structural targets are keyed under synthetic owner names
+/// that cannot collide with a `TypeExpr::Named` one: `extend<T> T[]: Aspect` as `[]Array<...>`
+/// (metel-core#1101; not the bare "Array", which collides with a literal `extend Array: ...`,
+/// metel-core#1121) and a record target as `{}Record<...>` (RFC-0121 §3); `[]` and `{}` cannot
+/// appear in an identifier. This is the one place the key is built: `identity/allocate.rs` calls it
+/// too, so the two cannot disagree.
+#[must_use]
+pub fn impl_method_symbol_name(ib: &crate::data::ast::ImplBlock, method: &str) -> Option<String> {
+    let params: Vec<&str> = ib.generics.iter().map(|g| g.name.as_str()).collect();
+    let target = match &ib.target_type {
+        TypeExpr::Named(..) => render_type_key(&ib.target_type, &params),
+        TypeExpr::Array(elem) => format!("[]Array<{}>", render_type_key(elem, &params)),
+        TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
+            format!("{{}}Record<{}>", render_type_key(&ib.target_type, &params))
+        }
+        _ => return None,
+    };
+    let aspect = ib.aspect_name.as_deref().map(|name| {
+        if ib.aspect_type_args.is_empty() {
+            name.to_string()
+        } else {
+            let args: Vec<String> = ib
+                .aspect_type_args
+                .iter()
+                .map(|t| render_type_key(t, &params))
+                .collect();
+            format!("{name}<{}>", args.join(","))
+        }
+    });
+    Some(method_symbol_name(&target, aspect.as_deref(), method))
 }
 
 /// Assign `SymbolId`s to every top-level declaration and impl/aspect method
@@ -378,11 +449,10 @@ fn collect_method_symbol_keys(
 ) {
     match decl {
         Decl::Impl(ib) => {
-            let Some(target) = impl_target_name(&ib.target_type) else {
-                return;
-            };
             for method in &ib.methods {
-                let key = method_symbol_name(target, ib.aspect_name.as_deref(), &method.name);
+                let Some(key) = impl_method_symbol_name(ib, &method.name) else {
+                    return;
+                };
                 out.push((module_path.to_vec(), key, Some(method.span.clone())));
             }
         }

@@ -22,10 +22,10 @@ use std::collections::HashMap;
 
 use crate::data::ast::{
     AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
-    TypeExpr,
 };
 use crate::pipeline::name_resolution::name_resolver::{
-    BindingKind, ModuleScope, ResolvedNames, canonical_path, method_symbol_name,
+    BindingKind, ModuleScope, ResolvedNames, canonical_path, impl_method_symbol_name,
+    method_symbol_name,
 };
 
 use super::lexical_path::{LexicalPath, LexicalSeg};
@@ -209,24 +209,11 @@ pub fn allocate_module(
                 }
             }
             Decl::Impl(impl_block) => {
-                // `extend<T> T[]: Aspect { ... }` (the structural array
-                // target) is keyed under the same synthetic "[]Array" name
-                // here too, mirroring name_resolver.rs's `impl_target_name`
-                // — the two must agree or `names.symbols.get(&key)` below
-                // finds nothing (metel-core#1101). Not the bare string
-                // "Array": that collides with a literal `extend Array:
-                // Aspect { ... }` nominal target, since `TypeExpr::Named`
-                // below maps to its own written name verbatim
-                // (metel-core#1121).
-                let target: &str = match &impl_block.target_type {
-                    TypeExpr::Named(target, _) => target,
-                    TypeExpr::Array(_) => "[]Array",
-                    TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => "{}Record",
-                    _ => continue,
-                };
                 for method in &impl_block.methods {
-                    let method_name =
-                        method_symbol_name(target, impl_block.aspect_name.as_deref(), &method.name);
+                    let Some(method_name) = impl_method_symbol_name(impl_block, &method.name)
+                    else {
+                        continue;
+                    };
                     let key = (module_path.to_vec(), method_name);
                     if let Some(&sym) = names.symbols.get(&key) {
                         let ordinal = method_ordinals.entry(sym).or_default();
