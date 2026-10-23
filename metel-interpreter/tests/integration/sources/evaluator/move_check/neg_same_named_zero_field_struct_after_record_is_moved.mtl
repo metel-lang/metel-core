@@ -1,0 +1,24 @@
+// metel-core#1555: two block-local types with the same name and no fields cannot be told apart by
+// their fields, and a zero-field `record` is `Copy` while a zero-field `struct` is not. `a`'s
+// record is `Copy`; `b`'s struct is not, so `b`'s second `let v := e` is a use-after-move. The type
+// is identified by its own declaration, not by name and fields, so `b` is judged as a struct.
+fun a() -> i64 {
+    record E {}
+    let e := E {};
+    let u := e;
+    let v := e;
+    0
+}
+
+fun b() -> i64 {
+    struct E {}
+    let e := E {};
+    let u := e;
+    let v := e;
+    0
+}
+
+fun main() {
+    assert(a() == 0);
+    assert(b() == 0);
+}

@@ -2969,6 +2969,10 @@ pub struct TypeDefinitionRegistry {
     /// teardown so runtime generic-body reconstruction can recover a value's
     /// declaration identity after its defining block closes (#1307).
     archived_local_type_decl_ids: HashMap<String, Vec<SymbolId>>,
+    /// Where each block-local struct or record was declared (the span of its whole declaration),
+    /// by id. A declaration is identified by where it was written: its name and field names are not
+    /// enough, and a type with no fields has no field spans to tell it from another (metel-core#1555).
+    local_type_decl_spans: HashMap<SymbolId, Span>,
     /// struct `SymbolId` → the struct's own `pub`/private visibility (RFC-0032 §7,
     /// issue #776). Consulted alongside a field's own `visibility` by
     /// `check_field_visibility`: a `public` field on a private struct must not
@@ -3460,6 +3464,7 @@ impl TypeDefinitionRegistry {
             type_decl_ids: HashMap::new(),
             local_type_decl_ids: HashMap::new(),
             archived_local_type_decl_ids: HashMap::new(),
+            local_type_decl_spans: HashMap::new(),
             struct_visibility: HashMap::new(),
             struct_type_params: HashMap::new(),
             struct_generic_names: HashMap::new(),
@@ -3662,8 +3667,10 @@ impl TypeDefinitionRegistry {
         declaring_module: Vec<String>,
         visibility: Visibility,
         is_record: bool,
+        decl_span: Span,
     ) {
         let owner = self.fresh_local_type_id();
+        self.local_type_decl_spans.insert(owner, decl_span);
         self.register_struct_fields(
             owner,
             name.clone(),
@@ -3694,31 +3701,24 @@ impl TypeDefinitionRegistry {
             .collect()
     }
 
-    /// The archived block-local type named `name` whose fields were declared at exactly
-    /// `field_spans`, in order, when there is exactly one.
+    /// The archived block-local struct or record named `name` that was declared at `decl_span`,
+    /// when there is exactly one.
     ///
-    /// A declaration is identified by where its fields were declared. Its name and field names are
-    /// not enough: two local types in one module can share both and differ only in their field
-    /// types (metel-core#1553). `None` when no archived entry matches or several do (a type with
-    /// no fields has no spans to tell it from another).
+    /// A declaration is identified by where it was written. Its name and field names are not
+    /// enough: two local types in one module can share both and differ only in their field types
+    /// (metel-core#1553), or in being a `struct` and a `record` with no fields at all
+    /// (metel-core#1555). `None` when no archived entry was declared there or several were (a
+    /// declaration registered more than once).
     pub(crate) fn archived_local_type_id_declared_at(
         &self,
         name: &str,
-        field_spans: &[&Span],
+        decl_span: &Span,
     ) -> Option<SymbolId> {
         let mut matches = self
             .archived_local_type_ids(name)
             .iter()
             .copied()
-            .filter(|id| {
-                self.struct_fields_by_id(*id).is_some_and(|declared| {
-                    declared.len() == field_spans.len()
-                        && declared
-                            .iter()
-                            .zip(field_spans)
-                            .all(|(field, span)| field.span == **span)
-                })
-            });
+            .filter(|id| self.local_type_decl_spans.get(id) == Some(decl_span));
         let only = matches.next()?;
         matches.next().is_none().then_some(only)
     }
@@ -6575,6 +6575,7 @@ impl InferContext {
         fields: Vec<crate::pipeline::type_checking::type_engine::FieldEntry>,
         visibility: Visibility,
         is_record: bool,
+        decl_span: Span,
     ) {
         self.registry.register_local_struct_fields(
             name,
@@ -6582,6 +6583,7 @@ impl InferContext {
             self.current_module_path.clone(),
             visibility,
             is_record,
+            decl_span,
         );
     }
 
@@ -8448,71 +8450,98 @@ mod registry_identity_tests {
         assert_eq!(reg.declared_type_name(beta), Some("Config"));
     }
 
-    fn field_at(name: &str, at: usize) -> FieldEntry {
-        FieldEntry {
-            span: Span::new(at, at + 1, "local.mtl"),
-            ..field(name)
-        }
+    fn at(n: usize) -> Span {
+        Span::new(n, n + 1, "local.mtl")
     }
 
-    fn register_local(reg: &mut TypeDefinitionRegistry, name: &str, fields: Vec<FieldEntry>) {
+    /// Register a local struct or record declared at `decl_at`, with `fields` (all declared at
+    /// positions of their own, so the field spans cannot stand in for the declaration's).
+    fn register_local(
+        reg: &mut TypeDefinitionRegistry,
+        name: &str,
+        decl_at: usize,
+        fields: &[&str],
+        is_record: bool,
+    ) {
+        let fields = fields
+            .iter()
+            .enumerate()
+            .map(|(i, f)| FieldEntry {
+                span: at(decl_at + 1 + i),
+                ..field(f)
+            })
+            .collect();
         reg.register_local_struct_fields(
             name.to_string(),
             fields,
             vec!["m".to_string()],
             Visibility::Public,
-            true,
+            is_record,
+            at(decl_at),
         );
     }
 
-    // metel-core#1553: a block-local type is identified by where its fields were declared. Two local
-    // types in one module can share a name and field names and differ only in their field types.
+    // metel-core#1553 / #1555: a block-local type is identified by where it was declared. Two local
+    // types in one module can share a name and field names, or have no fields at all.
     #[test]
-    fn an_archived_local_type_is_found_by_where_its_fields_were_declared() {
+    fn an_archived_local_type_is_found_by_where_it_was_declared() {
         let mut reg = TypeDefinitionRegistry::new();
-        register_local(&mut reg, "P", vec![field_at("x", 10)]);
-        register_local(&mut reg, "P", vec![field_at("x", 20)]);
+        register_local(&mut reg, "P", 10, &["x"], true);
+        register_local(&mut reg, "P", 20, &["x"], true);
         let (first, second) = match reg.archived_local_type_ids("P") {
             [first, second] => (*first, *second),
             other => panic!("expected two archived types, got {other:?}"),
         };
-        let at = |n: usize| Span::new(n, n + 1, "local.mtl");
         assert_eq!(
-            reg.archived_local_type_id_declared_at("P", &[&at(10)]),
+            reg.archived_local_type_id_declared_at("P", &at(10)),
             Some(first)
         );
         assert_eq!(
-            reg.archived_local_type_id_declared_at("P", &[&at(20)]),
+            reg.archived_local_type_id_declared_at("P", &at(20)),
             Some(second)
         );
         assert_eq!(
-            reg.archived_local_type_id_declared_at("P", &[&at(30)]),
+            reg.archived_local_type_id_declared_at("P", &at(30)),
             None,
-            "no entry was declared there"
+            "nothing was declared there"
         );
         assert_eq!(
-            reg.archived_local_type_id_declared_at("Q", &[&at(10)]),
+            reg.archived_local_type_id_declared_at("Q", &at(10)),
             None,
             "no such name"
         );
     }
 
     #[test]
-    fn spans_that_do_not_single_out_one_archived_local_type_find_none() {
-        let at = |n: usize| Span::new(n, n + 1, "local.mtl");
+    fn same_named_types_with_no_fields_are_told_apart_by_their_declarations() {
+        // The case #1553's field-span lookup could not decide: nothing to compare but the type itself,
+        // and a record with no fields is `Copy` while a struct with none is not.
         let mut reg = TypeDefinitionRegistry::new();
-        // The same declaration registered twice: its spans match both entries, so neither is chosen.
-        register_local(&mut reg, "P", vec![field_at("x", 10)]);
-        register_local(&mut reg, "P", vec![field_at("x", 10)]);
+        register_local(&mut reg, "E", 10, &[], true);
+        register_local(&mut reg, "E", 20, &[], false);
+        let (record, strukt) = match reg.archived_local_type_ids("E") {
+            [first, second] => (*first, *second),
+            other => panic!("expected two archived types, got {other:?}"),
+        };
         assert_eq!(
-            reg.archived_local_type_id_declared_at("P", &[&at(10)]),
-            None
+            reg.archived_local_type_id_declared_at("E", &at(10)),
+            Some(record)
         );
-        // Types with no fields have no spans to compare: one is unambiguous, two are not.
-        register_local(&mut reg, "E", vec![]);
-        assert!(reg.archived_local_type_id_declared_at("E", &[]).is_some());
-        register_local(&mut reg, "E", vec![]);
-        assert_eq!(reg.archived_local_type_id_declared_at("E", &[]), None);
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("E", &at(20)),
+            Some(strukt)
+        );
+        assert_ne!(record, strukt);
+    }
+
+    #[test]
+    fn a_declaration_registered_twice_is_not_singled_out() {
+        // The same declaration registered again (a second pass over a body) matches both entries, so
+        // neither is chosen and construction falls back to name and field names.
+        let mut reg = TypeDefinitionRegistry::new();
+        register_local(&mut reg, "P", 10, &["x"], true);
+        register_local(&mut reg, "P", 10, &["x"], true);
+        assert_eq!(reg.archived_local_type_id_declared_at("P", &at(10)), None);
     }
 
     // metel-core#1546: block-local ids are minted per registry, and each module's registry absorbs
@@ -8538,6 +8567,7 @@ mod registry_identity_tests {
             vec!["a".to_string()],
             Visibility::Public,
             true,
+            Span::new(0, 1, "decl.mtl"),
         );
 
         let mut b = TypeDefinitionRegistry::new();
@@ -8548,6 +8578,7 @@ mod registry_identity_tests {
             vec!["b".to_string()],
             Visibility::Public,
             true,
+            Span::new(0, 1, "decl.mtl"),
         );
 
         let mut c = TypeDefinitionRegistry::new();
@@ -8558,6 +8589,7 @@ mod registry_identity_tests {
             vec!["c".to_string()],
             Visibility::Public,
             true,
+            Span::new(0, 1, "decl.mtl"),
         );
 
         let (id_a, id_b, id_c) = (
@@ -8623,6 +8655,7 @@ mod registry_identity_tests {
             vec!["m".to_string()],
             Visibility::Private,
             false,
+            Span::new(0, 1, "decl.mtl"),
         );
         // Reachable by bare name inside the scope, via the strict resolver.
         let fields = reg

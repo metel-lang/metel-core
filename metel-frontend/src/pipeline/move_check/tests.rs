@@ -5350,3 +5350,74 @@ fun main() { assert(a() == 0); assert(b() == 2); }
 "#,
     );
 }
+
+// metel-core#1555: a block-local type is identified by its own declaration. #1553 matched the
+// archived local types by where their fields were declared, which cannot tell two same-named types
+// with no fields apart, and a zero-field `record` is `Copy` while a zero-field `struct` is not.
+#[test]
+fn a_non_copy_zero_field_struct_is_moved_even_if_an_earlier_zero_field_record_has_its_name() {
+    let violations = assert_has_violation(
+        r#"
+fun a() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
+fun b() -> i64 { struct E {} let e := E {}; let u := e; let v := e; 0 }
+fun main() { assert(a() == 0); assert(b() == 0); }
+"#,
+        "e",
+    );
+    // `a`'s record is `Copy`, so only `b` is wrong.
+    assert_eq!(violations.len(), 1, "{violations:#?}");
+}
+
+#[test]
+fn a_copy_zero_field_record_is_copied_even_if_an_earlier_zero_field_struct_has_its_name() {
+    assert_no_violations(
+        r#"
+fun a() -> i64 { struct E {} let e := E {}; let u := e; 0 }
+fun b() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
+fun main() { assert(a() == 0); assert(b() == 0); }
+"#,
+    );
+}
+
+// The same bug inside one function: an inner declaration shadows an outer one of the same name and
+// field names. #1553 fixed this shape (the fields' spans differ); #1555 keeps it covered.
+#[test]
+fn a_non_copy_record_shadowing_a_copy_one_is_moved() {
+    let violations = assert_has_violation(
+        r#"
+fun main() {
+    record P { x: i64 }
+    let outer := P { x = 1 };
+    let o1 := outer;
+    let o2 := outer;
+    if (true) {
+        record P { x: String }
+        let inner := P { x = "s" };
+        let i1 := inner;
+        let i2 := inner;
+    }
+}
+"#,
+        "inner",
+    );
+    assert_eq!(violations.len(), 1, "{violations:#?}");
+}
+
+#[test]
+fn a_copy_record_shadowing_a_non_copy_one_is_copied() {
+    assert_no_violations(
+        r#"
+fun main() {
+    record P { x: String }
+    let outer := P { x = "s" };
+    let o1 := outer;
+    if (true) {
+        record P { x: i64 }
+        let inner := P { x = 1 };
+        let i1 := inner;
+        let i2 := inner;
+    }
+}
+"#,
+    );
+}

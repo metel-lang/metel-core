@@ -2042,6 +2042,7 @@ fn infer_block(
                     fields,
                     sd.visibility.clone(),
                     sd.kind == crate::data::ast::StructKind::Record,
+                    sd.span.clone(),
                 );
             }
             Decl::Enum(ed) => {

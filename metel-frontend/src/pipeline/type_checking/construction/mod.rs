@@ -253,18 +253,23 @@ impl<'a> ConstructCtx<'a> {
         self.local_struct_ids.pop();
     }
 
-    fn register_local_struct(&mut self, name: String, fields: Vec<(String, Type, Span)>) {
+    fn register_local_struct(
+        &mut self,
+        name: String,
+        fields: Vec<(String, Type, Span)>,
+        decl_span: &Span,
+    ) {
         let field_names: HashSet<&str> =
             fields.iter().map(|(field, _, _)| field.as_str()).collect();
-        let field_spans: Vec<&Span> = fields.iter().map(|(_, _, span)| span).collect();
-        // The declaration is identified by where its fields were declared. Matching on the name and
-        // field names alone takes the first of two same-named local types that share their field
-        // names, and then stamps the second with the first's identity (metel-core#1553). When the
-        // spans do not single out one entry (a type with no fields has none to compare), fall back
-        // to name and field names.
+        // The declaration is identified by where it was written. Matching on the name and field
+        // names alone takes the first of two same-named local types that share their field names
+        // (metel-core#1553), and cannot tell two with no fields apart at all, although a `record`
+        // with no fields is `Copy` and a `struct` with none is not (metel-core#1555). Fall back to
+        // name and field names only when the span does not single out one entry (a declaration
+        // registered more than once).
         let owner = self
             .registry
-            .archived_local_type_id_declared_at(&name, &field_spans)
+            .archived_local_type_id_declared_at(&name, decl_span)
             .or_else(|| {
                 self.registry
                     .archived_local_type_ids(&name)
@@ -1139,7 +1144,7 @@ fn construct_block(
                     Ok((f.name.clone(), ty, f.span.clone()))
                 })
                 .collect::<Result<_, MetelError>>()?;
-            ctx.register_local_struct(sd.name.clone(), fields);
+            ctx.register_local_struct(sd.name.clone(), fields, &sd.span);
         }
     }
     // metel-core#736 / RFC-0138: hoist this block's own nested `FunDecl`s the same

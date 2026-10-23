@@ -1,0 +1,23 @@
+// metel-core#1555: the converse of `neg_same_named_zero_field_struct_after_record_is_moved`.
+// `a`'s struct has no fields and is not `Copy`; `b`'s record has the same name and no fields and is,
+// so `b` may copy `e` freely.
+fun a() -> i64 {
+    struct E {}
+    let e := E {};
+    let u := e;
+    0
+}
+
+fun b() -> i64 {
+    record E {}
+    let e := E {};
+    let u := e;
+    let v := e;
+    0
+}
+
+fun main() {
+    assert(a() == 0);
+    assert(b() == 0);
+    println("ok");
+}
