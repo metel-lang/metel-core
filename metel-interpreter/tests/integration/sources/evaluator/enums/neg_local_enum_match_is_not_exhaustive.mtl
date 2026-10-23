@@ -1,0 +1,8 @@
+// metel-core#1557: exhaustiveness is checked against a block-local enum's own variants.
+fun main() {
+    enum Mode { A, B }
+    var s := 0;
+    match (Mode::A) {
+        Mode::A => { s := 1; },
+    }
+}

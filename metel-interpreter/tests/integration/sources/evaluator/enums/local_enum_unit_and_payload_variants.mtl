@@ -1,0 +1,21 @@
+// metel-core#1557: an enum declared in a function body can be constructed (unit and struct-like
+// variants) and matched; construction used to report `I0001` / `T0003` for every use.
+fun main() {
+    enum Mode { A, B }
+    let m := Mode::B;
+    var s := 0;
+    match (m) {
+        Mode::A => { s := 1; },
+        Mode::B => { s := 2; },
+    }
+    assert(s == 2);
+
+    enum Shape { Circle { r: i64 }, Dot }
+    let c := Shape::Circle { r = 7 };
+    var got := 0;
+    match (c) {
+        Shape::Circle { r } => { got := r; },
+        Shape::Dot => { got := 0; },
+    }
+    assert(got == 7);
+}

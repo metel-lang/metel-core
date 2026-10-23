@@ -1797,9 +1797,7 @@ pub(super) fn construct_expr(
                     });
                 }
                 // Also check enum variants via enum_env.
-                if let Some(info) = ctx
-                    .registry
-                    .enum_info(ctx.current_module, type_name.as_str())
+                if let Some(info) = ctx.enum_info_named(type_name.as_str())
                     && let Some(variant) = info.variants.iter().find(|v| &v.name == member_name)
                 {
                     if variant.fields.is_empty() {
