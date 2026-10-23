@@ -113,7 +113,9 @@ pub(super) fn construct_match(
     // since construction re-derives everything from the AST rather than reusing
     // Pass 1's rewritten patterns.
     let scrutinee_struct_name: Option<String> = match &scrutinee_ty {
-        Type::Named(name, ..) if ctx.struct_fields_named(name).is_some() => Some(name.clone()),
+        Type::Named(name, ..) if ctx.struct_fields_of(&scrutinee_ty).is_some() => {
+            Some(name.clone())
+        }
         _ => None,
     };
     let mut typed_arms = vec![];
@@ -985,11 +987,11 @@ pub(super) fn bind_struct_pattern_fields(
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
     let struct_fields = ctx
-        .struct_fields_named(struct_name)
+        .struct_fields_of(scrutinee_ty)
         .ok_or_else(|| MetelError::internal(format!("unknown struct `{struct_name}`")))?
         .clone();
     let type_params = ctx
-        .struct_type_params_named(struct_name)
+        .struct_type_params_of(scrutinee_ty)
         .cloned()
         .unwrap_or_default();
     let type_args = extract_type_args_from_type(scrutinee_ty);
