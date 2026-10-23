@@ -5876,6 +5876,9 @@ impl TypeDefinitionRegistry {
     #[allow(clippy::too_many_lines)]
     // arch-implements: ["arch.type-inference.requirement-2"]
     pub fn merge_from(&mut self, other: &TypeDefinitionRegistry) {
+        // The entries below are id-keyed and merged without overwriting, so ids minted from now on
+        // must not repeat any of `other`'s block-local ids (metel-core#1546).
+        self.local_type_ids.advance_past(&other.local_type_ids);
         for (k, v) in &other.struct_env {
             self.struct_env.entry(*k).or_insert_with(|| v.clone());
         }
@@ -8399,6 +8402,65 @@ mod registry_identity_tests {
         assert_eq!(beta_fields[0].name, "timeout");
         assert_eq!(reg.declared_type_name(alpha), Some("Config"));
         assert_eq!(reg.declared_type_name(beta), Some("Config"));
+    }
+
+    // metel-core#1546: block-local ids are minted per registry, and each module's registry absorbs
+    // its dependencies' with `merge_from`. The allocator has to move past what the dependencies
+    // handed out; otherwise the next module's first local type reuses the first one's id and
+    // overwrites its definition (`BlockLocal(0)` twice, found by the ADR-0065 adversarial review).
+    #[test]
+    fn merge_from_keeps_block_local_ids_unique_across_a_chain_of_modules() {
+        fn first_local_id(reg: &TypeDefinitionRegistry, name: &str) -> SymbolId {
+            reg.archived_local_type_ids(name)[0]
+        }
+        fn first_field<'a>(reg: &'a TypeDefinitionRegistry, id: SymbolId) -> Option<&'a str> {
+            reg.struct_fields_by_id(id).map(|f| f[0].name.as_str())
+        }
+
+        // a <- b <- c, as `check_graph` builds them: each module's registry starts empty and
+        // merges the previous module's finished registry.
+        let mut a = TypeDefinitionRegistry::new();
+        a.register_local_struct_fields(
+            "Handle".to_string(),
+            vec![field("pad"), field("fd")],
+            vec!["a".to_string()],
+            Visibility::Public,
+            true,
+        );
+
+        let mut b = TypeDefinitionRegistry::new();
+        b.merge_from(&a);
+        b.register_local_struct_fields(
+            "Handle".to_string(),
+            vec![field("name"), field("fd")],
+            vec!["b".to_string()],
+            Visibility::Public,
+            true,
+        );
+
+        let mut c = TypeDefinitionRegistry::new();
+        c.merge_from(&b);
+        c.register_local_struct_fields(
+            "Handle".to_string(),
+            vec![field("label"), field("fd")],
+            vec!["c".to_string()],
+            Visibility::Public,
+            true,
+        );
+
+        let (id_a, id_b, id_c) = (
+            first_local_id(&a, "Handle"),
+            first_local_id(&b, "Handle"),
+            first_local_id(&c, "Handle"),
+        );
+        assert!(
+            id_a != id_b && id_b != id_c && id_a != id_c,
+            "block-local ids repeated across modules: {id_a:?} {id_b:?} {id_c:?}"
+        );
+        // Every module's definition survives in the registry that reaches the end of the graph.
+        assert_eq!(first_field(&c, id_a), Some("pad"));
+        assert_eq!(first_field(&c, id_b), Some("name"));
+        assert_eq!(first_field(&c, id_c), Some("label"));
     }
 
     // arch-verifies: ["arch.type-inference.requirement-2"]

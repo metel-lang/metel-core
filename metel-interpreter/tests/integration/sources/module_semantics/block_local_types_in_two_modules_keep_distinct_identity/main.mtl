@@ -1,0 +1,19 @@
+import helper::needs_fd;
+import helper::from_helper;
+
+// Same name, different shape: if both modules' `Handle` shared one identity, one definition would
+// overwrite the other in the type registry.
+fun here() -> i64 {
+    record Handle { name: String, fd: i64 }
+    let h := Handle { name = "here", fd = 42 };
+    needs_fd(h)
+}
+
+fun main() {
+    record Handle { fd: i64, spare: i64, extra: i64 }
+    let h := Handle { fd = 7, spare = 1, extra = 2 };
+    assert(from_helper() == 3);
+    assert(here() == 42);
+    assert(needs_fd(h) == 7);
+    println("ok");
+}
