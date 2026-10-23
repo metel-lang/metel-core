@@ -5,6 +5,7 @@ use super::{
     check_type_satisfies_bounds, construct_block, construct_expr, infer_type_to_type,
     peel_type_references, type_to_infer, unify,
 };
+use crate::identity::symbols::SymbolId;
 
 pub(super) fn builtin_pattern_method_expr(
     receiver: TypedExpr,
@@ -97,7 +98,7 @@ pub(super) fn construct_match(
     // reference-peeled, RFC-0108) scrutinee type; `None` here means the scrutinee
     // isn't a known enum, so patterns are left exactly as written.
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> = match &scrutinee_ty {
-        Type::Named(enum_name, ..) => ctx.enum_info_named(enum_name).map(|info| {
+        Type::Named(enum_name, ..) => ctx.enum_info_of(&scrutinee_ty).map(|info| {
             (
                 enum_name.clone(),
                 info.variants
@@ -160,7 +161,7 @@ pub(super) fn construct_match(
         &typed_arms,
         &scrutinee_ty,
         match &scrutinee_ty {
-            Type::Named(name, ..) => ctx.enum_info_named(name),
+            Type::Named(..) => ctx.enum_info_of(&scrutinee_ty),
             _ => None,
         },
         &m.span,
@@ -765,6 +766,7 @@ pub(super) fn extract_type_args_from_type(ty: &Type) -> Vec<Type> {
 // clarity.
 #[allow(clippy::too_many_lines)]
 pub(super) fn construct_enum_literal_ty(
+    enum_id: Option<SymbolId>,
     enum_name: &str,
     variant_name: &str,
     typed_fields: &[(String, TypedExpr)],
@@ -774,8 +776,8 @@ pub(super) fn construct_enum_literal_ty(
 ) -> Result<Type, MetelError> {
     // Resolve concrete type arguments using the same instantiate-then-unify
     // pattern as instantiate_scheme_for_call.
-    let enum_info = ctx
-        .enum_info_named(enum_name)
+    let enum_info = enum_id
+        .and_then(|id| ctx.registry.enum_info_by_id(id))
         .ok_or_else(|| {
             MetelError::type_error(
                 TypeErrorCode::T0003,
@@ -869,18 +871,18 @@ pub(super) fn construct_enum_literal_ty(
         .collect::<Result<_, _>>()?;
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
-    let generic_types_by_name: HashMap<String, Type> = ctx
-        .generic_names_named(enum_name)
+    let generic_types_by_name: HashMap<String, Type> = enum_id
+        .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
         .into_iter()
         .flatten()
         .cloned()
         .zip(concrete_args.iter().cloned())
         .collect();
-    let record_kinds = ctx
-        .get_type_param_record_kinds(enum_name)
+    let record_kinds = enum_id
+        .and_then(|id| ctx.registry.type_param_record_kinds_by_id(id))
         .cloned()
         .unwrap_or_else(|| vec![false; concrete_args.len()]);
-    if let Some(param_bounds) = ctx.type_param_bounds_named(enum_name) {
+    if let Some(param_bounds) = enum_id.and_then(|id| ctx.registry.type_param_bounds_by_id(id)) {
         for (i, bounds) in param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if bounds.is_empty() && !record_kind {
@@ -903,7 +905,9 @@ pub(super) fn construct_enum_literal_ty(
     }
     // T0012 negative bounds: check each resolved type arg does NOT implement
     // the declared negative bounds (RFC-0072, issue #243).
-    if let Some(neg_param_bounds) = ctx.neg_type_param_bounds_named(enum_name) {
+    if let Some(neg_param_bounds) =
+        enum_id.and_then(|id| ctx.registry.neg_type_param_bounds_by_id(id))
+    {
         for (i, neg_bounds) in neg_param_bounds.iter().enumerate() {
             let record_kind = record_kinds.get(i).copied().unwrap_or(false);
             if neg_bounds.is_empty() && !record_kind {
@@ -930,7 +934,7 @@ pub(super) fn construct_enum_literal_ty(
         &InferType::Named(
             enum_name.to_string(),
             infer_args,
-            crate::data::types::NominalId::NONE,
+            crate::data::types::NominalId(enum_id),
         ),
         span,
     )
@@ -944,7 +948,7 @@ pub(super) fn bind_enum_variant_fields(
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
     let enum_info = ctx
-        .enum_info_named(enum_name)
+        .enum_info_of(scrutinee_ty)
         .ok_or_else(|| MetelError::internal(format!("unknown enum `{enum_name}`")))?
         .clone();
     let variant = enum_info

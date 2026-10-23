@@ -1126,6 +1126,67 @@ fn construction_code() -> Vec<(String, String)> {
 /// program's identity annotations. Bundles the identity tables alongside the
 /// typed report since a couple of tests need to rebuild a `TypeCtx` from
 /// them directly, rather than only reading the already-typed IR.
+// metel-core#1568: a type written in an annotation names a block-local declaration that is out of
+// the registry's scope by the time construction runs. The name is resolved once, where it is
+// written, and the declaration's identity travels on the type from then on.
+#[test]
+fn an_annotation_naming_a_block_local_type_carries_its_declaration() {
+    use crate::data::typed_ast::{FunBody, TypedDecl, TypedExpr};
+    let typed = typecheck_source(
+        "local_identity/main.mtl",
+        "fun main() {
+            record Box<T> { v: T }
+            enum Mode { A, B }
+            struct Plain { x: i64 }
+            let b: Box<i64> := Box { v = 1 };
+            let m: Mode := Mode::A;
+            let p: Plain := Plain { x = 1 };
+            let again_b := b;
+            let again_m := m;
+            let again_p := p;
+        }",
+    );
+    let main = typed
+        .report
+        .graph
+        .modules
+        .iter()
+        .flat_map(|module| &module.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(fun) if fun.name == "main" => Some(fun),
+            _ => None,
+        })
+        .unwrap();
+    let FunBody::Typed(body) = &main.body else {
+        panic!("main is not typed")
+    };
+    let carried = |binding: &str| {
+        let value = body
+            .stmts
+            .iter()
+            .find_map(|decl| match decl {
+                TypedDecl::Let(let_decl) if let_decl.name == binding => Some(&let_decl.value),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no `let {binding}`"));
+        let TypedExpr::Ident(_, _, ty, _) = value else {
+            panic!("`{binding}` is not read from a binding: {value:?}")
+        };
+        let crate::data::types::Type::Named(_, _, nominal) = ty else {
+            panic!("`{binding}` is not nominal: {ty:?}")
+        };
+        nominal.get()
+    };
+    for binding in ["again_b", "again_m", "again_p"] {
+        let id = carried(binding)
+            .unwrap_or_else(|| panic!("`{binding}`'s annotated type carries no declaration"));
+        assert!(
+            matches!(id, crate::identity::symbols::SymbolId::BlockLocal(_)),
+            "`{binding}` should carry a block-local id, got {id:?}"
+        );
+    }
+}
+
 struct TypedFixture {
     report: CheckGraphReport,
     normalized: NormalizedModuleGraph,

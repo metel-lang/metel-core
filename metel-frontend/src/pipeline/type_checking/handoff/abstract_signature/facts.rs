@@ -159,6 +159,7 @@ impl FactFreezer<'_> {
             registry: self.registry,
             current_module: self.module,
             current_aspect: None,
+            local_types: &[],
         };
         self.fact_type(&type_expr_to_infer_with_assoc_ctx(
             annotation, &generics, None, &context,

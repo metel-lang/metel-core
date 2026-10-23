@@ -107,6 +107,7 @@ fn type_expr_to_infer_with_ctx(
         registry: ctx.registry(),
         current_module: ctx.current_module_path(),
         current_aspect: None,
+        local_types: &[],
     };
     type_expr_to_infer_with_assoc_ctx(te, generics, None, &assoc_ctx)
 }
@@ -207,6 +208,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
                 registry: ctx.registry(),
                 current_module: ctx.current_module_path(),
                 current_aspect: None,
+                local_types: &[],
             };
             return type_expr_to_infer_with_assoc_ctx(
                 te,

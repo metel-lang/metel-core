@@ -468,6 +468,7 @@ pub(super) fn type_expr_to_infer_for_registry(
         registry,
         current_module,
         current_aspect: None,
+        local_types: &[],
     };
     type_expr_to_infer_with_assoc_ctx(te, generics, None, &assoc_ctx)
 }
@@ -1961,6 +1962,7 @@ fn register_default_aspect_method(
         registry,
         current_module: current_module_path,
         current_aspect: Some(aspect_name),
+        local_types: &[],
     };
     let empty_generics = std::collections::HashMap::new();
     let mut param_types = vec![];

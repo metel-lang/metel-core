@@ -1046,6 +1046,7 @@ pub(super) fn resolve_row_field_type(
         registry,
         current_module,
         current_aspect: None,
+        local_types: &[],
     };
     let inferred = type_expr_to_infer_with_assoc_ctx(ty, &generic_map, None, &assoc_ctx);
     infer_type_to_type(&subst.apply(&inferred), span)

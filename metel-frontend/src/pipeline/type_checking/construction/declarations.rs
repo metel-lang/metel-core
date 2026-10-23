@@ -875,6 +875,7 @@ pub(super) fn construct_impl_method(
         registry: ctx.registry,
         current_module: ctx.current_module,
         current_aspect: None,
+        local_types: &ctx.local_struct_ids,
     };
     let te_to_infer = |te: &TypeExpr| {
         type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
@@ -973,6 +974,7 @@ pub(super) fn construct_default_aspect_method(
         registry: ctx.registry,
         current_module: ctx.current_module,
         current_aspect: None,
+        local_types: &ctx.local_struct_ids,
     };
     let te_to_infer = |te: &TypeExpr| {
         type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
