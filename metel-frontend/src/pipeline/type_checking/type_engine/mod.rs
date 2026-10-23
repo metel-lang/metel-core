@@ -3694,6 +3694,35 @@ impl TypeDefinitionRegistry {
             .collect()
     }
 
+    /// The archived block-local type named `name` whose fields were declared at exactly
+    /// `field_spans`, in order, when there is exactly one.
+    ///
+    /// A declaration is identified by where its fields were declared. Its name and field names are
+    /// not enough: two local types in one module can share both and differ only in their field
+    /// types (metel-core#1553). `None` when no archived entry matches or several do (a type with
+    /// no fields has no spans to tell it from another).
+    pub(crate) fn archived_local_type_id_declared_at(
+        &self,
+        name: &str,
+        field_spans: &[&Span],
+    ) -> Option<SymbolId> {
+        let mut matches = self
+            .archived_local_type_ids(name)
+            .iter()
+            .copied()
+            .filter(|id| {
+                self.struct_fields_by_id(*id).is_some_and(|declared| {
+                    declared.len() == field_spans.len()
+                        && declared
+                            .iter()
+                            .zip(field_spans)
+                            .all(|(field, span)| field.span == **span)
+                })
+            });
+        let only = matches.next()?;
+        matches.next().is_none().then_some(only)
+    }
+
     /// Identity-only fallback for construction; ordinary lexical name
     /// resolution deliberately does not consult this archived index.
     pub(crate) fn archived_local_type_ids(&self, name: &str) -> &[SymbolId] {
@@ -8417,6 +8446,73 @@ mod registry_identity_tests {
         assert_eq!(beta_fields[0].name, "timeout");
         assert_eq!(reg.declared_type_name(alpha), Some("Config"));
         assert_eq!(reg.declared_type_name(beta), Some("Config"));
+    }
+
+    fn field_at(name: &str, at: usize) -> FieldEntry {
+        FieldEntry {
+            span: Span::new(at, at + 1, "local.mtl"),
+            ..field(name)
+        }
+    }
+
+    fn register_local(reg: &mut TypeDefinitionRegistry, name: &str, fields: Vec<FieldEntry>) {
+        reg.register_local_struct_fields(
+            name.to_string(),
+            fields,
+            vec!["m".to_string()],
+            Visibility::Public,
+            true,
+        );
+    }
+
+    // metel-core#1553: a block-local type is identified by where its fields were declared. Two local
+    // types in one module can share a name and field names and differ only in their field types.
+    #[test]
+    fn an_archived_local_type_is_found_by_where_its_fields_were_declared() {
+        let mut reg = TypeDefinitionRegistry::new();
+        register_local(&mut reg, "P", vec![field_at("x", 10)]);
+        register_local(&mut reg, "P", vec![field_at("x", 20)]);
+        let (first, second) = match reg.archived_local_type_ids("P") {
+            [first, second] => (*first, *second),
+            other => panic!("expected two archived types, got {other:?}"),
+        };
+        let at = |n: usize| Span::new(n, n + 1, "local.mtl");
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("P", &[&at(10)]),
+            Some(first)
+        );
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("P", &[&at(20)]),
+            Some(second)
+        );
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("P", &[&at(30)]),
+            None,
+            "no entry was declared there"
+        );
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("Q", &[&at(10)]),
+            None,
+            "no such name"
+        );
+    }
+
+    #[test]
+    fn spans_that_do_not_single_out_one_archived_local_type_find_none() {
+        let at = |n: usize| Span::new(n, n + 1, "local.mtl");
+        let mut reg = TypeDefinitionRegistry::new();
+        // The same declaration registered twice: its spans match both entries, so neither is chosen.
+        register_local(&mut reg, "P", vec![field_at("x", 10)]);
+        register_local(&mut reg, "P", vec![field_at("x", 10)]);
+        assert_eq!(
+            reg.archived_local_type_id_declared_at("P", &[&at(10)]),
+            None
+        );
+        // Types with no fields have no spans to compare: one is unambiguous, two are not.
+        register_local(&mut reg, "E", vec![]);
+        assert!(reg.archived_local_type_id_declared_at("E", &[]).is_some());
+        register_local(&mut reg, "E", vec![]);
+        assert_eq!(reg.archived_local_type_id_declared_at("E", &[]), None);
     }
 
     // metel-core#1546: block-local ids are minted per registry, and each module's registry absorbs

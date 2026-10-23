@@ -256,19 +256,29 @@ impl<'a> ConstructCtx<'a> {
     fn register_local_struct(&mut self, name: String, fields: Vec<(String, Type, Span)>) {
         let field_names: HashSet<&str> =
             fields.iter().map(|(field, _, _)| field.as_str()).collect();
+        let field_spans: Vec<&Span> = fields.iter().map(|(_, _, span)| span).collect();
+        // The declaration is identified by where its fields were declared. Matching on the name and
+        // field names alone takes the first of two same-named local types that share their field
+        // names, and then stamps the second with the first's identity (metel-core#1553). When the
+        // spans do not single out one entry (a type with no fields has none to compare), fall back
+        // to name and field names.
         let owner = self
             .registry
-            .archived_local_type_ids(&name)
-            .iter()
-            .copied()
-            .find(|id| {
+            .archived_local_type_id_declared_at(&name, &field_spans)
+            .or_else(|| {
                 self.registry
-                    .struct_fields_by_id(*id)
-                    .is_some_and(|declared| {
-                        declared.len() == field_names.len()
-                            && declared
-                                .iter()
-                                .all(|field| field_names.contains(field.name.as_str()))
+                    .archived_local_type_ids(&name)
+                    .iter()
+                    .copied()
+                    .find(|id| {
+                        self.registry
+                            .struct_fields_by_id(*id)
+                            .is_some_and(|declared| {
+                                declared.len() == field_names.len()
+                                    && declared
+                                        .iter()
+                                        .all(|field| field_names.contains(field.name.as_str()))
+                            })
                     })
             });
         self.struct_scopes

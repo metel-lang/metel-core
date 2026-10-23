@@ -5319,3 +5319,34 @@ fun main() {}
     assert_eq!(report.violations.len(), 1, "{report:#?}");
     assert_eq!(report.violations[0].binding, "v", "{report:#?}");
 }
+
+// metel-core#1553: two block-local records in one module that share a name and the same field
+// names are different types. A record is field-wise `Copy`, so which of them a value is decides
+// whether `let v := p` moves it, and the checker must use each record's own fields. Construction
+// used to stamp the second declaration with the first one's identity (it matched the archived
+// local types by name and field names, and took the first), so the second was judged by the first's
+// field types.
+#[test]
+fn a_non_copy_local_record_is_moved_even_if_an_earlier_one_with_the_same_shape_is_copy() {
+    let violations = assert_has_violation(
+        r#"
+fun a() -> i64 { record P { x: i64 } let p := P { x = 1 }; let u := p; let v := p; u.x + v.x }
+fun b() -> i64 { record P { x: String } let p := P { x = "s" }; let u := p; let v := p; 0 }
+fun main() { assert(a() == 2); assert(b() == 0); }
+"#,
+        "p",
+    );
+    // Only `b` is wrong: `a`'s record is `Copy`, so exactly one violation is reported.
+    assert_eq!(violations.len(), 1, "{violations:#?}");
+}
+
+#[test]
+fn a_copy_local_record_is_copied_even_if_an_earlier_one_with_the_same_shape_is_not() {
+    assert_no_violations(
+        r#"
+fun a() -> i64 { record P { x: String } let p := P { x = "s" }; let u := p; 0 }
+fun b() -> i64 { record P { x: i64 } let p := P { x = 1 }; let u := p; let v := p; u.x + v.x }
+fun main() { assert(a() == 0); assert(b() == 2); }
+"#,
+    );
+}
