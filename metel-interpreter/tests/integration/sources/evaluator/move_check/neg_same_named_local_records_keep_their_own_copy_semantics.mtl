@@ -1,0 +1,24 @@
+// metel-core#1553: two block-local records with the same name and the same field names are
+// different types. `a`'s record is `Copy` (all fields are), `b`'s is not (`String`), so `b`'s second
+// `let v := p` is a use-after-move. Construction used to stamp `b`'s record with `a`'s identity, so
+// the checker judged it by `a`'s field types and accepted the move.
+fun a() -> i64 {
+    record P { x: i64 }
+    let p := P { x = 1 };
+    let u := p;
+    let v := p;
+    u.x + v.x
+}
+
+fun b() -> i64 {
+    record P { x: String }
+    let p := P { x = "s" };
+    let u := p;
+    let v := p;
+    0
+}
+
+fun main() {
+    assert(a() == 2);
+    assert(b() == 0);
+}

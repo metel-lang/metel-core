@@ -1,0 +1,23 @@
+// metel-core#1553: the converse of `neg_same_named_local_records_keep_their_own_copy_semantics`.
+// `a`'s record has a `String` field and is not `Copy`; `b`'s record, with the same name and field
+// name, has only an `i64` and is. Each is judged by its own fields, so `b` may copy `p` freely.
+fun a() -> i64 {
+    record P { x: String }
+    let p := P { x = "s" };
+    let u := p;
+    0
+}
+
+fun b() -> i64 {
+    record P { x: i64 }
+    let p := P { x = 1 };
+    let u := p;
+    let v := p;
+    u.x + v.x
+}
+
+fun main() {
+    assert(a() == 0);
+    assert(b() == 2);
+    println("ok");
+}
