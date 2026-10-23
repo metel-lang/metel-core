@@ -213,8 +213,35 @@ fn collect_aliases(
     program: &Program,
     out: &mut HashMap<String, RawAlias>,
 ) -> Result<(), MetelError> {
+    // metel-core#1560: an alias is expanded away before name resolution, so the resolver never
+    // sees it beside the struct, enum or aspect that shares its name. Types share one namespace.
+    let declared_types: HashMap<&str, &Span> = program
+        .decls
+        .iter()
+        .filter_map(|decl| match decl {
+            Decl::Struct(d) => Some((d.name.as_str(), &d.span)),
+            Decl::Enum(d) => Some((d.name.as_str(), &d.span)),
+            Decl::Aspect(d) => Some((d.name.as_str(), &d.span)),
+            _ => None,
+        })
+        .collect();
     for decl in &program.decls {
         if let Decl::TypeAlias(ta) = decl {
+            if let Some(other) = declared_types.get(ta.name.as_str()) {
+                let (later, earlier) = if (other.line, other.col) > (ta.span.line, ta.span.col) {
+                    (*other, &ta.span)
+                } else {
+                    (&ta.span, *other)
+                };
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0037,
+                    format!(
+                        "duplicate declaration of type `{}`: already declared at {}:{}:{}",
+                        ta.name, earlier.filename, earlier.line, earlier.col
+                    ),
+                    later,
+                ));
+            }
             let def = RawAlias {
                 params: ta.generics.iter().map(|g| g.name.clone()).collect(),
                 target: ta.target.clone(),

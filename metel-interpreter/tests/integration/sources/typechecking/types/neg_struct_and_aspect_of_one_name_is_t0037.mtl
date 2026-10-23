@@ -1,0 +1,5 @@
+// metel-core#1560
+struct Foo { x: i64 }
+aspect Foo { fun f(&self) -> i64; }
+
+fun main() {}

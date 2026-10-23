@@ -56,6 +56,7 @@ pub enum TypeErrorCode {
     T0034, // Duplicate method definition on overlapping inherent impls (#1322)
     T0035, // Use not granted by a generic definition's declared bounds (RFC-0173)
     T0036, // By-value open-row parameter over a `Drop` brand would drop a narrowed residual (RFC-0179, #949)
+    T0037, // Duplicate top-level declaration in one namespace (#1560)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

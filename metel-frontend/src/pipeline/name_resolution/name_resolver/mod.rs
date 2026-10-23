@@ -123,6 +123,7 @@ pub(crate) fn canonical_path(
 /// Returns an error if an import or export cannot be resolved (e.g. an unknown
 /// module or name) or if a glob-import conflict cannot be settled.
 pub fn resolve(graph: &ModuleGraph) -> Result<Rc<ResolvedNames>, MetelError> {
+    check_duplicate_declarations(graph)?;
     let path_aliases = &graph.path_aliases;
     let known_modules: HashSet<Vec<String>> = graph
         .modules
@@ -393,6 +394,67 @@ fn collect_method_symbol_keys(
         }
         _ => {}
     }
+}
+
+/// The namespace a top-level declaration's name lives in. Types and values do not collide with
+/// each other (`struct Foo` and `fun Foo` coexist); two declarations in one namespace do.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+enum Namespace {
+    Type,
+    Value,
+}
+
+/// A top-level declaration's namespace, name and span, if it declares a name.
+fn namespaced_decl(decl: &Decl) -> Option<(Namespace, &str, &Span)> {
+    match decl {
+        Decl::Struct(d) => Some((Namespace::Type, d.name.as_str(), &d.span)),
+        Decl::Enum(d) => Some((Namespace::Type, d.name.as_str(), &d.span)),
+        Decl::Aspect(d) => Some((Namespace::Type, d.name.as_str(), &d.span)),
+        Decl::TypeAlias(d) => Some((Namespace::Type, d.name.as_str(), &d.span)),
+        Decl::Fun(d) => Some((Namespace::Value, d.name.as_str(), &d.span)),
+        Decl::Let(d) => Some((Namespace::Value, d.name.as_str(), &d.span)),
+        Decl::Mut(d) => Some((Namespace::Value, d.name.as_str(), &d.span)),
+        Decl::LetPattern(_) | Decl::Impl(_) | Decl::Stmt(_) => None,
+    }
+}
+
+/// T0037 (metel-core#1560): a name declared twice in one namespace of one module. Before this
+/// check the second declaration silently shared the first one's `SymbolId` and one of the two was
+/// invisible to everything keyed by it. Two `fun`s of one name are an overload set, whose
+/// duplicates (same parameter types) are `T0011`'s, so they are not reported here.
+// limit: ["LIMIT-NAME-RESOLUTION-005"]
+fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
+    for loaded in &graph.modules {
+        let mut seen: HashMap<(Namespace, &str), (&Decl, &Span)> = HashMap::new();
+        for decl in &loaded.program.decls {
+            let Some((namespace, name, span)) = namespaced_decl(decl) else {
+                continue;
+            };
+            // `let _ := ...` discards its value; it binds nothing, so repeating it is fine.
+            if name == "_" {
+                continue;
+            }
+            let Some((first_decl, first)) = seen.insert((namespace, name), (decl, span)) else {
+                continue;
+            };
+            if matches!((first_decl, decl), (Decl::Fun(_), Decl::Fun(_))) {
+                continue;
+            }
+            let what = match namespace {
+                Namespace::Type => "type",
+                Namespace::Value => "value",
+            };
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0037,
+                format!(
+                    "duplicate declaration of {what} `{name}`: already declared at {}:{}:{}",
+                    first.filename, first.line, first.col
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Returns the declaration span for a named top-level declaration, if it has one.

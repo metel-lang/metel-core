@@ -1,0 +1,15 @@
+// metel-core#1560: types and values are separate namespaces, so a struct and a function of one name
+// coexist, and each use finds its own.
+struct Foo { x: i64 }
+fun Foo() -> i64 { 5 }
+
+enum Bar { A }
+let Bar := 7;
+
+fun main() {
+    let a := Foo { x = 1 };
+    assert(a.x == 1);
+    assert(Foo() == 5);
+    let b := Bar::A;
+    assert(Bar == 7);
+}

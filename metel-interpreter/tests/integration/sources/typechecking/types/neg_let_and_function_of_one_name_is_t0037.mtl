@@ -1,0 +1,6 @@
+// metel-core#1560: `let`, `var` and `fun` share the value namespace. Two `fun`s of one name are an
+// overload set (their duplicates are T0011), so only a `fun` beside a binding is reported here.
+let x := 1;
+fun x() -> i64 { 2 }
+
+fun main() {}
