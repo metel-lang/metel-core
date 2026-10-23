@@ -1,0 +1,15 @@
+// metel-core#1555 (the shape #1553 fixed): an inner block-local record shadows an outer one with the
+// same name and field names. The outer one is `Copy`; the inner one has a `String` field and is not,
+// so moving `inner` twice is a use-after-move.
+fun main() {
+    record P { x: i64 }
+    let outer := P { x = 1 };
+    let o1 := outer;
+    let o2 := outer;
+    if (true) {
+        record P { x: String }
+        let inner := P { x = "s" };
+        let i1 := inner;
+        let i2 := inner;
+    }
+}

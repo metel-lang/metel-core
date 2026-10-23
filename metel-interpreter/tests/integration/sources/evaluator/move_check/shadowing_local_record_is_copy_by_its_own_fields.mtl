@@ -1,0 +1,15 @@
+// metel-core#1555: the converse of `neg_shadowing_local_record_keeps_its_own_copy_semantics`. The
+// outer record has a `String` field and is not `Copy`; the inner one that shadows it has only an
+// `i64` and is, so the inner value may be copied twice.
+fun main() {
+    record P { x: String }
+    let outer := P { x = "s" };
+    let o1 := outer;
+    if (true) {
+        record P { x: i64 }
+        let inner := P { x = 1 };
+        let i1 := inner;
+        let i2 := inner;
+    }
+    println("ok");
+}
