@@ -1,0 +1,8 @@
+// metel-core#1565: a struct pattern on a local struct is checked against that struct's fields.
+fun main() {
+    struct Point { x: i64 }
+    let p := Point { x = 1 };
+    match (p) {
+        Point { nope } => { },
+    }
+}
