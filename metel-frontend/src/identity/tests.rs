@@ -11,6 +11,8 @@
 //!   off a name.
 
 use std::collections::HashMap;
+
+use crate::identity::symbols::Namespace;
 use std::path::PathBuf;
 
 use crate::data::ast::Span;
@@ -36,8 +38,8 @@ fn inherited_default_locals_are_distinct_across_implementation_modules() {
     let crate::data::ast::Decl::Fun(method) = &program.decls[1] else {
         panic!("function")
     };
-    let source_method = fixture.names.symbols[&(vec![], "body".to_string())];
-    let target = fixture.names.symbols[&(vec![], "Box".to_string())];
+    let source_method = fixture.names.symbols[&(vec![], Namespace::Value, "body".to_string())];
+    let target = fixture.names.symbols[&(vec![], Namespace::Type, "Box".to_string())];
     let allocate = |module: &str| {
         super::allocate_inherited_body(
             source_method,
@@ -375,7 +377,7 @@ fn a_use_of_a_global_declaration_is_classified_as_global() {
     let helper_sym = *a
         .names
         .symbols
-        .get(&(vec![], "helper".to_string()))
+        .get(&(vec![], Namespace::Value, "helper".to_string()))
         .expect("helper interned");
 
     // A lexical local shadowing `helper` would still win; here there is none,
@@ -755,7 +757,11 @@ fn module_qualified_path_segment_resolves_to_its_module() {
     ));
     // ...it is a value reference to `net::connect` itself (metel-core#1050):
     // qualified-path go-to-definition needs this hit, not just the prefix's.
-    let connect_sym = names.symbols[&(vec!["net".to_string()], "connect".to_string())];
+    let connect_sym = names.symbols[&(
+        vec!["net".to_string()],
+        Namespace::Value,
+        "connect".to_string(),
+    )];
     let PositionHit::Reference(rid) = alloc
         .positions
         .resolve("app.mtl", connect_at)

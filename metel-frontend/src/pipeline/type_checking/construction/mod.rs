@@ -13,7 +13,7 @@ use crate::data::typed_ast::{
     TypedProgram, TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::data::types::Type;
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::identity::{BindingId, FieldId, FrozenIdentity, VariantId};
 use crate::ownership::flow_state::FlowState;
 use crate::pipeline::type_checking::type_engine::{
@@ -133,7 +133,7 @@ struct ConstructCtx<'a> {
     /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
     /// `None` for single-module pipelines that don't go through `check_graph`.
     // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
-    symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Option<&'a crate::identity::symbols::SymbolMap>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's `SymbolId`.
@@ -193,7 +193,7 @@ impl<'a> ConstructCtx<'a> {
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
         // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
-        symbols: Option<&'a HashMap<(Vec<String>, String), SymbolId>>,
+        symbols: Option<&'a crate::identity::symbols::SymbolMap>,
         overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
         // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
@@ -504,15 +504,21 @@ impl<'a> ConstructCtx<'a> {
             })
         {
             return symbols
-                .get(&(module.clone(), type_name.to_string()))
+                .get(&(module.clone(), Namespace::Type, type_name.to_string()))
                 .copied();
         }
         // Builtin types (impl on i64/String/List/…) live in std::core, pre-seeded
         // with their SYM_TYPE_* ids; fall back there, then the current module.
         let std_core = vec!["std".to_string(), "core".to_string()];
         symbols
-            .get(&(std_core, type_name.to_string()))
-            .or_else(|| symbols.get(&(self.current_module.to_vec(), type_name.to_string())))
+            .get(&(std_core, Namespace::Type, type_name.to_string()))
+            .or_else(|| {
+                symbols.get(&(
+                    self.current_module.to_vec(),
+                    Namespace::Type,
+                    type_name.to_string(),
+                ))
+            })
             .copied()
     }
 
@@ -1114,7 +1120,7 @@ pub(super) fn construct_program(
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
     // resolution-freeze-allow: the resolver's symbol table passed into construction; ADR-0054 step 6.
-    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Option<&crate::identity::symbols::SymbolMap>,
     overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
     // resolution-freeze-allow: the resolver's reference map passed into construction; ADR-0054 step 6.
@@ -1162,7 +1168,7 @@ pub(super) fn construct_program(
             && let Some(syms) = symbols
         {
             f.def_id = syms
-                .get(&(current_module.to_vec(), f.name.clone()))
+                .get(&(current_module.to_vec(), Namespace::Value, f.name.clone()))
                 .copied();
         }
         // Same identity assignment for top-level `let`/`mut` (ADR-0042): only
@@ -1172,14 +1178,14 @@ pub(super) fn construct_program(
             && let Some(syms) = symbols
         {
             ld.def_id = syms
-                .get(&(current_module.to_vec(), ld.name.clone()))
+                .get(&(current_module.to_vec(), Namespace::Value, ld.name.clone()))
                 .copied();
         }
         if let TypedDecl::Mut(md) = &mut typed
             && let Some(syms) = symbols
         {
             md.def_id = syms
-                .get(&(current_module.to_vec(), md.name.clone()))
+                .get(&(current_module.to_vec(), Namespace::Value, md.name.clone()))
                 .copied();
         }
         out.push(typed);

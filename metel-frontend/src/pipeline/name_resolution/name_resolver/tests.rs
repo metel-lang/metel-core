@@ -2,6 +2,7 @@ use super::*;
 use crate::data::ast::{
     Block, Decl, FunDecl, ImportDecl, ImportPath, ImportTree, PathRoot, Program, Span, Visibility,
 };
+use crate::identity::symbols::Namespace;
 use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 use std::path::PathBuf;
 
@@ -98,7 +99,7 @@ fn resolves_explicit_item_import() {
     let root_scope = &names.scopes[&vec![]];
     let binding = root_scope
         .explicit
-        .get("Token")
+        .get(&(Namespace::Value, "Token".to_string()))
         .expect("Token should be bound");
     assert_eq!(binding.source_module, vec!["parser"]);
     assert_eq!(binding.source_name, "Token");
@@ -128,14 +129,18 @@ fn resolves_alias_import() {
     let names = resolve(&graph).unwrap();
     let root_scope = &names.scopes[&vec![]];
     assert!(
-        root_scope.explicit.contains_key("Tok"),
+        root_scope
+            .explicit
+            .contains_key(&(Namespace::Value, "Tok".to_string())),
         "alias Tok should be bound"
     );
     assert!(
-        !root_scope.explicit.contains_key("Token"),
+        !root_scope
+            .explicit
+            .contains_key(&(Namespace::Value, "Token".to_string())),
         "original name Token should not be bound"
     );
-    let binding = &root_scope.explicit["Tok"];
+    let binding = &root_scope.explicit[&(Namespace::Value, "Tok".to_string())];
     assert_eq!(binding.source_name, "Token");
 }
 
@@ -167,8 +172,16 @@ fn resolves_group_import() {
 
     let names = resolve(&graph).unwrap();
     let root_scope = &names.scopes[&vec![]];
-    assert!(root_scope.explicit.contains_key("Ast"));
-    assert!(root_scope.explicit.contains_key("Token"));
+    assert!(
+        root_scope
+            .explicit
+            .contains_key(&(Namespace::Value, "Ast".to_string()))
+    );
+    assert!(
+        root_scope
+            .explicit
+            .contains_key(&(Namespace::Value, "Token".to_string()))
+    );
 }
 
 #[test]
@@ -221,7 +234,7 @@ fn resolves_module_handle_import() {
     let root_scope = &names.scopes[&vec![]];
     let binding = root_scope
         .explicit
-        .get("parser")
+        .get(&(Namespace::Type, "parser".to_string()))
         .expect("parser handle should be bound");
     assert_eq!(binding.kind, BindingKind::Module);
     assert_eq!(binding.source_module, vec!["parser"]);
@@ -291,7 +304,9 @@ fn private_item_import_is_recorded_for_typechecker() {
     let names = resolve(&graph).expect("name_resolver should not reject private imports");
     let root_scope = names.scopes.get(&vec![]).expect("root scope should exist");
     assert!(
-        root_scope.explicit.contains_key("Token"),
+        root_scope
+            .explicit
+            .contains_key(&(Namespace::Type, "Token".to_string())),
         "Token binding should be recorded so the typechecker can produce T0009"
     );
 }
@@ -321,7 +336,10 @@ fn resolves_root_absolute_path() {
 
     let names = resolve(&graph).unwrap();
     let root_scope = &names.scopes[&vec![]];
-    let binding = root_scope.explicit.get("Ast").expect("Ast should be bound");
+    let binding = root_scope
+        .explicit
+        .get(&(Namespace::Value, "Ast".to_string()))
+        .expect("Ast should be bound");
     assert_eq!(binding.source_module, vec!["parser"]);
 }
 
@@ -352,7 +370,7 @@ fn resolves_self_relative_path() {
     let parser_scope = &names.scopes[&vec!["parser".to_string()]];
     let binding = parser_scope
         .explicit
-        .get("Thing")
+        .get(&(Namespace::Value, "Thing".to_string()))
         .expect("Thing should be bound");
     assert_eq!(binding.source_module, vec!["parser", "child"]);
 }
@@ -381,7 +399,7 @@ fn resolves_super_relative_path() {
     let child_scope = &names.scopes[&vec!["parser".to_string(), "child".to_string()]];
     let binding = child_scope
         .explicit
-        .get("Token")
+        .get(&(Namespace::Value, "Token".to_string()))
         .expect("Token should be bound");
     assert_eq!(binding.source_module, vec!["parser"]);
 }
@@ -428,7 +446,9 @@ fn facade_re_exports_item_for_callers() {
     // parser's re_exports should include Ast
     let parser_scope = &names.scopes[&vec!["parser".to_string()]];
     assert!(
-        parser_scope.re_exports.contains_key("Ast"),
+        parser_scope
+            .re_exports
+            .contains_key(&(Namespace::Value, "Ast".to_string())),
         "parser should re-export Ast"
     );
     // root should have imported Ast from parser — but the binding's real identity
@@ -439,7 +459,7 @@ fn facade_re_exports_item_for_callers() {
     let root_scope = &names.scopes[&vec![]];
     let binding = root_scope
         .explicit
-        .get("Ast")
+        .get(&(Namespace::Value, "Ast".to_string()))
         .expect("Ast should be importable from facade");
     assert_eq!(binding.source_module, vec!["parser", "ast"]);
     // The real regression check (ADR-0042): this binding's id must be the *same*
@@ -448,6 +468,7 @@ fn facade_re_exports_item_for_callers() {
     // under, since `Ast` isn't actually declared in `parser` itself.
     let real_id = names.symbols[&(
         vec!["parser".to_string(), "ast".to_string()],
+        Namespace::Value,
         "Ast".to_string(),
     )];
     assert_eq!(
@@ -480,11 +501,15 @@ fn re_export_alias_is_visible_not_original() {
     let names = resolve(&graph).unwrap();
     let parser_scope = &names.scopes[&vec!["parser".to_string()]];
     assert!(
-        parser_scope.re_exports.contains_key("Tree"),
+        parser_scope
+            .re_exports
+            .contains_key(&(Namespace::Value, "Tree".to_string())),
         "aliased re-export Tree should appear"
     );
     assert!(
-        !parser_scope.re_exports.contains_key("Ast"),
+        !parser_scope
+            .re_exports
+            .contains_key(&(Namespace::Value, "Ast".to_string())),
         "original name Ast should not appear"
     );
 }
@@ -544,11 +569,23 @@ fn glob_re_export_includes_all_public_names() {
 
     let names = resolve(&graph).unwrap();
     let parser_scope = &names.scopes[&vec!["parser".to_string()]];
-    assert!(parser_scope.re_exports.contains_key("Ast"));
-    assert!(parser_scope.re_exports.contains_key("Token"));
+    assert!(
+        parser_scope
+            .re_exports
+            .contains_key(&(Namespace::Value, "Ast".to_string()))
+    );
+    assert!(
+        parser_scope
+            .re_exports
+            .contains_key(&(Namespace::Value, "Token".to_string()))
+    );
     // root can import Ast from parser
     let root_scope = &names.scopes[&vec![]];
-    assert!(root_scope.explicit.contains_key("Ast"));
+    assert!(
+        root_scope
+            .explicit
+            .contains_key(&(Namespace::Value, "Ast".to_string()))
+    );
 }
 
 // ── SymbolId consistency ──────────────────────────────────────────────────
@@ -588,8 +625,11 @@ fn same_declaration_gets_same_symbol_id_regardless_of_importer() {
     ]);
 
     let names = resolve(&graph).unwrap();
-    let root_id = names.scopes[&vec![]].explicit["Token"].symbol_id;
-    let other_id = names.scopes[&vec!["other".to_string()]].explicit["Token"].symbol_id;
+    let root_id =
+        names.scopes[&vec![]].explicit[&(Namespace::Value, "Token".to_string())].symbol_id;
+    let other_id = names.scopes[&vec!["other".to_string()]].explicit
+        [&(Namespace::Value, "Token".to_string())]
+        .symbol_id;
     assert_eq!(
         root_id, other_id,
         "same declaration must get same SymbolId in both importers"
@@ -631,8 +671,10 @@ fn aliased_import_has_same_symbol_id_as_direct_import() {
     ]);
 
     let names = resolve(&graph).unwrap();
-    let alias_id = names.scopes[&vec![]].explicit["Tok"].symbol_id;
-    let direct_id = names.scopes[&vec!["other".to_string()]].explicit["Token"].symbol_id;
+    let alias_id = names.scopes[&vec![]].explicit[&(Namespace::Value, "Tok".to_string())].symbol_id;
+    let direct_id = names.scopes[&vec!["other".to_string()]].explicit
+        [&(Namespace::Value, "Token".to_string())]
+        .symbol_id;
     assert_eq!(
         alias_id, direct_id,
         "aliased import should have same SymbolId as direct import"
@@ -668,8 +710,8 @@ fn distinct_declarations_get_distinct_symbol_ids() {
 
     let names = resolve(&graph).unwrap();
     let root_scope = &names.scopes[&vec![]];
-    let token_id = root_scope.explicit["Token"].symbol_id;
-    let ast_id = root_scope.explicit["Ast"].symbol_id;
+    let token_id = root_scope.explicit[&(Namespace::Value, "Token".to_string())].symbol_id;
+    let ast_id = root_scope.explicit[&(Namespace::Value, "Ast".to_string())].symbol_id;
     assert_ne!(
         token_id, ast_id,
         "distinct declarations must have distinct SymbolIds"
@@ -686,7 +728,7 @@ fn definitions_index_maps_symbol_to_declaration_span() {
     )]);
 
     let names = resolve(&graph).unwrap();
-    let foo_id = names.symbols[&(vec!["lib".to_string()], "foo".to_string())];
+    let foo_id = names.symbols[&(vec!["lib".to_string()], Namespace::Value, "foo".to_string())];
     assert!(
         names.definitions.contains_key(&foo_id),
         "definitions should contain the SymbolId of `foo`"
@@ -703,7 +745,7 @@ fn definitions_index_covers_every_declared_symbol() {
 
     let names = resolve(&graph).unwrap();
     for name in ["a", "b", "c"] {
-        let id = names.symbols[&(vec!["lib".to_string()], name.to_string())];
+        let id = names.symbols[&(vec!["lib".to_string()], Namespace::Value, name.to_string())];
         assert!(
             names.definitions.contains_key(&id),
             "definitions should contain `{name}`"
@@ -724,9 +766,9 @@ fn interns_impl_and_aspect_method_symbols() {
     let graph = make_graph(vec![(vec![], program)]);
     let names = resolve(&graph).unwrap();
 
-    let inherent = names.symbols[&(vec![], "Foo::bar".to_string())];
-    let aspect_impl = names.symbols[&(vec![], "Foo::Greet::hi".to_string())];
-    let aspect_decl = names.symbols[&(vec![], "Greet::hi".to_string())];
+    let inherent = names.symbols[&(vec![], Namespace::Value, "Foo::bar".to_string())];
+    let aspect_impl = names.symbols[&(vec![], Namespace::Value, "Foo::Greet::hi".to_string())];
+    let aspect_decl = names.symbols[&(vec![], Namespace::Value, "Greet::hi".to_string())];
 
     for id in [inherent, aspect_impl, aspect_decl] {
         assert!(
@@ -763,8 +805,13 @@ fn symbol_id_is_stable_in_symbol_table() {
     ]);
 
     let names = resolve(&graph).unwrap();
-    let binding_id = names.scopes[&vec![]].explicit["Token"].symbol_id;
-    let table_id = names.symbols[&(vec!["parser".to_string()], "Token".to_string())];
+    let binding_id =
+        names.scopes[&vec![]].explicit[&(Namespace::Value, "Token".to_string())].symbol_id;
+    let table_id = names.symbols[&(
+        vec!["parser".to_string()],
+        Namespace::Value,
+        "Token".to_string(),
+    )];
     assert_eq!(
         binding_id, table_id,
         "SymbolId in binding must match entry in names.symbols"
@@ -794,8 +841,8 @@ fn symbol_id_is_independent_of_module_resolution_order() {
     let forward = resolve(&make_graph(vec![a.clone(), b.clone()])).unwrap();
     let reversed = resolve(&make_graph(vec![b, a])).unwrap();
 
-    let a_key = (vec!["a".to_string()], "A".to_string());
-    let b_key = (vec!["b".to_string()], "B".to_string());
+    let a_key = (vec!["a".to_string()], Namespace::Value, "A".to_string());
+    let b_key = (vec!["b".to_string()], Namespace::Value, "B".to_string());
     assert_eq!(
         forward.symbols[&a_key], reversed.symbols[&a_key],
         "a::A's SymbolId changed when module resolution order was reversed"

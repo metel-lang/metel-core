@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use crate::data::ast::{Decl, Expr, FunDecl, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::data::types::Type;
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::type_checking::type_engine::{
     OverloadEntry, OverloadTable, TypeDefinitionRegistry, TypeVar,
 };
@@ -39,7 +39,7 @@ enum OverloadIds<'a> {
     /// A module's own table: a definition's id is the overloaded name's `Declared` symbol in
     /// that module (from the resolver) and the definition's position among that name's overloads.
     Module {
-        symbols: &'a HashMap<(Vec<String>, String), SymbolId>,
+        symbols: &'a crate::identity::symbols::SymbolMap,
         module: &'a [String],
     },
 }
@@ -60,7 +60,7 @@ impl OverloadIds<'_> {
             }
             OverloadIds::Module { symbols, module } => {
                 let group = symbols
-                    .get(&(module.to_vec(), name.to_string()))
+                    .get(&(module.to_vec(), Namespace::Value, name.to_string()))
                     .copied()
                     .ok_or_else(|| {
                         MetelError::internal(format!(
@@ -125,7 +125,7 @@ pub(super) fn build_overload_table(
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
     imported: &OverloadTable,
-    symbols: &HashMap<(Vec<String>, String), SymbolId>,
+    symbols: &crate::identity::symbols::SymbolMap,
 ) -> Result<OverloadTable, MetelError> {
     let mut table = build_table_from_decls(
         decls,

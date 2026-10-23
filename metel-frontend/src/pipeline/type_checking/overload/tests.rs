@@ -22,7 +22,7 @@ fn build_for_module(
     let module: Vec<String> = module.iter().map(|m| (*m).to_string()).collect();
     for decl in &program.decls {
         if let Decl::Fun(f) = decl {
-            table.intern(&module, &f.name);
+            table.intern(&module, crate::identity::symbols::Namespace::Value, &f.name);
         }
     }
     build_overload_table(

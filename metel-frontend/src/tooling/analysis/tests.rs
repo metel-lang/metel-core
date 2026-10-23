@@ -1,4 +1,5 @@
 use super::*;
+use crate::identity::symbols::Namespace;
 use crate::pipeline::parsing::module_loader::InMemorySourceProvider;
 
 #[test]
@@ -30,10 +31,9 @@ mod member_ids_on_typed_ir {
     }
 
     fn root_sym(analysis: &Analysis, name: &str) -> crate::identity::symbols::SymbolId {
-        *analysis
-            .names
-            .symbols
-            .get(&(vec![], name.to_string()))
+        *[Namespace::Value, Namespace::Type]
+            .into_iter()
+            .find_map(|ns| analysis.names.symbols.get(&(vec![], ns, name.to_string())))
             .unwrap_or_else(|| panic!("`{name}` should have a symbol"))
     }
 

@@ -1,3 +1,4 @@
+use crate::identity::symbols::Namespace;
 use crate::pipeline::name_resolution::name_resolver::resolve;
 use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 use std::collections::HashMap;
@@ -25,7 +26,7 @@ fn resolves_top_level_call_to_its_symbol_id() {
          fun main() { let x := 1; helper(); }",
     );
     let names = resolve(&graph).unwrap();
-    let helper_id = names.symbols[&(vec![], "helper".to_string())];
+    let helper_id = names.symbols[&(vec![], Namespace::Value, "helper".to_string())];
     // Exactly one bare-Ident reference resolves to a Def: the `helper` call site.
     // The `let x` binding and the `x`/literal sites are locals or non-references.
     let resolved: Vec<_> = names.references.values().copied().collect();
@@ -44,7 +45,7 @@ fn local_binding_shadows_top_level_declaration() {
          fun main() { let foo := 2; foo; }",
     );
     let names = resolve(&graph).unwrap();
-    let foo_id = names.symbols[&(vec![], "foo".to_string())];
+    let foo_id = names.symbols[&(vec![], Namespace::Value, "foo".to_string())];
     assert!(
         !names.references.values().any(|&id| id == foo_id),
         "a local `foo` must shadow the top-level `foo`, so no reference resolves to it"
@@ -66,7 +67,7 @@ fn overloaded_name_reference_does_not_resolve_to_a_stale_id() {
          fun main() { let f := print; }",
     );
     let names = resolve(&graph).unwrap();
-    let stale_id = names.symbols[&(vec![], "print".to_string())];
+    let stale_id = names.symbols[&(vec![], Namespace::Value, "print".to_string())];
     assert!(
         !names.references.values().any(|&id| id == stale_id),
         "a reference to an overloaded name must not resolve to the interning \

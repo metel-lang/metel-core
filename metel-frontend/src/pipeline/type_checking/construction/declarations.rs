@@ -7,6 +7,7 @@ use super::{
     fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
     maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
 };
+use crate::identity::symbols::Namespace;
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
 /// straight off the source `FunDecl` (methods carry no top-level identity).
@@ -64,7 +65,13 @@ fn closure_definition(
         .or_else(|| {
             ctx.symbols
                 .filter(|_| ctx.env.len() == 1)
-                .and_then(|symbols| symbols.get(&(ctx.current_module.to_vec(), ld.name.clone())))
+                .and_then(|symbols| {
+                    symbols.get(&(
+                        ctx.current_module.to_vec(),
+                        Namespace::Value,
+                        ld.name.clone(),
+                    ))
+                })
                 .copied()
                 .map(crate::identity::BindingId::Global)
         });
@@ -482,7 +489,11 @@ pub(super) fn construct_fun_decl(
                 ctx.symbols
                     .filter(|_| ctx.env.len() == 1)
                     .and_then(|symbols| {
-                        symbols.get(&(ctx.current_module.to_vec(), fun.name.clone()))
+                        symbols.get(&(
+                            ctx.current_module.to_vec(),
+                            Namespace::Value,
+                            fun.name.clone(),
+                        ))
                     })
                     .copied()
                     .map(crate::identity::BindingId::Global)
@@ -641,7 +652,11 @@ pub(super) fn construct_impl_decl(
             .registry
             .aspect_declaring_module_in(ctx.current_module, aspect_name)?;
         ctx.symbols?
-            .get(&(declaring_module.clone(), aspect_name.to_string()))
+            .get(&(
+                declaring_module.clone(),
+                Namespace::Type,
+                aspect_name.to_string(),
+            ))
             .copied()
     });
 
@@ -761,15 +776,21 @@ fn inherited_method_identity(
         .registry
         .aspect_declaring_module_in(ctx.current_module, aspect)?;
     let aspect_identity = ctx.registry.resolve_type_id(ctx.current_module, aspect)?;
-    let aspect_name = ctx.symbols?.iter().find_map(|((module, name), id)| {
-        (module == declaring_module && *id == aspect_identity).then_some(name.as_str())
-    })?;
+    let aspect_name = ctx
+        .symbols?
+        .iter()
+        .find_map(|((module, namespace, name), id)| {
+            (module == declaring_module && *namespace == Namespace::Type && *id == aspect_identity)
+                .then_some(name.as_str())
+        })?;
     let method_name = crate::pipeline::name_resolution::name_resolver::method_symbol_name(
         aspect_name,
         None,
         &method.name,
     );
-    let source_method = *ctx.symbols?.get(&(declaring_module.clone(), method_name))?;
+    let source_method =
+        *ctx.symbols?
+            .get(&(declaring_module.clone(), Namespace::Value, method_name))?;
     let target = match &implementation.target_type {
         TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
             crate::identity::InheritedMethodTarget::Record

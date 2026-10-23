@@ -1208,13 +1208,55 @@ fn impl_methods_for_different_instantiations_get_different_symbol_ids() {
         *typed
             .names
             .symbols
-            .get(&(vec![], key.to_string()))
+            .get(&(
+                vec![],
+                crate::identity::symbols::Namespace::Value,
+                key.to_string(),
+            ))
             .unwrap_or_else(|| panic!("no symbol for `{key}`"))
     };
     assert_ne!(id("W<i64>::Tag::t"), id("W<String>::Tag::t"));
     assert_ne!(id("S::Conv<i64>::conv"), id("S::Conv<String>::conv"));
     // A target with no arguments keeps its bare name.
     id("S::plain");
+}
+
+// metel-core#1571: a struct and a function of one name are different declarations, in different
+// namespaces, and so have different SymbolIds, each with its own definition span; a call to the
+// function resolves to the function's id.
+#[test]
+fn a_type_and_a_function_of_one_name_get_distinct_symbol_ids() {
+    use crate::identity::symbols::Namespace;
+    let typed = typecheck_source(
+        "namespaces/main.mtl",
+        "struct Foo { x: i64 }
+        fun Foo() -> i64 { 5 }
+        fun main() { let a := Foo(); }",
+    );
+    let symbol = |namespace| {
+        *typed
+            .names
+            .symbols
+            .get(&(vec![], namespace, "Foo".to_string()))
+            .unwrap_or_else(|| panic!("no {namespace:?} symbol for `Foo`"))
+    };
+    let (type_id, value_id) = (symbol(Namespace::Type), symbol(Namespace::Value));
+    assert_ne!(type_id, value_id);
+    let span = |id| &typed.names.definitions[&id];
+    assert_ne!(
+        (span(type_id).line, span(type_id).col),
+        (span(value_id).line, span(value_id).col),
+        "each declaration keeps its own definition span"
+    );
+    let referenced: Vec<_> = typed.names.references.values().copied().collect();
+    assert!(
+        referenced.contains(&value_id),
+        "the call `Foo()` resolves to the function"
+    );
+    assert!(
+        !referenced.contains(&type_id),
+        "nothing in the program refers to the struct"
+    );
 }
 
 struct TypedFixture {

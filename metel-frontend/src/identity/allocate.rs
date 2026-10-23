@@ -20,6 +20,8 @@
 
 use std::collections::HashMap;
 
+use crate::identity::symbols::Namespace;
+
 use crate::data::ast::{
     AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
 };
@@ -49,7 +51,7 @@ pub struct ModuleNav<'a> {
     pub scope: Option<&'a ModuleScope>,
     /// The name resolver's canonical `(module path, name) -> SymbolId` table,
     /// for resolving a qualified path's own item segment (metel-core#1050).
-    pub symbols: &'a HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    pub symbols: &'a crate::identity::symbols::SymbolMap,
 }
 
 /// Graph-wide inputs for module-segment resolution, from which
@@ -73,7 +75,9 @@ impl ModuleNav<'_> {
             return None;
         }
         // A leading segment bound as a whole-module handle in this scope.
-        if let Some(binding) = self.scope.and_then(|s| s.explicit.get(first))
+        if let Some(binding) = self
+            .scope
+            .and_then(|s| s.explicit.get(&(Namespace::Type, first.clone())))
             && binding.kind == BindingKind::Module
         {
             let mut path = binding.source_module.clone();
@@ -111,7 +115,14 @@ impl ModuleNav<'_> {
         let prefix_len = segments.len().checked_sub(1).filter(|&n| n > 0)?;
         let module_path = self.prefix_module_path(segments, prefix_len)?;
         let item_name = segments.last()?;
-        let sym = *self.symbols.get(&(module_path, item_name.clone()))?;
+        // A qualified path's item is a value (`m::f`) or, failing that, a type (`m::Unit`).
+        let sym = [Namespace::Value, Namespace::Type]
+            .into_iter()
+            .find_map(|ns| {
+                self.symbols
+                    .get(&(module_path.clone(), ns, item_name.clone()))
+            })?;
+        let sym = *sym;
         Some((segments.len() - 1, sym))
     }
 }
@@ -184,7 +195,7 @@ pub fn allocate_module(
     for decl in decls {
         match decl {
             Decl::Fun(fun) => {
-                let key = (module_path.to_vec(), fun.name.clone());
+                let key = (module_path.to_vec(), Namespace::Value, fun.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
                     walk_body(
                         BindingId::Global(sym),
@@ -197,13 +208,13 @@ pub fn allocate_module(
                 }
             }
             Decl::Let(d) => {
-                let key = (module_path.to_vec(), d.name.clone());
+                let key = (module_path.to_vec(), Namespace::Value, d.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
             }
             Decl::Mut(d) => {
-                let key = (module_path.to_vec(), d.name.clone());
+                let key = (module_path.to_vec(), Namespace::Value, d.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
@@ -214,7 +225,7 @@ pub fn allocate_module(
                     else {
                         continue;
                     };
-                    let key = (module_path.to_vec(), method_name);
+                    let key = (module_path.to_vec(), Namespace::Value, method_name);
                     if let Some(&sym) = names.symbols.get(&key) {
                         let ordinal = method_ordinals.entry(sym).or_default();
                         let owner = allocate_method_body(sym, *ordinal, method, interner, &mut acc);
@@ -231,7 +242,7 @@ pub fn allocate_module(
                         continue;
                     };
                     let method_name = method_symbol_name(&aspect.name, None, &method.name);
-                    let key = (module_path.to_vec(), method_name);
+                    let key = (module_path.to_vec(), Namespace::Value, method_name);
                     if let Some(&sym) = names.symbols.get(&key) {
                         walk_body(
                             BindingId::Global(sym),

@@ -44,7 +44,7 @@ use std::fmt;
 ///
 /// ```compile_fail,E0624
 /// use metel_frontend::identity::symbols::{SymbolId, SymbolTable};
-/// let group = SymbolTable::new().intern(&[], "f");
+/// let group = SymbolTable::new().intern(&[], Namespace::Value, "f");
 /// let _ = SymbolId::overload(group, 0);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -288,11 +288,23 @@ impl BlockLocalAllocator {
 
 // ── SymbolTable ───────────────────────────────────────────────────────────────
 
-/// Intern table: maps `(source_module, source_name)` → stable `SymbolId`.
+/// Which of a module's two top-level namespaces a name lives in (metel-core#1560, #1571).
+/// Structs, enums, aspects and type aliases are `Type`; functions, `let` and `var` are `Value`.
+/// A type and a value may share a name; each gets its own `SymbolId`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Namespace {
+    Type,
+    Value,
+}
+
+/// The interned symbols: `(module, namespace, name)` to `SymbolId`.
+pub type SymbolMap = HashMap<(Vec<String>, Namespace, String), SymbolId>;
+
+/// Intern table: maps `(source_module, namespace, source_name)` → stable `SymbolId`.
 /// Pre-populated with builtin entries so that imports of stdlib names get the
 /// same well-known IDs as the `SYM_*` constants above.
 pub struct SymbolTable {
-    map: HashMap<(Vec<String>, String), SymbolId>,
+    map: SymbolMap,
     next_id: u32,
 }
 
@@ -310,19 +322,24 @@ impl SymbolTable {
         let std_core = || vec!["std".to_string(), "core".to_string()];
         let map = Builtin::ALL
             .iter()
-            .map(|b| ((std_core(), b.name().to_string()), b.id()))
+            .map(|b| ((std_core(), Namespace::Type, b.name().to_string()), b.id()))
             .collect();
         Self { map, next_id: 0 }
     }
 
-    /// Return the existing `SymbolId` for `(source_module, source_name)`, or assign
+    /// Return the existing `SymbolId` for `(source_module, namespace, source_name)`, or assign
     /// a fresh one. Two calls with identical arguments always return the same id.
     ///
     /// # Panics
     /// Panics when the declared index space is exhausted rather than wrapping.
     // arch-implements: ["arch.name-resolution.requirement-1"]
-    pub fn intern(&mut self, source_module: &[String], source_name: &str) -> SymbolId {
-        let key = (source_module.to_vec(), source_name.to_string());
+    pub fn intern(
+        &mut self,
+        source_module: &[String],
+        namespace: Namespace,
+        source_name: &str,
+    ) -> SymbolId {
+        let key = (source_module.to_vec(), namespace, source_name.to_string());
         *self.map.entry(key).or_insert_with(|| {
             let index = self.next_id;
             self.next_id = index
@@ -334,13 +351,13 @@ impl SymbolTable {
 
     /// The interned symbols.
     #[must_use]
-    pub fn map(&self) -> &HashMap<(Vec<String>, String), SymbolId> {
+    pub fn map(&self) -> &SymbolMap {
         &self.map
     }
 
     /// The interned symbols, consuming the table.
     #[must_use]
-    pub fn into_map(self) -> HashMap<(Vec<String>, String), SymbolId> {
+    pub fn into_map(self) -> SymbolMap {
         self.map
     }
 
@@ -366,21 +383,30 @@ mod architecture_evidence_tests {
     #[test]
     fn builtin_std_core_declarations_are_pre_seeded_at_their_fixed_ids() {
         let mut table = SymbolTable::new();
-        assert_eq!(table.intern(&std_core(), "Perhaps"), SYM_TYPE_PERHAPS);
-        assert_eq!(table.intern(&std_core(), "String"), SYM_TYPE_STRING);
-        assert_eq!(table.intern(&std_core(), "Display"), SYM_ASPECT_DISPLAY);
+        assert_eq!(
+            table.intern(&std_core(), Namespace::Type, "Perhaps"),
+            SYM_TYPE_PERHAPS
+        );
+        assert_eq!(
+            table.intern(&std_core(), Namespace::Type, "String"),
+            SYM_TYPE_STRING
+        );
+        assert_eq!(
+            table.intern(&std_core(), Namespace::Type, "Display"),
+            SYM_ASPECT_DISPLAY
+        );
     }
 
     // arch-verifies: ["arch.name-resolution.requirement-1"]
     #[test]
     fn declared_symbols_are_distinct_from_every_builtin_and_allocated_in_order() {
         let mut table = SymbolTable::new();
-        let first = table.intern(&["app".to_string()], "Widget");
-        let second = table.intern(&["app".to_string()], "Gadget");
+        let first = table.intern(&["app".to_string()], Namespace::Type, "Widget");
+        let second = table.intern(&["app".to_string()], Namespace::Type, "Gadget");
         assert_eq!(first, SymbolId::Declared(DeclaredIndex(0)));
         assert_eq!(second, SymbolId::Declared(DeclaredIndex(1)));
         assert_eq!(
-            table.intern(&["app".to_string()], "Widget"),
+            table.intern(&["app".to_string()], Namespace::Type, "Widget"),
             first,
             "interning the same key again returns the same id"
         );
@@ -504,7 +530,9 @@ mod architecture_evidence_tests {
         assert_eq!(table.map().len(), Builtin::ALL.len());
         for builtin in Builtin::ALL {
             assert_eq!(
-                table.map().get(&(std_core(), builtin.name().to_string())),
+                table
+                    .map()
+                    .get(&(std_core(), Namespace::Type, builtin.name().to_string())),
                 Some(&builtin.id()),
                 "{}",
                 builtin.name()
@@ -530,9 +558,9 @@ mod architecture_evidence_tests {
     #[should_panic(expected = "the declared SymbolId space is exhausted")]
     fn interning_past_the_end_of_the_declared_space_panics_instead_of_wrapping() {
         let mut table = SymbolTable::with_next_id(u32::MAX - 1);
-        let last = table.intern(&["app".to_string()], "Last");
+        let last = table.intern(&["app".to_string()], Namespace::Type, "Last");
         assert_eq!(last, SymbolId::Declared(DeclaredIndex(u32::MAX - 1)));
-        let _ = table.intern(&["app".to_string()], "OneTooMany");
+        let _ = table.intern(&["app".to_string()], Namespace::Type, "OneTooMany");
     }
 
     #[test]

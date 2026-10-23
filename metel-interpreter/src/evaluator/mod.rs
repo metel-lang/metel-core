@@ -204,7 +204,7 @@ pub struct RuntimeIdentity {
     /// unconditionally inside a reconstructed generic body -- the *type*-
     /// level identity gap `members`/`binding_spans` above never covered
     /// (those are for `FieldId`/`VariantId`/`LocalId`, not `SymbolId`).
-    pub symbols: Rc<HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>>,
+    pub symbols: Rc<crate::identity::symbols::SymbolMap>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -4876,7 +4876,13 @@ mod architecture_evidence_tests {
     /// `N` distinct ids, interned through the public table as the resolver would.
     fn symbols<const N: usize>() -> [SymbolId; N] {
         let mut table = SymbolTable::new();
-        std::array::from_fn(|i| table.intern(&[], &format!("sym{i}")))
+        std::array::from_fn(|i| {
+            table.intern(
+                &[],
+                crate::identity::symbols::Namespace::Value,
+                &format!("sym{i}"),
+            )
+        })
     }
 
     fn array(items: &[i64]) -> Rc<RefCell<Vec<Value>>> {

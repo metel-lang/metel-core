@@ -17,8 +17,8 @@ use crate::data::ast::{
     Block, Decl, Expr, ForInit, FunDecl, ImplBlock, LetDecl, MatchArm, MutDecl, Stmt,
 };
 use crate::data::error::MetelError;
-use crate::identity::symbols::SymbolId;
-use crate::pipeline::name_resolution::name_resolver::{ModuleScope, ResolvedNames};
+use crate::identity::symbols::{Namespace, SymbolId};
+use crate::pipeline::name_resolution::name_resolver::{ImportBinding, ModuleScope, ResolvedNames};
 use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -85,7 +85,10 @@ fn normalize_program_decls(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     for decl in decls {
         normalize_decl(decl, scope, current_module, module_names, symbols)?;
@@ -98,7 +101,10 @@ fn normalize_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     match decl {
         Decl::Let(ld) => {
@@ -125,7 +131,10 @@ fn normalize_fun(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     normalize_block(&mut fun.body, scope, current_module, module_names, symbols)
 }
@@ -135,7 +144,10 @@ fn normalize_impl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     for method in &mut ib.methods {
         normalize_fun(method, scope, current_module, module_names, symbols)?;
@@ -148,7 +160,10 @@ fn normalize_block(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     for decl in &mut block.stmts {
         normalize_decl(decl, scope, current_module, module_names, symbols)?;
@@ -164,7 +179,10 @@ fn normalize_stmt(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     match stmt {
         Stmt::Expr(e) => normalize_expr(e, scope, current_module, module_names, symbols),
@@ -218,7 +236,10 @@ fn normalize_mut_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     normalize_expr(&mut md.value, scope, current_module, module_names, symbols)
 }
@@ -228,7 +249,10 @@ fn normalize_let_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
 }
@@ -242,7 +266,10 @@ fn normalize_expr(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     match expr {
         Expr::Literal(_, _) | Expr::Ident(_, _) | Expr::ResolvedPath { .. } | Expr::Continue(_) => {
@@ -364,7 +391,8 @@ fn normalize_expr(
                 // apply -- a `Module` binding here would mean `path` should have had
                 // a second segment (`handle::Type`), a different, already-handled
                 // shape.
-                if let Some(binding) = scope.and_then(|s| s.explicit.get(only.as_str()))
+                if let Some(binding) =
+                    scope.and_then(|s| s.explicit.get(&(Namespace::Type, only.clone())))
                     && binding.kind
                         == crate::pipeline::name_resolution::name_resolver::BindingKind::Item
                 {
@@ -404,12 +432,56 @@ fn normalize_arm(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Result<(), MetelError> {
     if let Some(guard) = &mut arm.guard {
         normalize_expr(guard, scope, current_module, module_names, symbols)?;
     }
     normalize_block(&mut arm.body, scope, current_module, module_names, symbols)
+}
+
+/// The symbol `module` declares under `name`, as a path segment would name it: a value (a
+/// function, `let`, `var`) first, then a type (a unit struct), the order a single shared key gave
+/// before the two namespaces were told apart.
+fn lookup_symbol(
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
+    module: &[String],
+    name: &str,
+) -> Option<crate::identity::symbols::SymbolId> {
+    [Namespace::Value, Namespace::Type]
+        .into_iter()
+        .find_map(|ns| {
+            symbols
+                .get(&(module.to_vec(), ns, name.to_string()))
+                .copied()
+        })
+}
+
+/// The explicit import binding satisfying `pred`, with its local name. A name imported in both
+/// namespaces is tried value-first, so the answer does not depend on map iteration order.
+fn explicit_binding(
+    scope: &ModuleScope,
+    pred: impl Fn(&str, &ImportBinding) -> bool,
+) -> Option<(&String, &ImportBinding)> {
+    [Namespace::Value, Namespace::Type]
+        .into_iter()
+        .find_map(|ns| {
+            let mut hits: Vec<_> = scope
+                .explicit
+                .iter()
+                .filter(|((binding_ns, local), binding)| *binding_ns == ns && pred(local, binding))
+                .map(|((_, local), binding)| (local, binding))
+                .collect();
+            // Several local names can import one source name; take the smallest for determinism.
+            hits.sort_by(|a, b| a.0.cmp(b.0));
+            hits.into_iter().next()
+        })
 }
 
 // ── Path resolution logic ─────────────────────────────────────────────────────
@@ -434,7 +506,10 @@ fn try_resolve_path(
     // it is looked up here instead (ADR-0054 / metel-core#1052) — a
     // glob-imported name is still a reference to its declaring module's own
     // canonical declaration.
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Option<(String, Option<SymbolId>)> {
     if segments.len() < 2 {
         return None; // single-segment paths are already Ident
@@ -447,10 +522,8 @@ fn try_resolve_path(
     if first == "root" || first == "self" || first == "super" {
         // Check the scope for an alias, otherwise use the declared name
         if let Some(s) = scope
-            && let Some((local, binding)) = s
-                .explicit
-                .iter()
-                .find(|(_, b)| &b.source_name == declared_name)
+            && let Some((local, binding)) =
+                explicit_binding(s, |_, b| &b.source_name == declared_name)
         {
             return Some((local.clone(), Some(binding.symbol_id)));
         }
@@ -461,9 +534,7 @@ fn try_resolve_path(
         // module hierarchy), so they keep the pre-existing `None` and rely on
         // downstream name resolution, same as before.
         let symbol_id = if first == "self" {
-            symbols
-                .get(&(current_module.to_vec(), declared_name.clone()))
-                .copied()
+            lookup_symbol(symbols, current_module, declared_name)
         } else {
             None
         };
@@ -486,16 +557,15 @@ fn try_resolve_path(
     // first is a known module prefix — find the local alias for this import
     if let Some(s) = scope {
         // 1. Explicit import with matching source
-        for (local_name, binding) in &s.explicit {
-            if binding
+        if let Some((local_name, binding)) = explicit_binding(s, |_, binding| {
+            binding
                 .source_module
                 .first()
                 .map(std::string::String::as_str)
                 == Some(first.as_str())
                 && &binding.source_name == declared_name
-            {
-                return Some((local_name.clone(), Some(binding.symbol_id)));
-            }
+        }) {
+            return Some((local_name.clone(), Some(binding.symbol_id)));
         }
         // 2. Glob import from this module — local name == source name
         let source_module: Vec<String> = segments[..segments.len() - 1].to_vec();
@@ -503,9 +573,7 @@ fn try_resolve_path(
             g == &source_module
                 || g.first().map(std::string::String::as_str) == Some(first.as_str())
         }) {
-            let symbol_id = symbols
-                .get(&(source_module, declared_name.clone()))
-                .copied();
+            let symbol_id = lookup_symbol(symbols, &source_module, declared_name);
             return Some((declared_name.clone(), symbol_id));
         }
     }
@@ -523,7 +591,10 @@ fn try_normalize_struct_path(
     path: &[String],
     scope: Option<&ModuleScope>,
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<(Vec<String>, String), crate::identity::symbols::SymbolId>,
+    symbols: &std::collections::HashMap<
+        (Vec<String>, Namespace, String),
+        crate::identity::symbols::SymbolId,
+    >,
 ) -> Option<(Vec<String>, Option<crate::identity::symbols::SymbolId>)> {
     if path.len() < 2 {
         return None;
@@ -556,7 +627,9 @@ fn try_normalize_struct_path(
     // Either way the *type* is its first segment, declared in the matched module.
     let module = path[..prefix_len].to_vec();
     let type_name = &path[prefix_len];
-    let type_id = symbols.get(&(module, type_name.clone())).copied();
+    let type_id = symbols
+        .get(&(module, Namespace::Type, type_name.clone()))
+        .copied();
     Some((path[prefix_len..].to_vec(), type_id))
 }
 

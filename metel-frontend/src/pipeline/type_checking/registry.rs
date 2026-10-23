@@ -494,7 +494,7 @@ pub(super) fn build_registry(
     program: &Program,
     type_var_gen: &mut TypeVarGenerator,
     current_module_path: &[String],
-    symbols: Option<&HashMap<(Vec<String>, String), SymbolId>>,
+    symbols: Option<&crate::identity::symbols::SymbolMap>,
     scopes: Option<&HashMap<Vec<String>, ModuleScope>>,
 ) -> TypeDefinitionRegistry {
     let mut registry = TypeDefinitionRegistry::new();

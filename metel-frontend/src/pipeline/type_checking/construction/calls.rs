@@ -5,6 +5,7 @@ use super::{
     infer_type_to_type, maybe_dyn_coerce, reject_dynamic_array_where_sized_expected, type_engine,
     type_expr_to_infer_with_assoc_ctx, type_to_infer, unify,
 };
+use crate::identity::symbols::Namespace;
 
 fn is_through_shared_reference(expr: &TypedExpr) -> bool {
     match expr {
@@ -843,7 +844,11 @@ pub(super) fn resolve_aspect_id(ctx: &ConstructCtx, aspect_name: &str) -> Option
         .registry
         .aspect_declaring_module_in(ctx.current_module, aspect_name)?;
     ctx.symbols?
-        .get(&(declaring_module.clone(), aspect_name.to_string()))
+        .get(&(
+            declaring_module.clone(),
+            Namespace::Type,
+            aspect_name.to_string(),
+        ))
         .copied()
 }
 

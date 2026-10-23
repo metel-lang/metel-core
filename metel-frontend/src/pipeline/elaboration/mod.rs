@@ -14,7 +14,7 @@ use crate::data::typed_ast::{
     TypedMatchArm, TypedMatchExpr, TypedModuleGraph, TypedPlace, TypedStmt,
 };
 use crate::data::types::Type;
-use crate::identity::symbols::SymbolId;
+use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::name_resolution::name_resolver::ResolvedNames;
 
 /// Proof that the elaboration pass has run over a `TypedModuleGraph`.
@@ -86,16 +86,21 @@ pub fn elaborate(mut graph: TypedModuleGraph) -> Result<ElaboratedModuleGraph, M
 fn build_aspect_id_map(
     graph: &TypedModuleGraph,
     names: &ResolvedNames,
-) -> HashMap<(Vec<String>, String), SymbolId> {
+) -> crate::identity::symbols::SymbolMap {
     let mut map = HashMap::new();
     for module in &graph.modules {
         for decl in &module.decls {
             if let TypedDecl::Aspect(a) = decl
-                && let Some(&id) = names
-                    .symbols
-                    .get(&(module.module_path.clone(), a.name.clone()))
+                && let Some(&id) = names.symbols.get(&(
+                    module.module_path.clone(),
+                    Namespace::Type,
+                    a.name.clone(),
+                ))
             {
-                map.insert((module.module_path.clone(), a.name.clone()), id);
+                map.insert(
+                    (module.module_path.clone(), Namespace::Type, a.name.clone()),
+                    id,
+                );
             }
         }
     }
@@ -143,10 +148,11 @@ fn build_aspect_method_map(
                 else {
                     continue;
                 };
-                let Some(&id) = names
-                    .symbols
-                    .get(&(declaring_module.clone(), aspect_name.clone()))
-                else {
+                let Some(&id) = names.symbols.get(&(
+                    declaring_module.clone(),
+                    Namespace::Type,
+                    aspect_name.clone(),
+                )) else {
                     continue;
                 };
                 let Some(declared_methods) =
@@ -271,7 +277,7 @@ struct DispatchMap<'a> {
     /// (RFC-0008 slice 2) — aspect-based by construction, so it never consults
     /// `methods`. Keyed by declaring module so same-named aspects don't collide
     /// (metel-core#989).
-    aspect_ids: HashMap<(Vec<String>, String), SymbolId>,
+    aspect_ids: crate::identity::symbols::SymbolMap,
     /// Read-only, for resolving a `dyn Aspect`'s bare name to its declaring module
     /// in the scope of the module the call appears in.
     registry: &'a crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
@@ -507,9 +513,11 @@ fn resolve_dyn_dispatch(cx: &ElabCtx<'_>, aspect: &str) -> MethodDispatch {
         .registry
         .aspect_declaring_module_in(cx.current_module, aspect)
         .and_then(|declaring_module| {
-            cx.map
-                .aspect_ids
-                .get(&(declaring_module.clone(), aspect.to_string()))
+            cx.map.aspect_ids.get(&(
+                declaring_module.clone(),
+                Namespace::Type,
+                aspect.to_string(),
+            ))
         })
         .map_or(MethodDispatch::Inherent, |&aspect_id| {
             MethodDispatch::Aspect { aspect_id }
