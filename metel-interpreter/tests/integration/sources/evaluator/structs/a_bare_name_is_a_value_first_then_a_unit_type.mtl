@@ -1,0 +1,16 @@
+// metel-core#1577: a bare name in expression position is looked up in the value namespace first and
+// then in the type namespace. `Unit` has no value of its name, so it is the zero-field struct;
+// `Both` is a struct and a function, so the bare call finds the function while the literal `Both {}`
+// builds the struct.
+struct Unit {}
+
+struct Both {}
+fun Both() -> i64 {
+    4
+}
+
+fun main() {
+    let u := Unit;
+    let b := Both {};
+    assert(Both() == 4);
+}

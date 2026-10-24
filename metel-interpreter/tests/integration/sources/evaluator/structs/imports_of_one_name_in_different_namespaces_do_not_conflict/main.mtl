@@ -1,0 +1,10 @@
+// metel-core#1577: `a` provides a type `Foo` and `b` a value `Foo`; both imports bind the same local
+// name, in different namespaces, so they do not conflict.
+import a::Foo;
+import b::Foo;
+
+fun main() {
+    let v := Foo { x = 1 };
+    assert(v.x == 1);
+    assert(Foo() == 5);
+}
