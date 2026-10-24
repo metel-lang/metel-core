@@ -7,9 +7,17 @@ changes the language. Until then nothing refers to a future number.
 
 ## How milestones work
 
-- **One numbered milestone is the release in progress** (`vX.Y.Z`, horizon **now**). Its
+- **The lowest numbered milestone is the release in progress** (`vX.Y.Z`, horizon **now**). Its
   issues are what the next tag will contain; `/gap-analysis`, the integration session and
   `/cut-release` run on it.
+- **While that is a patch, the next minor may also be numbered** (`vX.(Y+1).0`, horizon
+  **next**), so it can be planned and analysed before the patch ships. Never two patches, two
+  minors, or a numbered milestone beyond the next minor. The minor does not merge ahead of
+  the patch: a patch never changes the language and is tagged from `develop`, so nothing
+  language-visible from the minor merges to `develop`, and no docs change only the minor needs
+  reaches the pinned docs commit, until the patch tag is pushed. Meanwhile: gap analysis,
+  issue rewriting, RFC lifecycle changes, and branches and draft pull requests. When the patch
+  is tagged the minor becomes the release in progress and its held pull requests merge.
 - **Every other milestone is a theme**, named for the capability it delivers and carrying no
   version number. The first line of its description is `Horizon: next`, `later` or
   `parallel`, then the outcome, the exit test (`Exit:`), what it must come `After:`, and
@@ -51,14 +59,16 @@ Bugs are not planned work, so they are not scheduled into themes.
   - `severity:diagnostic`: wrong or misleading message only; the behaviour is right.
 - **Regressions.** A bug that worked in an earlier tag also carries `regression`, and is
   fixed ahead of other bugs of the same severity.
-- **Entering a release.** A bug moves from Backlog into the numbered milestone only when we
-  commit to fixing it in that release. A soundness bug or a regression introduced since the
+- **Entering a release.** A bug moves from Backlog into a numbered milestone only when we
+  commit to fixing it in that release. With a patch and a minor both numbered, it goes to the
+  patch only if the fix changes no accepted program (Release type, below); otherwise to the
+  minor. A soundness bug or a regression introduced since the
   last tag is committed by default. Deferring one moves it back to Backlog, never to a theme.
 - **Release type.** A fix that changes only diagnostics or internals can ship in a patch. A
   fix that changes which programs are accepted is language-visible and follows the versioning
   rule above.
 - **Findings from `/milestone-integration-test`** are filed as bugs with a severity and go to
-  Backlog, except soundness bugs and regressions, which go to the numbered milestone.
+  Backlog, except soundness bugs and regressions, which go to the release in progress.
 
 ## Order
 
