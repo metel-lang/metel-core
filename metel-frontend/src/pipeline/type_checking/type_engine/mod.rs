@@ -7881,25 +7881,22 @@ impl InferContext {
                 .any(|scope| scope.contains_key(name))
     }
 
-    /// Look up a name. Polymorphic bindings are automatically instantiated with
-    /// fresh variables; monomorphic bindings are searched innermost-scope-first.
-    /// Poly env takes precedence over mono env within each scope level.
+    /// Look up a name, innermost scope first. Polymorphic bindings are automatically instantiated
+    /// with fresh variables. Within one scope level the poly env takes precedence over the mono
+    /// env; across levels the innermost binding wins whichever env holds it, so a local `let`
+    /// shadows a module-level function of the same name (metel-core#1578).
     pub fn lookup(&mut self, name: &str) -> Option<InferType> {
-        if let Some(scheme) = self
-            .poly_env
-            .iter()
-            .rev()
-            .find_map(|s| s.get(name))
-            .cloned()
-        {
-            Some(self.instantiate(&scheme))
-        } else {
-            self.mono_env
-                .iter()
-                .rev()
-                .find_map(|scope| scope.get(name))
-                .map(|(ty, _)| ty.clone())
+        // `push_scope`/`pop_scope` keep the two stacks the same height, so a level index is
+        // meaningful in both.
+        for level in (0..self.poly_env.len().max(self.mono_env.len())).rev() {
+            if let Some(scheme) = self.poly_env.get(level).and_then(|s| s.get(name)).cloned() {
+                return Some(self.instantiate(&scheme));
+            }
+            if let Some((ty, _)) = self.mono_env.get(level).and_then(|s| s.get(name)) {
+                return Some(ty.clone());
+            }
         }
+        None
     }
 
     /// Look up a polymorphic scheme by name without instantiation.

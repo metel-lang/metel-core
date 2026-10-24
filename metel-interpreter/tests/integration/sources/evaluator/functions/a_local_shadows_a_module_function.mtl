@@ -1,0 +1,34 @@
+// metel-core#1578: a local binding shadows a module-level function of the same name for value uses
+// of the name in its scope. The type checker used to search every function scope before any local
+// one, so an outer function always won and `f == 9` compared an integer with a function.
+fun f() -> i64 {
+    4
+}
+
+fun g(f: i64) -> i64 {
+    f + 1
+}
+
+fun main() {
+    assert(f() == 4);
+
+    let f := 9;
+    assert(f == 9);
+
+    var h := f;
+    h := h + 1;
+    assert(h == 10);
+
+    // A parameter shadows the function too, and the function is intact elsewhere.
+    assert(g(2) == 3);
+    assert(other() == 4);
+}
+
+fun other() -> i64 {
+    // An inner block's local shadows only inside the block; afterwards the function is back.
+    if (true) {
+        let f := 7;
+        assert(f == 7);
+    }
+    f()
+}

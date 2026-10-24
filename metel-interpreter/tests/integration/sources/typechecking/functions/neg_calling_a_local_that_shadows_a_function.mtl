@@ -1,0 +1,10 @@
+// metel-core#1578: once a local `f` shadows the function `f`, `f()` calls the local, which is an
+// integer: the shadow hides the function for calls as well as for plain uses.
+fun f() -> i64 {
+    4
+}
+
+fun main() {
+    let f := 9;
+    let x := f();
+}
