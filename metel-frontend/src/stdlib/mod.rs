@@ -21,6 +21,19 @@ pub fn lookup(module_path: &[String]) -> Option<&'static str> {
         .map(|(_, src)| *src)
 }
 
+/// The position of `module_path` in the embedded table, which `build.rs` sorts by file path. It
+/// numbers the module in the `SymbolId`s of its declarations, so those ids depend on the stdlib
+/// alone (metel-core#1559). `None` for a module that is not embedded, or when the table outgrows
+/// the id space (more than `u16::MAX` modules).
+#[must_use]
+pub fn module_index(module_path: &[String]) -> Option<u16> {
+    let position = EMBEDDED_STDLIB.iter().position(|(segs, _)| {
+        segs.len() == module_path.len()
+            && segs.iter().zip(module_path).all(|(a, b)| *a == b.as_str())
+    })?;
+    u16::try_from(position).ok()
+}
+
 /// Every embedded stdlib module path. Used by the loader to synthesize the
 /// stdlib modules into the module graph ahead of user code.
 #[must_use]
