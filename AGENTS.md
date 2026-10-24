@@ -143,14 +143,16 @@ than sharing one writable target directory concurrently.
 
 ## GitHub and branch workflow
 
-GitHub Issues are the task source of truth (`PROC-WORK-001`). The one numbered milestone is the
-release in progress; later work sits in unnumbered theme milestones, and a version is chosen
-at the release cut (`PROC-WORK-004`, `ROADMAP.md`). Dependencies are written as `Blocked by #N` /
+GitHub Issues are the task source of truth (`PROC-WORK-001`). The lowest numbered milestone is
+the release in progress; while it is a patch the next minor may also be numbered, but its
+language-visible work does not merge to `develop` until the patch is tagged. Later work sits in
+unnumbered theme milestones, and a version is chosen at the release cut (`PROC-WORK-004`,
+`ROADMAP.md`). Dependencies are written as `Blocked by #N` /
 `Blocks #N` in issue bodies.
 
 Bugs are not scheduled into themes (`PROC-WORK-006`): file them with the `bug` label, one
 `severity:*` label (`soundness`, `incorrect`, `diagnostic`), and the **Backlog** milestone; add
-`regression` if it worked in an earlier tag. A bug enters the numbered milestone only when we
+`regression` if it worked in an earlier tag. A bug enters a numbered milestone only when we
 commit to fixing it in that release. Definitions: `ROADMAP.md` § Bugs.
 
 Normal implementation flow:
