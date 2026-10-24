@@ -2,6 +2,7 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
+spec = ["spec.modules.visibility.legality-9"]
 error = ["T0009"]
 
 [expect]

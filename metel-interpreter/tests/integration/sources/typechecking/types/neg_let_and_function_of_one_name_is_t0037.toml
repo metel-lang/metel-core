@@ -1,4 +1,5 @@
 [options]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-5"]
 error = ["T0037"]
 
 [expect]
