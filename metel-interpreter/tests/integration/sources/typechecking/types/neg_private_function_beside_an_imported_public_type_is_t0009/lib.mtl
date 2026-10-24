@@ -1,0 +1,8 @@
+// metel-core#1575: `Foo` is a public type and a private function.
+public struct Foo {
+    public x: i64,
+}
+
+fun Foo() -> i64 {
+    5
+}

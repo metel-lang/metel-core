@@ -486,11 +486,13 @@ fn infer_expr_inner(
                 }
                 return Ok(var);
             }
-            Err(MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("undefined name `{name}`"),
-                span,
-            ))
+            Err(ctx.private_import_error(name, span).unwrap_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("undefined name `{name}`"),
+                    span,
+                )
+            }))
         }
         Expr::ResolvedPath {
             resolved,
@@ -502,11 +504,13 @@ fn infer_expr_inner(
                 return Err(err);
             }
             ctx.lookup(resolved).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    format!("undefined name `{}`", original.join("::")),
-                    span,
-                )
+                ctx.private_import_error(resolved, span).unwrap_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("undefined name `{}`", original.join("::")),
+                        span,
+                    )
+                })
             })
         }
         Expr::BinOp(lhs, op, rhs, span) => {

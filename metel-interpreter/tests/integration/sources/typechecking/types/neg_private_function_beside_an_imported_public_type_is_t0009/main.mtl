@@ -1,0 +1,7 @@
+// The import is fine (the type is public), but calling `Foo` needs the private function: that is a
+// visibility error, not an undefined name.
+import lib::Foo;
+
+fun main() {
+    let a := Foo();
+}

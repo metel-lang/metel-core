@@ -6663,6 +6663,40 @@ impl InferContext {
         })
     }
 
+    /// The error for a name that failed to resolve as a value although this module imported it in
+    /// the value namespace: the source module has a function (or `let`) of that name that it does
+    /// not export, so the name is private there, not absent (metel-core#1575). `None` when the
+    /// module imported no such value, or the name is an overload set, which dispatches elsewhere.
+    ///
+    /// The import itself is not rejected, because the same `import` may legitimately bring in a
+    /// public type of that name (`struct Foo` beside a private `fun Foo`); the error waits for a
+    /// use that finds nothing, so a local of the same name still shadows it.
+    #[must_use]
+    pub fn private_import_error(
+        &self,
+        name: &str,
+        span: &Span,
+    ) -> Option<crate::data::error::MetelError> {
+        if self.is_overloaded(name) {
+            return None;
+        }
+        let binding = self
+            .registry
+            .scopes
+            .get(&self.current_module_path)?
+            .explicit
+            .get(&(Namespace::Value, name.to_string()))?;
+        Some(crate::data::error::MetelError::type_error(
+            crate::data::error::TypeErrorCode::T0009,
+            format!(
+                "visibility error: `{}` is not public in module `{}`",
+                binding.source_name,
+                binding.source_module.join("::")
+            ),
+            span,
+        ))
+    }
+
     /// Register a struct declared inside a block body (see `infer_block`'s
     /// hoist pass). These have no name-resolver symbol, so the registry mints a
     /// synthetic local id. A generic one gets the same type parameters, bounds and

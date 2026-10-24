@@ -1,0 +1,10 @@
+runner = "full_pipeline"
+prelude = "default"
+
+[options]
+error = ["T0009"]
+
+[expect]
+status = "typecheck_error"
+code = "T0009"
+contains = "`Foo` is not public in module `lib`"
