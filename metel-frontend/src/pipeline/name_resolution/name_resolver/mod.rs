@@ -533,12 +533,41 @@ fn namespaced_decl(decl: &Decl) -> Option<(Namespace, &str, &Span)> {
     }
 }
 
+/// T0038 (metel-core#1582): a type declared with the name of an intrinsic type. The intrinsic types
+/// are provided by the language and declared nowhere, so a user type of the same name is not a
+/// duplicate of anything and would capture part of the compiler's lookups by name. Embedded std
+/// modules are exempt; they declare none of these names.
+fn check_reserved_type_names(loaded: &LoadedModule) -> Result<(), MetelError> {
+    if crate::stdlib::module_index(&loaded.module_path).is_some() {
+        return Ok(());
+    }
+    for decl in &loaded.program.decls {
+        let Some((Namespace::Type, name, span)) = namespaced_decl(decl) else {
+            continue;
+        };
+        if crate::stdlib::is_intrinsic_type_name(name) {
+            return Err(reserved_type_name_error(name, span));
+        }
+    }
+    Ok(())
+}
+
+/// The T0038 error for a declaration of the intrinsic type name `name`.
+pub(crate) fn reserved_type_name_error(name: &str, span: &Span) -> MetelError {
+    MetelError::type_error(
+        TypeErrorCode::T0038,
+        format!("`{name}` is the name of an intrinsic type and cannot be declared as a type"),
+        span,
+    )
+}
+
 /// T0037 (metel-core#1560): a name declared twice in one namespace of one module. Before this
 /// check the second declaration silently shared the first one's `SymbolId` and one of the two was
 /// invisible to everything keyed by it. Two `fun`s of one name are an overload set, whose
 /// duplicates (same parameter types) are `T0011`'s, so they are not reported here.
 fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
     for loaded in &graph.modules {
+        check_reserved_type_names(loaded)?;
         let mut seen: HashMap<(Namespace, &str), (&Decl, &Span)> = HashMap::new();
         for decl in &loaded.program.decls {
             let Some((namespace, name, span)) = namespaced_decl(decl) else {

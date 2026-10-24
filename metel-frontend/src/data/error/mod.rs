@@ -57,6 +57,7 @@ pub enum TypeErrorCode {
     T0035, // Use not granted by a generic definition's declared bounds (RFC-0173)
     T0036, // By-value open-row parameter over a `Drop` brand would drop a narrowed residual (RFC-0179, #949)
     T0037, // Duplicate top-level declaration in one namespace (#1560)
+    T0038, // A type declared with the name of an intrinsic type (#1582)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

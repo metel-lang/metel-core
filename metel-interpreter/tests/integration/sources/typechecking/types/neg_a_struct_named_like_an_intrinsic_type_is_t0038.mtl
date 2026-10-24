@@ -1,0 +1,11 @@
+// metel-core#1582: the intrinsic types are provided by the language and declared nowhere, so a user
+// type of the same name would capture part of the compiler's lookups by name. `println(s)` on an
+// ordinary string used to fail with "String does not implement Display" once this was accepted.
+struct String {
+    x: u8,
+}
+
+fun main() {
+    let s := "a";
+    println(s);
+}

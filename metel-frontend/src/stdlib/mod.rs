@@ -21,6 +21,39 @@ pub fn lookup(module_path: &[String]) -> Option<&'static str> {
         .map(|(_, src)| *src)
 }
 
+/// Whether `name` is an intrinsic type: a builtin type (`i64`, `String`, `Range`, ...) that the
+/// language provides itself and that no `std::core` declaration describes. The set is derived, not
+/// listed: the builtin types minus the names `core.mtl` declares, so it cannot drift from either
+/// (metel-core#1582). Such a name cannot be taken by a user type.
+#[must_use]
+pub fn is_intrinsic_type_name(name: &str) -> bool {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+    static INTRINSIC: OnceLock<HashSet<&'static str>> = OnceLock::new();
+    INTRINSIC
+        .get_or_init(|| {
+            use crate::data::ast::Decl;
+            use crate::identity::symbols::{Builtin, BuiltinKind};
+            let declared: HashSet<&str> = core_program()
+                .decls
+                .iter()
+                .filter_map(|decl| match decl {
+                    Decl::Struct(d) => Some(d.name.as_str()),
+                    Decl::Enum(d) => Some(d.name.as_str()),
+                    Decl::Aspect(d) => Some(d.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            Builtin::ALL
+                .iter()
+                .filter(|builtin| builtin.kind() == BuiltinKind::Type)
+                .map(|builtin| builtin.name())
+                .filter(|name| !declared.contains(name))
+                .collect()
+        })
+        .contains(name)
+}
+
 /// The position of `module_path` in the embedded table, which `build.rs` sorts by file path. It
 /// numbers the module in the `SymbolId`s of its declarations, so those ids depend on the stdlib
 /// alone (metel-core#1559). `None` for a module that is not embedded, or when the table outgrows
