@@ -1,0 +1,9 @@
+// metel-core#1575: the private function `Foo` is not importable, so a local of that name is the only
+// `Foo` in scope and the missing-function error must not fire.
+public struct Foo {
+    public x: i64,
+}
+
+fun Foo() -> i64 {
+    5
+}

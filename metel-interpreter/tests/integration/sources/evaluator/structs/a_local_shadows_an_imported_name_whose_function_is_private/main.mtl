@@ -1,0 +1,6 @@
+import lib::Foo;
+
+fun main() {
+    let Foo := 7;
+    assert(Foo == 7);
+}
