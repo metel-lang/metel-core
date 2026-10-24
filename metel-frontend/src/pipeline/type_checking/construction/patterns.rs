@@ -837,8 +837,14 @@ pub(super) fn construct_enum_literal_ty(
     // type_to_infer normalises Perhaps/Result into Named for uniform handling.
     let hint_args: Vec<Type> = expected_ty
         .map(|ty| {
-            if let InferType::Named(n, args, ..) = type_to_infer(ty) {
-                if n == enum_name {
+            if let InferType::Named(n, args, nominal) = type_to_infer(ty) {
+                // The annotation may spell the enum through an alias (`CR<i64, String>`
+                // for `Result`), so match on the declaration when both carry one.
+                let same_enum = match (nominal.get(), enum_id) {
+                    (Some(written), Some(constructed)) => written == constructed,
+                    _ => n == enum_name,
+                };
+                if same_enum {
                     args.iter()
                         .map(|a| infer_type_to_type(a, span))
                         .collect::<Result<Vec<_>, _>>()

@@ -1,0 +1,18 @@
+// metel-core#1588: a variant of an aliased core enum is built against the annotation that spells
+// the same enum through the alias, so the type parameter the variant does not fix (`E`) comes from it.
+import std::core::Result as CR;
+
+fun main() {
+    let ok: CR<i64, String> := CR::Ok { value = 1 };
+    let bad: CR<i64, String> := CR::Err { error = "e" };
+    let a := match (ok) {
+        Ok { value } => { value },
+        Err { error } => { 0 },
+    };
+    let b := match (bad) {
+        Ok { value } => { "none" },
+        Err { error } => { error },
+    };
+    assert(a == 1);
+    assert(b == "e");
+}
