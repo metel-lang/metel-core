@@ -3618,6 +3618,21 @@ impl TypeDefinitionRegistry {
             );
         }
 
+        // `std::core` is in every module's scope without an import, so its explicit
+        // path names its types too (`std::core::Perhaps<i64>`), the same as the
+        // expression-path form (spec.modules.std-core-auto-import.legality-1).
+        if first == "std"
+            && rest == ["core"]
+            && !scope
+                .explicit
+                .contains_key(&(Namespace::Type, first.clone()))
+        {
+            return self
+                .symbols
+                .get(&(prefix.clone(), Namespace::Type, short_name.to_string()))
+                .copied();
+        }
+
         let binding = scope.explicit.get(&(Namespace::Type, first.clone()))?;
         if !matches!(
             binding.kind,
