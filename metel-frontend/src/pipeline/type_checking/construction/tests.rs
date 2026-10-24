@@ -1259,6 +1259,47 @@ fn a_type_and_a_function_of_one_name_get_distinct_symbol_ids() {
     );
 }
 
+// metel-core#1559: a declaration in an embedded std module has the same SymbolId in every program,
+// whatever the program declares. It is a `Std` id, not a `Declared` one, and a user declaration is
+// still `Declared`.
+#[test]
+fn std_declarations_have_the_same_symbol_id_in_every_program() {
+    use crate::identity::symbols::{Namespace, SymbolId};
+    let id = |fixture: &TypedFixture, module: &[&str], namespace, name: &str| {
+        let module: Vec<String> = module.iter().map(|s| (*s).to_string()).collect();
+        *fixture
+            .names
+            .symbols
+            .get(&(module, namespace, name.to_string()))
+            .unwrap_or_else(|| panic!("no symbol for {name}"))
+    };
+    let bare = typecheck_source("std_ids/main.mtl", "fun main() {}");
+    let busy = typecheck_source(
+        "std_ids/main.mtl",
+        "struct A { x: i64 }
+        struct B { x: i64 }
+        fun aaa() -> i64 { 1 }
+        fun zzz() -> i64 { 2 }
+        fun main() {}",
+    );
+    for name in ["Copy", "Drop", "Clone"] {
+        let core = &["std", "core"][..];
+        let (a, b) = (
+            id(&bare, core, Namespace::Type, name),
+            id(&busy, core, Namespace::Type, name),
+        );
+        assert_eq!(a, b, "{name} must not depend on the program");
+        assert!(
+            matches!(a, SymbolId::Std(_)),
+            "{name} is a std declaration: {a:?}"
+        );
+    }
+    assert!(matches!(
+        id(&busy, &[], Namespace::Type, "A"),
+        SymbolId::Declared(_)
+    ));
+}
+
 struct TypedFixture {
     report: CheckGraphReport,
     normalized: NormalizedModuleGraph,

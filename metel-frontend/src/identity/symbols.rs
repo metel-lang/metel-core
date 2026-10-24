@@ -19,7 +19,8 @@ use std::fmt;
 /// | Variant | Minted by | Meaning |
 /// |---|---|---|
 /// | `Builtin` | nothing (a fixed set) | the primitives, core types and core aspects the language knows by id |
-/// | `Declared` | [`SymbolTable`] | a named top-level declaration, or an impl/aspect method key |
+/// | `Declared` | [`SymbolTable`] | a named top-level declaration, or an impl/aspect method key, in a user module |
+/// | `Std` | [`SymbolTable`] | the same, in an embedded standard-library module: the module's index in the embedded table and the declaration's rank in that module |
 /// | `BlockLocal` | [`BlockLocalAllocator`] | a struct or enum declared inside a block |
 /// | `Overload` | `type_checking::overload` | a free-function overload definition in a user module (METEL-180): the name's `Declared` symbol and the definition's position among that name's overloads |
 /// | `CoreOverload` | `type_checking::overload` | an overload definition in the embedded `std::core`: its index in that table's declaration order |
@@ -43,6 +44,11 @@ use std::fmt;
 /// ```
 ///
 /// ```compile_fail,E0624
+/// use metel_frontend::identity::symbols::SymbolId;
+/// let _ = SymbolId::std(1, 2);
+/// ```
+///
+/// ```compile_fail,E0624
 /// use metel_frontend::identity::symbols::{SymbolId, SymbolTable};
 /// let group = SymbolTable::new().intern(&[], Namespace::Value, "f");
 /// let _ = SymbolId::overload(group, 0);
@@ -51,6 +57,7 @@ use std::fmt;
 pub enum SymbolId {
     Builtin(Builtin),
     Declared(DeclaredIndex),
+    Std(StdIndex),
     BlockLocal(BlockLocalIndex),
     Overload(OverloadId),
     CoreOverload(CoreOverloadIndex),
@@ -86,12 +93,45 @@ symbol_index!(
     CoreOverloadIndex
 );
 
-/// The payload of a [`SymbolId::Overload`]: the `Declared` symbol of the overloaded name in the module
-/// that defines it, and the definition's position among that name's overloads in source order. Built
-/// only by the crate-private [`SymbolId::overload`].
+/// The id of a declaration inside an embedded standard-library module. It depends only on the
+/// stdlib's own source, never on the program being compiled or on which other std modules it loads:
+/// `module` is the module's position in the embedded table (which `build.rs` sorts), and `item` is
+/// the declaration's rank among that module's own sorted `(namespace, name)` keys. Built only by the
+/// crate-private [`SymbolId::std`] (metel-core#1559).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StdIndex {
+    module: u16,
+    item: u16,
+}
+
+impl fmt::Debug for StdIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.module, self.item)
+    }
+}
+
+/// The symbol an overload group is named by: the name's id in the module that defines it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum OverloadGroup {
+    Declared(DeclaredIndex),
+    Std(StdIndex),
+}
+
+impl fmt::Debug for OverloadGroup {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OverloadGroup::Declared(index) => fmt::Debug::fmt(index, f),
+            OverloadGroup::Std(index) => write!(f, "std{index:?}"),
+        }
+    }
+}
+
+/// The payload of a [`SymbolId::Overload`]: the `Declared` or `Std` symbol of the overloaded name in
+/// the module that defines it, and the definition's position among that name's overloads in source
+/// order. Built only by the crate-private [`SymbolId::overload`].
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OverloadId {
-    group: DeclaredIndex,
+    group: OverloadGroup,
     ordinal: u32,
 }
 
@@ -103,18 +143,27 @@ impl fmt::Debug for OverloadId {
 
 impl SymbolId {
     /// The id of the `ordinal`-th overload definition, in source order, of the function named by
-    /// `group`, which must be the `Declared` symbol of that name in the module that defines it.
-    /// `None` when `group` is not a `Declared` symbol.
+    /// `group`, which must be the `Declared` or `Std` symbol of that name in the module that defines
+    /// it. `None` when `group` is neither.
     ///
     /// The result depends only on the arguments, so compiling the same program twice yields the same
     /// ids, and two modules that overload the same name get different ones because their `group`s
     /// differ.
     #[must_use]
     pub(crate) fn overload(group: SymbolId, ordinal: u32) -> Option<SymbolId> {
-        match group {
-            SymbolId::Declared(group) => Some(SymbolId::Overload(OverloadId { group, ordinal })),
-            _ => None,
-        }
+        let group = match group {
+            SymbolId::Declared(group) => OverloadGroup::Declared(group),
+            SymbolId::Std(group) => OverloadGroup::Std(group),
+            _ => return None,
+        };
+        Some(SymbolId::Overload(OverloadId { group, ordinal }))
+    }
+
+    /// The id of the `item`-th declaration, by sorted key, of the embedded std module at position
+    /// `module` in the embedded table.
+    #[must_use]
+    pub(crate) const fn std(module: u16, item: u16) -> SymbolId {
+        SymbolId::Std(StdIndex { module, item })
     }
 
     /// The id of the `index`-th overload definition in the embedded `std::core` table, counted in
@@ -317,7 +366,6 @@ impl Default for SymbolTable {
 impl SymbolTable {
     #[must_use]
     // arch-implements: ["arch.name-resolution.requirement-1"]
-    // limit: ["LIMIT-NAME-RESOLUTION-004"]
     pub fn new() -> Self {
         let std_core = || vec!["std".to_string(), "core".to_string()];
         let map = Builtin::ALL
@@ -347,6 +395,20 @@ impl SymbolTable {
                 .expect("the declared SymbolId space is exhausted");
             SymbolId::Declared(DeclaredIndex(index))
         })
+    }
+
+    /// Return the existing `SymbolId` for `(source_module, namespace, source_name)`, or record
+    /// `id` for it. For embedded std modules, whose ids are numbered from the stdlib alone rather
+    /// than by arrival order, so a name already seeded (a builtin) keeps its id.
+    pub(crate) fn intern_as(
+        &mut self,
+        source_module: &[String],
+        namespace: Namespace,
+        source_name: &str,
+        id: SymbolId,
+    ) -> SymbolId {
+        let key = (source_module.to_vec(), namespace, source_name.to_string());
+        *self.map.entry(key).or_insert(id)
     }
 
     /// The interned symbols.
@@ -636,6 +698,18 @@ mod architecture_evidence_tests {
             SymbolId::overload(other_group, 2).unwrap(),
             "the same ordinal of another name"
         );
+    }
+
+    #[test]
+    fn a_std_symbol_can_be_the_group_of_an_overload_and_is_not_a_declared_one() {
+        let std_group = SymbolId::std(1, 4);
+        let declared_group = SymbolId::Declared(DeclaredIndex(4));
+        let a = SymbolId::overload(std_group, 0).expect("a Std symbol names an overload group");
+        let b = SymbolId::overload(declared_group, 0).unwrap();
+        assert_ne!(a, b, "the same index in two kinds of group is two groups");
+        assert_ne!(std_group, declared_group);
+        assert_eq!(format!("{std_group:?}"), "Std(1.4)");
+        assert_eq!(format!("{a:?}"), "Overload(std1.4#0)");
     }
 
     #[test]

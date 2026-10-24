@@ -439,8 +439,38 @@ fn intern_all_symbols(graph: &ModuleGraph) -> (SymbolTable, HashMap<SymbolId, Sp
 
     let mut sym = SymbolTable::new();
     let mut definitions: HashMap<SymbolId, Span> = HashMap::new();
+    // A declaration in an embedded std module is numbered from that module alone: its module's
+    // position in the embedded table and its rank among the module's own sorted keys. The id does
+    // not depend on the user program or on which other std modules are loaded (metel-core#1559).
+    // `pending` is sorted, so a module's keys are contiguous and equal keys (an impl method key
+    // shared by two impls) are adjacent and take one rank.
+    let mut std_rank: Option<(Vec<String>, Option<u16>, u32)> = None;
+    let mut previous: Option<(Vec<String>, Namespace, String)> = None;
     for (module_path, namespace, name, span) in pending {
-        let id = sym.intern(&module_path, namespace, &name);
+        let same_key = previous
+            .as_ref()
+            .is_some_and(|(m, ns, n)| *m == module_path && *ns == namespace && *n == name);
+        if !same_key {
+            let module_index = match &std_rank {
+                Some((m, index, _)) if *m == module_path => *index,
+                _ => crate::stdlib::module_index(&module_path),
+            };
+            let next = match &std_rank {
+                Some((m, _, rank)) if *m == module_path => rank + 1,
+                _ => 0,
+            };
+            std_rank = Some((module_path.clone(), module_index, next));
+            previous = Some((module_path.clone(), namespace, name.clone()));
+        }
+        let (_, module_index, rank) = std_rank.as_ref().expect("set above");
+        let id = match module_index {
+            Some(module) => {
+                let item = u16::try_from(*rank)
+                    .expect("an embedded std module declares fewer than 65536 names");
+                sym.intern_as(&module_path, namespace, &name, SymbolId::std(*module, item))
+            }
+            None => sym.intern(&module_path, namespace, &name),
+        };
         if let Some(span) = span {
             definitions.entry(id).or_insert(span);
         }
