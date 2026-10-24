@@ -1,0 +1,15 @@
+// metel-core#1585: a user enum named `Perhaps` shadows the core one in this module, but a
+// `Perhaps` value that comes from std is matched against its own declaration, not the spelling.
+import std::env::get;
+
+enum Perhaps<T> {
+    Nope,
+}
+
+fun main() {
+    let found := match (get("METEL_1585_NOT_SET")) {
+        Some { value } => { value },
+        None => { "unset" },
+    };
+    assert(found == "unset");
+}

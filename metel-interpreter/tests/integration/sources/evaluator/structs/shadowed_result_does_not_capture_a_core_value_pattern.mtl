@@ -1,0 +1,15 @@
+// metel-core#1585: a user enum named `Result` shadows the core one in this module, but a
+// `Result` value that comes from std is matched against its own declaration, not the spelling.
+import std::fs::read_to_string;
+
+enum Result<T, E> {
+    Nah,
+}
+
+fun main() {
+    let outcome := match (read_to_string("/no/such/file_1585")) {
+        Ok { value } => { "read" },
+        Err { error } => { "failed" },
+    };
+    assert(outcome == "failed");
+}

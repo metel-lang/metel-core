@@ -1298,10 +1298,18 @@ pub(super) fn construct_expr(
                 // #272: different aspects providing the same method name for the
                 // same generic target) -- try each and use the one whose bounds the
                 // receiver's concrete type args actually satisfy.
-                let candidates = ctx
-                    .registry
-                    .method_scheme_variants_for(ctx.current_module, &struct_name, method)
-                    .to_vec();
+                // The receiver's own type names its declaration; looking the name up in the
+                // module would find a user type that shadows a core one (`Perhaps`, `Result`)
+                // instead (metel-core#1585).
+                let candidates = match struct_id {
+                    Some(id) => ctx.registry.method_scheme_variants_by_id(id, method),
+                    None => ctx.registry.method_scheme_variants_for(
+                        ctx.current_module,
+                        &struct_name,
+                        method,
+                    ),
+                }
+                .to_vec();
                 if candidates.is_empty() {
                     return Err(MetelError::internal(format!(
                         "no method `{method}` on `{struct_name}`"
