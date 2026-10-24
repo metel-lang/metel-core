@@ -1,0 +1,6 @@
+// metel-core#1582
+aspect f64 {
+    fun twice(&self) -> i64;
+}
+
+fun main() {}

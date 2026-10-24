@@ -1,0 +1,8 @@
+[options]
+error = ["T0038"]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-8"]
+
+[expect]
+status = "typecheck_error"
+code = "T0038"
+contains = "`boolean` is the name of an intrinsic type"

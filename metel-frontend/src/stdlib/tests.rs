@@ -34,3 +34,34 @@ fn every_embedded_module_has_a_distinct_index_in_sorted_order() {
     );
     assert_eq!(module_index(&["app".to_string()]), None);
 }
+
+// metel-core#1582: the reserved names are derived (builtin types that core.mtl does not declare), so
+// they are exactly the fifteen intrinsic types: not the core types it declares, aspects, or user names.
+#[test]
+fn the_intrinsic_type_names_are_the_builtin_types_core_does_not_declare() {
+    for name in [
+        "boolean",
+        "String",
+        "Char",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "f32",
+        "f64",
+        "Range",
+        "RangeInclusive",
+    ] {
+        assert!(is_intrinsic_type_name(name), "{name}");
+    }
+    for name in [
+        "List", "Perhaps", "Result", "Display", "Iterable", "From", "Copy", "Point", "string",
+        "I64",
+    ] {
+        assert!(!is_intrinsic_type_name(name), "{name}");
+    }
+}

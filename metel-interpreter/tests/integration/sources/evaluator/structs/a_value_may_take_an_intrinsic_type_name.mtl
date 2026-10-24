@@ -1,0 +1,11 @@
+// metel-core#1582: only the type namespace is reserved. `String` and `i64` are names of types, and a
+// function or a `let` may use them (a type and a value of one name coexist).
+fun String() -> i64 {
+    3
+}
+
+fun main() {
+    assert(String() == 3);
+    let i64 := 5;
+    assert(i64 == 5);
+}

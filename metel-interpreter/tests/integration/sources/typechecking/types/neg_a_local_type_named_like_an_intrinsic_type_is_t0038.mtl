@@ -1,0 +1,7 @@
+// metel-core#1582: a block-local type may not take the name either.
+fun main() {
+    struct u8 {
+        x: i64,
+    }
+    let a := u8 { x = 1 };
+}
