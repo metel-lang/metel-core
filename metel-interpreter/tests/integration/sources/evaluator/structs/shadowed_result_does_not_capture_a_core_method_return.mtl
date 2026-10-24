@@ -1,0 +1,16 @@
+// metel-core#1585: a method declared in std::core returns the core `Result` even where the caller
+// shadows that name, so matching on it uses the core variants.
+import std::env::get;
+
+enum Result<T, E> {
+    Nah,
+}
+
+fun main() {
+    let checked := get("METEL_1585_NOT_SET").ok_or("missing");
+    let message := match (checked) {
+        Ok { value } => { value },
+        Err { error } => { error },
+    };
+    assert(message == "missing");
+}

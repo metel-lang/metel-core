@@ -28,7 +28,10 @@ pub(super) fn infer_match(
     };
     let scrutinee_variants: Option<(String, Vec<(String, bool)>)> =
         scrutinee_named_ty.clone().and_then(|name| {
-            ctx.get_enum(&name).map(|info| {
+            let by_id = super::scrutinee_nominal_id(&scrutinee_ty)
+                .filter(|id| ctx.registry().declared_type_name(*id) == Some(name.as_str()))
+                .and_then(|id| ctx.registry().enum_info_by_id(id));
+            by_id.or_else(|| ctx.get_enum(&name)).map(|info| {
                 (
                     name.clone(),
                     info.variants

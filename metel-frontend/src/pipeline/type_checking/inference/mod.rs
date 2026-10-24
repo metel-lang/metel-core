@@ -3018,6 +3018,14 @@ fn infer_tuple_assign_type(
     }
 }
 
+/// The declaration id a solved scrutinee type already carries, if any.
+pub(super) fn scrutinee_nominal_id(ty: &InferType) -> Option<crate::identity::symbols::SymbolId> {
+    match ty {
+        InferType::Named(_, _, id) | InferType::Concrete(Type::Named(_, _, id)) => id.get(),
+        _ => None,
+    }
+}
+
 fn infer_enum_variant_pattern(
     enum_name: &str,
     variant_name: &str,
@@ -3026,20 +3034,34 @@ fn infer_enum_variant_pattern(
     pat_span: &Span,
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
-    let enum_decl_module = ctx
-        .registry()
-        .enum_declaring_module(ctx.current_module_path(), enum_name)
-        .cloned();
-    let enum_info = ctx
-        .get_enum(enum_name)
-        .ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("unknown enum `{enum_name}` in pattern"),
-                pat_span,
-            )
-        })?
-        .clone();
+    // The scrutinee's own declaration wins over the spelling: a user enum that
+    // shadows `Perhaps`/`Result` must not capture patterns on a core value.
+    let by_id = scrutinee_nominal_id(scrutinee_ty).filter(|id| {
+        ctx.registry().declared_type_name(*id) == Some(enum_name)
+            && ctx
+                .registry()
+                .enum_info_by_id(*id)
+                .is_some_and(|info| info.variants.iter().any(|v| v.name == variant_name))
+    });
+    let enum_decl_module = match by_id {
+        Some(id) => ctx.registry().enum_declaring_module_by_id(id).cloned(),
+        None => ctx
+            .registry()
+            .enum_declaring_module(ctx.current_module_path(), enum_name)
+            .cloned(),
+    };
+    let enum_info = match by_id {
+        Some(id) => ctx.registry().enum_info_by_id(id),
+        None => ctx.get_enum(enum_name),
+    }
+    .ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("unknown enum `{enum_name}` in pattern"),
+            pat_span,
+        )
+    })?
+    .clone();
     let variant = enum_info
         .variants
         .iter()

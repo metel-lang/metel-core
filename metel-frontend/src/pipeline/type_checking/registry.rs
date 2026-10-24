@@ -1399,6 +1399,11 @@ fn register_generic_impl_method_schemes(
         .with_record_kinds(&method_record_kinds)
         .with_open_row_params(&narrowing_rows)
         .with_row_remainders(&method_row_remainders);
+        // Bind written nominals (`Result<T, E>`) to the declarations visible from
+        // the declaring module, so a shadowing name at a call site cannot
+        // redirect this signature by spelling.
+        let mut scheme = scheme;
+        resolve_declaring_nominals(&mut scheme.ty, registry, current_module_path);
         // struct_tvars: only the type's params are pinned from the receiver;
         // method-level generics are recovered from the arguments at the call site.
         let struct_tvars = type_params.clone();
@@ -1991,11 +1996,12 @@ fn register_default_aspect_method(
         .map_or_else(InferType::unit, |ann| {
             type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         });
-    registry.register_method(
-        owner,
-        method.name.clone(),
-        InferType::fun(param_types, ret_ty),
-    );
+    // Bind each written nominal to the declaration visible from the declaring
+    // module now, so a caller that shadows the name (`Result`, `Perhaps`)
+    // cannot redirect a method's signature by spelling.
+    let mut method_ty = InferType::fun(param_types, ret_ty);
+    resolve_declaring_nominals(&mut method_ty, registry, current_module_path);
+    registry.register_method(owner, method.name.clone(), method_ty);
     if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
         registry.register_method_receiver(owner, method.name.clone(), receiver);
     }

@@ -5671,6 +5671,12 @@ impl TypeDefinitionRegistry {
             .get(&self.resolve_type_key_broad(current_module, name)?)
     }
 
+    /// The module that declared the enum registered under `id`.
+    #[must_use]
+    pub fn enum_declaring_module_by_id(&self, id: SymbolId) -> Option<&Vec<String>> {
+        self.enum_decl_modules.get(&id)
+    }
+
     /// Record everything the registry knows about one aspect declaration
     /// (metel-core#989). Re-registering the same `(name, declaring_module)` pair
     /// replaces the earlier entry; a different declaring module adds a sibling entry
