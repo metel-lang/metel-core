@@ -1,0 +1,4 @@
+// metel-core#1582: an alias is expanded before name resolution, so it is checked where it is collected.
+type boolean := i64;
+
+fun main() {}

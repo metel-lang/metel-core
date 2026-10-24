@@ -1,0 +1,6 @@
+// metel-core#1582
+enum Char {
+    A,
+}
+
+fun main() {}

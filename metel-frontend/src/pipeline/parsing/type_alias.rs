@@ -227,6 +227,13 @@ fn collect_aliases(
         .collect();
     for decl in &program.decls {
         if let Decl::TypeAlias(ta) = decl {
+            if crate::stdlib::is_intrinsic_type_name(&ta.name) {
+                return Err(
+                    crate::pipeline::name_resolution::name_resolver::reserved_type_name_error(
+                        &ta.name, &ta.span,
+                    ),
+                );
+            }
             if let Some(other) = declared_types.get(ta.name.as_str()) {
                 let (later, earlier) = if (other.line, other.col) > (ta.span.line, ta.span.col) {
                     (*other, &ta.span)

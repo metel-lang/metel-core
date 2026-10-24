@@ -2016,6 +2016,16 @@ use declarations::{infer_decl, rewrite_impl_aspect_returns, type_expr_contains_i
 
 mod narrowing;
 
+/// A block-local type may not take the name of an intrinsic type either (T0038, metel-core#1582).
+fn reject_reserved_type_name(name: &str, span: &Span) -> Result<(), MetelError> {
+    if crate::stdlib::is_intrinsic_type_name(name) {
+        return Err(
+            crate::pipeline::name_resolution::name_resolver::reserved_type_name_error(name, span),
+        );
+    }
+    Ok(())
+}
+
 fn infer_block(
     block: &Block,
     ctx: &mut InferContext,
@@ -2027,8 +2037,14 @@ fn infer_block(
     // so they can be referenced anywhere within the block regardless of order.
     for decl in &block.stmts {
         match decl {
-            Decl::Struct(sd) => ctx.register_local_struct(sd),
-            Decl::Enum(ed) => ctx.register_local_enum(ed),
+            Decl::Struct(sd) => {
+                reject_reserved_type_name(&sd.name, &sd.span)?;
+                ctx.register_local_struct(sd);
+            }
+            Decl::Enum(ed) => {
+                reject_reserved_type_name(&ed.name, &ed.span)?;
+                ctx.register_local_enum(ed);
+            }
             _ => {}
         }
     }
