@@ -44,7 +44,7 @@ pub(in crate::pipeline::type_checking) fn prepare_abstract_body(
     scheme: &TypeScheme,
     declaration: &FunDecl,
     facts: &ResolvedInferenceFacts,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
     registry: &TypeDefinitionRegistry,
     overloads: &OverloadTable,
 ) -> AbstractBodyPreparation {
@@ -72,11 +72,10 @@ fn freeze_body(
     scheme: &TypeScheme,
     declaration: &FunDecl,
     facts: &ResolvedInferenceFacts,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
     registry: &TypeDefinitionRegistry,
     overloads: &OverloadTable,
 ) -> Result<AbstractBody, String> {
-    let identity = identity.ok_or("definition has no frozen binding identities")?;
     let source_order: Vec<_> = declaration
         .generics
         .iter()

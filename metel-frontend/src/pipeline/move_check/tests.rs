@@ -52,10 +52,10 @@ fn move_report_for_source_with(
         let mut typed = type_checking::check_graph_with_report(
             &normalized,
             &type_checking::CorePrelude::default(),
-            Some(crate::identity::FrozenIdentity {
+            crate::identity::FrozenIdentity {
                 members: &members,
                 binding_spans: &allocation.binding_spans,
-            }),
+            },
         )
         .expect("typecheck temp fixture")
         .graph;
@@ -3291,9 +3291,19 @@ fn assert_typecheck_error_contains(source: &str, needle: &str) {
     let result = (|| {
         let graph = module_loader::load_root(&path)?;
         let names = name_resolver::resolve(&graph)?;
+        let members = crate::identity::collect_members_for_graph(&graph, &names);
+        let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized = path_normalization::normalize(graph, names)?;
         coherence::check(&normalized)?;
-        type_checking::check_graph(&normalized, &type_checking::CorePrelude::default()).map(|_| ())
+        type_checking::check_graph(
+            &normalized,
+            &type_checking::CorePrelude::default(),
+            crate::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            },
+        )
+        .map(|_| ())
     })();
     let _ = std::fs::remove_file(&path);
     let err = match result {
@@ -3351,10 +3361,10 @@ fn move_warnings_for_source(source: &str) -> Vec<String> {
         let typed = type_checking::check_graph_with_report(
             &normalized,
             &type_checking::CorePrelude::default(),
-            Some(crate::identity::FrozenIdentity {
+            crate::identity::FrozenIdentity {
                 members: &members,
                 binding_spans: &allocation.binding_spans,
-            }),
+            },
         )
         .expect("typecheck temp fixture")
         .graph;

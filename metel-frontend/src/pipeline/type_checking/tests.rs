@@ -108,9 +108,18 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     let result = (|| {
         let graph = module_loader::load_root(&dir.join("main.mtl"))?;
         let names = name_resolver::resolve(&graph)?;
+        let members = crate::identity::collect_members_for_graph(&graph, &names);
+        let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized = path_normalization::normalize(graph, names)?;
         coherence::check(&normalized)?;
-        check_graph(&normalized, &CorePrelude::default())
+        check_graph(
+            &normalized,
+            &CorePrelude::default(),
+            crate::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            },
+        )
     })();
     let _ = std::fs::remove_dir_all(&dir);
     let typed = result.expect("the two-module program type-checks");
@@ -166,9 +175,18 @@ fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
         let result = (|| {
             let graph = module_loader::load_root(&dir.join("main.mtl"))?;
             let names = name_resolver::resolve(&graph)?;
+            let members = crate::identity::collect_members_for_graph(&graph, &names);
+            let allocation = crate::identity::allocate_for_graph(&graph, &names);
             let normalized = path_normalization::normalize(graph, names)?;
             coherence::check(&normalized)?;
-            check_graph(&normalized, &CorePrelude::default())
+            check_graph(
+                &normalized,
+                &CorePrelude::default(),
+                crate::identity::FrozenIdentity {
+                    members: &members,
+                    binding_spans: &allocation.binding_spans,
+                },
+            )
         })();
         let _ = std::fs::remove_dir_all(&dir);
         let typed = result.expect("the program type-checks");

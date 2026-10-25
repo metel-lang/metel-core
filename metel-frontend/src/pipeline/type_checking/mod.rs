@@ -387,8 +387,9 @@ fn inert_public_field_warnings(loaded: &LoadedModule) -> Vec<String> {
 pub fn check_graph(
     graph: &NormalizedModuleGraph,
     std_prelude: &CorePrelude,
+    identity: FrozenIdentity<'_>,
 ) -> Result<TypedModuleGraph, MetelError> {
-    Ok(check_graph_with_report(graph, std_prelude, None)?.graph)
+    Ok(check_graph_with_report(graph, std_prelude, identity)?.graph)
 }
 
 /// # Errors
@@ -397,14 +398,14 @@ pub fn check_graph(
 /// `identity` bundles the frozen-identity tables (ADR-0054): the member table
 /// (#1051), so construction stamps field accesses / enum-variant literals with
 /// their `FieldId` / `VariantId` (#1062), and the span → `BindingId` bridge
-/// (#1052), so `TypedExpr::Ident` carries its resolved binding. `None` leaves
-/// every id `None`; identity-aware ownership consumers and measurement tools
-/// must supply the frozen tables.
+/// (#1052), so `TypedExpr::Ident` carries its resolved binding. It is required: a caller
+/// builds the tables from the parsed graph before normalization (`identity::allocate_for_graph`,
+/// `identity::collect_members_for_graph`), so construction resolves every binding by identity.
 // arch-implements: ["arch.type-construction.requirement-2"]
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
     std_prelude: &CorePrelude,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
 ) -> Result<CheckGraphReport, MetelError> {
     // std::core is a real module in the graph (synthesized ahead of user code),
     // so its exports land in GlobalExports through the normal per-module loop —
@@ -481,7 +482,7 @@ fn check_one_module(
     global_exports: &GlobalExports,
     type_registry: &TypeDefinitionRegistry,
     std_prelude: &CorePrelude,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
     export_gen: &mut TypeVarGenerator,
 ) -> Result<CheckedModule, MetelError> {
     let names = &graph.names;
@@ -578,7 +579,7 @@ pub struct ModuleDiagnosticsReport {
 pub fn check_graph_collecting_diagnostics(
     graph: &NormalizedModuleGraph,
     std_prelude: &CorePrelude,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
 ) -> ModuleDiagnosticsReport {
     let names = &graph.names;
     let mut global_exports = GlobalExports::new();
@@ -1371,36 +1372,8 @@ pub fn infer_named_type_args(
 ///   dependency modules. Merged into the freshly-built registry so that cross-module
 ///   type references in struct fields and method signatures are visible. See ADR-0032.
 ///
-/// Returns `(typed_decls, scheme_env, registry)` where `registry` carries this
-/// module's type definitions merged with the base, for the next module to use.
-#[allow(dead_code)] // retained as a tuple-returning internal helper for existing call patterns
-#[allow(clippy::too_many_arguments)] // thin forwarding wrapper around check_impl_with_report
-fn check_impl(
-    program: &Program,
-    imported_schemes: &SchemeEnv,
-    deferred_conflicts: HashMap<String, Vec<Vec<String>>>,
-    base_registry: &TypeDefinitionRegistry,
-    std_prelude: &CorePrelude,
-    current_module_path: &[String],
-    symbols: Option<&crate::identity::symbols::SymbolMap>,
-    references: Option<&crate::pipeline::name_resolution::reference_resolver::ReferenceTable>,
-) -> Result<(Vec<TypedDecl>, SchemeEnv, TypeDefinitionRegistry), MetelError> {
-    let report = check_impl_with_report(
-        program,
-        imported_schemes,
-        deferred_conflicts,
-        &crate::pipeline::type_checking::type_engine::OverloadTable::new(),
-        base_registry,
-        std_prelude,
-        current_module_path,
-        symbols,
-        references,
-        None,
-        None,
-    )?;
-    Ok((report.typed_decls, report.scheme_env, report.registry))
-}
-
+/// The report carries the typed declarations, the module's `scheme_env`, and the registry
+/// (this module's type definitions merged with the base) for the next module to use.
 #[allow(clippy::too_many_arguments)]
 fn check_impl_with_report(
     program: &Program,
@@ -1415,7 +1388,7 @@ fn check_impl_with_report(
     scopes: Option<
         &HashMap<Vec<String>, crate::pipeline::name_resolution::name_resolver::ModuleScope>,
     >,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
     enforce_native_stdlib_only(program, current_module_path)?;
@@ -1438,8 +1411,8 @@ fn check_impl_with_report(
     );
     // Merge dependency type definitions so cross-module struct/enum refs resolve.
     reg.merge_from(base_registry);
-    // Stamp entries with their interned identity (#1068); no-op without context.
-    reg.stamp_member_ids(identity.map(|i| i.members));
+    // Stamp entries with their interned identity (#1068).
+    reg.stamp_member_ids(identity.members);
     // Diagnose bad record projections (RFC-0116 §4) now that the registry is complete:
     // the conversion path is infallible and can only leave a stand-in behind, so precise
     // "unknown type / not a struct / no such field" reporting has to happen here.

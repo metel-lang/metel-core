@@ -51,7 +51,7 @@ fn verify_closure_capture_list(
 
     if capture_specs.is_empty() {
         for name in &used {
-            if !ctx.has_local_binding(name, &use_site(name)) {
+            if !ctx.has_local_binding(&use_site(name)) {
                 continue;
             }
             let Some(ty) = ctx.lookup_at(name, &use_site(name)) else {
@@ -70,7 +70,7 @@ fn verify_closure_capture_list(
         }
     } else {
         for name in &used {
-            if ctx.has_local_binding(name, &use_site(name)) && !listed.contains(name) {
+            if ctx.has_local_binding(&use_site(name)) && !listed.contains(name) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0026,
                     format!("`{name}` is captured but not listed"),
