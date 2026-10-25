@@ -13,7 +13,7 @@ use crate::data::typed_ast::{
     TypedProgram, TypedReturnExpr, TypedStmt, TypedStructDecl, TypedWhileStmt,
 };
 use crate::data::types::Type;
-use crate::identity::symbols::{Namespace, SymbolId};
+use crate::identity::symbols::SymbolId;
 use crate::identity::{BindingId, FieldId, FrozenIdentity, LocalId, VariantId};
 use crate::ownership::flow_state::FlowState;
 use crate::pipeline::type_checking::type_engine::{
@@ -29,8 +29,9 @@ use super::conversions::{
 use super::handoff::ResolvedInferenceFacts;
 
 type ConcreteFields = Vec<(String, Type, Span)>;
-// resolution-freeze-allow: construction's concrete struct field environment, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
-type ConcreteStructEnv = HashMap<String, ConcreteFields>;
+/// A struct's concrete fields by the identity of its declaration (ADR-0054 step 6,
+/// metel-core#1570); a written name reaches it through `ConstructCtx::written_type_id`.
+type ConcreteStructEnv = HashMap<SymbolId, ConcreteFields>;
 /// metel-core#736 / RFC-0138: a generic `FunDecl`'s own shape, keyed by name in
 /// `ConstructCtx::fn_table`. See that field's doc comment.
 type FnDeclShape = (Vec<Param>, Option<TypeExpr>, Block);
@@ -46,10 +47,7 @@ pub(super) fn build_concrete_struct_env(
         .raw_struct_env()
         .iter()
         .filter(|(id, _)| !registry.raw_struct_type_params().contains_key(id))
-        .filter_map(|(id, fields)| {
-            // A struct with no recorded declared name cannot be keyed into the
-            // name-indexed concrete env; skip it rather than invent a key.
-            let name = registry.declared_type_name(*id)?;
+        .map(|(id, fields)| {
             let concrete: Result<ConcreteFields, MetelError> = fields
                 .iter()
                 .map(|field| {
@@ -60,7 +58,7 @@ pub(super) fn build_concrete_struct_env(
                     ))
                 })
                 .collect();
-            Some(concrete.map(|c| (name.to_string(), c)))
+            concrete.map(|c| (*id, c))
         })
         .collect()
 }
@@ -152,11 +150,6 @@ struct ConstructCtx<'a> {
     /// top-level functions and to resolve constructed struct/enum types to their
     /// type `SymbolId` (METEL-185 / ADR-0041).
     current_module: &'a [String],
-    /// Resolved bare-`Ident` reference table (METEL-187 / ADR-0041): reference-site
-    /// span → referent `SymbolId`. Used to stamp `Call::callee_id` so direct calls to
-    /// top-level functions dispatch by id. `None` for the single-program path.
-    // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
-    references: Option<&'a HashMap<Span, SymbolId>>,
     /// Concrete semantic decisions frozen at the inference/construction boundary.
     resolved_facts: &'a ResolvedInferenceFacts,
     inherited_method_ordinals: HashMap<(SymbolId, crate::identity::InheritedMethodTarget), u32>,
@@ -222,8 +215,6 @@ impl<'a> ConstructCtx<'a> {
         symbols: Option<&'a crate::identity::symbols::SymbolMap>,
         overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
-        // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
-        references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
         identity: FrozenIdentity<'a>,
     ) -> Result<Self, MetelError> {
@@ -248,7 +239,6 @@ impl<'a> ConstructCtx<'a> {
             symbols,
             overloads,
             current_module,
-            references,
             resolved_facts,
             inherited_method_ordinals: HashMap::new(),
             identity,
@@ -325,11 +315,8 @@ impl<'a> ConstructCtx<'a> {
                             })
                     })
             });
-        self.struct_scopes
-            .last_mut()
-            .unwrap()
-            .insert(name.clone(), fields);
         if let Some(owner) = owner {
+            self.struct_scopes.last_mut().unwrap().insert(owner, fields);
             self.local_struct_ids
                 .last_mut()
                 .unwrap()
@@ -367,13 +354,13 @@ impl<'a> ConstructCtx<'a> {
             .rev()
             .find_map(|scope| scope.get(name).copied())
             .or_else(|| self.registry.resolve_type_id(self.current_module, name))
+            .or_else(|| self.registry.enum_id(self.current_module, name))
     }
 
     /// The identity of the enum a written `name` refers to.
     fn written_enum_id(&self, name: &str) -> Option<SymbolId> {
         self.written_type_id(name)
             .filter(|id| self.registry.enum_info_by_id(*id).is_some())
-            .or_else(|| self.registry.enum_id(self.current_module, name))
     }
 
     /// The declaration a value's type refers to: the identity the type carries, which annotations
@@ -383,10 +370,7 @@ impl<'a> ConstructCtx<'a> {
         let Type::Named(name, _, nominal) = ty else {
             return None;
         };
-        nominal
-            .get()
-            .or_else(|| self.registry.resolve_type_id(self.current_module, name))
-            .or_else(|| self.registry.enum_id(self.current_module, name))
+        nominal.get().or_else(|| self.written_type_id(name))
     }
 
     /// The fields of the struct or record `ty` is an instance of.
@@ -406,23 +390,23 @@ impl<'a> ConstructCtx<'a> {
 
     /// The variants and type parameters of the enum `ty` is an instance of.
     fn enum_info_of(&self, ty: &Type) -> Option<&EnumInfo> {
-        let Type::Named(name, ..) = ty else {
+        let Type::Named(..) = ty else {
             return None;
         };
         self.type_id_of(ty)
             .and_then(|id| self.registry.enum_info_by_id(id))
-            .or_else(|| self.registry.enum_info(self.current_module, name))
     }
 
+    /// The concrete fields of the struct a *written* name refers to.
     fn get_struct_fields(&self, name: &str) -> Option<&Vec<(String, Type, Span)>> {
-        self.struct_scopes.iter().rev().find_map(|s| s.get(name))
+        let id = self.written_type_id(name)?;
+        self.struct_scopes.iter().rev().find_map(|s| s.get(&id))
     }
 
     fn has_struct_named(&self, name: &str) -> bool {
         self.get_struct_fields(name).is_some()
             || self
-                .registry
-                .resolve_type_id(self.current_module, name)
+                .written_type_id(name)
                 .is_some_and(|id| self.registry.raw_struct_env().contains_key(&id))
     }
 
@@ -585,48 +569,19 @@ impl<'a> ConstructCtx<'a> {
     /// back to name lookup, so this may be stamped liberally.
     fn resolved_callee_id(&self, callee: &Expr) -> Option<SymbolId> {
         match callee {
-            Expr::Ident(_, span) => self.references.and_then(|r| r.get(span).copied()),
+            Expr::Ident(_, span) => match self.binding_id_at(span)? {
+                BindingId::Global(symbol) => Some(symbol),
+                BindingId::Local(_) => None,
+            },
             Expr::ResolvedPath { symbol_id, .. } => *symbol_id,
             _ => None,
         }
     }
 
-    /// Resolve a struct/enum type name to its declaration `SymbolId` (METEL-185).
-    /// Uses the registry's declaring-module index, falling back to the current
-    /// module for locally-declared types. `None` without resolver context.
+    /// Resolve a struct/enum type name to its declaration `SymbolId` (METEL-185): the identity
+    /// of the type the written name refers to, which is where the name stops mattering.
     fn type_symbol_id(&self, type_name: &str) -> Option<SymbolId> {
-        // Block-local declarations have synthetic ids rather than entries in
-        // the name-resolver symbol table.  Resolve those directly from the
-        // registry so runtime values preserve their declaration identity.
-        if let Some(id) = self.written_type_id(type_name) {
-            return Some(id);
-        }
-        let symbols = self.symbols?;
-        if let Some(module) = self
-            .registry
-            .struct_declaring_module(self.current_module, type_name)
-            .or_else(|| {
-                self.registry
-                    .enum_declaring_module(self.current_module, type_name)
-            })
-        {
-            return symbols
-                .get(&(module.clone(), Namespace::Type, type_name.to_string()))
-                .copied();
-        }
-        // Builtin types (impl on i64/String/List/…) live in std::core, pre-seeded
-        // with their SYM_TYPE_* ids; fall back there, then the current module.
-        let std_core = vec!["std".to_string(), "core".to_string()];
-        symbols
-            .get(&(std_core, Namespace::Type, type_name.to_string()))
-            .or_else(|| {
-                symbols.get(&(
-                    self.current_module.to_vec(),
-                    Namespace::Type,
-                    type_name.to_string(),
-                ))
-            })
-            .copied()
+        self.written_type_id(type_name)
     }
 
     fn can_be_unqualified_variant(&self, name: &str) -> bool {
@@ -657,10 +612,7 @@ impl<'a> ConstructCtx<'a> {
         known_id: Option<SymbolId>,
         method_name: &str,
     ) -> Option<&Type> {
-        let owner = known_id.or_else(|| {
-            self.registry
-                .resolve_type_id_broad(self.current_module, type_name)
-        })?;
+        let owner = known_id.or_else(|| self.written_type_id(type_name))?;
         self.method_env.get(&owner)?.get(method_name)
     }
 
@@ -677,7 +629,7 @@ impl<'a> ConstructCtx<'a> {
         let Type::Named(name, ..) = peel_type_references(object_ty) else {
             return None;
         };
-        let owner = self.registry.resolve_type_id(self.current_module, name)?;
+        let owner = self.written_type_id(name)?;
         members.field(owner, field)
     }
 
@@ -726,10 +678,23 @@ impl<'a> ConstructCtx<'a> {
     /// when neither source has anything for this span (e.g. a
     /// construction-synthesised node, or a genuinely unresolved name).
     fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
-        self.identity
-            .binding_spans
-            .get(span)
-            .or_else(|| self.references?.get(span).copied().map(BindingId::Global))
+        self.identity.binding_spans.get(span)
+    }
+
+    /// The identity of the binding *defined* by the declaration at `span`: a local, or the symbol
+    /// of a module-level declaration (only at module level).
+    fn definition_binder_at(&self, span: &Span) -> Option<BindingId> {
+        let binder = self.identity.binding_spans.get(span)?;
+        (matches!(binder, BindingId::Local(_)) || self.env.len() == 1).then_some(binder)
+    }
+
+    /// The `SymbolId` of the module-level declaration written at `span`: a top-level `fun`,
+    /// `let` or `var`, whose own span the identity walk maps to its symbol.
+    fn declared_symbol_at(&self, span: &Span) -> Option<SymbolId> {
+        match self.identity.binding_spans.get(span)? {
+            BindingId::Global(symbol) => Some(symbol),
+            BindingId::Local(_) => None,
+        }
     }
 
     /// The lexical identity of the binding *defined* at `span` (a `let` / `mut`
@@ -1172,7 +1137,6 @@ pub(super) fn construct_generic_body(
         type_ctx.symbols.as_deref(),
         &type_ctx.overloads,
         &type_ctx.current_module,
-        None,
         &resolved_facts,
         identity,
     )?;
@@ -1222,8 +1186,6 @@ pub(super) fn construct_program(
     symbols: Option<&crate::identity::symbols::SymbolMap>,
     overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
-    // resolution-freeze-allow: the resolver's reference map passed into construction; ADR-0054 step 6.
-    references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,
     identity: FrozenIdentity<'_>,
 ) -> Result<TypedProgram, MetelError> {
@@ -1235,7 +1197,6 @@ pub(super) fn construct_program(
         symbols,
         overloads,
         current_module,
-        references,
         resolved_facts,
         identity,
     )?;
@@ -1263,30 +1224,19 @@ pub(super) fn construct_program(
         // evaluator can register and dispatch it by `SymbolId` (METEL-187). Only
         // genuine top-level declarations are post-processed here; methods and
         // nested/local functions keep `def_id: None`.
-        if let TypedDecl::Fun(f) = &mut typed
+        if let (TypedDecl::Fun(f), Decl::Fun(fd)) = (&mut typed, decl)
             && f.symbol_id.is_none()
-            && let Some(syms) = symbols
         {
-            f.def_id = syms
-                .get(&(current_module.to_vec(), Namespace::Value, f.name.clone()))
-                .copied();
+            f.def_id = ctx.declared_symbol_at(&fd.span);
         }
         // Same identity assignment for top-level `let`/`mut` (ADR-0042): only
         // module-level bindings reach this loop, so this never touches a block-local
         // or `for`-init binding (those keep `def_id: None` from construction).
-        if let TypedDecl::Let(ld) = &mut typed
-            && let Some(syms) = symbols
-        {
-            ld.def_id = syms
-                .get(&(current_module.to_vec(), Namespace::Value, ld.name.clone()))
-                .copied();
+        if let (TypedDecl::Let(ld), Decl::Let(d)) = (&mut typed, decl) {
+            ld.def_id = ctx.declared_symbol_at(&d.span);
         }
-        if let TypedDecl::Mut(md) = &mut typed
-            && let Some(syms) = symbols
-        {
-            md.def_id = syms
-                .get(&(current_module.to_vec(), Namespace::Value, md.name.clone()))
-                .copied();
+        if let (TypedDecl::Mut(md), Decl::Mut(d)) = (&mut typed, decl) {
+            md.def_id = ctx.declared_symbol_at(&d.span);
         }
         out.push(typed);
     }
@@ -2423,10 +2373,9 @@ fn typed_place_field_ty(
             // metel-core#1222: prefer the identity the value's own type
             // already carries over a bare-name re-lookup, which conflates
             // same-named structs declared in different modules.
-            let struct_id = nominal_id.get().or_else(|| {
-                ctx.registry
-                    .resolve_type_id(ctx.current_module, struct_name)
-            });
+            let struct_id = nominal_id
+                .get()
+                .or_else(|| ctx.written_type_id(struct_name));
             if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {

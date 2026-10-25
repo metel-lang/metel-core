@@ -52,13 +52,23 @@ SCAN_FILES = [
     REPO_ROOT / "metel-frontend" / "src" / "tooling" / "query.rs",
     # Construction is not frozen yet (ADR-0054 step 6), so its maps carry justified exemptions; the
     # point of listing it is that a new String- or Span-keyed map there now fails CI.
-    REPO_ROOT
-    / "metel-frontend"
-    / "src"
-    / "pipeline"
-    / "type_checking"
-    / "construction"
-    / "mod.rs",
+    *[
+        REPO_ROOT
+        / "metel-frontend"
+        / "src"
+        / "pipeline"
+        / "type_checking"
+        / "construction"
+        / name
+        for name in (
+            "mod.rs",
+            "calls.rs",
+            "declarations.rs",
+            "expressions.rs",
+            "narrowing.rs",
+            "patterns.rs",
+        )
+    ],
 ]
 
 MAP_RE = re.compile(r"\b(?:HashMap|BTreeMap)\s*<")

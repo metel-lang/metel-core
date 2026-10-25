@@ -44,8 +44,7 @@ impl ConstructCtx<'_> {
     pub(super) fn flow_bind(&mut self, root: &str, ty: Type) -> Type {
         if let Type::Residual { brand, .. } = &ty
             && self
-                .registry
-                .resolve_type_id(self.current_module, brand)
+                .written_type_id(brand)
                 .and_then(|id| self.registry.struct_type_params_by_id(id))
                 .is_some_and(|parameters| !parameters.is_empty())
         {
@@ -58,9 +57,7 @@ impl ConstructCtx<'_> {
             let declared = Type::Named(
                 brand.clone(),
                 Vec::new(),
-                crate::data::types::NominalId::from(
-                    self.registry.resolve_type_id(self.current_module, brand),
-                ),
+                crate::data::types::NominalId::from(self.written_type_id(brand)),
             );
             self.flow.bind_typed(root, &declared);
             for (label, _) in full {
@@ -114,7 +111,7 @@ impl ConstructCtx<'_> {
     /// arguments. Mirrors `Expr::RecordProjection` construction's own field
     /// resolution — a generic struct's fields are remapped per instantiation.
     fn resolve_struct_row(&self, brand: &str, type_args: &[Type]) -> Option<Vec<(String, Type)>> {
-        let brand_id = self.registry.resolve_type_id(self.current_module, brand);
+        let brand_id = self.written_type_id(brand);
         if let Some(type_params) =
             brand_id.and_then(|id| self.registry.raw_struct_type_params().get(&id))
         {
