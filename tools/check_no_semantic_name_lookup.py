@@ -15,9 +15,9 @@ line (or contiguous comment block) immediately above it -- the same convention
 `clippy_allow_ratchet.py` uses for `clippy-allow:`. Every exemption must
 justify itself in the comment, so a reviewer can ask whether it still holds.
 
-`construction/mod.rs` is scanned although construction is not frozen yet (ADR-0054 step 6 still
-has to migrate it): its maps are exempted one by one with the reason, so a new String- or
-Span-keyed map there fails CI instead of adding to the debt unnoticed.
+Every file of `construction/` is scanned although construction is not frozen yet (ADR-0054 step 6
+is still in progress, metel-core#1570): its maps are exempted one by one with the reason, so a new
+String- or Span-keyed map there fails CI instead of adding to the debt unnoticed.
 
 Deliberately NOT scanned:
 - `identity::position` (`PositionIndex` and friends) -- ADR-0054's own
@@ -51,7 +51,7 @@ SCAN_FILES = [
     REPO_ROOT / "metel-frontend" / "src" / "ownership" / "place.rs",
     REPO_ROOT / "metel-frontend" / "src" / "tooling" / "query.rs",
     # Construction is not frozen yet (ADR-0054 step 6), so its maps carry justified exemptions; the
-    # point of listing it is that a new String- or Span-keyed map there now fails CI.
+    # point of listing every file is that a new String- or Span-keyed map there now fails CI.
     *[
         REPO_ROOT
         / "metel-frontend"
