@@ -358,6 +358,16 @@ impl<'a> ConstructCtx<'a> {
             .or_else(|| self.registry.enum_id(self.current_module, name))
     }
 
+    /// The scheme of the static member `Type::member` written as `segments`: registered under the
+    /// type's identity and the member name, not under the joined spelling.
+    fn type_member_scheme(&self, segments: &[String]) -> Option<&'a (TypeScheme, Vec<TypeVar>)> {
+        let [type_name, member] = segments else {
+            return None;
+        };
+        self.registry
+            .method_scheme_by_id(self.written_type_id(type_name)?, member)
+    }
+
     /// The identity of the enum a written `name` refers to.
     fn written_enum_id(&self, name: &str) -> Option<SymbolId> {
         self.written_type_id(name)

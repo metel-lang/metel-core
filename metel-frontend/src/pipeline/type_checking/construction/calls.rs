@@ -217,15 +217,14 @@ pub(super) fn construct_call(
             );
             (typed, concrete)
         }
-        // Qualified static constructors like "List::new" / "List::from" registered as joined-key schemes.
+        // Qualified static constructors like `List::new` / `List::from`: the scheme registered
+        // under the type's identity and the member name.
         Expr::Path(segments, _, path_span)
-            if {
-                let joined = segments.join("::");
-                ctx.lookup_module(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
-            } =>
+            if ctx.lookup_module(&segments.join("::")).is_none()
+                && ctx.type_member_scheme(segments).is_some() =>
         {
             let joined = segments.join("::");
-            let scheme = ctx.scheme_env.get(joined.as_str()).unwrap();
+            let (scheme, _) = ctx.type_member_scheme(segments).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(
                     scheme,
