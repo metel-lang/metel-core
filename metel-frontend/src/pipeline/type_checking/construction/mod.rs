@@ -348,6 +348,7 @@ impl<'a> ConstructCtx<'a> {
     /// downstream reads the id off the type (`type_id_of` and the `*_of` accessors); a block-local
     /// name is out of the registry's scope by now and must not be looked up again by spelling
     /// (ADR-0054, metel-core#1568).
+    // arch-implements: ["arch.type-construction.requirement-15"]
     fn written_type_id(&self, name: &str) -> Option<SymbolId> {
         self.local_struct_ids
             .iter()
@@ -453,6 +454,7 @@ impl<'a> ConstructCtx<'a> {
 
     /// The local a reference at `span` names, if it names one: its identity says it is a local
     /// and `env` holds it. A module-level reference resolves to no local.
+    // arch-implements: ["arch.type-construction.requirement-13"]
     fn resolve_local(&self, span: &Span) -> Option<LocalId> {
         match self.binding_id_at(span) {
             Some(BindingId::Local(id)) if self.env.iter().any(|scope| scope.contains_key(&id)) => {
@@ -472,6 +474,7 @@ impl<'a> ConstructCtx<'a> {
 
     /// A module-level value by name: a function, builtin, or top-level binding. For a spelling
     /// that cannot be a local (a path segment, a resolved path, a callee name).
+    // limit: ["LIMIT-TYPE-CONSTRUCTION-004"]
     fn lookup_module(&self, name: &str) -> Option<&Type> {
         self.module_values.get(name).map(|(ty, _)| ty)
     }

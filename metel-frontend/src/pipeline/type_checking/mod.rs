@@ -402,6 +402,7 @@ pub fn check_graph(
 /// builds the tables from the parsed graph before normalization (`identity::allocate_for_graph`,
 /// `identity::collect_members_for_graph`), so construction resolves every binding by identity.
 // arch-implements: ["arch.type-construction.requirement-2"]
+// arch-implements: ["arch.type-construction.requirement-14"]
 pub fn check_graph_with_report(
     graph: &NormalizedModuleGraph,
     std_prelude: &CorePrelude,

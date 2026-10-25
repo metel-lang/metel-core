@@ -185,6 +185,7 @@ fn blank_lines_and_reformatting_change_no_identity() {
 
 // metel-core#1570: a binding inside a bare top-level statement gets a lexical identity, and
 // shadowing across two such statements yields distinct ones.
+// arch-verifies: ["arch.resolution.requirement-5"]
 #[test]
 fn bindings_in_top_level_statements_have_distinct_identities() {
     let fixture = Fixture::build(
