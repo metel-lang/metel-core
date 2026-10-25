@@ -85,6 +85,8 @@ fn prelude_schemes_cover_embedded_core_natives() {
 // test of `merge_from` alone cannot catch (and which no program output shows, because nothing
 // observable depended on the overwritten entry).
 // arch-verifies: ["arch.type-inference.requirement-2"]
+// arch-verifies: ["arch.type-construction.requirement-14"]
+// arch-verifies: ["arch.type-construction.requirement-15"]
 #[test]
 fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     use crate::pipeline::coherence;
@@ -258,4 +260,43 @@ fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
         main["describe"]
     );
     assert_eq!(first["helper"]["render"], main["render"]);
+}
+
+// metel-core#1570: a reference resolves to the binding it names, not to whatever shares its
+// spelling: a local shadows a module-level function of the same name, and a nested block's
+// `f: i64` does not leak into the outer `f: String` that is read after it. Either mix-up is a type
+// error at one of the asserts.
+// arch-verifies: ["arch.type-construction.requirement-13"]
+#[test]
+fn a_local_is_resolved_by_its_binding_not_its_spelling() {
+    use crate::pipeline::coherence;
+    use crate::pipeline::name_resolution::name_resolver;
+    use crate::pipeline::parsing::module_loader;
+    use crate::pipeline::path_normalization;
+
+    let dir = std::env::temp_dir().join(format!("metel_local_identity_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    std::fs::write(
+        dir.join("main.mtl"),
+        "fun f() -> i64 { 1 }\nfun g() -> i64 { f() }\nfun main() {\n    let f := \"outer\";\n    if (true) {\n        let f := 7;\n        assert(f == 7);\n    }\n    assert(f == \"outer\");\n    assert(g() == 1);\n}\n",
+    )
+    .expect("write main");
+    let result = (|| {
+        let graph = module_loader::load_root(&dir.join("main.mtl"))?;
+        let names = name_resolver::resolve(&graph)?;
+        let members = crate::identity::collect_members_for_graph(&graph, &names);
+        let allocation = crate::identity::allocate_for_graph(&graph, &names);
+        let normalized = path_normalization::normalize(graph, names)?;
+        coherence::check(&normalized)?;
+        check_graph(
+            &normalized,
+            &CorePrelude::default(),
+            crate::identity::FrozenIdentity {
+                members: &members,
+                binding_spans: &allocation.binding_spans,
+            },
+        )
+    })();
+    let _ = std::fs::remove_dir_all(&dir);
+    result.expect("each reference resolves to the binding it names");
 }

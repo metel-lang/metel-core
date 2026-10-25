@@ -182,6 +182,7 @@ impl BindingSpans {
 #[must_use]
 // arch-implements: ["arch.resolution.requirement-1"]
 // arch-implements: ["arch.resolution.requirement-2"]
+// arch-implements: ["arch.resolution.requirement-5"]
 pub fn allocate_module(
     module_path: &[String],
     decls: &[Decl],
