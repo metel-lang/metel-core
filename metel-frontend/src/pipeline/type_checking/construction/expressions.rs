@@ -54,7 +54,7 @@ fn verify_closure_capture_list(
             if !ctx.has_local_binding(&use_site(name)) {
                 continue;
             }
-            let Some(ty) = ctx.lookup_at(name, &use_site(name)) else {
+            let Some(ty) = ctx.lookup_at(&use_site(name)) else {
                 continue;
             };
             if !ctx
@@ -99,7 +99,7 @@ fn verify_closure_capture_list(
         && let Some(crate::data::ast::Expr::Ident(name, tail_span)) = body.tail.as_deref()
             && capture_specs.iter().any(|capture| {
                 matches!(capture, crate::data::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
-            }) && ctx.lookup_at(name, tail_span).is_some_and(|ty| {
+            }) && ctx.lookup_at(tail_span).is_some_and(|ty| {
                 !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
             }) {
                 return Err(MetelError::type_error(
@@ -162,14 +162,14 @@ fn verify_capture_specs(
 ) -> Result<(), MetelError> {
     for capture in capture_specs {
         if let crate::data::ast::CaptureSpec::MutRef { name, span } = capture {
-            if ctx.lookup_at(name, span).is_none() {
+            if ctx.lookup_at(span).is_none() {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0003,
                     format!("undefined variable `{name}`"),
                     span,
                 ));
             }
-            if !ctx.is_mutable(name, span) {
+            if !ctx.is_mutable(span) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0028,
                     format!("`{name}` must be a `var` binding for a `&var` capture"),
@@ -402,12 +402,10 @@ pub(super) fn construct_expr(
             Ok(TypedExpr::Literal(lit.clone(), ty, span.clone()))
         }
         Expr::Ident(name, span) => {
-            if let Some(ty) = ctx.lookup_at(name, span).cloned() {
+            if let Some(ty) = ctx.lookup_at(span).cloned() {
                 // RFC-0137 slice 2 (metel-core#858): a binding with a field moved
                 // out reads at its narrowed residual type from that point on.
-                let ty = ctx
-                    .narrowed_type(&ctx.flow_root_at(name, span))
-                    .unwrap_or(ty);
+                let ty = ctx.narrowed_type(&ctx.flow_root_at(span)).unwrap_or(ty);
                 return Ok(TypedExpr::Ident(
                     name.clone(),
                     ctx.binding_id_at(span),
@@ -445,12 +443,12 @@ pub(super) fn construct_expr(
             // #736: `name` may be a real, checked declaration -- a generic
             // function's own scheme is deliberately kept out of `ctx.env`
             // (see the `GenericClosure` construction above for why: call
-            // sites resolve it through `scheme_env` instead), so a bare,
+            // sites resolve it through `scheme_ids` instead), so a bare,
             // non-call reference to it reaches here. It genuinely exists;
             // `undefined name` would be a lie. Generic functions are
             // call-only today (`functions.md`'s first-class-functions
             // carve-out; RFC-0138 proposes lifting this) -- say so instead.
-            if let Some(scheme) = ctx.scheme_env.get(name.as_str())
+            if let Some(scheme) = ctx.scheme_at(span)
                 && !scheme.quantified_vars.is_empty()
             {
                 // metel-core#736 / RFC-0138 §4: a concrete expected type here
@@ -553,7 +551,7 @@ pub(super) fn construct_expr(
             symbol_id,
             span,
         } => {
-            let ty = ctx.lookup_module(resolved).cloned().ok_or_else(|| {
+            let ty = ctx.lookup_resolved(*symbol_id).cloned().ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0003,
                     format!("undefined name `{}`", original.join("::")),
@@ -860,7 +858,7 @@ pub(super) fn construct_expr(
             // expected type is simply the binding's own type — no peeling. Writing
             // through is spelled `*p = v` (AssignTarget::Deref), one `*` per layer.
             let value_hint: Option<Type> = match target {
-                AssignTarget::Ident(name, target_span) => ctx.lookup_at(name, target_span).cloned(),
+                AssignTarget::Ident(_, target_span) => ctx.lookup_at(target_span).cloned(),
                 AssignTarget::Deref { object, .. } => match construct_expr(object, None, ctx) {
                     Ok(o) => match o.ty() {
                         Type::MutReference(inner) => Some((**inner).clone()),
@@ -1934,9 +1932,9 @@ pub(super) fn construct_expr(
             let use_multiplicity = if captures.iter().all(|capture| match capture {
                 crate::data::ast::CaptureSpec::SharedRef { .. }
                 | crate::data::ast::CaptureSpec::MutRef { .. } => true,
-                crate::data::ast::CaptureSpec::Owned { name, span, .. }
-                | crate::data::ast::CaptureSpec::Clone { name, span, .. } => {
-                    ctx.lookup_at(name, span).is_some_and(|ty| {
+                crate::data::ast::CaptureSpec::Owned { span, .. }
+                | crate::data::ast::CaptureSpec::Clone { span, .. } => {
+                    ctx.lookup_at(span).is_some_and(|ty| {
                         ctx.registry
                             .type_satisfies_aspect(ctx.current_module, ty, "Copy")
                     })

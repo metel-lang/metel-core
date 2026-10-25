@@ -8453,6 +8453,9 @@ pub type SymbolTable = crate::identity::symbols::SymbolMap;
 pub struct TypeCtx {
     /// Full scheme environment of the module where the closure was defined.
     pub scheme_env: HashMap<String, TypeScheme>,
+    /// The same schemes keyed by the declaration they belong to, which is how a reconstructed
+    /// body's references (resolved to a binding by the identity pass) find them.
+    pub scheme_ids: HashMap<crate::identity::BindingId, TypeScheme>,
     /// The overload table of the module where the closure was defined (its own
     /// overloaded functions and its imports, including the prelude's `assert`). A
     /// reconstructed generic body resolves overloaded callees through it, so a name is

@@ -47,6 +47,8 @@ pub struct TypedModule {
     // share a name, so there is no cross-module collision for a bare name to
     // resolve wrong (metel-core#1054).
     pub scheme_env: HashMap<String, TypeScheme>,
+    /// The module's schemes keyed by the declaration they belong to (see `TypeCtx::scheme_ids`).
+    pub scheme_ids: HashMap<crate::identity::BindingId, TypeScheme>,
     /// The overload table visible in this module: its own overloaded functions plus
     /// the ones it imports, including the standard prelude's (`assert`). Generic bodies
     /// are reconstructed per call and call overloaded functions, so reconstruction

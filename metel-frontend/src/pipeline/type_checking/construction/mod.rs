@@ -21,7 +21,7 @@ use crate::pipeline::type_checking::type_engine::{
     TypeScheme, TypeVar, TypeVarGenerator, VariantInfo, unify,
 };
 
-use super::SchemeEnv;
+use super::SchemeIds;
 use super::conversions::{
     AssocResolveCtx, infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
     type_expr_to_infer_with_generics, type_to_infer,
@@ -97,7 +97,9 @@ pub(super) fn build_concrete_method_env(
 /// holds concrete `Type` values; no constraint emission.
 struct ConstructCtx<'a> {
     subst: &'a Substitution,
-    scheme_env: &'a SchemeEnv,
+    /// The schemes keyed by the declaration they belong to: what a reference's resolved binding
+    /// is looked up in.
+    scheme_ids: &'a SchemeIds,
     /// Local value environment, innermost scope last, keyed by the binding's lexical identity
     /// (ADR-0054 step 6, metel-core#1570). Scope 0 is the module level and holds nothing here:
     /// module-level values live in `module_values`.
@@ -105,12 +107,9 @@ struct ConstructCtx<'a> {
     /// Binding mutability mirrors `env`; capture-list checking needs the declaration-site
     /// fact for `[&var name]`, even though ordinary construction only needs the type.
     mut_env: Vec<HashMap<LocalId, bool>>,
-    /// Module-level values (functions, builtins, top-level `let`/`var`) and their
-    /// mutability, by name. Seeded from `scheme_env`, which inference produces keyed by name,
-    /// so this stays name-keyed until `SchemeEnv` itself moves to `SymbolId` (metel-core#1570
-    /// step 3).
-    // resolution-freeze-allow: module-level values seeded from the name-keyed `scheme_env` (inference output). Retired when the inference output is keyed by identity, which needs an identity at every use site; a `Type::method` path callee has none yet (metel-core#1570).
-    module_values: HashMap<String, (Type, bool)>,
+    /// Module-level values (functions, builtins, top-level `let`/`var`) and their mutability, by
+    /// the binding they were declared under. Seeded from the monomorphic entries of `scheme_ids`.
+    module_values: HashMap<BindingId, (Type, bool)>,
     /// Source of synthetic identities for a binder the identity walk gave none; counts down from
     /// the top of the id space so it cannot meet a hashed `LocalId` in practice.
     next_synthetic_local: u64,
@@ -174,11 +173,10 @@ struct ConstructCtx<'a> {
     /// `return_type`/`body` to build a `GenericClosure` node from, the same shape
     /// `construct_decl`'s closure-literal special case already builds one from.
     fn_table: Vec<HashMap<LocalId, (String, FnDeclShape)>>,
-    /// The same shapes for the module's top-level functions, by name: a top-level function has no
-    /// lexical identity, only a `SymbolId`, and this table is filled before any declaration is
-    /// constructed. Retired with `scheme_env` going by `SymbolId` (metel-core#1570 step 3).
-    // resolution-freeze-allow: top-level generic function shapes, named like the name-keyed `scheme_env` they are hoisted beside; retired together with it (metel-core#1570).
-    module_fn_decls: HashMap<String, FnDeclShape>,
+    /// The same shapes for the module's top-level functions, by their `SymbolId`: a top-level
+    /// function has no lexical identity, and this table is filled before any declaration is
+    /// constructed.
+    module_fn_decls: HashMap<BindingId, FnDeclShape>,
     /// By-value capture names for each enclosing closure body. This is the
     /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
     /// RFC-0122 can model the environment borrow's lifetime.
@@ -199,16 +197,20 @@ fn local_flow_root(id: LocalId) -> String {
     format!("local:{}", id.0)
 }
 
-/// Root string of a module-level value, which has no lexical identity and is named.
-fn module_flow_root(name: &str) -> String {
-    format!("module:{name}")
+/// Root string of a module-level value: an injective encoding of the binding it was declared
+/// under, so a source name never appears in it.
+fn module_flow_root(binding: BindingId) -> String {
+    match binding {
+        BindingId::Global(symbol) => format!("module:{symbol:?}"),
+        BindingId::Local(id) => local_flow_root(id),
+    }
 }
 
 impl<'a> ConstructCtx<'a> {
     #[allow(clippy::too_many_arguments)]
     fn new(
         subst: &'a Substitution,
-        scheme_env: &'a SchemeEnv,
+        scheme_ids: &'a SchemeIds,
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
         // resolution-freeze-allow: the resolver's symbol table, read only to find the source symbol of an aspect's default method for an impl that inherits it (`inherited_method_identity`); every other id comes off the identity tables or `written_type_id`.
@@ -222,7 +224,7 @@ impl<'a> ConstructCtx<'a> {
         let method_env = build_concrete_method_env(registry, subst)?;
         let mut ctx = Self {
             subst,
-            scheme_env,
+            scheme_ids,
             env: vec![HashMap::new()],
             mut_env: vec![HashMap::new()],
             module_values: HashMap::new(),
@@ -248,14 +250,14 @@ impl<'a> ConstructCtx<'a> {
             closure_owned_captures: Vec::new(),
             flow: FlowState::default(),
         };
-        // Derive concrete types for all monomorphic entries in scheme_env.
+        // Derive concrete types for all monomorphic entries in scheme_ids.
         // Both builtins and user functions are populated here — no second registration site.
         let dummy = Span::new(0, 0, "");
-        for (name, scheme) in scheme_env {
+        for (binding, scheme) in scheme_ids {
             if scheme.quantified_vars.is_empty() {
                 let resolved = subst.apply(&scheme.ty);
                 if let Ok(ty) = infer_type_to_type(&resolved, &dummy) {
-                    ctx.module_values.insert(name.clone(), (ty, false));
+                    ctx.module_values.insert(*binding, (ty, false));
                 }
             }
         }
@@ -422,7 +424,8 @@ impl<'a> ConstructCtx<'a> {
     }
 
     /// Bind `name` at the binding site `span`. At module level (scope 0) the value goes in
-    /// `module_values` by name; anywhere deeper it is keyed by the binding's lexical identity.
+    /// `module_values` under the binding's identity; anywhere deeper it is keyed by its lexical
+    /// identity.
     fn bind(&mut self, name: &str, span: &Span, ty: Type) {
         self.bind_with_mutability(name, span, ty, false);
     }
@@ -431,12 +434,14 @@ impl<'a> ConstructCtx<'a> {
         self.bind_with_mutability(name, span, ty, true);
     }
 
-    fn bind_with_mutability(&mut self, name: &str, span: &Span, ty: Type, is_mutable: bool) {
+    fn bind_with_mutability(&mut self, _name: &str, span: &Span, ty: Type, is_mutable: bool) {
         // RFC-0137 slice 2: register the binding for move-triggered narrowing
         // before it lands in `env`, so a shadowing rebind resets its move state.
-        if self.env.len() == 1 {
-            let ty = self.flow_bind(&module_flow_root(name), ty);
-            self.module_values.insert(name.to_owned(), (ty, is_mutable));
+        if self.env.len() == 1
+            && let Some(binding) = self.definition_binder_at(span)
+        {
+            let ty = self.flow_bind(&module_flow_root(binding), ty);
+            self.module_values.insert(binding, (ty, is_mutable));
             return;
         }
         let id = self.local_binding_at(span);
@@ -475,25 +480,33 @@ impl<'a> ConstructCtx<'a> {
     }
 
     /// The type of the value a reference at `span` names: a local, else a module-level value.
-    fn lookup_at(&self, name: &str, span: &Span) -> Option<&Type> {
+    fn lookup_at(&self, span: &Span) -> Option<&Type> {
         match self.resolve_local(span) {
             Some(id) => self.env.iter().rev().find_map(|scope| scope.get(&id)),
-            None => self.module_values.get(name).map(|(ty, _)| ty),
+            None => self
+                .module_values
+                .get(&self.binding_id_at(span)?)
+                .map(|(ty, _)| ty),
         }
     }
 
-    /// A module-level value by name: a function, builtin, or top-level binding. For a spelling
-    /// that cannot be a local (a path segment, a resolved path, a callee name).
-    // limit: ["LIMIT-TYPE-CONSTRUCTION-004"]
-    fn lookup_module(&self, name: &str) -> Option<&Type> {
-        self.module_values.get(name).map(|(ty, _)| ty)
+    /// The module-level value a normalized path resolved to, by the symbol it carries.
+    fn lookup_resolved(&self, symbol: Option<SymbolId>) -> Option<&Type> {
+        self.module_values
+            .get(&BindingId::Global(symbol?))
+            .map(|(ty, _)| ty)
+    }
+
+    /// The scheme of the declaration a normalized path resolved to.
+    fn resolved_scheme(&self, symbol: Option<SymbolId>) -> Option<&'a TypeScheme> {
+        self.scheme_ids.get(&BindingId::Global(symbol?))
     }
 
     fn has_local_binding(&self, span: &Span) -> bool {
         self.resolve_local(span).is_some()
     }
 
-    fn is_mutable(&self, name: &str, span: &Span) -> bool {
+    fn is_mutable(&self, span: &Span) -> bool {
         match self.resolve_local(span) {
             Some(id) => self
                 .mut_env
@@ -502,15 +515,21 @@ impl<'a> ConstructCtx<'a> {
                 .find_map(|scope| scope.get(&id))
                 .copied()
                 .unwrap_or(false),
-            None => self.module_values.get(name).is_some_and(|(_, m)| *m),
+            None => self
+                .binding_id_at(span)
+                .and_then(|binding| self.module_values.get(&binding))
+                .is_some_and(|(_, m)| *m),
         }
     }
 
     /// The move/narrowing-state root of the value a reference at `span` names.
-    fn flow_root_at(&self, name: &str, span: &Span) -> String {
+    fn flow_root_at(&self, span: &Span) -> String {
         match self.resolve_local(span) {
             Some(id) => local_flow_root(id),
-            None => module_flow_root(name),
+            None => self.binding_id_at(span).map_or_else(
+                || format!("unbound:{}:{}", span.start, span.end),
+                module_flow_root,
+            ),
         }
     }
 
@@ -541,9 +560,11 @@ impl<'a> ConstructCtx<'a> {
         body: Block,
     ) {
         let name = name.into();
-        if self.env.len() == 1 {
+        if self.env.len() == 1
+            && let Some(binding) = self.definition_binder_at(span)
+        {
             self.module_fn_decls
-                .insert(name, (params, return_type, body));
+                .insert(binding, (params, return_type, body));
             return;
         }
         let id = self.local_binding_at(span).unwrap_or_else(|| {
@@ -559,7 +580,7 @@ impl<'a> ConstructCtx<'a> {
     /// The shape of the generic function a reference at `span` names: a nested one by its
     /// lexical identity, a top-level one by name. A reference that names a local variable, or
     /// a nested function that is not generic, finds nothing.
-    fn lookup_fn_decl(&self, name: &str, span: &Span) -> Option<&FnDeclShape> {
+    fn lookup_fn_decl(&self, span: &Span) -> Option<&FnDeclShape> {
         let nested = |id: &LocalId| {
             self.fn_table
                 .iter()
@@ -569,7 +590,8 @@ impl<'a> ConstructCtx<'a> {
         };
         match self.binding_id_at(span) {
             Some(BindingId::Local(id)) => nested(&id),
-            Some(BindingId::Global(_)) | None => self.module_fn_decls.get(name),
+            Some(binding @ BindingId::Global(_)) => self.module_fn_decls.get(&binding),
+            None => None,
         }
     }
 
@@ -690,6 +712,11 @@ impl<'a> ConstructCtx<'a> {
     /// `Local` ones, so this can't shadow a real local's identity. `None`
     /// when neither source has anything for this span (e.g. a
     /// construction-synthesised node, or a genuinely unresolved name).
+    /// The scheme of the declaration the use or binding site at `span` resolves to.
+    fn scheme_at(&self, span: &Span) -> Option<&'a TypeScheme> {
+        self.scheme_ids.get(&self.binding_id_at(span)?)
+    }
+
     fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
         self.identity.binding_spans.get(span)
     }
@@ -757,8 +784,8 @@ impl<'a> ConstructCtx<'a> {
             .iter()
             .filter_map(|capture| match capture {
                 CaptureSpec::Owned { name, span, .. } => self
-                    .narrowed_type(&self.flow_root_at(name, span))
-                    .or_else(|| self.lookup_at(name, span).cloned())
+                    .narrowed_type(&self.flow_root_at(span))
+                    .or_else(|| self.lookup_at(span).cloned())
                     .map(|ty| (name.clone(), ty)),
                 CaptureSpec::Clone { .. }
                 | CaptureSpec::SharedRef { .. }
@@ -780,8 +807,8 @@ impl<'a> ConstructCtx<'a> {
                     | crate::data::ast::CaptureSpec::MutRef { name, span, .. }
                     | crate::data::ast::CaptureSpec::Clone { name, span, .. } => (name, span),
                 };
-                self.narrowed_type(&self.flow_root_at(name, span))
-                    .or_else(|| self.lookup_at(name, span).cloned())
+                self.narrowed_type(&self.flow_root_at(span))
+                    .or_else(|| self.lookup_at(span).cloned())
                     .map(|ty| (name.clone(), self.resolve_local(span), ty))
             })
             .collect()
@@ -1137,7 +1164,7 @@ pub(super) fn construct_generic_body(
     };
     let mut ctx = ConstructCtx::new(
         &subst,
-        &type_ctx.scheme_env,
+        &type_ctx.scheme_ids,
         &type_ctx.registry,
         type_var_gen,
         // metel-core#1125: pass the frozen generic's own `symbols`/
@@ -1192,7 +1219,7 @@ pub(super) fn construct_generic_body(
 pub(super) fn construct_program(
     program: &Program,
     subst: &Substitution,
-    scheme_env: &SchemeEnv,
+    scheme_ids: &SchemeIds,
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
     // resolution-freeze-allow: the resolver's symbol table passed into construction for `inherited_method_identity` only; see `ConstructCtx::symbols`.
@@ -1204,7 +1231,7 @@ pub(super) fn construct_program(
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
-        scheme_env,
+        scheme_ids,
         registry,
         type_var_gen,
         symbols,
@@ -2274,7 +2301,7 @@ fn typed_place_ty(
 ) -> Result<Type, MetelError> {
     match place {
         TypedPlace::Ident(name, _, ident_span) => {
-            ctx.lookup_at(name, ident_span).cloned().ok_or_else(|| {
+            ctx.lookup_at(ident_span).cloned().ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0003,
                     format!("use of undeclared variable `{name}`"),

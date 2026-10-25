@@ -190,7 +190,7 @@ fn note_consumed_expr(ctx: &mut ConstructCtx, typed: &TypedExpr) {
 /// state is keyed by the binding's identity (metel-core#1570), so the root is resolved here.
 fn place_of_expr(ctx: &ConstructCtx, expr: &TypedExpr) -> Option<Place> {
     match expr {
-        TypedExpr::Ident(name, _, _, span) => Some(Place::new(ctx.flow_root_at(name, span))),
+        TypedExpr::Ident(_, _, _, span) => Some(Place::new(ctx.flow_root_at(span))),
         TypedExpr::UnaryOp(UnaryOp::Deref, object, _, _) => {
             Some(place_of_expr(ctx, object)?.with_projection(Projection::Deref))
         }
@@ -216,7 +216,7 @@ fn place_of_expr(ctx: &ConstructCtx, expr: &TypedExpr) -> Option<Place> {
 /// The place an assignment target names, rooted as [`place_of_expr`] does.
 fn place_of_target(ctx: &ConstructCtx, place: &TypedPlace) -> Option<Place> {
     match place {
-        TypedPlace::Ident(name, _, span) => Some(Place::new(ctx.flow_root_at(name, span))),
+        TypedPlace::Ident(_, _, span) => Some(Place::new(ctx.flow_root_at(span))),
         TypedPlace::Field { object, field, .. } => {
             Some(place_of_target(ctx, object)?.with_projection(Projection::field(field.clone())))
         }
