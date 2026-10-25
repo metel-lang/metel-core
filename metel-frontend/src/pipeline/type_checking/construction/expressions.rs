@@ -339,9 +339,8 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                             }
                         })
                         .or_else(|| {
-                            let (scheme, struct_tvars) = ctx.registry.method_scheme_for(
-                                ctx.current_module,
-                                type_name.as_str(),
+                            let (scheme, struct_tvars) = ctx.registry.method_scheme_by_id(
+                                ctx.written_type_id(type_name.as_str())?,
                                 "next",
                             )?;
                             let mut subst = Substitution::new();
@@ -624,9 +623,7 @@ pub(super) fn construct_expr(
                     | Type::OpenRecord { fields, .. }
                     | Type::Residual { fields, .. } => fields.clone(),
                     Type::Named(name, args, nominal_id) => {
-                        let id = nominal_id
-                            .get()
-                            .or_else(|| ctx.registry.resolve_type_id(ctx.current_module, name));
+                        let id = nominal_id.get().or_else(|| ctx.written_type_id(name));
                         let raw_fields = id
                             .and_then(|id| ctx.registry.raw_struct_env().get(&id))
                             .ok_or_else(|| {
@@ -936,10 +933,9 @@ pub(super) fn construct_expr(
             // metel-core#1222: prefer the identity the value's own type already
             // carries over a bare-name re-lookup, which conflates same-named
             // structs declared in different modules.
-            let struct_id = nominal_id.get().or_else(|| {
-                ctx.registry
-                    .resolve_type_id(ctx.current_module, &struct_name)
-            });
+            let struct_id = nominal_id
+                .get()
+                .or_else(|| ctx.written_type_id(&struct_name));
             let field_ty = if let Some(type_params) =
                 struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
             {
@@ -1176,6 +1172,7 @@ pub(super) fn construct_expr(
                     .cloned()
                     .unwrap_or_default();
                 let mut local_subst = Substitution::new();
+                // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
                 let mut generics_map: HashMap<String, TypeVar> = HashMap::new();
                 for (name, arg_ty) in aspect_generics.iter().zip(type_args.iter()) {
                     let tv = ctx.type_var_gen.fresh();
@@ -1312,11 +1309,10 @@ pub(super) fn construct_expr(
                 // instead (metel-core#1585).
                 let candidates = match struct_id {
                     Some(id) => ctx.registry.method_scheme_variants_by_id(id, method),
-                    None => ctx.registry.method_scheme_variants_for(
-                        ctx.current_module,
-                        &struct_name,
-                        method,
-                    ),
+                    None => match ctx.written_type_id(&struct_name) {
+                        Some(id) => ctx.registry.method_scheme_variants_by_id(id, method),
+                        None => &[],
+                    },
                 }
                 .to_vec();
                 if candidates.is_empty() {
@@ -1396,6 +1392,7 @@ pub(super) fn construct_expr(
             // Look up field type hints from the struct definition for non-generic structs.
             // Clone to release the borrow on ctx before calling construct_expr below.
             let type_name = resolved_path.last().map_or("", std::string::String::as_str);
+            // resolution-freeze-allow: field names of the one struct literal being constructed; unique within it.
             let mut field_hints: HashMap<String, Type> = ctx
                 .get_struct_fields(type_name)
                 .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
@@ -1509,6 +1506,7 @@ pub(super) fn construct_expr(
                         })
                         .collect::<Result<_, _>>()?;
                     // T0012: check each resolved type arg satisfies the declared bounds.
+                    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
                     let generic_types_by_name: HashMap<String, Type> = type_id
                         .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
                         .into_iter()
@@ -1702,10 +1700,9 @@ pub(super) fn construct_expr(
             // metel-core#1222: prefer the identity the value's own type already
             // carries (see the `FieldAccess` arm above) over a bare-name
             // re-lookup.
-            let struct_id = nominal_id.get().or_else(|| {
-                ctx.registry
-                    .resolve_type_id(ctx.current_module, &struct_name)
-            });
+            let struct_id = nominal_id
+                .get()
+                .or_else(|| ctx.written_type_id(&struct_name));
             for field in fields {
                 let field_ty = if let Some(type_params) =
                     struct_id.and_then(|id| ctx.registry.raw_struct_type_params().get(&id))
@@ -1821,12 +1818,7 @@ pub(super) fn construct_expr(
                 }
                 // Also check enum variants via enum_env.
                 let written_enum = ctx.written_enum_id(type_name);
-                if let Some(info) = written_enum
-                    .and_then(|id| ctx.registry.enum_info_by_id(id))
-                    .or_else(|| {
-                        ctx.registry
-                            .enum_info(ctx.current_module, type_name.as_str())
-                    })
+                if let Some(info) = written_enum.and_then(|id| ctx.registry.enum_info_by_id(id))
                     && let Some(variant) = info.variants.iter().find(|v| &v.name == member_name)
                 {
                     if variant.fields.is_empty() {

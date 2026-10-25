@@ -747,7 +747,7 @@ fn record_pattern_fields(
         Type::Named(name, args, nominal_id) => {
             let id = nominal_id
                 .get()
-                .or_else(|| ctx.registry.resolve_type_id(ctx.current_module, name))
+                .or_else(|| ctx.written_type_id(name))
                 .ok_or_else(|| MetelError::internal("missing nominal record identity"))?;
             let raw_fields = ctx
                 .registry
@@ -902,6 +902,7 @@ pub(super) fn construct_enum_literal_ty(
         .collect::<Result<_, _>>()?;
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
+    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
     let generic_types_by_name: HashMap<String, Type> = enum_id
         .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
         .into_iter()

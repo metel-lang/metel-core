@@ -59,22 +59,7 @@ fn closure_definition(
         body: body.clone(),
         span: closure_span.clone(),
     };
-    let binder = ctx
-        .local_binding_at(&ld.span)
-        .map(crate::identity::BindingId::Local)
-        .or_else(|| {
-            ctx.symbols
-                .filter(|_| ctx.env.len() == 1)
-                .and_then(|symbols| {
-                    symbols.get(&(
-                        ctx.current_module.to_vec(),
-                        Namespace::Value,
-                        ld.name.clone(),
-                    ))
-                })
-                .copied()
-                .map(crate::identity::BindingId::Global)
-        });
+    let binder = ctx.definition_binder_at(&ld.span);
     let abstract_signature = binder
         .map(|binder| {
             super::super::handoff::freeze_declaration_signature(
@@ -482,22 +467,7 @@ pub(super) fn construct_fun_decl(
     let abstract_signature = if definition_scheme.quantified_vars.is_empty() {
         None
     } else {
-        let binder = ctx
-            .local_binding_at(&fun.span)
-            .map(crate::identity::BindingId::Local)
-            .or_else(|| {
-                ctx.symbols
-                    .filter(|_| ctx.env.len() == 1)
-                    .and_then(|symbols| {
-                        symbols.get(&(
-                            ctx.current_module.to_vec(),
-                            Namespace::Value,
-                            fun.name.clone(),
-                        ))
-                    })
-                    .copied()
-                    .map(crate::identity::BindingId::Global)
-            });
+        let binder = ctx.definition_binder_at(&fun.span);
         binder
             .map(|binder| {
                 super::super::handoff::freeze_declaration_signature(
@@ -647,18 +617,10 @@ pub(super) fn construct_impl_decl(
     }
 
     // Resolve aspect_id from the symbol table when available.
-    let aspect_id = ib.aspect_name.as_deref().and_then(|aspect_name| {
-        let declaring_module = ctx
-            .registry
-            .aspect_declaring_module_in(ctx.current_module, aspect_name)?;
-        ctx.symbols?
-            .get(&(
-                declaring_module.clone(),
-                Namespace::Type,
-                aspect_name.to_string(),
-            ))
-            .copied()
-    });
+    let aspect_id = ib
+        .aspect_name
+        .as_deref()
+        .and_then(|aspect_name| super::calls::resolve_aspect_id(ctx, aspect_name));
 
     // metel-core#1228: does this impl's target name one specific instantiation
     // (`extend W<i64>: Tag`) or every one of them (`extend Perhaps<T> { ... }`,
@@ -774,7 +736,7 @@ fn inherited_method_identity(
     let declaring_module = ctx
         .registry
         .aspect_declaring_module_in(ctx.current_module, aspect)?;
-    let aspect_identity = ctx.registry.resolve_type_id(ctx.current_module, aspect)?;
+    let aspect_identity = ctx.written_type_id(aspect)?;
     let aspect_name = ctx
         .symbols?
         .iter()
@@ -794,9 +756,9 @@ fn inherited_method_identity(
         TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
             crate::identity::InheritedMethodTarget::Record
         }
-        TypeExpr::Named(name, _) => crate::identity::InheritedMethodTarget::Nominal(
-            ctx.registry.resolve_type_id(ctx.current_module, name)?,
-        ),
+        TypeExpr::Named(name, _) => {
+            crate::identity::InheritedMethodTarget::Nominal(ctx.written_type_id(name)?)
+        }
         _ => return None,
     };
     let ordinal = ctx
@@ -890,6 +852,7 @@ pub(super) fn construct_impl_method(
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's
     // own `infer_impl_method`, this pass's Pass-1 counterpart.
+    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
     let empty_generics: HashMap<String, TypeVar> = HashMap::new();
     let assoc_ctx = AssocResolveCtx {
         registry: ctx.registry,
@@ -989,6 +952,7 @@ pub(super) fn construct_default_aspect_method(
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's
     // own `infer_impl_method`, this pass's Pass-1 counterpart.
+    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
     let empty_generics: HashMap<String, TypeVar> = HashMap::new();
     let assoc_ctx = AssocResolveCtx {
         registry: ctx.registry,

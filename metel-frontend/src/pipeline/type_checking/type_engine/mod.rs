@@ -3995,6 +3995,17 @@ impl TypeDefinitionRegistry {
             .get(method_name)
     }
 
+    /// The method scheme registered under the declaration `owner` itself (see
+    /// [`method_scheme_for`](Self::method_scheme_for) for the spelling-keyed form).
+    #[must_use]
+    pub fn method_scheme_by_id(
+        &self,
+        owner: SymbolId,
+        method_name: &str,
+    ) -> Option<&(TypeScheme, Vec<TypeVar>)> {
+        self.method_scheme_env.get(&owner)?.get(method_name)
+    }
+
     /// Push a variant method scheme (RFC-0036 §3.1 multi-impl dispatch).
     /// `owner`: see [`register_method`](Self::register_method)'s doc.
     pub fn register_method_scheme_variant(

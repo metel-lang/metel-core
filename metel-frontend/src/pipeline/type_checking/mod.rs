@@ -503,7 +503,6 @@ fn check_one_module(
         std_prelude,
         &loaded.module_path,
         Some(&names.symbols),
-        Some(&names.references),
         Some(&names.scopes),
         identity,
     )?;
@@ -1384,7 +1383,6 @@ fn check_impl_with_report(
     std_prelude: &CorePrelude,
     current_module_path: &[String],
     symbols: Option<&crate::identity::symbols::SymbolMap>,
-    references: Option<&crate::pipeline::name_resolution::reference_resolver::ReferenceTable>,
     scopes: Option<
         &HashMap<Vec<String>, crate::pipeline::name_resolution::name_resolver::ModuleScope>,
     >,
@@ -1491,7 +1489,6 @@ fn check_impl_with_report(
         symbols,
         &overloads,
         current_module_path,
-        references,
         &resolved_facts,
         identity,
     )?;

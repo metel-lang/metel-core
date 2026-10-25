@@ -197,6 +197,10 @@ pub fn allocate_module(
             Decl::Fun(fun) => {
                 let key = (module_path.to_vec(), Namespace::Value, fun.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
+                    // The declaration's own span names its symbol, so construction reads a
+                    // top-level function's identity off the span like any other binding.
+                    acc.method_body_spans
+                        .insert(fun.span.clone(), BindingId::Global(sym));
                     walk_body(
                         BindingId::Global(sym),
                         &fun.params,
@@ -210,12 +214,16 @@ pub fn allocate_module(
             Decl::Let(d) => {
                 let key = (module_path.to_vec(), Namespace::Value, d.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
+                    acc.method_body_spans
+                        .insert(d.span.clone(), BindingId::Global(sym));
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
             }
             Decl::Mut(d) => {
                 let key = (module_path.to_vec(), Namespace::Value, d.name.clone());
                 if let Some(&sym) = names.symbols.get(&key) {
+                    acc.method_body_spans
+                        .insert(d.span.clone(), BindingId::Global(sym));
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
             }
