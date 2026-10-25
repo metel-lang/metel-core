@@ -115,11 +115,11 @@ struct ConstructCtx<'a> {
     module_values: HashMap<String, (Type, bool)>,
     /// Name -> identity of a local that is referenced without an identity `env` knows. Innermost
     /// scope last, parallel to `env`. Only consulted when a reference carries no such identity.
-    /// Measured over the whole fixture corpus (metel-core#1570), the references that reach it are
-    /// exactly two: a reference inside a top-level bare statement, which the identity walk never
-    /// visits (`binding_id_at`), and a runtime capture re-bound by name in a reconstructed generic
-    /// body. It goes away with identity being mandatory and covering those two (steps 2 and 3).
-    // resolution-freeze-allow: recovery for references with no identity `env` knows: top-level bare statements (outside the identity walk) and runtime captures re-bound by name; consulted only then (metel-core#1570 steps 2-3).
+    /// With identity present it is never reached: measured over the whole fixture corpus
+    /// (metel-core#1570), zero references fall back to it. What reaches it is a run with no
+    /// identity context at all (`identity` is `None`: the unit tests and the tools that build none),
+    /// which is why it stays until identity is mandatory.
+    // resolution-freeze-allow: recovery for runs with no identity context (`identity: None`); unreached when identity is present, so it goes with the Option (metel-core#1570 step 2).
     recovered_names: Vec<HashMap<String, LocalId>>,
     /// Source of synthetic identities for the recovery state above; counts down from the top of
     /// the id space so it cannot meet a hashed `LocalId` in practice.
@@ -455,7 +455,19 @@ impl<'a> ConstructCtx<'a> {
             self.module_values.insert(name.to_owned(), (ty, is_mutable));
             return;
         }
-        let id = self.local_binding_at(span).unwrap_or_else(|| {
+        let id = self.local_binding_at(span);
+        self.bind_local(name, id, ty, is_mutable);
+    }
+
+    /// Re-bind a captured variable in a reconstructed generic body. The body's references to it
+    /// resolve to the enclosing binding's identity, which the closure recorded; a capture with
+    /// none is bound under a synthetic one and found by name.
+    fn bind_capture(&mut self, name: &str, id: Option<LocalId>, ty: Type) {
+        self.bind_local(name, id, ty, false);
+    }
+
+    fn bind_local(&mut self, name: &str, id: Option<LocalId>, ty: Type, is_mutable: bool) {
+        let id = id.unwrap_or_else(|| {
             self.next_synthetic_local -= 1;
             LocalId(self.next_synthetic_local)
         });
@@ -812,7 +824,10 @@ impl<'a> ConstructCtx<'a> {
             .collect()
     }
 
-    fn capture_types(&self, captures: &[crate::data::ast::CaptureSpec]) -> Vec<(String, Type)> {
+    fn capture_types(
+        &self,
+        captures: &[crate::data::ast::CaptureSpec],
+    ) -> Vec<(String, Option<LocalId>, Type)> {
         captures
             .iter()
             .filter_map(|capture| {
@@ -824,7 +839,7 @@ impl<'a> ConstructCtx<'a> {
                 };
                 self.narrowed_type(&self.flow_root_at(name, span))
                     .or_else(|| self.lookup_at(name, span).cloned())
-                    .map(|ty| (name.clone(), ty))
+                    .map(|ty| (name.clone(), self.resolve_local(name, span), ty))
             })
             .collect()
     }
@@ -1218,9 +1233,8 @@ pub(super) fn construct_generic_body(
 
     ctx.push_scope();
     let saved_flow = ctx.flow_enter_body();
-    for (name, ty) in options.capture_types {
-        // A runtime capture is re-bound by name: it has no binding site here.
-        ctx.bind(name, &Span::new(0, 0, ""), ty.clone());
+    for (name, id, ty) in options.capture_types {
+        ctx.bind_capture(name, *id, ty.clone());
     }
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
         let concrete_ty = infer_type_to_type(&subst.apply(param_it), span)

@@ -183,6 +183,22 @@ fn blank_lines_and_reformatting_change_no_identity() {
     );
 }
 
+// metel-core#1570: a binding inside a bare top-level statement gets a lexical identity, and
+// shadowing across two such statements yields distinct ones.
+#[test]
+fn bindings_in_top_level_statements_have_distinct_identities() {
+    let fixture = Fixture::build(
+        "var total := 0;\nfor (x in [1, 2]) { total += x; }\nfor (x in [3]) { total += x; }\n",
+    );
+    let xs = fixture.bindings_named("x");
+    assert_eq!(2, xs.len(), "each top-level loop binds its own `x`");
+    assert_ne!(xs[0], xs[1]);
+    assert!(
+        xs.iter().all(|b| matches!(b, BindingId::Local(_))),
+        "a top-level statement's binding is a local, not a global"
+    );
+}
+
 // arch-verifies: ["arch.resolution.requirement-2"]
 #[test]
 fn inserting_an_earlier_binding_does_not_renumber_a_later_one() {

@@ -534,8 +534,9 @@ pub enum TypedExpr {
         /// See `Closure::capture_ids`.
         capture_ids: Vec<Option<LocalId>>,
         /// Source types for captured bindings at closure creation, used when a
-        /// polymorphic body is reconstructed at a call site.
-        capture_types: Vec<(String, Type)>,
+        /// polymorphic body is reconstructed at a call site, each with the lexical identity of
+        /// the enclosing binding it captures (the id the body's references resolve to).
+        capture_types: Vec<(String, Option<LocalId>, Type)>,
         /// See `Closure::owned_capture_types`.
         owned_capture_types: Vec<(String, Type)>,
         call_multiplicity: CallMultiplicity,
