@@ -40,6 +40,9 @@ pub struct GenericBodyOptions<'a> {
 pub mod type_engine;
 
 type SchemeEnv = HashMap<String, TypeScheme>;
+/// A module's schemes keyed by the declaration they belong to, built beside the name-keyed
+/// [`SchemeEnv`] so construction can read a scheme through the binding a use site resolved to.
+type SchemeIds = HashMap<crate::identity::BindingId, TypeScheme>;
 type DeferredGlobConflicts = HashMap<String, Vec<Vec<String>>>;
 
 #[derive(Debug, Clone, Copy, Default, Serialize)]
@@ -58,6 +61,7 @@ pub struct TypecheckPhaseTimings {
 struct CheckImplReport {
     typed_decls: Vec<TypedDecl>,
     scheme_env: SchemeEnv,
+    scheme_ids: SchemeIds,
     registry: TypeDefinitionRegistry,
     /// This module's own overload table (its own overload groups, merged with
     /// the `std::core` ones and any it imported), keyed the same way
@@ -100,6 +104,8 @@ type ScopedEnv = HashMap<String, Binding>;
 
 struct FunGeneralization {
     name: String,
+    /// The declaration's span: the key `FrozenIdentity::binding_spans` records its binder under.
+    span: crate::data::ast::Span,
     fun_ty: InferType,
     env_fvs: HashSet<TypeVar>,
     /// Maps `TypeVar` ID → source-level generic param name, for scheme `param_names`.
@@ -527,6 +533,7 @@ fn check_one_module(
             module_path: loaded.module_path.clone(),
             decls: report.typed_decls,
             scheme_env: full_scheme_env,
+            scheme_ids: report.scheme_ids,
             overloads: std::rc::Rc::new(report.overloads.clone()),
         },
         exports: ModuleExports {
@@ -1471,7 +1478,12 @@ fn check_impl_with_report(
     // Build SchemeEnv from user functions, then add all built-in schemes.
     let started = Instant::now();
     let type_var_gen = ctx.split_gen();
-    let scheme_env = build_module_scheme_env(fun_generalizations, imported_schemes, std_prelude);
+    let (scheme_env, scheme_ids) = build_module_scheme_env(
+        fun_generalizations,
+        imported_schemes,
+        std_prelude,
+        &SchemeOrigins::new(program, current_module_path, symbols, scopes, identity),
+    );
     let scheme_env_ns = elapsed_ns(started);
 
     // Freeze decisions made by inference before construction starts. The typed-AST
@@ -1484,7 +1496,7 @@ fn check_impl_with_report(
     let typed_decls = construction::construct_program(
         program,
         &subst,
-        &scheme_env,
+        &scheme_ids,
         ctx.registry(),
         type_var_gen,
         symbols,
@@ -1509,6 +1521,7 @@ fn check_impl_with_report(
     Ok(CheckImplReport {
         typed_decls,
         scheme_env: user_scheme_env,
+        scheme_ids,
         registry: final_registry,
         overloads,
         timings: TypecheckPhaseTimings {
@@ -1614,8 +1627,10 @@ fn build_module_scheme_env(
     fun_generalizations: Vec<FunGeneralization>,
     imported_schemes: &SchemeEnv,
     std_prelude: &CorePrelude,
-) -> SchemeEnv {
+    origins: &SchemeOrigins<'_>,
+) -> (SchemeEnv, SchemeIds) {
     let mut scheme_env: SchemeEnv = HashMap::new();
+    let mut scheme_ids: SchemeIds = HashMap::new();
     for fg in fun_generalizations {
         // fg.fun_ty is already post-inline-solve (resolved_ty from infer_fun_decl).
         // Applying the final module-level subst would collapse generic TypeVars that
@@ -1634,6 +1649,9 @@ fn build_module_scheme_env(
             .iter()
             .map(|var| fg.name_map.get(var).cloned().unwrap_or_default())
             .collect();
+        if let Some(binding) = origins.binding_spans.get(&fg.span) {
+            scheme_ids.insert(binding, scheme.clone());
+        }
         scheme_env.insert(fg.name, scheme);
     }
     // Imported schemes must be visible in the construction pass so calls to imported
@@ -1647,7 +1665,96 @@ fn build_module_scheme_env(
             .or_insert_with(|| scheme.clone());
     }
     registry::register_builtin_schemes(&mut scheme_env, std_prelude);
-    scheme_env
+    for (name, scheme) in &scheme_env {
+        if let Some(symbol) = origins.value_symbol(name) {
+            scheme_ids
+                .entry(crate::identity::BindingId::Global(symbol))
+                .or_insert_with(|| scheme.clone());
+        }
+    }
+    (scheme_env, scheme_ids)
+}
+
+fn overloaded_fun_names(program: &Program) -> HashSet<String> {
+    let mut seen = HashSet::new();
+    let mut overloaded = HashSet::new();
+    for decl in &program.decls {
+        if let Decl::Fun(fun) = decl
+            && !seen.insert(fun.name.as_str())
+        {
+            overloaded.insert(fun.name.clone());
+        }
+    }
+    overloaded
+}
+
+/// What a module's scheme names resolve through: its own declarations, its import scope, and
+/// the binder spans the identity pass recorded.
+struct SchemeOrigins<'a> {
+    module: &'a [String],
+    /// Names this module declares more than once: an overload set, which has no single
+    /// declaration of its own to name (ADR-0042), so such a name denotes what it extends.
+    overloaded: HashSet<String>,
+    symbols: Option<&'a crate::identity::symbols::SymbolMap>,
+    scopes: Option<
+        &'a HashMap<Vec<String>, crate::pipeline::name_resolution::name_resolver::ModuleScope>,
+    >,
+    binding_spans: &'a crate::identity::BindingSpans,
+}
+
+impl<'a> SchemeOrigins<'a> {
+    fn new(
+        program: &Program,
+        module: &'a [String],
+        symbols: Option<&'a crate::identity::symbols::SymbolMap>,
+        scopes: Option<
+            &'a HashMap<Vec<String>, crate::pipeline::name_resolution::name_resolver::ModuleScope>,
+        >,
+        identity: FrozenIdentity<'a>,
+    ) -> Self {
+        Self {
+            module,
+            overloaded: overloaded_fun_names(program),
+            symbols,
+            scopes,
+            binding_spans: identity.binding_spans,
+        }
+    }
+
+    /// The declaration a top-level value `name` denotes in this module: its own declaration, an
+    /// explicit import, then a glob (user globs before the `std::core` auto-glob).
+    fn value_symbol(&self, name: &str) -> Option<crate::identity::symbols::SymbolId> {
+        let symbols = self.symbols?;
+        if !self.overloaded.contains(name)
+            && let Some(id) =
+                symbols.get(&(self.module.to_vec(), Namespace::Value, name.to_string()))
+        {
+            return Some(*id);
+        }
+        let scope = self.scopes?.get(self.module)?;
+        if let Some(binding) = scope.explicit.get(&(Namespace::Value, name.to_string())) {
+            return Some(binding.symbol_id);
+        }
+        let mut std_hit = None;
+        for (tier, glob_module) in &scope.globs {
+            let Some(id) =
+                crate::pipeline::name_resolution::name_resolver::resolve_name_provided_by_module(
+                    glob_module,
+                    name,
+                    Namespace::Value,
+                    symbols,
+                    self.scopes?,
+                )
+            else {
+                continue;
+            };
+            match tier {
+                GlobTier::User => return Some(id),
+                GlobTier::Std => std_hit = std_hit.or(Some(id)),
+            }
+        }
+        std_hit
+    }
 }
 
 fn accumulate_typecheck_timings(target: &mut TypecheckPhaseTimings, source: TypecheckPhaseTimings) {

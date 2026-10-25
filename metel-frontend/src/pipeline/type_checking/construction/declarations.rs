@@ -45,7 +45,7 @@ fn closure_definition(
     closure_span: &crate::data::ast::Span,
     ctx: &mut ConstructCtx,
 ) -> Result<Option<Box<TypedFunDecl>>, MetelError> {
-    let Some(scheme) = ctx.scheme_env.get(ld.name.as_str()).cloned() else {
+    let Some(scheme) = ctx.scheme_at(&ld.span).cloned() else {
         return Ok(None);
     };
     let fun = crate::data::ast::FunDecl {
@@ -103,9 +103,9 @@ fn closure_definition(
 pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<TypedDecl, MetelError> {
     match decl {
         Decl::Let(ld) => {
-            // Let-polymorphism: if a closure is in scheme_env with quantified vars,
+            // Let-polymorphism: if a closure is in scheme_ids with quantified vars,
             // store it as GenericClosure. The name stays absent from ctx.env so call
-            // sites use scheme_env instantiation in construct_call.
+            // sites use scheme_ids instantiation in construct_call.
             if let Expr::Closure {
                 captures,
                 call_multiplicity,
@@ -115,7 +115,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 body,
                 span: cls_span,
             } = &ld.value
-                && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
+                && let Some(scheme) = ctx.scheme_at(&ld.span)
                 && !scheme.quantified_vars.is_empty()
             {
                 let definition =
@@ -149,15 +149,15 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             // generic function (`let alias = identity;`) needs the same treatment
             // as the closure-literal case above -- the widened inference-side gate
             // (`infer_decl`'s `Decl::Let` arm) re-generalizes `alias` into
-            // `scheme_env` under its own name whenever this shape matches, so the
+            // `scheme_ids` under its own binding whenever this shape matches, so the
             // check below is exactly the closure case's own check, just sourcing
             // `params`/`return_type`/`body` from the referenced function's own
             // declaration (via `ctx.fn_table`, hoisted in `construct_program`/
             // `construct_block`) instead of an inline literal.
-            if let Expr::Ident(name, ident_span) = &ld.value
-                && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
+            if let Expr::Ident(_, ident_span) = &ld.value
+                && let Some(scheme) = ctx.scheme_at(&ld.span)
                 && !scheme.quantified_vars.is_empty()
-                && let Some((params, return_type, body)) = ctx.lookup_fn_decl(name, ident_span)
+                && let Some((params, return_type, body)) = ctx.lookup_fn_decl(ident_span)
             {
                 let (params, return_type, body) =
                     (params.clone(), return_type.clone(), body.clone());
@@ -350,8 +350,7 @@ pub(super) fn construct_fun_decl(
             ),
         },
         None => ctx
-            .scheme_env
-            .get(fun.name.as_str())
+            .scheme_at(&fun.span)
             .ok_or_else(|| MetelError::internal(format!("missing type for fn `{}`", fun.name)))?
             .clone(),
     };

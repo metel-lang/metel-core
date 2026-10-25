@@ -100,6 +100,7 @@ pub(super) fn infer_decl(
                     ctx.bind_poly(&ld.name, scheme);
                     fun_generalizations.push(FunGeneralization {
                         name: ld.name.clone(),
+                        span: ld.span.clone(),
                         fun_ty: resolved_ty,
                         env_fvs,
                         name_map: HashMap::new(),
@@ -783,6 +784,7 @@ pub(super) fn infer_fun_decl(
         );
         fun_generalizations.push(FunGeneralization {
             name: fun.name.clone(),
+            span: fun.span.clone(),
             fun_ty,
             env_fvs,
             name_map: HashMap::new(),
@@ -1470,6 +1472,7 @@ pub(super) fn infer_fun_decl(
     // already-solved type and is not perturbed by a now-empty final substitution.
     fun_generalizations.push(FunGeneralization {
         name: fun.name.clone(),
+        span: fun.span.clone(),
         fun_ty: resolved_ty,
         env_fvs,
         name_map,

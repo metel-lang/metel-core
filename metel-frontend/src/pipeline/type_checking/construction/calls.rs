@@ -19,7 +19,7 @@ fn is_through_shared_reference(expr: &TypedExpr) -> bool {
 
 /// Build a typed Call expression.
 ///
-/// For polymorphic callees (Idents in `scheme_env` whose type still contains free
+/// For polymorphic callees (Idents in `scheme_ids` whose type still contains free
 /// vars), re-instantiate the scheme against the concrete argument types using
 /// local unification. This is the Pass 2 counterpart of the inline
 /// solve-and-generalize done in `infer_fun_decl`.
@@ -70,8 +70,8 @@ pub(super) fn construct_call(
             // No exact match: fall back to a non-overload binding of the
             // same name (prelude/imports), mirroring the inference pass.
             // The normal path below re-constructs the arguments.
-            None if ctx.lookup_at(name, callee.span()).is_some()
-                || ctx.scheme_env.contains_key(name) => {}
+            None if ctx.lookup_at(callee.span()).is_some()
+                || ctx.scheme_at(callee.span()).is_some() => {}
             None => {
                 return Err(super::super::overload::no_match_error(
                     name, &arg_types, entries, span,
@@ -83,22 +83,13 @@ pub(super) fn construct_call(
     // inherently ambiguous args (bare `[]`, `None`) can resolve without requiring ascription.
     // Generic (scheme-based) callees need arg types first for instantiation — no hints there.
     let param_hints: Vec<Option<Type>> = match callee {
-        Expr::Ident(name, ident_span) => match ctx.lookup_at(name, ident_span) {
+        Expr::Ident(_, ident_span) => match ctx.lookup_at(ident_span) {
             Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
             _ => vec![None; args.len()],
         },
-        Expr::Path(segments, _, _) => {
-            let last = segments.last().map_or("", std::string::String::as_str);
-            match ctx.lookup_module(last) {
-                Some(Type::Fun(params, ..)) if params.len() == args.len() => {
-                    params.iter().map(|p| Some(p.clone())).collect()
-                }
-                _ => vec![None; args.len()],
-            }
-        }
-        Expr::ResolvedPath { resolved, .. } => match ctx.lookup_module(resolved) {
+        Expr::ResolvedPath { symbol_id, .. } => match ctx.lookup_resolved(*symbol_id) {
             Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
@@ -134,8 +125,8 @@ pub(super) fn construct_call(
     };
 
     let (typed_callee, fun_ty) = match callee {
-        Expr::Ident(name, ident_span) if ctx.lookup_at(name, ident_span).is_none() => {
-            let scheme = ctx.scheme_env.get(name.as_str()).ok_or_else(|| {
+        Expr::Ident(name, ident_span) if ctx.lookup_at(ident_span).is_none() => {
+            let scheme = ctx.scheme_at(ident_span).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0003,
                     format!("undefined name `{name}`"),
@@ -219,10 +210,7 @@ pub(super) fn construct_call(
         }
         // Qualified static constructors like `List::new` / `List::from`: the scheme registered
         // under the type's identity and the member name.
-        Expr::Path(segments, _, path_span)
-            if ctx.lookup_module(&segments.join("::")).is_none()
-                && ctx.type_member_scheme(segments).is_some() =>
-        {
+        Expr::Path(segments, _, path_span) if ctx.type_member_scheme(segments).is_some() => {
             let joined = segments.join("::");
             let (scheme, _) = ctx.type_member_scheme(segments).unwrap();
             let (concrete, var_map) = match &explicit_tys {
@@ -306,87 +294,15 @@ pub(super) fn construct_call(
             };
             (typed, concrete)
         }
-        Expr::Path(segments, _, path_span)
-            if {
-                let last = segments.last().map_or("", std::string::String::as_str);
-                ctx.lookup_module(last).is_none()
-                && ctx.scheme_env.contains_key(last)
-                // Only use scheme instantiation if method_env doesn't have it
-                && !(segments.len() == 2
-                    && ctx
-                        .concrete_method(segments[0].as_str(), segments[1].as_str())
-                        .is_some())
-            } =>
-        {
-            let last = segments.last().unwrap().clone();
-            let scheme = ctx.scheme_env.get(last.as_str()).unwrap();
-            let (concrete, var_map) = match &explicit_tys {
-                Some(tys) => instantiate_scheme_with_turbofish(
-                    scheme,
-                    tys,
-                    span,
-                    ctx.registry,
-                    ctx.current_module,
-                )?,
-                None => instantiate_scheme_for_call(
-                    scheme,
-                    &arg_types,
-                    span,
-                    &mut ctx.type_var_gen,
-                    ctx.registry,
-                    ctx.current_module,
-                )?,
-            };
-            check_fun_call_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_bounds(
-                &last,
-                scheme,
-                &var_map,
-                span,
-                ctx.registry,
-                ctx.current_module,
-            )?;
-            check_fun_call_assoc_eq(&last, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_assoc_eq(
-                &last,
-                scheme,
-                &var_map,
-                span,
-                ctx.registry,
-                ctx.current_module,
-            )?;
-            check_fun_call_neg_bounds(&last, &var_map, span, ctx.registry, ctx.current_module)?;
-            check_scheme_neg_bounds(
-                &last,
-                scheme,
-                &var_map,
-                span,
-                ctx.registry,
-                ctx.current_module,
-            )?;
-            // metel-core#1093: same 2-segment-only boundary as above.
-            let type_id = match segments.as_slice() {
-                [type_name, _] => ctx.type_symbol_id(type_name),
-                _ => None,
-            };
-            let typed = TypedExpr::Path {
-                segments: segments.clone(),
-                type_id,
-                variant_id: None,
-                ty: concrete.clone(),
-                span: path_span.clone(),
-            };
-            (typed, concrete)
-        }
         Expr::ResolvedPath {
             resolved,
             symbol_id,
             original: _,
             span: rspan,
-        } if ctx.lookup_module(resolved).is_none()
-            && ctx.scheme_env.contains_key(resolved.as_str()) =>
+        } if ctx.lookup_resolved(*symbol_id).is_none()
+            && ctx.resolved_scheme(*symbol_id).is_some() =>
         {
-            let scheme = ctx.scheme_env.get(resolved.as_str()).unwrap();
+            let scheme = ctx.resolved_scheme(*symbol_id).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(
                     scheme,
