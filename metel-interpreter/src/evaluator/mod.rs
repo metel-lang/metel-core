@@ -1175,7 +1175,7 @@ pub struct ClosureValue {
     pub capture_ids: Vec<Option<LocalId>>,
     /// Static capture types snapped at closure creation. Generic closure bodies
     /// are reconstructed per call and need the lexical bindings' narrowed types.
-    pub capture_types: Vec<(String, crate::data::types::Type)>,
+    pub capture_types: Vec<(String, Option<LocalId>, crate::data::types::Type)>,
     pub params: Vec<Param>,
     /// Structural [`LocalId`] of each parameter binding, positionally aligned
     /// with `params` (metel-core#1052b). `None` where identity allocation had
