@@ -55,7 +55,7 @@
     "metel-frontend/src/pipeline/type_checking/mod.rs": {
       "implicit_hasher": 1,
       "large_enum_variant": 1,
-      "too_many_arguments": 2
+      "too_many_arguments": 1
     },
     "metel-frontend/src/pipeline/type_checking/projections.rs": {
       "too_many_arguments": 2,
