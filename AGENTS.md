@@ -45,7 +45,8 @@ git submodule update --init docs
   planned themes and the milestone rules: `ROADMAP.md`.
 - Current code architecture: the crate docs named above and the code itself.
 - Process contracts (work, release, deployment, documentation, CI): the Operations
-  Specification, `docs/operations/index.md`. Each requirement has an id (`PROC-<AREA>-<NNN>`);
+  Specification, https://metel-lang.org/docs/operations/ (source: `docs/operations/index.md`).
+  Each requirement has an id (`PROC-<AREA>-<NNN>`);
   cite the id instead of copying the contract.
 - How to run a release or recover a failed one: `RELEASING.md` (the runbook). The versioning
   rule: `metel-docs-internal/internal/versioning.md`. Release history:
