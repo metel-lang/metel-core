@@ -720,21 +720,20 @@ fn retain_abstract_method(
         return Ok(());
     }
     let inherited = inherited_method_identity(method, implementation, ctx);
-    let identity = inherited.as_ref().map_or(ctx.identity, |(_, spans)| {
-        ctx.identity
-            .map(|identity| crate::identity::FrozenIdentity {
-                members: identity.members,
+    let identity =
+        inherited
+            .as_ref()
+            .map_or(ctx.identity, |(_, spans)| crate::identity::FrozenIdentity {
+                members: ctx.identity.members,
                 binding_spans: spans,
-            })
-    });
+            });
     let facts = ctx.resolved_facts.for_definition(&method.span);
     let Some((scheme, generics)) = facts.definition_template(&method.span) else {
         return Ok(());
     };
     // The runtime method-group symbol is not a definition identity: conditional
     // variants have separate lexical bodies and binder-local parameters.
-    let Some(binder) = identity.and_then(|identity| identity.binding_spans.get(&method.span))
-    else {
+    let Some(binder) = identity.binding_spans.get(&method.span) else {
         return Ok(());
     };
     let mut definition = method.clone();
@@ -765,7 +764,7 @@ fn inherited_method_identity(
     implementation: &ImplBlock,
     ctx: &mut ConstructCtx,
 ) -> Option<(crate::identity::BindingId, crate::identity::BindingSpans)> {
-    let identity = ctx.identity?;
+    let identity = ctx.identity;
     if identity.binding_spans.get(&method.span).is_some()
         || !ctx.resolved_facts.has_definition_snapshot(&method.span)
     {

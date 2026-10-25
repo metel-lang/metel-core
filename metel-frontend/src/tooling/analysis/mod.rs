@@ -346,10 +346,10 @@ pub(crate) fn analyze_graph(
     let report = type_checking::check_graph_with_report(
         &normalized,
         &CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &facts.members,
             binding_spans: &facts.identity.binding_spans,
-        }),
+        },
     )?;
 
     let warnings = report.warnings;
@@ -399,10 +399,10 @@ pub(crate) fn analyze_graph_with_diagnostics(
     let report = type_checking::check_graph_collecting_diagnostics(
         &normalized,
         &CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &facts.members,
             binding_spans: &facts.identity.binding_spans,
-        }),
+        },
     );
 
     let warnings = report.warnings;

@@ -52,10 +52,10 @@ fn analyze_fixture(root: &Path, fixture: &Path) -> (usize, Vec<String>) {
     let Ok(checked) = type_checking::check_graph_with_report(
         &normalized,
         &type_checking::CorePrelude::default(),
-        Some(metel::identity::FrozenIdentity {
+        metel::identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     ) else {
         return (0, incomplete);
     };

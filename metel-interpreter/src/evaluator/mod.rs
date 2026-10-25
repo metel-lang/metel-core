@@ -2151,7 +2151,7 @@ impl Environment {
 pub fn evaluate_graph_with_options(
     elaborated: ElaboratedModuleGraph,
     options: EvaluationOptions,
-    identity: Option<&RuntimeIdentity>,
+    identity: &RuntimeIdentity,
 ) -> Result<EvaluationReport, MetelError> {
     let graph = elaborated.0;
     reset_runtime_state(options.collect_profile);
@@ -2204,9 +2204,9 @@ pub fn evaluate_graph_with_options(
             scheme_env: module.scheme_env.clone(),
             overloads: Rc::clone(&module.overloads),
             registry: graph.type_registry.clone(),
-            members: identity.map(|i| Rc::clone(&i.members)),
-            binding_spans: identity.map(|i| Rc::clone(&i.binding_spans)),
-            symbols: identity.map(|i| Rc::clone(&i.symbols)),
+            members: Rc::clone(&identity.members),
+            binding_spans: Rc::clone(&identity.binding_spans),
+            symbols: Some(Rc::clone(&identity.symbols)),
             current_module: module.module_path.clone(),
         });
 

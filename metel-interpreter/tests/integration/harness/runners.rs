@@ -85,10 +85,10 @@ fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> 
     let typed = type_checking::check_graph_with_report(
         &normalized,
         &type_checking::CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
@@ -150,10 +150,10 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     let typed = type_checking::check_graph_with_report(
         &normalized,
         &std_prelude(config.prelude),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )?;
     assert_warnings(path, &typed.warnings, config.expect.warnings.as_deref());
     if config.options.move_check {
@@ -168,7 +168,7 @@ fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelErr
     evaluator::evaluate_graph_with_options(
         elaborated,
         evaluator::EvaluationOptions::default(),
-        Some(&runtime_identity),
+        &runtime_identity,
     )
     .map(|_| ())
 }

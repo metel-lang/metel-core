@@ -92,10 +92,10 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let typed_report = type_checking::check_graph_with_report(
         &normalized,
         &CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )?;
     let typecheck_ns = elapsed_ns(started);
 
@@ -119,7 +119,7 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
-        Some(&runtime_identity),
+        &runtime_identity,
     )?;
     let evaluate_ns = elapsed_ns(started);
 
@@ -179,10 +179,10 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let typed_report = type_checking::check_graph_with_report(
         &normalized,
         &CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )?;
     let typecheck_ns = elapsed_ns(started);
 
@@ -206,7 +206,7 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
-        Some(&runtime_identity),
+        &runtime_identity,
     )?;
     let evaluate_ns = elapsed_ns(started);
 
@@ -258,10 +258,10 @@ pub fn run_evaluator_fixture(
     let typed_report = type_checking::check_graph_with_report(
         &normalized,
         &CorePrelude::default(),
-        Some(identity::FrozenIdentity {
+        identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )?;
 
     let warnings = typed_report.warnings;
@@ -283,7 +283,7 @@ pub fn run_evaluator_fixture(
         evaluator::EvaluationOptions {
             collect_profile: options.collect_evaluator_profile,
         },
-        Some(&runtime_identity),
+        &runtime_identity,
     )?;
     let evaluate_ns = elapsed_ns(started);
 

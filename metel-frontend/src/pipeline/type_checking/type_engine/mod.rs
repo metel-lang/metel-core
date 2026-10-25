@@ -6333,12 +6333,8 @@ impl TypeDefinitionRegistry {
     /// one resolved graph and keyed by `(owner SymbolId, member name)`, so
     /// re-stamping a merged-in entry yields the same id. Block-local types
     /// (synthetic ids the name resolver never saw) stay `None`. A `None`
-    /// `members` (a move-check / diagnostic entry point with no identity
-    /// context) is a no-op — every entry keeps its `None` id.
-    pub fn stamp_member_ids(&mut self, members: Option<&MemberTable>) {
-        let Some(members) = members else {
-            return;
-        };
+    /// `members` is required: every checking entry point carries an identity context.
+    pub fn stamp_member_ids(&mut self, members: &MemberTable) {
         for (&owner, fields) in &mut self.struct_env {
             for field in fields.iter_mut() {
                 field.id = members.field(owner, &field.name);
@@ -8456,32 +8452,26 @@ pub struct TypeCtx {
     pub registry: TypeDefinitionRegistry,
     /// Program-wide frozen member identity (ADR-0054 / metel-core#1052),
     /// `Rc`-shared from the one table the ahead-of-time pipeline already built.
-    /// `Some` on the interpreter's evaluation path, so `construct_generic_body`'s
-    /// runtime reconstruction of a generic body can stamp real member ids —
-    /// the same as the ahead-of-time construction pass. `None` for the
-    /// move-checker's own reconstruction (frontend-only, no identity context;
-    /// see [`FrozenIdentity`](crate::identity::FrozenIdentity)'s doc).
-    pub members: Option<Rc<MemberTable>>,
+    /// `construct_generic_body`'s runtime reconstruction of a generic body stamps real member
+    /// ids from it, the same as the ahead-of-time construction pass.
+    pub members: Rc<MemberTable>,
     /// Program-wide frozen binding-span bridge (ADR-0054 / metel-core#1052),
     /// paired with `members` — see its doc. Spans carry their filename, so one
     /// shared, `Rc`-cloned table is safe across every module's `TypeCtx`.
-    pub binding_spans: Option<Rc<BindingSpans>>,
+    pub binding_spans: Rc<BindingSpans>,
     /// The name resolver's canonical `(module path, name) -> SymbolId` table
     /// (metel-core#1125), paired with `current_module` below. `Some` on the
     /// interpreter's evaluation path (mirroring `members`/`binding_spans`),
     /// so `construct_generic_body`'s `ConstructCtx::type_symbol_id` resolves
     /// a static-method/constructor `Path`'s owning type correctly instead of
     /// unconditionally returning `None` and falling back to `runtime`'s own
-    /// global, cross-module, bare-name-keyed type table. `None` for the
-    /// move-checker's own reconstruction, same as `members`.
+    /// global, cross-module, bare-name-keyed type table.
     pub symbols: Option<Rc<SymbolTable>>,
     /// The module path of the generic declaration this `TypeCtx` was built
     /// for -- *not* the call site's module. `type_symbol_id` resolves a
     /// written type name relative to this module (its declaring-module
     /// index, then this module directly), the same way ordinary
     /// (non-generic) construction resolves relative to `current_module`.
-    /// Empty (never `None`) for the move-checker's own reconstruction, which
-    /// has no `symbols` to resolve against regardless.
     pub current_module: Vec<String>,
 }
 

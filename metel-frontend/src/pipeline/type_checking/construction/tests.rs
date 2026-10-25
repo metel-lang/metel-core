@@ -1330,10 +1330,10 @@ fn typecheck_sources(root: &str, source: &str, files: &[(&str, &str)]) -> TypedF
     let report = check_graph_with_report(
         &normalized,
         &CorePrelude::default(),
-        Some(crate::identity::FrozenIdentity {
+        crate::identity::FrozenIdentity {
             members: &members,
             binding_spans: &allocation.binding_spans,
-        }),
+        },
     )
     .expect("typechecks");
     TypedFixture {
@@ -1431,8 +1431,8 @@ fn construct_generic_body_stamps_a_real_local_id() {
         scheme_env: typed_module.scheme_env.clone(),
         overloads: Rc::clone(&typed_module.overloads),
         registry: typed_report.graph.type_registry.clone(),
-        members: Some(Rc::new(members)),
-        binding_spans: Some(Rc::new(allocation.binding_spans)),
+        members: Rc::new(members),
+        binding_spans: Rc::new(allocation.binding_spans),
         symbols: Some(Rc::new(names.symbols.clone())),
         current_module: typed_module.module_path.clone(),
     };

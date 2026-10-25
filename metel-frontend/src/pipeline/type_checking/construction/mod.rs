@@ -113,16 +113,8 @@ struct ConstructCtx<'a> {
     /// step 3).
     // resolution-freeze-allow: module-level values seeded from the name-keyed `scheme_env` (inference output); retired when SchemeEnv is keyed by SymbolId (metel-core#1570 step 3).
     module_values: HashMap<String, (Type, bool)>,
-    /// Name -> identity of a local that is referenced without an identity `env` knows. Innermost
-    /// scope last, parallel to `env`. Only consulted when a reference carries no such identity.
-    /// With identity present it is never reached: measured over the whole fixture corpus
-    /// (metel-core#1570), zero references fall back to it. What reaches it is a run with no
-    /// identity context at all (`identity` is `None`: the unit tests and the tools that build none),
-    /// which is why it stays until identity is mandatory.
-    // resolution-freeze-allow: recovery for runs with no identity context (`identity: None`); unreached when identity is present, so it goes with the Option (metel-core#1570 step 2).
-    recovered_names: Vec<HashMap<String, LocalId>>,
-    /// Source of synthetic identities for the recovery state above; counts down from the top of
-    /// the id space so it cannot meet a hashed `LocalId` in practice.
+    /// Source of synthetic identities for a binder the identity walk gave none; counts down from
+    /// the top of the id space so it cannot meet a hashed `LocalId` in practice.
     next_synthetic_local: u64,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
@@ -168,13 +160,13 @@ struct ConstructCtx<'a> {
     /// Concrete semantic decisions frozen at the inference/construction boundary.
     resolved_facts: &'a ResolvedInferenceFacts,
     inherited_method_ordinals: HashMap<(SymbolId, crate::identity::InheritedMethodTarget), u32>,
-    /// Whole-graph member identity table (ADR-0054 / #1051). When present,
+    /// Whole-graph identity tables (ADR-0054 / #1051, #1052): the member table, from which
     /// construction stamps `TypedExpr::FieldAccess::field_id` and
-    /// `TypedExpr::StructLiteral::variant_id` from it, keyed by
-    /// `(owning type SymbolId, member name)`. `None` for the move-check and
-    /// diagnostic-tool entry points that build no identity context — every
-    /// member site then carries `None`, the sanctioned recovery state.
-    identity: Option<FrozenIdentity<'a>>,
+    /// `TypedExpr::StructLiteral::variant_id` keyed by `(owning type SymbolId, member name)`,
+    /// and the span -> `BindingId` bridge every local is resolved through. Required: a member
+    /// the table never interned (a block-local struct) still carries `None`, but there is no
+    /// run without the tables.
+    identity: FrozenIdentity<'a>,
     /// Concrete target-type name `Self` denotes in the innermost enclosing impl-block
     /// method body (None outside one). #774 (revised): a body-internal `let x:
     /// Self.{ field }`/`Self::AssocType` annotation resolves through this the same
@@ -233,7 +225,7 @@ impl<'a> ConstructCtx<'a> {
         // resolution-freeze-allow: the resolver's reference map, an input to construction keyed by source position; ADR-0054 step 6.
         references: Option<&'a HashMap<Span, SymbolId>>,
         resolved_facts: &'a ResolvedInferenceFacts,
-        identity: Option<FrozenIdentity<'a>>,
+        identity: FrozenIdentity<'a>,
     ) -> Result<Self, MetelError> {
         let concrete_struct_env = build_concrete_struct_env(registry, subst)?;
         let method_env = build_concrete_method_env(registry, subst)?;
@@ -243,7 +235,6 @@ impl<'a> ConstructCtx<'a> {
             env: vec![HashMap::new()],
             mut_env: vec![HashMap::new()],
             module_values: HashMap::new(),
-            recovered_names: vec![HashMap::new()],
             next_synthetic_local: u64::MAX,
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             local_struct_ids: vec![HashMap::new()],
@@ -284,13 +275,11 @@ impl<'a> ConstructCtx<'a> {
     fn push_scope(&mut self) {
         self.env.push(HashMap::new());
         self.mut_env.push(HashMap::new());
-        self.recovered_names.push(HashMap::new());
         self.fn_table.push(HashMap::new());
     }
     fn pop_scope(&mut self) {
         self.env.pop();
         self.mut_env.pop();
-        self.recovered_names.pop();
         self.fn_table.pop();
     }
 
@@ -456,17 +445,19 @@ impl<'a> ConstructCtx<'a> {
             return;
         }
         let id = self.local_binding_at(span);
-        self.bind_local(name, id, ty, is_mutable);
+        self.bind_local(id, ty, is_mutable);
     }
 
     /// Re-bind a captured variable in a reconstructed generic body. The body's references to it
-    /// resolve to the enclosing binding's identity, which the closure recorded; a capture with
-    /// none is bound under a synthetic one and found by name.
-    fn bind_capture(&mut self, name: &str, id: Option<LocalId>, ty: Type) {
-        self.bind_local(name, id, ty, false);
+    /// resolve to the enclosing binding's identity, which the closure recorded.
+    fn bind_capture(&mut self, id: Option<LocalId>, ty: Type) {
+        self.bind_local(id, ty, false);
     }
 
-    fn bind_local(&mut self, name: &str, id: Option<LocalId>, ty: Type, is_mutable: bool) {
+    /// Bind a local under its lexical identity. A binder the identity walk gave none (a capture
+    /// of a module-level value, a synthesised node) is bound under a fresh synthetic one, which
+    /// no reference can name: such a value is reached through `module_values` instead.
+    fn bind_local(&mut self, id: Option<LocalId>, ty: Type, is_mutable: bool) {
         let id = id.unwrap_or_else(|| {
             self.next_synthetic_local -= 1;
             LocalId(self.next_synthetic_local)
@@ -474,33 +465,22 @@ impl<'a> ConstructCtx<'a> {
         let ty = self.flow_bind(&local_flow_root(id), ty);
         self.env.last_mut().unwrap().insert(id, ty);
         self.mut_env.last_mut().unwrap().insert(id, is_mutable);
-        self.recovered_names
-            .last_mut()
-            .unwrap()
-            .insert(name.to_owned(), id);
     }
 
-    /// The local a reference at `span` names, if it names one. A reference whose identity says
-    /// it is module-level resolves to no local; one with no identity at all (or one `env` has
-    /// never heard of) falls back to the innermost local of that spelling.
-    fn resolve_local(&self, name: &str, span: &Span) -> Option<LocalId> {
+    /// The local a reference at `span` names, if it names one: its identity says it is a local
+    /// and `env` holds it. A module-level reference resolves to no local.
+    fn resolve_local(&self, span: &Span) -> Option<LocalId> {
         match self.binding_id_at(span) {
-            Some(BindingId::Global(_)) => return None,
             Some(BindingId::Local(id)) if self.env.iter().any(|scope| scope.contains_key(&id)) => {
-                return Some(id);
+                Some(id)
             }
-            _ => {}
+            _ => None,
         }
-        self.recovered_names
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(name))
-            .copied()
     }
 
     /// The type of the value a reference at `span` names: a local, else a module-level value.
     fn lookup_at(&self, name: &str, span: &Span) -> Option<&Type> {
-        match self.resolve_local(name, span) {
+        match self.resolve_local(span) {
             Some(id) => self.env.iter().rev().find_map(|scope| scope.get(&id)),
             None => self.module_values.get(name).map(|(ty, _)| ty),
         }
@@ -512,12 +492,12 @@ impl<'a> ConstructCtx<'a> {
         self.module_values.get(name).map(|(ty, _)| ty)
     }
 
-    fn has_local_binding(&self, name: &str, span: &Span) -> bool {
-        self.resolve_local(name, span).is_some()
+    fn has_local_binding(&self, span: &Span) -> bool {
+        self.resolve_local(span).is_some()
     }
 
     fn is_mutable(&self, name: &str, span: &Span) -> bool {
-        match self.resolve_local(name, span) {
+        match self.resolve_local(span) {
             Some(id) => self
                 .mut_env
                 .iter()
@@ -531,7 +511,7 @@ impl<'a> ConstructCtx<'a> {
 
     /// The move/narrowing-state root of the value a reference at `span` names.
     fn flow_root_at(&self, name: &str, span: &Span) -> String {
-        match self.resolve_local(name, span) {
+        match self.resolve_local(span) {
             Some(id) => local_flow_root(id),
             None => module_flow_root(name),
         }
@@ -592,16 +572,7 @@ impl<'a> ConstructCtx<'a> {
         };
         match self.binding_id_at(span) {
             Some(BindingId::Local(id)) => nested(&id),
-            Some(BindingId::Global(_)) => self.module_fn_decls.get(name),
-            // No identity for the reference: the innermost nested function of that name, else
-            // the top-level one, as the spelling-keyed table resolved it.
-            None => self
-                .fn_table
-                .iter()
-                .rev()
-                .find_map(|scope| scope.values().find(|(declared, _)| declared == name))
-                .map(|(_, shape)| shape)
-                .or_else(|| self.module_fn_decls.get(name)),
+            Some(BindingId::Global(_)) | None => self.module_fn_decls.get(name),
         }
     }
 
@@ -702,7 +673,7 @@ impl<'a> ConstructCtx<'a> {
     /// field the table never interned — is the sanctioned recovery state, never
     /// a fabricated id.
     fn field_id_for(&self, object_ty: &Type, field: &str) -> Option<FieldId> {
-        let members = self.identity?.members;
+        let members = self.identity.members;
         let Type::Named(name, ..) = peel_type_references(object_ty) else {
             return None;
         };
@@ -716,7 +687,7 @@ impl<'a> ConstructCtx<'a> {
     /// `None` for a plain struct literal (no `enum_id`), without a member table,
     /// or for a variant the table never interned — never a fabricated id.
     fn variant_id_for(&self, enum_id: Option<SymbolId>, variant: &str) -> Option<VariantId> {
-        self.identity?.members.variant(enum_id?, variant)
+        self.identity.members.variant(enum_id?, variant)
     }
 
     /// Interned identity of a struct field named in a pattern (ADR-0054 /
@@ -724,7 +695,7 @@ impl<'a> ConstructCtx<'a> {
     /// pattern's own nominal spelling. `None` without a member table or for an
     /// un-interned member (e.g. a block-local struct) — never fabricated.
     fn member_field_id(&self, owner: Option<SymbolId>, field: &str) -> Option<FieldId> {
-        self.identity?.members.field(owner?, field)
+        self.identity.members.field(owner?, field)
     }
 
     /// Interned identity of an enum-variant field named in a pattern. Variant
@@ -737,7 +708,7 @@ impl<'a> ConstructCtx<'a> {
         variant: &str,
         field: &str,
     ) -> Option<FieldId> {
-        self.identity?
+        self.identity
             .members
             .field(enum_id?, &format!("{variant}::{field}"))
     }
@@ -756,24 +727,21 @@ impl<'a> ConstructCtx<'a> {
     /// construction-synthesised node, or a genuinely unresolved name).
     fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
         self.identity
-            .and_then(|identity| identity.binding_spans.get(span))
+            .binding_spans
+            .get(span)
             .or_else(|| self.references?.get(span).copied().map(BindingId::Global))
     }
 
     /// The lexical identity of the binding *defined* at `span` (a `let` / `mut`
     /// name, a loop binding, a pattern binding). `None` for a module-level
-    /// definition (a `SymbolId`, not a `LocalId`), a synthesised node, or
-    /// without identity context.
+    /// definition (a `SymbolId`, not a `LocalId`) or a synthesised node.
     fn local_binding_at(&self, span: &Span) -> Option<crate::identity::LocalId> {
         self.binding_id_at(span)?.as_local()
     }
 
     /// Lexical identity of each parameter, parallel to `params` (ADR-0054 /
-    /// #1052). Empty without identity context.
+    /// #1052).
     fn param_local_ids(&self, params: &[Param]) -> Vec<Option<crate::identity::LocalId>> {
-        if self.identity.is_none() {
-            return Vec::new();
-        }
         params
             .iter()
             .map(|p| self.local_binding_at(&p.span))
@@ -788,9 +756,6 @@ impl<'a> ConstructCtx<'a> {
         captures: &[crate::data::ast::CaptureSpec],
     ) -> Vec<Option<crate::identity::LocalId>> {
         use crate::data::ast::CaptureSpec;
-        if self.identity.is_none() {
-            return Vec::new();
-        }
         captures
             .iter()
             .map(|c| {
@@ -839,7 +804,7 @@ impl<'a> ConstructCtx<'a> {
                 };
                 self.narrowed_type(&self.flow_root_at(name, span))
                     .or_else(|| self.lookup_at(name, span).cloned())
-                    .map(|ty| (name.clone(), self.resolve_local(name, span), ty))
+                    .map(|ty| (name.clone(), self.resolve_local(span), ty))
             })
             .collect()
     }
@@ -1187,16 +1152,11 @@ pub(super) fn construct_generic_body(
     // `body` already exist and apply unchanged across every monomorphizing
     // call — a binding's `LocalId`/`FieldId` is a property of its lexical
     // position, not of the concrete type args this call inferred
-    // (ADR-0054 / metel-core#1052). `None` only on the move-checker's own
-    // reconstruction, which built `type_ctx` without these tables.
-    let identity = type_ctx
-        .members
-        .as_deref()
-        .zip(type_ctx.binding_spans.as_deref())
-        .map(|(members, binding_spans)| FrozenIdentity {
-            members,
-            binding_spans,
-        });
+    // (ADR-0054 / metel-core#1052).
+    let identity = FrozenIdentity {
+        members: &type_ctx.members,
+        binding_spans: &type_ctx.binding_spans,
+    };
     let mut ctx = ConstructCtx::new(
         &subst,
         &type_ctx.scheme_env,
@@ -1233,8 +1193,8 @@ pub(super) fn construct_generic_body(
 
     ctx.push_scope();
     let saved_flow = ctx.flow_enter_body();
-    for (name, id, ty) in options.capture_types {
-        ctx.bind_capture(name, *id, ty.clone());
+    for (_, id, ty) in options.capture_types {
+        ctx.bind_capture(*id, ty.clone());
     }
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
         let concrete_ty = infer_type_to_type(&subst.apply(param_it), span)
@@ -1265,7 +1225,7 @@ pub(super) fn construct_program(
     // resolution-freeze-allow: the resolver's reference map passed into construction; ADR-0054 step 6.
     references: Option<&HashMap<Span, SymbolId>>,
     resolved_facts: &ResolvedInferenceFacts,
-    identity: Option<FrozenIdentity<'_>>,
+    identity: FrozenIdentity<'_>,
 ) -> Result<TypedProgram, MetelError> {
     let mut ctx = ConstructCtx::new(
         subst,
