@@ -619,8 +619,8 @@ pub(super) fn construct_pattern_bindings(
 ) -> Result<(), MetelError> {
     match pattern {
         Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
-        Pattern::Binding(name, _) => {
-            ctx.bind(name, scrutinee_ty.clone());
+        Pattern::Binding(name, span) => {
+            ctx.bind(name, span, scrutinee_ty.clone());
         }
         Pattern::Tuple(pats, _) => {
             let elems = match scrutinee_ty {
@@ -634,7 +634,7 @@ pub(super) fn construct_pattern_bindings(
         Pattern::EnumVariant {
             path,
             fields,
-            field_spans: _,
+            field_spans,
             rest: _,
             span,
         } => {
@@ -642,55 +642,24 @@ pub(super) fn construct_pattern_bindings(
                 return Err(MetelError::internal("invalid pattern path"));
             };
             let _ = span;
-            bind_enum_variant_fields(enum_name, variant_name, fields, scrutinee_ty, ctx)?;
+            bind_enum_variant_fields(
+                enum_name,
+                variant_name,
+                fields,
+                field_spans,
+                scrutinee_ty,
+                ctx,
+            )?;
         }
-        Pattern::Struct { name, fields, .. } => {
-            bind_struct_pattern_fields(name, fields, scrutinee_ty, ctx)?;
-        }
-        Pattern::Record {
+        Pattern::Struct {
+            name,
             fields,
-            ignored_fields,
-            rest_binding,
-            span,
+            field_spans,
             ..
         } => {
-            let record_fields = record_pattern_fields(scrutinee_ty, span, ctx)?;
-            for field in fields {
-                let field_ty = record_fields
-                    .iter()
-                    .find(|(name, _)| name == field)
-                    .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| {
-                        MetelError::internal(format!("missing record field `{field}`"))
-                    })?;
-                if mutable {
-                    ctx.bind_mut(field, field_ty);
-                } else {
-                    ctx.bind(field, field_ty);
-                }
-            }
-            for field in ignored_fields {
-                if !record_fields.iter().any(|(name, _)| name == field) {
-                    return Err(MetelError::internal(format!(
-                        "missing discarded record field `{field}`"
-                    )));
-                }
-            }
-            if let Some((rest_name, _)) = rest_binding {
-                let remaining = record_fields
-                    .iter()
-                    .filter(|(name, _)| !fields.contains(name) && !ignored_fields.contains(name))
-                    .cloned()
-                    .collect();
-                let rest_ty =
-                    Type::with_row_tail(remaining, scrutinee_ty.row_tail().cloned().map(Box::new));
-                if mutable {
-                    ctx.bind_mut(rest_name, rest_ty);
-                } else {
-                    ctx.bind(rest_name, rest_ty);
-                }
-            }
+            bind_struct_pattern_fields(name, fields, field_spans, scrutinee_ty, ctx)?;
         }
+        Pattern::Record { .. } => bind_record_pattern_fields(pattern, scrutinee_ty, mutable, ctx)?,
         Pattern::Array {
             elems,
             rest,
@@ -700,12 +669,68 @@ pub(super) fn construct_pattern_bindings(
                 Type::Array(t) | Type::SizedArray(t, _) => *t.clone(),
                 _ => return Err(MetelError::internal("array pattern on non-array type")),
             };
-            if let Some((rest_name, _)) = rest {
-                ctx.bind(rest_name, Type::Array(Box::new(elem_ty.clone())));
+            if let Some((rest_name, rest_span)) = rest {
+                ctx.bind(rest_name, rest_span, Type::Array(Box::new(elem_ty.clone())));
             }
             for pat in elems {
                 construct_pattern_bindings(pat, &elem_ty, false, ctx)?;
             }
+        }
+    }
+    Ok(())
+}
+
+/// Bind the fields (and optional remainder) a bare record pattern names.
+fn bind_record_pattern_fields(
+    pattern: &Pattern,
+    scrutinee_ty: &Type,
+    mutable: bool,
+    ctx: &mut ConstructCtx,
+) -> Result<(), MetelError> {
+    let Pattern::Record {
+        fields,
+        field_spans,
+        ignored_fields,
+        rest_binding,
+        span,
+        ..
+    } = pattern
+    else {
+        return Ok(());
+    };
+    let record_fields = record_pattern_fields(scrutinee_ty, span, ctx)?;
+    for (index, field) in fields.iter().enumerate() {
+        let field_span = field_binding_span(field_spans, index);
+        let field_ty = record_fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| MetelError::internal(format!("missing record field `{field}`")))?;
+        if mutable {
+            ctx.bind_mut(field, &field_span, field_ty);
+        } else {
+            ctx.bind(field, &field_span, field_ty);
+        }
+    }
+    for field in ignored_fields {
+        if !record_fields.iter().any(|(name, _)| name == field) {
+            return Err(MetelError::internal(format!(
+                "missing discarded record field `{field}`"
+            )));
+        }
+    }
+    if let Some((rest_name, rest_span)) = rest_binding.as_ref() {
+        let remaining = record_fields
+            .iter()
+            .filter(|(name, _)| !fields.contains(name) && !ignored_fields.contains(name))
+            .cloned()
+            .collect();
+        let rest_ty =
+            Type::with_row_tail(remaining, scrutinee_ty.row_tail().cloned().map(Box::new));
+        if mutable {
+            ctx.bind_mut(rest_name, rest_span, rest_ty);
+        } else {
+            ctx.bind(rest_name, rest_span, rest_ty);
         }
     }
     Ok(())
@@ -946,10 +971,21 @@ pub(super) fn construct_enum_literal_ty(
     )
 }
 
+/// The declaration site of the `index`th field-shorthand binding of a pattern. The parser records
+/// one span per field; a pattern built any other way has none, and its bindings then carry no
+/// lexical identity of their own.
+fn field_binding_span(field_spans: &[Span], index: usize) -> Span {
+    field_spans
+        .get(index)
+        .cloned()
+        .unwrap_or_else(|| Span::new(0, 0, ""))
+}
+
 pub(super) fn bind_enum_variant_fields(
     enum_name: &str,
     variant_name: &str,
     fields: &[String],
+    field_spans: &[Span],
     scrutinee_ty: &Type,
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
@@ -968,7 +1004,7 @@ pub(super) fn bind_enum_variant_fields(
     for (&tp, arg_ty) in enum_info.type_params.iter().zip(type_args.iter()) {
         remap.bind(tp, InferType::Concrete(arg_ty.clone()));
     }
-    for field_name in fields {
+    for (index, field_name) in fields.iter().enumerate() {
         let (template_ty, field_span) = variant
             .fields
             .iter()
@@ -980,7 +1016,11 @@ pub(super) fn bind_enum_variant_fields(
                 ))
             })?;
         let concrete = infer_type_to_type(&remap.apply(&template_ty), &field_span)?;
-        ctx.bind(field_name, concrete);
+        ctx.bind(
+            field_name,
+            &field_binding_span(field_spans, index),
+            concrete,
+        );
     }
     Ok(())
 }
@@ -993,6 +1033,7 @@ pub(super) fn bind_enum_variant_fields(
 pub(super) fn bind_struct_pattern_fields(
     struct_name: &str,
     fields: &[String],
+    field_spans: &[Span],
     scrutinee_ty: &Type,
     ctx: &mut ConstructCtx,
 ) -> Result<(), MetelError> {
@@ -1009,7 +1050,7 @@ pub(super) fn bind_struct_pattern_fields(
     for (&tp, arg_ty) in type_params.iter().zip(type_args.iter()) {
         remap.bind(tp, InferType::Concrete(arg_ty.clone()));
     }
-    for field_name in fields {
+    for (index, field_name) in fields.iter().enumerate() {
         let (template_ty, field_span) = struct_fields
             .iter()
             .find(|entry| entry.name == *field_name)
@@ -1018,7 +1059,11 @@ pub(super) fn bind_struct_pattern_fields(
                 MetelError::internal(format!("no field `{field_name}` on `{struct_name}`"))
             })?;
         let concrete = infer_type_to_type(&remap.apply(&template_ty), &field_span)?;
-        ctx.bind(field_name, concrete);
+        ctx.bind(
+            field_name,
+            &field_binding_span(field_spans, index),
+            concrete,
+        );
     }
     Ok(())
 }

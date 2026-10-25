@@ -71,7 +71,8 @@ pub(super) fn construct_call(
             // No exact match: fall back to a non-overload binding of the
             // same name (prelude/imports), mirroring the inference pass.
             // The normal path below re-constructs the arguments.
-            None if ctx.lookup(name).is_some() || ctx.scheme_env.contains_key(name) => {}
+            None if ctx.lookup_at(name, callee.span()).is_some()
+                || ctx.scheme_env.contains_key(name) => {}
             None => {
                 return Err(super::super::overload::no_match_error(
                     name, &arg_types, entries, span,
@@ -83,7 +84,7 @@ pub(super) fn construct_call(
     // inherently ambiguous args (bare `[]`, `None`) can resolve without requiring ascription.
     // Generic (scheme-based) callees need arg types first for instantiation — no hints there.
     let param_hints: Vec<Option<Type>> = match callee {
-        Expr::Ident(name, _) => match ctx.lookup(name) {
+        Expr::Ident(name, ident_span) => match ctx.lookup_at(name, ident_span) {
             Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
@@ -91,14 +92,14 @@ pub(super) fn construct_call(
         },
         Expr::Path(segments, _, _) => {
             let last = segments.last().map_or("", std::string::String::as_str);
-            match ctx.lookup(last) {
+            match ctx.lookup_module(last) {
                 Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                     params.iter().map(|p| Some(p.clone())).collect()
                 }
                 _ => vec![None; args.len()],
             }
         }
-        Expr::ResolvedPath { resolved, .. } => match ctx.lookup(resolved) {
+        Expr::ResolvedPath { resolved, .. } => match ctx.lookup_module(resolved) {
             Some(Type::Fun(params, ..)) if params.len() == args.len() => {
                 params.iter().map(|p| Some(p.clone())).collect()
             }
@@ -134,7 +135,7 @@ pub(super) fn construct_call(
     };
 
     let (typed_callee, fun_ty) = match callee {
-        Expr::Ident(name, ident_span) if ctx.lookup(name).is_none() => {
+        Expr::Ident(name, ident_span) if ctx.lookup_at(name, ident_span).is_none() => {
             let scheme = ctx.scheme_env.get(name.as_str()).ok_or_else(|| {
                 MetelError::type_error(
                     TypeErrorCode::T0003,
@@ -221,7 +222,7 @@ pub(super) fn construct_call(
         Expr::Path(segments, _, path_span)
             if {
                 let joined = segments.join("::");
-                ctx.lookup(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
+                ctx.lookup_module(&joined).is_none() && ctx.scheme_env.contains_key(joined.as_str())
             } =>
         {
             let joined = segments.join("::");
@@ -310,7 +311,7 @@ pub(super) fn construct_call(
         Expr::Path(segments, _, path_span)
             if {
                 let last = segments.last().map_or("", std::string::String::as_str);
-                ctx.lookup(last).is_none()
+                ctx.lookup_module(last).is_none()
                 && ctx.scheme_env.contains_key(last)
                 // Only use scheme instantiation if method_env doesn't have it
                 && !(segments.len() == 2
@@ -384,7 +385,9 @@ pub(super) fn construct_call(
             symbol_id,
             original: _,
             span: rspan,
-        } if ctx.lookup(resolved).is_none() && ctx.scheme_env.contains_key(resolved.as_str()) => {
+        } if ctx.lookup_module(resolved).is_none()
+            && ctx.scheme_env.contains_key(resolved.as_str()) =>
+        {
             let scheme = ctx.scheme_env.get(resolved.as_str()).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(

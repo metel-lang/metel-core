@@ -172,7 +172,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             if let Expr::Ident(name, ident_span) = &ld.value
                 && let Some(scheme) = ctx.scheme_env.get(ld.name.as_str())
                 && !scheme.quantified_vars.is_empty()
-                && let Some((params, return_type, body)) = ctx.lookup_fn_decl(name)
+                && let Some((params, return_type, body)) = ctx.lookup_fn_decl(name, ident_span)
             {
                 let (params, return_type, body) =
                     (params.clone(), return_type.clone(), body.clone());
@@ -220,7 +220,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             };
             ctx.note_consumed(&value);
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
-            ctx.bind(&ld.name, ty);
+            ctx.bind(&ld.name, &ld.span, ty);
             Ok(TypedDecl::Let(TypedLetDecl {
                 name: ld.name.clone(),
                 type_ann: ld.type_ann.clone(),
@@ -261,7 +261,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             };
             ctx.note_consumed(&value);
             let ty = expected_ty.unwrap_or_else(|| value.ty().clone());
-            ctx.bind_mut(&md.name, ty);
+            ctx.bind_mut(&md.name, &md.span, ty);
             Ok(TypedDecl::Mut(TypedMutDecl {
                 name: md.name.clone(),
                 type_ann: md.type_ann.clone(),
@@ -391,7 +391,7 @@ pub(super) fn construct_fun_decl(
         ctx.push_scope();
         let saved_flow = ctx.flow_enter_body();
         for (param, ty) in fun.params.iter().zip(param_types.iter()) {
-            ctx.bind(&param.name, ty.clone());
+            ctx.bind(&param.name, &param.span, ty.clone());
         }
         let saved_return = ctx.push_return_type(ret_ty.clone());
         let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
@@ -452,7 +452,7 @@ pub(super) fn construct_fun_decl(
         ctx.push_scope();
         let saved_flow = ctx.flow_enter_body();
         for (param, ty) in fun.params.iter().zip(param_types.iter()) {
-            ctx.bind(&param.name, ty.clone());
+            ctx.bind(&param.name, &param.span, ty.clone());
         }
         let saved_return = ctx.push_return_type(ret_ty.clone());
         let typed_block = construct_block(&fun.body, ret_ty.as_ref(), ctx)?;
@@ -929,7 +929,7 @@ pub(super) fn construct_impl_method(
     ctx.push_scope();
     let saved_flow = ctx.flow_enter_body();
     for (p, ty) in method.params.iter().zip(param_types.iter()) {
-        ctx.bind(&p.name, ty.clone());
+        ctx.bind(&p.name, &p.span, ty.clone());
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
     let saved_self = ctx.push_self_type_name(Some(target_name.to_string()));
@@ -1031,7 +1031,7 @@ pub(super) fn construct_default_aspect_method(
         .ok_or_else(|| MetelError::internal("missing aspect default body"))?;
     ctx.push_scope();
     for (p, ty) in method.params.iter().zip(param_types.iter()) {
-        ctx.bind(&p.name, ty.clone());
+        ctx.bind(&p.name, &p.span, ty.clone());
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
     let saved_self = ctx.push_self_type_name(Some(target_name.to_string()));
