@@ -31,7 +31,11 @@ mod registry;
 #[derive(Clone, Copy, Default)]
 pub struct GenericBodyOptions<'a> {
     pub expected_ret: Option<&'a crate::data::types::Type>,
-    pub capture_types: &'a [(String, crate::data::types::Type)],
+    pub capture_types: &'a [(
+        String,
+        Option<crate::identity::LocalId>,
+        crate::data::types::Type,
+    )],
 }
 pub mod type_engine;
 

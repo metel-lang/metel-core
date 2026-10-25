@@ -259,6 +259,23 @@ pub fn allocate_module(
         }
     }
 
+    // The module's bare top-level statements (a script-style `for`, `match` or block) are code
+    // too: a binding inside one needs a lexical identity like any other (metel-core#1570).
+    let statements: Vec<Decl> = decls
+        .iter()
+        .filter(|decl| matches!(decl, Decl::Stmt(_)))
+        .cloned()
+        .collect();
+    if !statements.is_empty() {
+        walk_module_statements(
+            module_body_owner(module_path),
+            statements,
+            interner,
+            &mut acc,
+            nav,
+        );
+    }
+
     // The lexical walk resolves only lexically-bound uses. Reclassify each
     // still-`Unresolved` use whose site the name resolver already bound to a
     // global (`ResolvedNames::references`, keyed by reference-site span). A
@@ -506,6 +523,33 @@ fn walk_body(
         );
     }
     walker.walk_block(body);
+}
+
+/// The owner of a module's bare top-level statements: not a declaration, so not a `SymbolId`, but
+/// a stable key per module so the structural hash of a binding inside one stays distinct from every
+/// function body's.
+fn module_body_owner(module_path: &[String]) -> BindingId {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "metel.identity.module-body".hash(&mut hasher);
+    module_path.hash(&mut hasher);
+    BindingId::Local(LocalId(hasher.finish()))
+}
+
+/// Walk a module's bare top-level statements as one block under [`module_body_owner`].
+fn walk_module_statements(
+    owner: BindingId,
+    statements: Vec<Decl>,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    let block = Block {
+        stmts: statements,
+        tail: None,
+        span: Span::new(0, 0, ""),
+    };
+    walk_body(owner, &[], &block, interner, acc, nav);
 }
 
 /// Walk a top-level `let`/`mut`'s own initializer expression (metel-core#1100)
