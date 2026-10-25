@@ -9,10 +9,10 @@ the workflows themselves are `.github/workflows/release.yml` here and
 
 For the release chain in the context of every other script and CI workflow across all
 four repos — including the per-PR checks and the manual docs-only path this document
-doesn't cover — see the [Operations Specification](docs/operations/index.md) (it draws both flows, checked for staleness).
+doesn't cover — see the [Operations Specification](https://metel-lang.org/docs/operations/) (it draws both flows, checked for staleness).
 
 The contracts this chain keeps are stated in the
-[Operations Specification](docs/operations/spec/release.md) (`PROC-RELEASE-*`); this document
+[Operations Specification](https://metel-lang.org/docs/operations/spec/release) (`PROC-RELEASE-*`); this document
 describes the chain, the specification states what must hold.
 
 **Before the tag:** the milestone passes two gates that this chain assumes are already
@@ -24,7 +24,7 @@ repo-wide release gate, which checks for that report). This document picks up at
 ## The chain
 
 The release flow is drawn in the Operations Specification
-([Flows](docs/operations/flows.md)), where it is checked against the workflows for staleness. In
+([Flows](https://metel-lang.org/docs/operations/flows)), where it is checked against the workflows for staleness. In
 words, after the tag `vX.Y.Z` is pushed to `metel-core`:
 
 1. **`release.yml` (here, Stage A)**
