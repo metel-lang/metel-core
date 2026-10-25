@@ -109,7 +109,7 @@ struct ConstructCtx<'a> {
     /// mutability, by name. Seeded from `scheme_env`, which inference produces keyed by name,
     /// so this stays name-keyed until `SchemeEnv` itself moves to `SymbolId` (metel-core#1570
     /// step 3).
-    // resolution-freeze-allow: module-level values seeded from the name-keyed `scheme_env` (inference output); retired when SchemeEnv is keyed by SymbolId (metel-core#1570 step 3).
+    // resolution-freeze-allow: module-level values seeded from the name-keyed `scheme_env` (inference output). Retired when the inference output is keyed by identity, which needs an identity at every use site; a `Type::method` path callee has none yet (metel-core#1570).
     module_values: HashMap<String, (Type, bool)>,
     /// Source of synthetic identities for a binder the identity walk gave none; counts down from
     /// the top of the id space so it cannot meet a hashed `LocalId` in practice.
@@ -136,11 +136,11 @@ struct ConstructCtx<'a> {
     loop_depth: usize,
     /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
-    // resolution-freeze-allow: construction's generic parameter scope, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
+    // resolution-freeze-allow: the declared type-parameter names of the one definition being reconstructed; they are unique within it, and a type annotation in the body names them by that spelling.
     generic_params: HashMap<String, TypeVar>,
     /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
     /// `None` for single-module pipelines that don't go through `check_graph`.
-    // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
+    // resolution-freeze-allow: the resolver's symbol table, read only to find the source symbol of an aspect's default method for an impl that inherits it (`inherited_method_identity`); every other id comes off the identity tables or `written_type_id`.
     symbols: Option<&'a crate::identity::symbols::SymbolMap>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
@@ -177,7 +177,7 @@ struct ConstructCtx<'a> {
     /// The same shapes for the module's top-level functions, by name: a top-level function has no
     /// lexical identity, only a `SymbolId`, and this table is filled before any declaration is
     /// constructed. Retired with `scheme_env` going by `SymbolId` (metel-core#1570 step 3).
-    // resolution-freeze-allow: top-level generic function shapes, named like the name-keyed `scheme_env` they are hoisted beside; retired with SchemeEnv by SymbolId (metel-core#1570 step 3).
+    // resolution-freeze-allow: top-level generic function shapes, named like the name-keyed `scheme_env` they are hoisted beside; retired together with it (metel-core#1570).
     module_fn_decls: HashMap<String, FnDeclShape>,
     /// By-value capture names for each enclosing closure body. This is the
     /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
@@ -211,7 +211,7 @@ impl<'a> ConstructCtx<'a> {
         scheme_env: &'a SchemeEnv,
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
-        // resolution-freeze-allow: the resolver's symbol table, an input to construction read at written names; ADR-0054 step 6.
+        // resolution-freeze-allow: the resolver's symbol table, read only to find the source symbol of an aspect's default method for an impl that inherits it (`inherited_method_identity`); every other id comes off the identity tables or `written_type_id`.
         symbols: Option<&'a crate::identity::symbols::SymbolMap>,
         overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
@@ -1145,7 +1145,7 @@ pub(super) fn construct_generic_body(
     // resolve to concrete types. scheme.param_names[i] corresponds to quantified_vars[i],
     // and renaming maps original TypeVar → fresh TypeVar.
     if !scheme.param_names.is_empty() {
-        // resolution-freeze-allow: construction's generic parameter scope for a signature, keyed by spelling until ADR-0054 step 6 migrates construction to the frozen IR.
+        // resolution-freeze-allow: the declared type-parameter names of the one signature being converted; unique within it.
         let mut gp: HashMap<String, TypeVar> = HashMap::new();
         for (orig_var, name) in scheme.quantified_vars.iter().zip(scheme.param_names.iter()) {
             if let Some(&fresh_var) = renaming.get(orig_var) {
@@ -1182,7 +1182,7 @@ pub(super) fn construct_program(
     scheme_env: &SchemeEnv,
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
-    // resolution-freeze-allow: the resolver's symbol table passed into construction; ADR-0054 step 6.
+    // resolution-freeze-allow: the resolver's symbol table passed into construction for `inherited_method_identity` only; see `ConstructCtx::symbols`.
     symbols: Option<&crate::identity::symbols::SymbolMap>,
     overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
