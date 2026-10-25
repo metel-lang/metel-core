@@ -17,10 +17,11 @@
 //! is not narrowed here — `move_check` still enforces correctness over the typed
 //! AST; only the residual *type* is unavailable at those sites.
 
+use crate::data::ast::UnaryOp;
 use crate::data::typed_ast::{TypedExpr, TypedPlace};
 use crate::data::types::Type;
 use crate::ownership::flow_state::{FlowState, MoveCause};
-use crate::ownership::place::{Place, Projection, from_expr as place_from_expr, from_typed_place};
+use crate::ownership::place::{Place, Projection};
 
 use super::ConstructCtx;
 
@@ -40,7 +41,7 @@ impl ConstructCtx<'_> {
 
     /// Register a binding for narrowing. Called from `bind_with_mutability`, so
     /// every `let` / `var` / pattern / parameter binding flows through here.
-    pub(super) fn flow_bind(&mut self, name: &str, ty: Type) -> Type {
+    pub(super) fn flow_bind(&mut self, root: &str, ty: Type) -> Type {
         if let Type::Residual { brand, .. } = &ty
             && self
                 .registry
@@ -48,7 +49,7 @@ impl ConstructCtx<'_> {
                 .and_then(|id| self.registry.struct_type_params_by_id(id))
                 .is_some_and(|parameters| !parameters.is_empty())
         {
-            self.flow.bind_typed(name, &ty);
+            self.flow.bind_typed(root, &ty);
             return ty;
         }
         if let Type::Residual { brand, fields } = &ty
@@ -61,11 +62,11 @@ impl ConstructCtx<'_> {
                     self.registry.resolve_type_id(self.current_module, brand),
                 ),
             );
-            self.flow.bind_typed(name, &declared);
+            self.flow.bind_typed(root, &declared);
             for (label, _) in full {
                 if !fields.iter().any(|(present, _)| present == &label) {
                     self.flow.record_move(
-                        Place::new(name.to_owned()).with_projection(Projection::field(label)),
+                        Place::new(root.to_owned()).with_projection(Projection::field(label)),
                         crate::data::ast::Span::new(0, 0, ""),
                         MoveCause::Other,
                         "residual-field".into(),
@@ -74,16 +75,16 @@ impl ConstructCtx<'_> {
             }
             return declared;
         }
-        self.flow.bind_typed(name, &ty);
+        self.flow.bind_typed(root, &ty);
         ty
     }
 
     /// The current type of `name` once move-triggered narrowing is applied, or
     /// `None` to fall back to the declared type in `ctx.env`. Only ever narrows a
     /// struct / `record` binding with a depth-1 field or tuple element moved out.
-    pub(super) fn narrowed_type(&self, name: &str) -> Option<Type> {
-        let declared = self.flow.binding_type(name)?.clone();
-        let moved = self.flow.moved_shallow_projections(name);
+    pub(super) fn narrowed_type(&self, root: &str) -> Option<Type> {
+        let declared = self.flow.binding_type(root)?.clone();
+        let moved = self.flow.moved_shallow_projections(root);
         if moved.is_empty() {
             return None;
         }
@@ -152,7 +153,7 @@ impl ConstructCtx<'_> {
     /// Widen: assigning to `place` reinitializes it, so a field that was moved
     /// out of `place`'s root comes back and the root's type widens.
     pub(super) fn note_reassigned(&mut self, place: &TypedPlace) {
-        if let Some(p) = from_typed_place(place) {
+        if let Some(p) = place_of_target(self, place) {
             self.flow.reinitialize(&p);
         }
     }
@@ -181,10 +182,57 @@ fn note_consumed_expr(ctx: &mut ConstructCtx, typed: &TypedExpr) {
         }
         return;
     }
-    let Some(place) = place_from_expr(typed) else {
+    let Some(place) = place_of_expr(ctx, typed) else {
         return;
     };
     record_move_of_place(ctx, &place, typed);
+}
+
+/// The place an expression names, rooted at the identity of the binding it starts from. The
+/// shared `ownership::place::from_expr` roots a place at the source name; construction's flow
+/// state is keyed by the binding's identity (metel-core#1570), so the root is resolved here.
+fn place_of_expr(ctx: &ConstructCtx, expr: &TypedExpr) -> Option<Place> {
+    match expr {
+        TypedExpr::Ident(name, _, _, span) => Some(Place::new(ctx.flow_root_at(name, span))),
+        TypedExpr::UnaryOp(UnaryOp::Deref, object, _, _) => {
+            Some(place_of_expr(ctx, object)?.with_projection(Projection::Deref))
+        }
+        TypedExpr::FieldAccess {
+            object,
+            field,
+            field_id,
+            ..
+        } => Some(
+            place_of_expr(ctx, object)?
+                .with_projection(Projection::field_with_id(field.clone(), *field_id)),
+        ),
+        TypedExpr::TupleAccess { object, index, .. } => {
+            Some(place_of_expr(ctx, object)?.with_projection(Projection::TupleIndex(*index)))
+        }
+        TypedExpr::Index { object, .. } => {
+            Some(place_of_expr(ctx, object)?.with_projection(Projection::OpaqueIndex))
+        }
+        _ => None,
+    }
+}
+
+/// The place an assignment target names, rooted as [`place_of_expr`] does.
+fn place_of_target(ctx: &ConstructCtx, place: &TypedPlace) -> Option<Place> {
+    match place {
+        TypedPlace::Ident(name, _, span) => Some(Place::new(ctx.flow_root_at(name, span))),
+        TypedPlace::Field { object, field, .. } => {
+            Some(place_of_target(ctx, object)?.with_projection(Projection::field(field.clone())))
+        }
+        TypedPlace::Tuple { object, index, .. } => {
+            Some(place_of_target(ctx, object)?.with_projection(Projection::TupleIndex(*index)))
+        }
+        TypedPlace::Index { object, .. } => {
+            Some(place_of_target(ctx, object)?.with_projection(Projection::OpaqueIndex))
+        }
+        TypedPlace::Deref { object, .. } => {
+            Some(place_of_expr(ctx, object)?.with_projection(Projection::Deref))
+        }
+    }
 }
 
 /// Record `place` as moved, if it is a genuine depth-1 field / tuple move of a
