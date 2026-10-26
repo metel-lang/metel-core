@@ -13,6 +13,24 @@ mod abstract_signature;
 pub(super) use abstract_signature::freeze_declaration_signature;
 pub(super) use abstract_signature::prepare_abstract_body;
 
+/// Resolve a per-span table of closure types under `subst`. A type that keeps variables (a
+/// generalized closure, retained and reconstructed per call site) has no one concrete fact to hand
+/// off and is left out.
+fn concrete_closure_types(
+    table: &HashMap<Span, InferType>,
+    subst: &Substitution,
+) -> Result<HashMap<Span, Type>, MetelError> {
+    table
+        .iter()
+        .filter_map(|(span, ty)| {
+            let resolved = subst.apply(ty);
+            free_vars(&resolved).is_empty().then(|| {
+                infer_type_to_type(&resolved, span).map(|concrete| (span.clone(), concrete))
+            })
+        })
+        .collect()
+}
+
 /// Immutable facts decided by inference and consumed while building the typed AST.
 ///
 /// Concrete facts are converted here; legitimate definition parameters are frozen
@@ -22,6 +40,7 @@ pub(super) use abstract_signature::prepare_abstract_body;
 pub(super) struct ResolvedInferenceFacts {
     definition_snapshots: HashMap<Span, Box<Self>>,
     closure_return_types: HashMap<Span, Type>,
+    closure_param_types: HashMap<Span, Type>,
     /// Solved definition types awaiting binder-local freezing. This table is a
     /// temporary join, not exposed to analyses or stored in the durable artifact.
     definition_expression_types: HashMap<Span, InferType>,
@@ -52,6 +71,7 @@ impl ResolvedInferenceFacts {
         Self {
             definition_snapshots: HashMap::new(),
             closure_return_types: HashMap::new(),
+            closure_param_types: HashMap::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
@@ -92,22 +112,13 @@ impl ResolvedInferenceFacts {
         ctx: &InferContext,
         subst: &Substitution,
     ) -> Result<Self, MetelError> {
-        let closure_return_types = ctx
-            .closure_return_types()
-            .iter()
-            .filter_map(|(span, ty)| {
-                let resolved = subst.apply(ty);
-                // A generalized closure can intentionally retain type variables and is
-                // reconstructed per call site. It has no one concrete fact to hand off.
-                free_vars(&resolved).is_empty().then(|| {
-                    infer_type_to_type(&resolved, span).map(|concrete| (span.clone(), concrete))
-                })
-            })
-            .collect::<Result<_, _>>()?;
+        let closure_return_types = concrete_closure_types(ctx.closure_return_types(), subst)?;
+        let closure_param_types = concrete_closure_types(ctx.closure_param_types(), subst)?;
 
         Ok(Self {
             definition_snapshots: HashMap::new(),
             closure_return_types,
+            closure_param_types,
             definition_nominal_fields: ctx.definition_nominal_fields().clone(),
             definition_method_facts: ctx
                 .definition_method_facts()
@@ -257,6 +268,10 @@ impl ResolvedInferenceFacts {
                 (span.clone(), resolved)
             })
             .collect()
+    }
+
+    pub(super) fn closure_param_type(&self, span: &Span) -> Option<&Type> {
+        self.closure_param_types.get(span)
     }
 
     pub(super) fn closure_return_type(&self, span: &Span) -> Option<&Type> {

@@ -1,0 +1,7 @@
+// TYPECHECK_ERROR[T0002]
+// metel-core#1624: a parameter that nothing determines (no expected function type, and a body
+// that does not fix it, in a binding that cannot be generalized) stays T0002, and the message
+// says what would determine it.
+fun main() {
+    var h := |x| { x };
+}

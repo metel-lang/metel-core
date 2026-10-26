@@ -1894,11 +1894,22 @@ pub(super) fn construct_expr(
                 .map(|p| {
                     p.type_ann.as_ref().map_or_else(
                         || {
-                            Err(MetelError::type_error(
-                                TypeErrorCode::T0002,
-                                format!("closure parameter `{}` needs a type annotation", p.name),
-                                &p.span,
-                            ))
+                            // Pass 1 solved this parameter from the expected function type
+                            // or the body (metel-core#1624).
+                            ctx.resolved_facts
+                                .closure_param_type(&p.span)
+                                .cloned()
+                                .ok_or_else(|| {
+                                    MetelError::type_error(
+                                        TypeErrorCode::T0002,
+                                        format!(
+                                            "closure parameter `{}` has no determined type; \
+                                             add an annotation or give the closure an expected function type",
+                                            p.name
+                                        ),
+                                        &p.span,
+                                    )
+                                })
                         },
                         |ann| {
                             resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, &p.span)
