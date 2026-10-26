@@ -1,0 +1,9 @@
+// TYPECHECK_ERROR[T0001]
+// RFC-0182: a `Result` operand in an `Option`-returning function would discard the error;
+// the diagnostic names `.ok()`.
+fun parse(r: Result<i64, String>) -> Option<i64> {
+    let x := r?;
+    Some { value = x }
+}
+
+fun main() {}

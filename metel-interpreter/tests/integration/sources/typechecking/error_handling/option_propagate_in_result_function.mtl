@@ -1,0 +1,9 @@
+// TYPECHECK_ERROR[T0001]
+// RFC-0182: no mixed use -- an `Option` operand in a `Result`-returning function names the
+// bridge, `.ok_or(...)`.
+fun load(o: Option<i64>) -> Result<i64, String> {
+    let x := o?;
+    Ok { value = x }
+}
+
+fun main() {}

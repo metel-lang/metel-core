@@ -1,0 +1,23 @@
+// RFC-0182: `?` on `Option` in an `Option`-returning function propagates `None`; a
+// `Result` is bridged with `.ok()`.
+fun sum_first_two(xs: List<i64>) -> Option<i64> {
+    let a := xs.get(0)?;
+    let b := xs.get(1)?;
+    Some { value = a + b }
+}
+fun half(r: Result<i64, String>) -> Option<i64> {
+    let n := r.ok()?;
+    Some { value = n / 2 }
+}
+fun main() {
+    var xs: List<i64> := List::new();
+    xs.push(3);
+    xs.push(4);
+    assert(sum_first_two(xs).unwrap_or(0) == 7);
+    var ys: List<i64> := List::new();
+    ys.push(1);
+    assert(sum_first_two(ys).is_none());
+    assert(half(Ok { value = 8 }).unwrap_or(0) == 4);
+    assert(half(Err { error = "x" }).is_none());
+    println("ok");
+}

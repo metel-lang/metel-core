@@ -1605,27 +1605,47 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
     }
 }
 
-/// A synthetic single-field `Result::<variant>` pattern for the `?` desugar,
-/// carrying the interned variant / field identities (ADR-0054 / #1062b).
-fn result_variant_pattern(
+/// A synthetic `Result::<variant>` / `Option::<variant>` pattern for the `?` desugar,
+/// carrying the interned variant / field identities (ADR-0054 / #1062b). `field` is
+/// `None` for a unit variant (`None`).
+fn core_variant_pattern(
     ctx: &ConstructCtx,
+    owner: (&str, crate::identity::symbols::SymbolId),
     variant: &str,
-    field: &str,
+    field: Option<&str>,
     local_id: Option<crate::identity::LocalId>,
     span: &Span,
 ) -> TypedPattern {
-    let result_id = Some(crate::identity::symbols::SYM_TYPE_RESULT);
+    let (enum_name, enum_symbol) = owner;
+    let enum_id = Some(enum_symbol);
     TypedPattern::EnumVariant {
-        path: vec!["Result".to_string(), variant.to_string()],
-        variant_id: ctx.variant_id_for(result_id, variant),
-        fields: vec![(
-            field.to_string(),
-            ctx.variant_field_id(result_id, variant, field),
-            local_id,
-        )],
+        path: vec![enum_name.to_string(), variant.to_string()],
+        variant_id: ctx.variant_id_for(enum_id, variant),
+        fields: field
+            .map(|field| {
+                (
+                    field.to_string(),
+                    ctx.variant_field_id(enum_id, variant, field),
+                    local_id,
+                )
+            })
+            .into_iter()
+            .collect(),
         rest: false,
         span: span.clone(),
     }
+}
+
+/// The core `Result`/`Option` a resolved type names (RFC-0182): by declaration identity,
+/// falling back to the bare spelling only when no identity was resolved.
+fn core_head(
+    ty: &Type,
+    name: &str,
+    symbol: crate::identity::symbols::SymbolId,
+    arity: usize,
+) -> bool {
+    matches!(ty, Type::Named(n, args, id)
+        if args.len() == arity && match id.get() { Some(id) => id == symbol, None => n == name })
 }
 
 fn construct_propagate_error(
@@ -1633,62 +1653,27 @@ fn construct_propagate_error(
     span: &Span,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
-    // The `?`-desugar's synthesized `Ok`-arm `value` and `Err`-arm `error`
+    // The `?`-desugar's synthesized `Ok`/`Some`-arm `value` and `Err`-arm `error`
     // bindings share one id, bound by the identity walk at the `?`'s own
     // span (metel-core#1098 / allocate.rs's `PropagateError` case) — the two
     // are mutually exclusive match arms, so one frame slot serves both.
     let local_id = ctx.local_binding_at(span);
     let scrutinee = construct_expr(expr, None, ctx)?;
-    let (ok_ty, source_err_ty) = match scrutinee.ty() {
-        Type::Named(name, args, ..) if name == "Result" && args.len() == 2 => {
-            (args[0].clone(), args[1].clone())
-        }
-        other => {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0005,
-                format!("`?` requires a Result<T, E> expression, got `{other}`"),
-                span,
-            ));
-        }
-    };
+    let option_id = crate::identity::symbols::SYM_TYPE_OPTION;
+    if core_head(scrutinee.ty(), "Option", option_id, 1) {
+        return construct_propagate_option(scrutinee, span, local_id, ctx);
+    }
+    construct_propagate_result(scrutinee, span, local_id, ctx)
+}
 
-    let return_ty = ctx.current_return_ty.clone().ok_or_else(|| {
-        MetelError::type_error(
-            TypeErrorCode::T0005,
-            "`?` can only be used inside a function or closure that returns Result<T, E>",
-            span,
-        )
-    })?;
-    let target_err_ty = match &return_ty {
-        Type::Named(name, args, ..) if name == "Result" && args.len() == 2 => args[1].clone(),
-        other => {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0005,
-                format!(
-                    "`?` requires the enclosing function to return Result<T, E>, got `{other}`"
-                ),
-                span,
-            ));
-        }
-    };
-
-    let ok_arm = TypedMatchArm {
-        pattern: result_variant_pattern(ctx, "Ok", "value", local_id, span),
-        guard: None,
-        body: TypedBlock {
-            stmts: vec![],
-            tail: Some(Box::new(TypedExpr::Ident(
-                "value".to_string(),
-                local_id.map(crate::identity::BindingId::Local),
-                ok_ty.clone(),
-                span.clone(),
-            ))),
-            span: span.clone(),
-        },
-        span: span.clone(),
-    };
-
-    let err_value = if source_err_ty == target_err_ty {
+/// The `error` value a `?` on a `Result` returns: the bound error itself, or `E2::from(error)`.
+fn propagate_err_value(
+    source_err_ty: Type,
+    target_err_ty: Type,
+    local_id: Option<crate::identity::LocalId>,
+    span: &Span,
+) -> TypedExpr {
+    if source_err_ty == target_err_ty {
         TypedExpr::Ident(
             "error".to_string(),
             local_id.map(crate::identity::BindingId::Local),
@@ -1707,9 +1692,89 @@ fn construct_propagate_error(
             ty: target_err_ty,
             span: span.clone(),
         }
+    }
+}
+
+/// `e?` for `e: Result<T, E1>` in a function returning `Result<U, E2>`: the `Ok` value, or an
+/// early `Err` with `E2::from(error)` when the error types differ.
+fn construct_propagate_result(
+    scrutinee: TypedExpr,
+    span: &Span,
+    local_id: Option<crate::identity::LocalId>,
+    ctx: &ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    let result_id = crate::identity::symbols::SYM_TYPE_RESULT;
+    let (ok_ty, source_err_ty) = match scrutinee.ty() {
+        Type::Named(..) if core_head(scrutinee.ty(), "Result", result_id, 2) => {
+            let Type::Named(_, args, ..) = scrutinee.ty() else {
+                unreachable!("core_head matched a Named type")
+            };
+            (args[0].clone(), args[1].clone())
+        }
+        other => {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0005,
+                format!("`?` requires a Result<T, E> or Option<T> expression, got `{other}`"),
+                span,
+            ));
+        }
     };
+
+    let return_ty = ctx.current_return_ty.clone().ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0005,
+            "`?` can only be used inside a function or closure that returns Result<T, E> or Option<T>",
+            span,
+        )
+    })?;
+    let target_err_ty = match &return_ty {
+        Type::Named(_, args, ..) if core_head(&return_ty, "Result", result_id, 2) => {
+            args[1].clone()
+        }
+        other => {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0005,
+                format!(
+                    "`?` requires the enclosing function to return Result<T, E>, got `{other}`"
+                ),
+                span,
+            ));
+        }
+    };
+
+    let ok_arm = TypedMatchArm {
+        pattern: core_variant_pattern(
+            ctx,
+            ("Result", result_id),
+            "Ok",
+            Some("value"),
+            local_id,
+            span,
+        ),
+        guard: None,
+        body: TypedBlock {
+            stmts: vec![],
+            tail: Some(Box::new(TypedExpr::Ident(
+                "value".to_string(),
+                local_id.map(crate::identity::BindingId::Local),
+                ok_ty.clone(),
+                span.clone(),
+            ))),
+            span: span.clone(),
+        },
+        span: span.clone(),
+    };
+
+    let err_value = propagate_err_value(source_err_ty, target_err_ty, local_id, span);
     let err_arm = TypedMatchArm {
-        pattern: result_variant_pattern(ctx, "Err", "error", local_id, span),
+        pattern: core_variant_pattern(
+            ctx,
+            ("Result", result_id),
+            "Err",
+            Some("error"),
+            local_id,
+            span,
+        ),
         guard: None,
         body: TypedBlock {
             stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Expr(
@@ -1735,6 +1800,89 @@ fn construct_propagate_error(
     Ok(TypedExpr::Match(TypedMatchExpr {
         scrutinee: Box::new(scrutinee),
         arms: vec![ok_arm, err_arm],
+        expr_type: ok_ty,
+        span: span.clone(),
+    }))
+}
+
+/// RFC-0182: `e?` for `e: Option<T>` in a function returning `Option<U>`.
+/// Desugars to `match e { Some { value } => value, None => return None }`.
+fn construct_propagate_option(
+    scrutinee: TypedExpr,
+    span: &Span,
+    local_id: Option<crate::identity::LocalId>,
+    ctx: &ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    let option_id = crate::identity::symbols::SYM_TYPE_OPTION;
+    let Type::Named(_, args, ..) = scrutinee.ty() else {
+        unreachable!("core_head matched a Named type")
+    };
+    let ok_ty = args[0].clone();
+    let return_ty = ctx.current_return_ty.clone().ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0005,
+            "`?` can only be used inside a function or closure that returns Result<T, E> or Option<T>",
+            span,
+        )
+    })?;
+    if !core_head(&return_ty, "Option", option_id, 1) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0005,
+            format!(
+                "`?` on an Option requires the enclosing function to return Option<T>, got `{return_ty}`"
+            ),
+            span,
+        ));
+    }
+
+    let some_arm = TypedMatchArm {
+        pattern: core_variant_pattern(
+            ctx,
+            ("Option", option_id),
+            "Some",
+            Some("value"),
+            local_id,
+            span,
+        ),
+        guard: None,
+        body: TypedBlock {
+            stmts: vec![],
+            tail: Some(Box::new(TypedExpr::Ident(
+                "value".to_string(),
+                local_id.map(crate::identity::BindingId::Local),
+                ok_ty.clone(),
+                span.clone(),
+            ))),
+            span: span.clone(),
+        },
+        span: span.clone(),
+    };
+    let none_arm = TypedMatchArm {
+        pattern: core_variant_pattern(ctx, ("Option", option_id), "None", None, local_id, span),
+        guard: None,
+        body: TypedBlock {
+            stmts: vec![TypedDecl::Stmt(Box::new(TypedStmt::Expr(
+                TypedExpr::Return(TypedReturnExpr {
+                    value: Some(Box::new(TypedExpr::StructLiteral {
+                        path: vec!["Option".to_string(), "None".to_string()],
+                        fields: vec![],
+                        ty: return_ty,
+                        type_id: Some(option_id),
+                        variant_id: ctx.variant_id_for(Some(option_id), "None"),
+                        span: span.clone(),
+                    })),
+                    span: span.clone(),
+                }),
+            )))],
+            tail: None,
+            span: span.clone(),
+        },
+        span: span.clone(),
+    };
+
+    Ok(TypedExpr::Match(TypedMatchExpr {
+        scrutinee: Box::new(scrutinee),
+        arms: vec![some_arm, none_arm],
         expr_type: ok_ty,
         span: span.clone(),
     }))

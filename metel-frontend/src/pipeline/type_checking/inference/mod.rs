@@ -2244,65 +2244,176 @@ fn infer_binop(
 }
 
 // arch-implements: ["arch.type-inference.requirement-3"]
+/// Which core constructor a `?` operand or return type names (RFC-0182).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PropagateKind {
+    Result,
+    Option,
+}
+
+impl PropagateKind {
+    fn builtin(self) -> crate::identity::symbols::SymbolId {
+        match self {
+            Self::Result => crate::identity::symbols::SYM_TYPE_RESULT,
+            Self::Option => crate::identity::symbols::SYM_TYPE_OPTION,
+        }
+    }
+
+    fn arity(self) -> usize {
+        match self {
+            Self::Result => 2,
+            Self::Option => 1,
+        }
+    }
+
+    fn placeholders(self) -> &'static str {
+        match self {
+            Self::Result => "<_, _>",
+            Self::Option => "<_>",
+        }
+    }
+
+    fn short_name(self) -> &'static str {
+        match self {
+            Self::Result => "Result",
+            Self::Option => "Option",
+        }
+    }
+}
+
+/// The core `Result`/`Option` a resolved type names, with the spelling it carries in
+/// this scope (`std::core::Result` while a module shadows `Result`). Identity decides, not
+/// the spelling, so a module's own `Result` is never mistaken for the core one.
+fn propagate_head(ty: &InferType) -> Option<(PropagateKind, String)> {
+    let InferType::Named(name, args, id) = ty else {
+        return None;
+    };
+    [PropagateKind::Result, PropagateKind::Option]
+        .into_iter()
+        .find(|kind| {
+            args.len() == kind.arity()
+                && match id.get() {
+                    Some(id) => id == kind.builtin(),
+                    None => name == kind.short_name(),
+                }
+        })
+        .map(|kind| (kind, name.clone()))
+}
+
 fn infer_propagate_error(
     expr: &Expr,
     span: &Span,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
-    let ok_ty = ctx.fresh_var();
-    let source_err_ty = ctx.fresh_var();
     let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;
-    ctx.add_constraint(
-        inner_ty,
-        InferType::Named(
-            "Result".to_string(),
-            vec![ok_ty.clone(), source_err_ty.clone()],
-            crate::data::types::NominalId::NONE,
-        ),
-        span.clone(),
-    );
-
     let expected_return = ctx.current_return_type().cloned().ok_or_else(|| {
         MetelError::type_error(
             TypeErrorCode::T0005,
-            "`?` can only be used inside a function or closure that returns Result<T, E>",
+            "`?` can only be used inside a function or closure that returns Result<T, E> or Option<T>",
             span,
         )
     })?;
 
-    let target_ok_ty = ctx.fresh_var();
-    let target_err_ty = ctx.fresh_var();
-    ctx.add_constraint(
-        expected_return,
-        InferType::Named(
-            "Result".to_string(),
-            vec![target_ok_ty, target_err_ty.clone()],
-            crate::data::types::NominalId::NONE,
-        ),
-        span.clone(),
-    );
-
     let subst = ctx.solve()?;
-    let source_resolved = subst.apply(&source_err_ty);
-    let target_resolved = subst.apply(&target_err_ty);
-    if source_resolved != target_resolved {
-        let source_concrete = infer_to_type_for_from(&source_resolved);
-        let target_name = infer_type_name(&target_resolved);
-        if let (Some(src_t), Some(tgt)) = (source_concrete.as_ref(), target_name)
-            && !ctx.has_from_impl(tgt, src_t)
-        {
+    let inner_resolved = subst.apply(&inner_ty);
+    let return_resolved = subst.apply(&expected_return);
+    let inner_head = propagate_head(&inner_resolved);
+    let return_head = propagate_head(&return_resolved);
+
+    // The return type decides the row; when it is not yet known the operand does.
+    // Both unresolved plain variables is ambiguous (RFC-0182 §1).
+    let (kind, name) = match (&inner_head, &return_head) {
+        (Some((ik, _)), Some((rk, _))) if ik != rk => {
+            let mut rendered = crate::pipeline::type_checking::type_engine::render_types(
+                &[&inner_resolved, &return_resolved],
+                &std::collections::HashMap::new(),
+            );
+            let ret = rendered.pop().unwrap_or_default();
+            let found = rendered.pop().unwrap_or_default();
+            let help = match ik {
+                PropagateKind::Option => "turn the absence into an error first: `.ok_or(...)`",
+                PropagateKind::Result => "discard the error visibly first: `.ok()`",
+            };
             return Err(MetelError::type_error(
-                TypeErrorCode::T0007,
+                TypeErrorCode::T0001,
                 format!(
-                    "cannot propagate `{source_resolved}` as `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"
+                    "`?` on `{found}` needs the enclosing function to return `{}{}`, but it returns `{ret}`\n       help: {help}",
+                    ik.short_name(),
+                    ik.placeholders()
                 ),
                 span,
             ));
         }
-    }
+        (_, Some((kind, name))) | (Some((kind, name)), None) => (*kind, name.clone()),
+        (None, None)
+            if matches!(inner_resolved, InferType::Var(_))
+                && matches!(return_resolved, InferType::Var(_)) =>
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0002,
+                "cannot infer whether `?` propagates a Result or an Option; add a type annotation",
+                span,
+            ));
+        }
+        // Not a Result/Option anywhere: keep the ordinary unification failure.
+        (None, None) => (PropagateKind::Result, "Result".to_string()),
+    };
 
-    Ok(ok_ty)
+    let named = |args: Vec<InferType>| {
+        InferType::Named(
+            name.clone(),
+            args,
+            crate::data::types::NominalId::some(kind.builtin()),
+        )
+    };
+    match kind {
+        PropagateKind::Option => {
+            let ok_ty = ctx.fresh_var();
+            ctx.add_constraint(inner_ty, named(vec![ok_ty.clone()]), span.clone());
+            let target_ok_ty = ctx.fresh_var();
+            ctx.add_constraint(expected_return, named(vec![target_ok_ty]), span.clone());
+            ctx.solve()?;
+            Ok(ok_ty)
+        }
+        PropagateKind::Result => {
+            let ok_ty = ctx.fresh_var();
+            let source_err_ty = ctx.fresh_var();
+            ctx.add_constraint(
+                inner_ty,
+                named(vec![ok_ty.clone(), source_err_ty.clone()]),
+                span.clone(),
+            );
+            let target_ok_ty = ctx.fresh_var();
+            let target_err_ty = ctx.fresh_var();
+            ctx.add_constraint(
+                expected_return,
+                named(vec![target_ok_ty, target_err_ty.clone()]),
+                span.clone(),
+            );
+
+            let subst = ctx.solve()?;
+            let source_resolved = subst.apply(&source_err_ty);
+            let target_resolved = subst.apply(&target_err_ty);
+            if source_resolved != target_resolved {
+                let source_concrete = infer_to_type_for_from(&source_resolved);
+                let target_name = infer_type_name(&target_resolved);
+                if let (Some(src_t), Some(tgt)) = (source_concrete.as_ref(), target_name)
+                    && !ctx.has_from_impl(tgt, src_t)
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0007,
+                        format!(
+                            "cannot propagate `{source_resolved}` as `{target_resolved}` — no `impl From<{source_resolved}> for {target_resolved}` found"
+                        ),
+                        span,
+                    ));
+                }
+            }
+
+            Ok(ok_ty)
+        }
+    }
 }
 
 fn infer_unaryop(

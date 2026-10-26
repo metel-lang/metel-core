@@ -1,0 +1,44 @@
+// RFC-0182: `?` in a closure returns from the closure; in an inner block it leaves the
+// enclosing function (not the block); each `?` strips one layer of a nested type.
+fun first_even(xs: List<i64>) -> Option<i64> {
+    var i := 0;
+    loop {
+        let x := xs.get(i)?;
+        if (x % 2 == 0) {
+            return Some { value = x };
+        }
+        i := i + 1;
+    }
+}
+
+fun unwrap_layers(o: Option<Result<i64, String>>) -> Option<i64> {
+    let inner := o?;
+    let n := inner.ok()?;
+    Some { value = n }
+}
+
+fun main() {
+    let step := |o: Option<i64>| -> Option<i64> {
+        let x := o?;
+        Some { value = x + 1 }
+    };
+    assert(step(Some { value = 1 }).unwrap_or(0) == 2);
+    assert(step(None).is_none());
+
+    var xs: List<i64> := List::new();
+    xs.push(3);
+    xs.push(8);
+    assert(first_even(xs).unwrap_or(0) == 8);
+    var odds: List<i64> := List::new();
+    odds.push(1);
+    assert(first_even(odds).is_none());
+
+    let five: Result<i64, String> := Ok { value = 5 };
+    let oops: Result<i64, String> := Err { error = "e" };
+    let good: Option<Result<i64, String>> := Some { value = five };
+    let bad: Option<Result<i64, String>> := Some { value = oops };
+    let missing: Option<Result<i64, String>> := None;
+    assert(unwrap_layers(good).unwrap_or(0) == 5);
+    assert(unwrap_layers(bad).is_none());
+    assert(unwrap_layers(missing).is_none());
+}
