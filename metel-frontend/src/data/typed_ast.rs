@@ -39,15 +39,9 @@ pub type TypedProgram = Vec<TypedDecl>;
 pub struct TypedModule {
     pub module_path: Vec<String>,
     pub decls: Vec<TypedDecl>,
-    /// The full type-scheme environment produced by the typechecker for this module.
-    /// Used at runtime to run `construct_block` for generic function bodies
-    /// (`ClosureBody::Untyped`) without a separate untyped evaluator pipeline.
-    // resolution-freeze-allow: keyed by declaration name, but scoped to one
-    // module's own declarations -- two functions in the same module can never
-    // share a name, so there is no cross-module collision for a bare name to
-    // resolve wrong (metel-core#1054).
-    pub scheme_env: HashMap<String, TypeScheme>,
-    /// The module's schemes keyed by the declaration they belong to (see `TypeCtx::scheme_ids`).
+    /// The module's type schemes keyed by the declaration they belong to. Used at runtime to run
+    /// `construct_block` for generic function bodies (`ClosureBody::Untyped`) without a separate
+    /// untyped evaluator pipeline.
     pub scheme_ids: HashMap<crate::identity::BindingId, TypeScheme>,
     /// The overload table visible in this module: its own overloaded functions plus
     /// the ones it imports, including the standard prelude's (`assert`). Generic bodies
@@ -529,9 +523,11 @@ pub enum TypedExpr {
     /// A let-bound polymorphic closure (let-polymorphism).
     /// The body is kept untyped for runtime re-evaluation at each call site's concrete type.
     GenericClosure {
-        /// Binding name from the enclosing `let`/`mut` declaration, used at runtime to look
-        /// up the closure's `TypeScheme` from `type_ctx.scheme_env` for construction-at-call-time.
+        /// Binding name from the enclosing `let`/`mut` declaration, for display.
         name: Option<String>,
+        /// The binding the closure's `TypeScheme` is filed under in `TypeCtx::scheme_ids`, used at
+        /// runtime to look it up for construction-at-call-time.
+        scheme_id: Option<BindingId>,
         captures: Vec<CaptureSpec>,
         /// See `Closure::capture_ids`.
         capture_ids: Vec<Option<LocalId>>,

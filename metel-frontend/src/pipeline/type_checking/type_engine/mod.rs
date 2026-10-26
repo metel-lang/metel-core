@@ -5876,6 +5876,35 @@ impl TypeDefinitionRegistry {
             .map(|e| &e.declaring_module)
     }
 
+    /// The `SymbolId` of the default method `method` of the aspect `aspect_identity`, declared in
+    /// `declaring_module` under whatever name it was declared with there (the name an impl wrote
+    /// may be an import alias).
+    #[must_use]
+    pub(crate) fn aspect_default_method_symbol(
+        &self,
+        declaring_module: &[String],
+        aspect_identity: SymbolId,
+        method: &str,
+    ) -> Option<SymbolId> {
+        let aspect_name = self
+            .symbols
+            .iter()
+            .find_map(|((module, namespace, name), id)| {
+                (module == declaring_module
+                    && *namespace == Namespace::Type
+                    && *id == aspect_identity)
+                    .then_some(name.as_str())
+            })?;
+        let method_name = crate::pipeline::name_resolution::name_resolver::method_symbol_name(
+            aspect_name,
+            None,
+            method,
+        );
+        self.symbols
+            .get(&(declaring_module.to_vec(), Namespace::Value, method_name))
+            .copied()
+    }
+
     /// Whether an aspect name is visible from `current_module`.
     ///
     /// This follows the same type-position lookup as impl targets: unqualified names
@@ -8451,10 +8480,9 @@ pub type SymbolTable = crate::identity::symbols::SymbolMap;
 /// a `TypedBlock` at the point of the call, given concrete argument types.
 #[derive(Debug, Clone)]
 pub struct TypeCtx {
-    /// Full scheme environment of the module where the closure was defined.
-    pub scheme_env: HashMap<String, TypeScheme>,
-    /// The same schemes keyed by the declaration they belong to, which is how a reconstructed
-    /// body's references (resolved to a binding by the identity pass) find them.
+    /// The schemes of the module where the closure was defined, keyed by the declaration they
+    /// belong to, which is how a reconstructed body's references (resolved to a binding by the
+    /// identity pass) find them.
     pub scheme_ids: HashMap<crate::identity::BindingId, TypeScheme>,
     /// The overload table of the module where the closure was defined (its own
     /// overloaded functions and its imports, including the prelude's `assert`). A
@@ -8473,14 +8501,6 @@ pub struct TypeCtx {
     /// paired with `members` — see its doc. Spans carry their filename, so one
     /// shared, `Rc`-cloned table is safe across every module's `TypeCtx`.
     pub binding_spans: Rc<BindingSpans>,
-    /// The name resolver's canonical `(module path, name) -> SymbolId` table
-    /// (metel-core#1125), paired with `current_module` below. `Some` on the
-    /// interpreter's evaluation path (mirroring `members`/`binding_spans`),
-    /// so `construct_generic_body`'s `ConstructCtx::type_symbol_id` resolves
-    /// a static-method/constructor `Path`'s owning type correctly instead of
-    /// unconditionally returning `None` and falling back to `runtime`'s own
-    /// global, cross-module, bare-name-keyed type table.
-    pub symbols: Option<Rc<SymbolTable>>,
     /// The module path of the generic declaration this `TypeCtx` was built
     /// for -- *not* the call site's module. `type_symbol_id` resolves a
     /// written type name relative to this module (its declaring-module

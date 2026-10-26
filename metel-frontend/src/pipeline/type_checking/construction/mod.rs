@@ -137,15 +137,11 @@ struct ConstructCtx<'a> {
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
     // resolution-freeze-allow: the declared type-parameter names of the one definition being reconstructed; they are unique within it, and a type annotation in the body names them by that spelling.
     generic_params: HashMap<String, TypeVar>,
-    /// Symbol intern table from the name resolver; used to populate `TypedImplBlock::aspect_id`.
-    /// `None` for single-module pipelines that don't go through `check_graph`.
-    // resolution-freeze-allow: the resolver's symbol table, read only to find the source symbol of an aspect's default method for an impl that inherits it (`inherited_method_identity`); every other id comes off the identity tables or `written_type_id`.
-    symbols: Option<&'a crate::identity::symbols::SymbolMap>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's `SymbolId`.
     overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
-    /// Module path being constructed; used with `symbols` to assign `def_id` to
+    /// Module path being constructed; used to assign `def_id` to
     /// top-level functions and to resolve constructed struct/enum types to their
     /// type `SymbolId` (METEL-185 / ADR-0041).
     current_module: &'a [String],
@@ -213,8 +209,6 @@ impl<'a> ConstructCtx<'a> {
         scheme_ids: &'a SchemeIds,
         registry: &'a TypeDefinitionRegistry,
         type_var_gen: TypeVarGenerator,
-        // resolution-freeze-allow: the resolver's symbol table, read only to find the source symbol of an aspect's default method for an impl that inherits it (`inherited_method_identity`); every other id comes off the identity tables or `written_type_id`.
-        symbols: Option<&'a crate::identity::symbols::SymbolMap>,
         overloads: &'a crate::pipeline::type_checking::type_engine::OverloadTable,
         current_module: &'a [String],
         resolved_facts: &'a ResolvedInferenceFacts,
@@ -238,7 +232,6 @@ impl<'a> ConstructCtx<'a> {
             current_break_ty: None,
             loop_depth: 0,
             generic_params: HashMap::new(),
-            symbols,
             overloads,
             current_module,
             resolved_facts,
@@ -1167,14 +1160,12 @@ pub(super) fn construct_generic_body(
         &type_ctx.scheme_ids,
         &type_ctx.registry,
         type_var_gen,
-        // metel-core#1125: pass the frozen generic's own `symbols`/
-        // `current_module` through so a static-method/constructor `Path`
-        // inside the reconstructed body resolves its owning type by
-        // identity (`ctx.type_symbol_id`) instead of falling back to
-        // `runtime`'s global, cross-module, bare-name-keyed type table --
-        // the root cause of metel-core#1120. `None`/empty only on the
-        // move-checker's own reconstruction, which has no `symbols` table.
-        type_ctx.symbols.as_deref(),
+        // metel-core#1125: pass the frozen generic's own `current_module`
+        // through so a static-method/constructor `Path` inside the
+        // reconstructed body resolves its owning type by identity
+        // (`ctx.written_type_id`) instead of falling back to `runtime`'s
+        // global, cross-module, bare-name-keyed type table -- the root cause
+        // of metel-core#1120.
         &type_ctx.overloads,
         &type_ctx.current_module,
         &resolved_facts,
@@ -1222,8 +1213,6 @@ pub(super) fn construct_program(
     scheme_ids: &SchemeIds,
     registry: &TypeDefinitionRegistry,
     type_var_gen: TypeVarGenerator,
-    // resolution-freeze-allow: the resolver's symbol table passed into construction for `inherited_method_identity` only; see `ConstructCtx::symbols`.
-    symbols: Option<&crate::identity::symbols::SymbolMap>,
     overloads: &crate::pipeline::type_checking::type_engine::OverloadTable,
     current_module: &[String],
     resolved_facts: &ResolvedInferenceFacts,
@@ -1234,7 +1223,6 @@ pub(super) fn construct_program(
         scheme_ids,
         registry,
         type_var_gen,
-        symbols,
         overloads,
         current_module,
         resolved_facts,

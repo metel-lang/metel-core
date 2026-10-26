@@ -7,7 +7,6 @@ use super::{
     fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
     maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
 };
-use crate::identity::symbols::Namespace;
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
 /// straight off the source `FunDecl` (methods carry no top-level identity).
@@ -125,6 +124,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                     type_ann: ld.type_ann.clone(),
                     value: TypedExpr::GenericClosure {
                         name: Some(ld.name.clone()),
+                        scheme_id: ctx.binding_id_at(&ld.span),
                         definition,
                         is_function_alias: false,
                         captures: captures.clone(),
@@ -166,6 +166,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                     type_ann: ld.type_ann.clone(),
                     value: TypedExpr::GenericClosure {
                         name: Some(ld.name.clone()),
+                        scheme_id: ctx.binding_id_at(&ld.span),
                         definition: None,
                         is_function_alias: true,
                         captures: vec![],
@@ -736,21 +737,11 @@ fn inherited_method_identity(
         .registry
         .aspect_declaring_module_in(ctx.current_module, aspect)?;
     let aspect_identity = ctx.written_type_id(aspect)?;
-    let aspect_name = ctx
-        .symbols?
-        .iter()
-        .find_map(|((module, namespace, name), id)| {
-            (module == declaring_module && *namespace == Namespace::Type && *id == aspect_identity)
-                .then_some(name.as_str())
-        })?;
-    let method_name = crate::pipeline::name_resolution::name_resolver::method_symbol_name(
-        aspect_name,
-        None,
+    let source_method = ctx.registry.aspect_default_method_symbol(
+        declaring_module,
+        aspect_identity,
         &method.name,
-    );
-    let source_method =
-        *ctx.symbols?
-            .get(&(declaring_module.clone(), Namespace::Value, method_name))?;
+    )?;
     let target = match &implementation.target_type {
         TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
             crate::identity::InheritedMethodTarget::Record
