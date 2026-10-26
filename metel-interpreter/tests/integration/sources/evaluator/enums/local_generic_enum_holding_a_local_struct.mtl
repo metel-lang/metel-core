@@ -1,0 +1,13 @@
+// metel-core#1617 (v0.14.1 integration session): a block-local generic enum carries a block-local struct as its payload (#1556 x #1557).
+
+fun main() {
+    struct Pt { x: i64 }
+    enum Opt<T> { Some { value: T }, None }
+    let o := Opt::Some { value = Pt { x = 4 } };
+    var got := 0;
+    match (o) {
+        Opt::Some { value } => { got := value.x; },
+        Opt::None => { got := -1; },
+    }
+    assert(got == 4);
+}

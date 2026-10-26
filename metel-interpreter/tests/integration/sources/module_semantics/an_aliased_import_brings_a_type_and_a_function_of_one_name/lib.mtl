@@ -1,0 +1,3 @@
+// metel-core#1617 (v0.14.1 integration session): a module exports a struct and a function of one name; one aliased import brings both (#1571 x alias imports).
+public struct Foo { public x: i64 }
+public fun Foo() -> i64 { 5 }

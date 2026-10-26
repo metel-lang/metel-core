@@ -1,0 +1,17 @@
+// metel-core#1617 (v0.14.1 integration session): block-local types are captured by, returned from and matched inside closures, under --move-check (#1553 x #1556 x #1557 x closure capture lists).
+
+fun main() {
+    struct S { v: String }
+    let s := S { v = "a" };
+    let f := [s] || -> String { s.v };
+    assert(f() == "a");
+
+    record Box<T> { x: T }
+    let mk := || -> Box<i64> { Box { x = 3 } };
+    let b := mk();
+    assert(b.x == 3);
+
+    enum Mode { A, B }
+    let pick := |m: Mode| -> i64 { match (m) { Mode::A => { 1 }, Mode::B => { 2 }, } };
+    assert(pick(Mode::B) == 2);
+}

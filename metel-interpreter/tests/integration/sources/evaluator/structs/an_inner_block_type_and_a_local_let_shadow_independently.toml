@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1", "spec.declarations.variables.scoping-and-shadowing.legality-4", "spec.declarations.variables.scoping-and-shadowing.legality-7"]

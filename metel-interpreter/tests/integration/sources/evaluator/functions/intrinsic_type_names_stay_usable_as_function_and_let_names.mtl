@@ -1,0 +1,12 @@
+// metel-core#1617 (v0.14.1 integration session): the reserved intrinsic type names stay free in the value namespace (#1582 x #1571).
+
+fun boolean() -> i64 { 3 }
+
+fun main() {
+    let String := 5;
+    assert(String == 5);
+    assert(boolean() == 3);
+    type Count := i64;
+    let c: Count := 3;
+    assert(c == 3);
+}

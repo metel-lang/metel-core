@@ -1,0 +1,9 @@
+// metel-core#1617 (v0.14.1 integration session): a block-local enum named like a std::core type shadows it (modules.md: the local binding wins).
+
+fun main() {
+    enum Perhaps { Maybe, Not }
+    let m := Perhaps::Maybe;
+    var s := 0;
+    match (m) { Perhaps::Maybe => { s := 1; }, Perhaps::Not => { s := 2; }, }
+    assert(s == 1);
+}
