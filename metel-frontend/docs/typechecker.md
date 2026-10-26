@@ -31,7 +31,7 @@ NormalizedModuleGraph + ResolvedNames
   │ check_impl(program, imported_schemes, base_registry) │
   │   ├─ Pre-pass: seed imports, register builtins, hoist│
   │   ├─ Pass 1:   infer (same as single-module)         │
-  │   └─ Pass 2:   construct (scheme_env includes imports)│
+  │   └─ Pass 2:   construct (scheme_ids includes imports)│
   │                                                      │
   │ filter_pub_schemes — extract pub names → GlobalExports│
   └─────────────────────────────────────────────────────┘
@@ -283,7 +283,7 @@ The constraint propagates the annotation into the solver without changing contro
 
 Pass 2 re-walks the untyped AST with:
 - `subst: &Substitution` — the final solved substitution from Pass 1
-- `scheme_env: &SchemeEnv` — generalized type schemes for user-defined functions
+- `scheme_ids: &SchemeIds` — generalized type schemes, keyed by the `BindingId` of the declaration they belong to (own functions and closures, imports, `std::core` items)
 - `ResolvedInferenceFacts` — immutable concrete decisions made by Pass 1
 - `ConstructCtx` — a stripped-down context with concrete `Type` values (no inference)
 
@@ -325,7 +325,7 @@ than being independently reimplemented by each traversal.
 
 ### Polymorphic Call Sites
 
-When a call site resolves to a polymorphic callee (present in `scheme_env` but not in `ConstructCtx.env`), `construct_call` calls `instantiate_scheme_for_call`, which:
+When a call site resolves to a polymorphic callee (its binding has a scheme in `scheme_ids` but no entry in `ConstructCtx.env`), `construct_call` calls `instantiate_scheme_for_call`, which:
 1. Instantiates the scheme with fresh type variables
 2. Unifies the instantiated param types against the concrete argument types
 3. Returns the concrete `Fun` type for the specific call
@@ -774,6 +774,34 @@ whose written type names a private field in a residual (`no_private_names`, `T00
 impl methods are exempt because their visibility comes from the aspect. Row conditions on a
 nominal receiver (`row_condition_fields`) resolve the type by its `NominalId` before falling
 back to a name lookup, so a generic body in another module can see the record's row (#1492).
+
+---
+
+### Construction reads values and schemes by identity (v0.14.1)
+
+Construction no longer finds a module-level value, or the scheme of a generic function, by spelling
+(ADR-0066, #1604; with #1570 this closes ADR-0054 step 6).
+
+- `build_module_scheme_env` returns `SchemeIds` (`BindingId -> TypeScheme`) beside the name-keyed
+  `SchemeEnv`, which now serves only inference and the cross-module export (`GlobalExports`). A function
+  or closure scheme is filed under the binder recorded for its declaration span (`FunGeneralization`
+  carries it); an import or `std::core` entry under the `SymbolId` its name denotes in the module's scope
+  (`SchemeOrigins::value_symbol`: own declaration, explicit import, user glob, then the `std::core`
+  auto-glob). A name the module overloads is resolved past its own leftover symbol to what it extends.
+- `ConstructCtx::scheme_at(span)` reads the scheme of the binding a use or declaration site resolved to.
+  `module_values` and `module_fn_decls` are keyed by `BindingId`; a normalized path reads through the
+  `symbol_id` it carries; a `Type::member` constructor (`List::new`) through
+  `TypeDefinitionRegistry::method_scheme_by_id`. The last-segment `Path` scheme arm of ADR-0020 is gone:
+  no program in the corpus reached it.
+- `TypeCtx` and `TypedModule` carry `scheme_ids` (the name-keyed `scheme_env` is removed), so a generic body
+  reconstructed at runtime reads the same table. `ClosureValue` and the typed `GenericClosure` carry a
+  `scheme_id`; `run_main` looks `main` up by its `def_id`.
+- `symbols` is not passed into construction. `inherited_method_identity` asks
+  `TypeDefinitionRegistry::aspect_default_method_symbol` for an aspect default method's source symbol.
+- Construction still reads by spelling only what is definition-scoped: generic parameter names, one literal's
+  field labels and the one place a written block-local type name becomes an id (`written_type_id`).
+  Giving those an identity needs spans on `TypeExpr` (#1612). `closure_owned_captures` is also by name
+  (#1613).
 
 ---
 
