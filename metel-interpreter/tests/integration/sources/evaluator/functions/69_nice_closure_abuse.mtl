@@ -17,7 +17,7 @@ fun get_closures(ptr: &var i64) {
 
     // Third closure: reads and returns the current value at ptr
     let third_closure := || -> i64 {
-        return third_ptr;  // Type-directed copy: read the current value out of ptr
+        return **third_ptr;  // Explicit read: copy the current value out of ptr
     };
 
     // Return all three closures as a tuple

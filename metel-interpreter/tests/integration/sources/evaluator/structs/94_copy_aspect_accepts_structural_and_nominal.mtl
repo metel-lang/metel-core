@@ -50,5 +50,5 @@ fun main() {
     let n := 12;
     let shared: &i64 := &n;
     let shared2 := id_copy(shared);
-    assert((shared2: i64) == 12);
+    assert(*shared2 == 12);
 }

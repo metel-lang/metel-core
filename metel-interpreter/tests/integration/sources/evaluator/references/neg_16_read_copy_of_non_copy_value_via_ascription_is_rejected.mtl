@@ -1,6 +1,5 @@
-// TYPECHECK_ERROR[T0024]
-// #649: explicit ascription (`expr: T`) goes through the identical read-copy
-// mechanism as a `let` binding's declared type -- same `Copy` requirement.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): ascription (`expr: T`) never reads through a reference.
 struct NotCopy { v: String }
 
 fun main() {

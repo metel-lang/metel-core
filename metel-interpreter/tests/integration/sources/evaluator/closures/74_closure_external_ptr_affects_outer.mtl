@@ -16,5 +16,5 @@ fun main() {
     assert(x == 42);
 
     // The reference itself is also usable directly after the call.
-    assert((p: i64) == 42);
+    assert(*p == 42);
 }

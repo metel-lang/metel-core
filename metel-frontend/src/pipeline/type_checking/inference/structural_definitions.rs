@@ -3,7 +3,7 @@
 use super::{
     FunDecl, FunGeneralization, GenericBound, GenericParam, HashMap, ImplBlock, InferContext,
     InferType, MetelError, TypeVar, ann_to_infer, collect_fun_type_var_bounds,
-    collect_negative_fun_type_var_bounds, constrain_with_read_copy, generalize, infer_block,
+    collect_negative_fun_type_var_bounds, constrain_at_declared_boundary, generalize, infer_block,
 };
 use crate::data::ast::ReceiverKind;
 use crate::pipeline::type_checking::type_engine::{Substitution, TypeScheme};
@@ -61,7 +61,7 @@ pub(super) fn infer_record_definition(
         .tail
         .as_ref()
         .map_or(&method.body.span, |tail| tail.span());
-    constrain_with_read_copy(ctx, body_type, result.clone(), result_span.clone());
+    constrain_at_declared_boundary(ctx, body_type, result.clone(), result_span.clone());
     ctx.pop_return_type(saved_return);
     ctx.flow_exit_body(saved_flow);
     ctx.pop_scope();

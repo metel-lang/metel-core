@@ -316,7 +316,7 @@ pub enum AbstractExprKind {
     CallableView(Box<AbstractExpr>),
     /// The source reference remains available; only its Copy referent is read.
     ReadCopy(Box<AbstractExpr>),
-    /// Unlike read-copy, storing a shared view consumes the mutable reference.
+    /// Unlike reading with `*`, storing a shared view consumes the mutable reference.
     SharedReferenceView(Box<AbstractExpr>),
     /// A sized place is borrowed; an owned temporary evaluates its elements once.
     ArrayView(Box<AbstractExpr>),

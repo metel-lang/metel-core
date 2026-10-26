@@ -1109,7 +1109,7 @@ fn abstract_ownership_checks_break_read_copy_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
 fun narrowed<T>(unused: T, value: &i64) -> i64 {
-    loop { break value; }
+    loop { break *value; }
 }
 fun main() {}
 "#,
@@ -1451,7 +1451,7 @@ fn abstract_ownership_checks_exact_ascriptions_and_read_copy() {
         r#"
 fun moved<T>(value: T) { let first := (value: T); let second := value; }
 fun copied<T: Copy>(value: T) { let first := (value: T); let second := value; }
-fun coerced<T>(unused: T, value: &i64) { let owned := (value: i64); }
+fun coerced<T>(unused: T, value: &i64) { let owned := (*value: i64); }
 fun main() {}
 "#,
         |graph| {
@@ -2396,7 +2396,7 @@ fun main() {}
 fn abstract_ownership_checks_annotated_read_copy_coercions_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
-fun copied<T>(unused: T, value: &i64) { let first: i64 := value; }
+fun copied<T>(unused: T, value: &i64) { let first: i64 := *value; }
 fun shared<T>(unused: T, value: &var i64) { let first: &i64 := value; }
 fun main() {}
 "#,
@@ -2470,19 +2470,19 @@ fun main() {}
 fn abstract_ownership_checks_borrowed_value_boundaries_without_reconstruction() {
     let report = move_report_for_source_with(
         r#"
-fun deep<T>(unused: T, value: &&i64) { let first: i64 := value; let again := value; }
-fun returned<T>(unused: T, value: &i64) -> i64 { value }
-fun explicit<T>(unused: T, value: &i64) -> i64 { return value; }
-fun exited<T>(unused: T, value: &i64) -> i64 { loop { break value; } }
-fun ascribed<T>(unused: T, value: &i64) { let first := (value: i64); let again := value; }
-fun copied_record<T: Copy>(value: &{ item: T }) -> { item: T } { value }
+fun deep<T>(unused: T, value: &&i64) { let first: i64 := **value; let again := value; }
+fun returned<T>(unused: T, value: &i64) -> i64 { *value }
+fun explicit<T>(unused: T, value: &i64) -> i64 { return *value; }
+fun exited<T>(unused: T, value: &i64) -> i64 { loop { break *value; } }
+fun ascribed<T>(unused: T, value: &i64) { let first := (*value: i64); let again := value; }
+fun copied_record<T: Copy>(value: &{ item: T }) -> { item: T } { *value }
 fun shared<T>(unused: T, value: &var i64) { let first: &i64 := value; let again := value; }
-fun mutable_read<T>(unused: T, value: &var i64) { let first: i64 := value; let again := value; }
+fun mutable_read<T>(unused: T, value: &var i64) { let first: i64 := *value; let again := value; }
 fun borrowed<T>(owned: T) -> &i64 { &1 }
-fun effect<T>(value: T) { let copied: i64 := borrowed(value); let again := value; }
-fun tail_ascribed<T>(unused: T, value: &i64) -> i64 { (value: i64) }
+fun effect<T>(value: T) { let held := borrowed(value); let copied: i64 := *held; let again := value; }
+fun tail_ascribed<T>(unused: T, value: &i64) -> i64 { (*value: i64) }
 fun nested<T>(unused: T, value: &i64) {
-    let callback := [value] once || -> i64 { (value: &i64) };
+    let callback := [value] once || -> i64 { *value };
     callback()
 }
 fun main() {}

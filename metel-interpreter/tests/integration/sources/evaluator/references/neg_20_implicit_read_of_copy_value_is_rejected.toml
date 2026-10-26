@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+spec = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "expected i64, found &i64"

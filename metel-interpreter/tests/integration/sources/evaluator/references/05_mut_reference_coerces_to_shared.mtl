@@ -1,6 +1,6 @@
 // RFC-0067a §1: &var T coerces to &T (the reverse does not exist).
 fun read_shared(r: &i64) -> i64 {
-    return r;
+    return *r;
 }
 
 fun main() {

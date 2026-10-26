@@ -1,6 +1,6 @@
-// TYPECHECK_ERROR[T0024]
-// #649: mirrors `02_read_copy_at_tail_expression.mtl`, but for a non-`Copy` type --
-// an implicit tail expression (through an if/else, here) is read-copy too.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): an implicit tail expression is not read out of a reference;
+// mirrors `02_read_copy_at_tail_expression.mtl`, which spells `*a`.
 struct NotCopy { v: String }
 
 fun pick(cond: boolean, a: &NotCopy, b: &NotCopy) -> NotCopy {

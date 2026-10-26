@@ -392,7 +392,7 @@ pub(super) fn construct_call(
     };
 
     // RFC-0008 §6: coerce each argument to `dyn Aspect` where its param
-    // declares one. Argument-passing doesn't go through `maybe_read_copy`/
+    // declares one. Argument-passing doesn't go through
     // `maybe_singleton_coerce`/`maybe_dyn_coerce`'s usual let/return/tail call
     // sites at all — it's enforced by the plain `Type` equality check just
     // below instead, so this is the one place that needs its own explicit

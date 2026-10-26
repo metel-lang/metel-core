@@ -1,7 +1,7 @@
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "cannot unify"
+contains = "row decomposition mismatch"
 
 [options]
 error = ["T0001"]

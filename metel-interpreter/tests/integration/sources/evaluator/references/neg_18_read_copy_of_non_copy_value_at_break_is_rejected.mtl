@@ -1,5 +1,6 @@
-// TYPECHECK_ERROR[T0024]
-// #649: mirrors `03_read_copy_at_loop_break.mtl`, but for a non-`Copy` type.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): a `break` value is not implicitly read out of a reference;
+// mirrors `03_read_copy_at_loop_break.mtl`, which spells `break *p`.
 struct NotCopy { v: String }
 
 fun main() {

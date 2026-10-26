@@ -10,11 +10,11 @@ use super::{
     construct_block, construct_call, construct_enum_literal_ty, construct_literal_type,
     construct_match, construct_method_args, construct_propagate_error, construct_unaryop,
     dispatch_for_resolved_method, find_loop_break_type, infer_type_to_type,
-    instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
-    maybe_singleton_coerce, merge_branch_types, peel_type_references, resolve_expected_enum,
-    resolve_generic_method_call, resolve_unqualified_variant_expr, resolved_to_type,
-    type_chain_provides_mut_access, type_expr_to_infer_with_generics, type_to_infer,
-    typed_place_ty, unify, unqualified_variant_needs_annotation_error,
+    instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_singleton_coerce,
+    merge_branch_types, peel_type_references, resolve_expected_enum, resolve_generic_method_call,
+    resolve_unqualified_variant_expr, resolved_to_type, type_chain_provides_mut_access,
+    type_expr_to_infer_with_generics, type_to_infer, typed_place_ty, unify,
+    unqualified_variant_needs_annotation_error,
 };
 use crate::identity::symbols::SymbolId;
 
@@ -234,13 +234,6 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {
-                            let value = maybe_read_copy(
-                                t,
-                                value,
-                                &ld.span,
-                                ctx.registry,
-                                ctx.current_module,
-                            )?;
                             let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
                             let value = maybe_dyn_coerce(t, value, &ld.span, ctx)?;
                             maybe_fn_move_coerce(t, value)
@@ -269,13 +262,6 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                     let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
                     let value = match &expected_ty {
                         Some(t) => {
-                            let value = maybe_read_copy(
-                                t,
-                                value,
-                                &md.span,
-                                ctx.registry,
-                                ctx.current_module,
-                            )?;
                             let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
                             let value = maybe_dyn_coerce(t, value, &md.span, ctx)?;
                             maybe_fn_move_coerce(t, value)
@@ -1966,9 +1952,9 @@ pub(super) fn construct_expr(
             // Push the closure's own return type so an explicit `return` inside its
             // body (constructed via `construct_stmt`'s `Stmt::Return` arm) compares
             // against the closure's declared type, not whatever enclosing function's
-            // return type happened to be in scope (RFC-0067a's read-copy relies on
-            // this being correct — without it, `return`ing a reference out of a
-            // closure declared to return the referent type silently skipped the copy).
+            // return type happened to be in scope (declared-type coercions
+            // such as dyn erasure and singleton coercion at `return` rely on this being
+            // correct).
             let saved_return = ctx.push_return_type(Some(ret_ty.clone()));
             let saved_loop_depth = ctx.push_loop_depth_reset();
             let typed_body = construct_block(body, body_expected, ctx)?;
@@ -2002,8 +1988,6 @@ pub(super) fn construct_expr(
         Expr::Ascribe { expr, ann, span } => {
             let ty = resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span)?;
             let constructed = construct_expr(expr, Some(&ty), ctx)?;
-            let constructed =
-                maybe_read_copy(&ty, constructed, span, ctx.registry, ctx.current_module)?;
             let constructed = maybe_singleton_coerce(&ty, constructed, span, ctx.registry)?;
             maybe_dyn_coerce(&ty, constructed, span, ctx)
         }
@@ -2078,13 +2062,6 @@ pub(super) fn construct_expr(
                     let constructed = construct_expr(e, return_ty.as_ref(), ctx)?;
                     Some(Box::new(match &return_ty {
                         Some(t) => {
-                            let constructed = maybe_read_copy(
-                                t,
-                                constructed,
-                                e.span(),
-                                ctx.registry,
-                                ctx.current_module,
-                            )?;
                             let constructed =
                                 maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
                             maybe_dyn_coerce(t, constructed, e.span(), ctx)?
@@ -2113,13 +2090,6 @@ pub(super) fn construct_expr(
                     let constructed = construct_expr(e, break_ty.as_ref(), ctx)?;
                     Some(Box::new(match &break_ty {
                         Some(t) => {
-                            let constructed = maybe_read_copy(
-                                t,
-                                constructed,
-                                e.span(),
-                                ctx.registry,
-                                ctx.current_module,
-                            )?;
                             let constructed =
                                 maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
                             maybe_dyn_coerce(t, constructed, e.span(), ctx)?

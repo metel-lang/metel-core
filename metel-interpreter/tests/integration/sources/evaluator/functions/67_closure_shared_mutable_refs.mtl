@@ -13,7 +13,7 @@ fun get_closures() {
     };
 
     let third_closure := || -> i64 {
-        return third_ptr;
+        return **third_ptr;
     };
 
     return (first_closure, second_closure, third_closure);

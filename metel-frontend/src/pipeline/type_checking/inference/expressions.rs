@@ -2,7 +2,7 @@ use super::{
     AssignOp, AssignTarget, Expr, ForInit, FunGeneralization, GenericBound, HashMap, InferContext,
     InferType, MetelError, Param, SignatureEnv, Stmt, Substitution, Type, TypeErrorCode, TypeExpr,
     TypeVar, ann_to_infer, builtin_pattern_method_type, chain_provides_mut_access,
-    check_field_visibility, constrain_with_read_copy, infer_binop, infer_block,
+    check_field_visibility, constrain_at_declared_boundary, infer_binop, infer_block,
     infer_enum_variant_literal, infer_field_assign_type, infer_literal, infer_match,
     infer_propagate_error, infer_struct_literal, infer_to_type_for_from, infer_tuple_assign_type,
     infer_type_name, infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
@@ -308,7 +308,7 @@ pub(super) fn infer_stmt(
                         let val_ty = infer_expr(&ld.value, ctx, fun_generalizations)?;
                         let bound_ty = if let Some(ann) = &ld.type_ann {
                             let declared = ann_to_infer(ann, ctx);
-                            constrain_with_read_copy(ctx, val_ty, declared, ld.span.clone())
+                            constrain_at_declared_boundary(ctx, val_ty, declared, ld.span.clone())
                         } else {
                             val_ty
                         };
@@ -319,7 +319,7 @@ pub(super) fn infer_stmt(
                         let val_ty = infer_expr(&md.value, ctx, fun_generalizations)?;
                         let bound_ty = if let Some(ann) = &md.type_ann {
                             let declared = ann_to_infer(ann, ctx);
-                            constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
+                            constrain_at_declared_boundary(ctx, val_ty, declared, md.span.clone())
                         } else {
                             val_ty
                         };
@@ -2240,7 +2240,7 @@ fn infer_expr_inner(
         Expr::Ascribe { expr, ann, span } => {
             let inner_ty = infer_expr(expr, ctx, fun_generalizations)?;
             let ascribed_ty = ann_to_infer(ann, ctx);
-            Ok(constrain_with_read_copy(
+            Ok(constrain_at_declared_boundary(
                 ctx,
                 inner_ty,
                 ascribed_ty,
@@ -2453,7 +2453,7 @@ fn infer_expr_inner(
             let saved_loop_depth = ctx.push_loop_depth_reset();
             let body_ty = infer_block(body, ctx, fun_generalizations)?;
             ctx.pop_loop_depth(saved_loop_depth);
-            constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
+            constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
             ctx.pop_scope();
             ctx.record_closure_return_type(span.clone(), ret_ty.clone());
@@ -2476,7 +2476,7 @@ fn infer_expr_inner(
                 None => InferType::unit(),
             };
             if let Some(expected) = ctx.current_return_type().cloned() {
-                constrain_with_read_copy(ctx, ret_ty, expected, r.span.clone());
+                constrain_at_declared_boundary(ctx, ret_ty, expected, r.span.clone());
             }
             Ok(InferType::never())
         }
@@ -2494,7 +2494,7 @@ fn infer_expr_inner(
             };
             if let Some(expected) = ctx.current_break_type().cloned() {
                 ctx.record_definition_break_target();
-                constrain_with_read_copy(ctx, break_ty, expected, b.span.clone());
+                constrain_at_declared_boundary(ctx, break_ty, expected, b.span.clone());
             }
             Ok(InferType::never())
         }

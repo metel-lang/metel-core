@@ -2357,26 +2357,10 @@ fn infer_unaryop(
     }
 }
 
-/// RFC-0067a §3a: constrain `actual` against `declared`, except when `actual` is
-/// *syntactically* a reference and `declared` isn't — then constrain the *referent*
-/// against `declared` instead (a type-directed copy out of the reference). Only
-/// applies where a literal declared type is known (`let`/`mut`, ascription, `return`,
-/// `break`, and a function/method/closure body against its declared return type) —
-/// never inside `unify()` itself, which stays a strict match everywhere else (call
-/// arguments included).
-///
-/// Deliberately does **not** resolve `actual` through `ctx.solve()` first: `solve()` is
-/// incremental and stateful (it advances `solved_constraint_count` and commits
-/// `cached_subst`), so calling it eagerly at every annotated `let`/`return`/etc. across
-/// a whole program — rather than only once, at the end, as before this rule existed —
-/// changed constraint-processing order for unrelated code and broke an unrelated,
-/// pre-existing test (a sized-array pattern arity mismatch started reporting a raw
-/// unify failure, T0001, instead of the intended non-exhaustive-match diagnostic,
-/// T0008). Matching on `actual` directly instead is sufficient for every real case:
-/// `&expr`/`&mut expr` (`infer_unaryop`'s `Ref`/`RefMut` arms) produce `InferType::
-/// Reference`/`MutReference` directly with no `Var` indirection, and reading an
-/// existing reference-typed binding (`ctx.lookup`) returns its stored `InferType`
-/// as-is, not a variable standing in for it.
+/// Constrain `actual` against the declared type at a binding, ascription, `return`,
+/// `break` or body-tail boundary, applying the declared-type coercions that are not
+/// reference reads (dyn erasure, `[T; N]` -> `[T]`, singleton, written fn type).
+/// Never inside `unify()` itself, which stays a strict match everywhere else.
 ///
 /// `declared` being an unresolved `InferType::Var` means there is no real declared
 /// type at this site (e.g. a function/closure with no return-type annotation, where
@@ -2384,23 +2368,15 @@ fn infer_unaryop(
 /// through to plain unification so the body's own reference-ness flows out normally,
 /// not be mistaken for "declared as a non-reference."
 ///
-/// Returns `declared` only when read-copy actually fires; otherwise returns `actual`
-/// unchanged, matching what every call site did before this rule existed. This isn't
-/// cosmetic: binding a `let` to a freshly-reconstructed `declared` (from `ann_to_infer`)
-/// instead of the value's own `actual` — even though the two are constrained equal —
-/// swaps in a structurally-equal but not type-variable-identical `InferType`. That
-/// broke an unrelated test (a sized-array pattern arity mismatch started reporting a
-/// raw unify failure, T0001, instead of the intended non-exhaustive-match diagnostic,
-/// T0008), caught only by running the full suite, not by reasoning about the rule
-/// in isolation.
+/// Returns `declared` only when a declared-type coercion (dyn erasure, `[T; N]` ->
+/// `[T]`, RFC-0078 singleton, written fn type) fires; otherwise returns `actual`
+/// unchanged. Binding a `let` to a freshly-reconstructed `declared` instead of the
+/// value's own `actual` swaps in a structurally-equal but not type-variable-identical
+/// `InferType`, which changed diagnostics for unrelated cases.
 ///
-/// Peels *every* reference layer, not just one: RFC-0067a §3 guarantees auto-deref
-/// chains through arbitrary depth (`&&T` derefs through both levels), and read-copy
-/// is specified as the same auto-deref/copy story applied at a declared-type boundary
-/// rather than a separate, shallower mechanism — `let x: i64 = rr;` where
-/// `rr: &&i64` must copy through both layers, not stop after one and fail to unify
-/// `&i64` against `i64`.
-fn constrain_with_read_copy(
+/// RFC-0185: there is no read-copy out of a reference. A reference-typed `actual`
+/// against a non-reference `declared` is an ordinary mismatch; the reader writes `*r`.
+fn constrain_at_declared_boundary(
     ctx: &mut InferContext,
     actual: InferType,
     declared: InferType,
@@ -2425,32 +2401,6 @@ fn constrain_with_read_copy(
     ) {
         ctx.add_expected_constraint(actual.clone(), declared, span);
         return actual;
-    }
-    // Decide whether to peel against the *substituted* type, not the raw one. Without
-    // this, the decision is made before the information needed to make it exists: a call
-    // returning `&T` yields a fresh `InferType::Var` here, which matches no reference
-    // pattern below, so the peel is silently skipped and the later unification of that
-    // var against the declared referent type fails with T0001. `let n: i64 = g();` for
-    // `fun g() -> &i64` failed where the equivalent `let n: i64 = r;` succeeded — a
-    // distinction no user could predict.
-    //
-    // Same shape as `infer_match`'s scrutinee peel (RFC-0108) and `Expr::Call`'s
-    // auto-deref, both of which already solve-and-apply before inspecting. A solve
-    // failure here is not fatal: constraints can be transiently inconsistent mid-pass,
-    // and the real error surfaces from the final solve, so fall back to the raw type
-    // and let this call behave exactly as it did before.
-    let resolved_actual = ctx
-        .solve()
-        .map_or_else(|_| actual.clone(), |subst| subst.apply(&actual));
-    let mut peeled = resolved_actual;
-    let mut any_peel = false;
-    while let InferType::Reference(inner) | InferType::MutReference(inner) = peeled {
-        peeled = *inner;
-        any_peel = true;
-    }
-    if any_peel {
-        ctx.add_expected_constraint(peeled, declared.clone(), span);
-        return declared;
     }
     // RFC-0053/RFC-0177: an owning fixed-size array may enter an explicitly
     // view-typed binding through the one-way `[T; N]` -> `[T]` coercion. Keep

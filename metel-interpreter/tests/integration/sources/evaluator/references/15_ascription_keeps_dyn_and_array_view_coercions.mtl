@@ -1,0 +1,17 @@
+// RFC-0185: ascription never reads through a reference, but it still drives the
+// unsizing coercions an expected type already implies (dyn erasure, `[T; N]` -> `[T]`).
+aspect Shape { fun area(&self) -> i64; }
+struct Sq { s: i64 }
+extend Sq: Shape { fun area(&self) -> i64 { self.s * self.s } }
+
+fun main() {
+    let d := (Sq { s = 3 }: dyn Shape);
+    assert(d.area() == 9);
+
+    let v := ([1, 2, 3]: [i64]);
+    assert(v.len() == 3);
+
+    let n := 5;
+    let r: &i64 := &n;
+    assert((*r: i64) == 5);
+}

@@ -1,0 +1,8 @@
+// TYPECHECK_ERROR[T0001]
+// RFC-0185: even a `Copy` referent is not read out implicitly. The diagnostic names
+// the fix: `*r`.
+fun main() {
+    let x := 42;
+    let r: &i64 := &x;
+    let y: i64 := r;
+}
