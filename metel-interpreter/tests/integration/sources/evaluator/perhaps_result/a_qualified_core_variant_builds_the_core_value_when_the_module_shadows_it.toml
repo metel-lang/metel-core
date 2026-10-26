@@ -1,2 +1,2 @@
 [options]
-skip = "metel-core#1616"
+skip = "pending: #1616"

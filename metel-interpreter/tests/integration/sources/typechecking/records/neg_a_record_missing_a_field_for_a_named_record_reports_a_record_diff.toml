@@ -1,5 +1,5 @@
 [options]
-skip = "metel-core#1618"
+skip = "pending: #1618"
 error = ["T0001"]
 
 [expect]
