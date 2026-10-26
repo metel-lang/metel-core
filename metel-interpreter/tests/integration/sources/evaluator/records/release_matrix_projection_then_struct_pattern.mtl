@@ -1,5 +1,5 @@
 // Second rerun (2026-10-15), PM x OW: the branded value a projection produced travels through
-// `Perhaps` and is matched out; the narrowed source keeps serving its Copy field.
+// `Option` and is matched out; the narrowed source keeps serving its Copy field.
 // (metel-core#1454, #1455)
 struct Handle { fd: i64, name: String }
 
@@ -7,10 +7,10 @@ fun name_len(p: Handle.{ name }) -> i64 { p.name.len() }
 
 fun main() {
     var h := Handle { fd = 9, name = "xy".to_string() };
-    let wrapped: Perhaps<Handle.{ name }> := Perhaps::Some { value = h.{ name } };
+    let wrapped: Option<Handle.{ name }> := Option::Some { value = h.{ name } };
     match (wrapped) {
-        Perhaps::Some { value } => assert(name_len(value) == 2),
-        Perhaps::None => assert(false),
+        Option::Some { value } => assert(name_len(value) == 2),
+        Option::None => assert(false),
     }
     assert(h.fd == 9);
 }

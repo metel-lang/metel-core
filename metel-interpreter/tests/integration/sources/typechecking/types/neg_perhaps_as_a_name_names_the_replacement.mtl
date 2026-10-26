@@ -1,0 +1,4 @@
+// RFC-0184 (metel-core#1625): the removed name used as a bare expression name.
+fun main() {
+    let a := Perhaps;
+}

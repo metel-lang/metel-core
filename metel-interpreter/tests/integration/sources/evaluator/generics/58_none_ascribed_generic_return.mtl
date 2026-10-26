@@ -1,8 +1,8 @@
 fun maybe_head<T: Copy>(items: [T]) {
     if (items.len() == 0) {
-        return None : Perhaps<T>;
+        return None : Option<T>;
     }
-    return Perhaps::Some { value = items[0] };
+    return Option::Some { value = items[0] };
 }
 
 fun main() {
@@ -10,12 +10,12 @@ fun main() {
     let empty := maybe_head([] : [i64]);
 
     match (present) {
-        Perhaps::Some { value } => assert(value == 1),
-        Perhaps::None => assert(false),
+        Option::Some { value } => assert(value == 1),
+        Option::None => assert(false),
     }
 
     match (empty) {
-        Perhaps::Some { value } => assert(false),
-        Perhaps::None => assert(true),
+        Option::Some { value } => assert(false),
+        Option::None => assert(true),
     }
 }

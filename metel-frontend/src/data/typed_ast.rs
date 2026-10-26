@@ -220,7 +220,7 @@ pub struct TypedImplBlock {
     /// one *specific* instantiation of a generic target (`extend W<i64>: Tag`'s
     /// `[i64]`) -- `None` when the target isn't generic, or when the written
     /// arguments are exactly the target struct's own declared generic
-    /// parameter names in order (`extend Perhaps<T> { ... }`, which covers
+    /// parameter names in order (`extend Option<T> { ... }`, which covers
     /// every instantiation, not just one). Lets the evaluator's runtime
     /// dispatch tell "one impl per instantiation" apart from "one impl for
     /// every instantiation" without needing registry access of its own.

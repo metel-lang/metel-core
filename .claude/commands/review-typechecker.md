@@ -69,9 +69,9 @@ The canonical pattern is `instantiate_scheme_for_call`. Any new site that instan
 
 ## 5. Type normalisation
 
-`Type::Perhaps(T)` and `Type::Result(T, E)` are distinct `Type` variants — they do **not** match `Type::Named`. Code that needs to handle all named types uniformly must route through `type_to_infer()` first.
+`Type::Option(T)` and `Type::Result(T, E)` are distinct `Type` variants — they do **not** match `Type::Named`. Code that needs to handle all named types uniformly must route through `type_to_infer()` first.
 
-- [ ] Any new pattern match on `Type` that handles `Named` also handles `Perhaps` and `Result` (or routes through `type_to_infer`)
+- [ ] Any new pattern match on `Type` that handles `Named` also handles `Option` and `Result` (or routes through `type_to_infer`)
 - [ ] Any new hint extraction from `expected_ty` uses `type_to_infer(ty)` and then matches `InferType::Named(name, args)`
 
 ---

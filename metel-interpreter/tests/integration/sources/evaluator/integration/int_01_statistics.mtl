@@ -3,7 +3,7 @@
 // Feature coverage:
 //   arrays, structs/impl, f64 arithmetic, bubble sort, binary search,
 //   for-in (array + range), while, C-style for, higher-order closures,
-//   Perhaps<T>, Result<T,E>, ? operator, match-with-blocks (RFC-0018),
+//   Option<T>, Result<T,E>, ? operator, match-with-blocks (RFC-0018),
 //   return None / return Err (RFC-0019), i64-as-f64 casting, tuples,
 //   string operations, recursive functions.
 
@@ -65,15 +65,15 @@ fun sort_floats(arr: [f64]) -> List<f64> {
 
 // ── Searching ─────────────────────────────────────────────────────────────────
 
-// Binary search in a sorted [f64].  Returns Perhaps<i64> with the index.
-fun binary_search(sorted: [f64], target: f64) -> Perhaps<i64> {
+// Binary search in a sorted [f64].  Returns Option<i64> with the index.
+fun binary_search(sorted: [f64], target: f64) -> Option<i64> {
     if (sorted.len() == 0) { return None; }
     var lo := 0;
     var hi := sorted.len() - 1;
     while (lo <= hi) {
         let mid := (lo + hi) / 2;
         if (float_eq(sorted[mid as u64], target)) {
-            return Perhaps::Some { value = mid };
+            return Option::Some { value = mid };
         } else if (sorted[mid as u64] < target) {
             lo := mid + 1;
         } else {
@@ -142,18 +142,18 @@ fun compute_stats(data: [f64]) -> Result<Stats, String> {
 }
 
 // Median of a [f64].  Returns None for empty input (RFC-0019: types None as
-// Perhaps<f64> from the return annotation).
-fun median(data: [f64]) -> Perhaps<f64> {
+// Option<f64> from the return annotation).
+fun median(data: [f64]) -> Option<f64> {
     let n := data.len();
     if (n == 0) { return None; }
     let sorted := sort_floats(data);
     let sorted_view := sorted.as_slice();
     let mid := n / 2;
     if (n % 2 == 1) {
-        Perhaps::Some { value = sorted_view[mid as u64] }
+        Option::Some { value = sorted_view[mid as u64] }
     } else {
         let mid1 := mid - 1;
-        Perhaps::Some { value = (sorted_view[mid1 as u64] + sorted_view[mid as u64]) / 2.0 }
+        Option::Some { value = (sorted_view[mid1 as u64] + sorted_view[mid as u64]) / 2.0 }
     }
 }
 
@@ -240,17 +240,17 @@ fun main() {
     // 2. Binary search in the sorted array.
     let fnd := binary_search(srt_view, 4.0);
     match (fnd) {
-        Perhaps::Some { value } => assert(value == 4),
+        Option::Some { value } => assert(value == 4),
         None => assert(false, "expected Some"),
     };
     let srt_for_miss := sort_floats([3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0]);
     let srt_for_miss_ref := &srt_for_miss;
     let miss := binary_search(srt_for_miss_ref.as_slice(), 7.0);
-    match (miss) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (miss) { Option::Some { value } => assert(false, "expected None"), None => (), };
     // Searching an empty array returns None.
     let empty_f: [f64] := [];
     let empty_srch := binary_search(empty_f, 1.0);
-    match (empty_srch) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (empty_srch) { Option::Some { value } => assert(false, "expected None"), None => (), };
 
     // 3. Descriptive statistics — match with blocks (RFC-0018).
     let d5: [f64] := [1.0, 2.0, 3.0, 4.0, 5.0];
@@ -284,18 +284,18 @@ fun main() {
     let d5_for_median: [f64] := [1.0, 2.0, 3.0, 4.0, 5.0];
     let med5 := median(d5_for_median);
     match (med5) {
-        Perhaps::Some { value } => assert(value == 3.0),
+        Option::Some { value } => assert(value == 3.0),
         None => assert(false, "expected Some"),
     };
     let d4: [f64] := [4.0, 1.0, 3.0, 2.0];
     let med4 := median(d4);
     match (med4) {
-        Perhaps::Some { value } => assert(value == 2.5),
+        Option::Some { value } => assert(value == 2.5),
         None => assert(false, "expected Some"),
     };
     let empty_for_median: [f64] := [];
     let med_e := median(empty_for_median);
-    match (med_e) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (med_e) { Option::Some { value } => assert(false, "expected None"), None => (), };
 
     // 6. Error propagation with ?
     let d5_for_z: [f64] := [1.0, 2.0, 3.0, 4.0, 5.0];

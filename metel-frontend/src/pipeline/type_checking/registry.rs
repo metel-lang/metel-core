@@ -507,7 +507,7 @@ pub(super) fn build_registry(
     }
     register_builtin_aspect_impls(&mut registry);
 
-    // Builtin types and aspects (Perhaps, Result, List, Display, From,
+    // Builtin types and aspects (Option, Result, List, Display, From,
     // Iterable) are declared in the embedded std::core source and registered
     // through the same machinery as user declarations (METEL-181). When the
     // module being checked IS std::core, its own decl pass below covers them;
@@ -1081,7 +1081,7 @@ fn register_aspect_decl(
 /// This covers both native methods (which have no body to infer) and Metel-bodied
 /// methods. Deriving the scheme from annotations is what lets the single-program
 /// path (`check_with_ctx`, no module loading) resolve `std::core`'s bodied generic
-/// methods like `Perhaps::map` / `List::filter` — there is no separate `std::core`
+/// methods like `Option::map` / `List::filter` — there is no separate `std::core`
 /// module check there to run `infer_impl_method`. In the graph path the inferred
 /// scheme later overwrites this one for `std::core`'s own module; downstream modules
 /// use this annotation-derived scheme directly. Static methods (no receiver) are
@@ -1997,7 +1997,7 @@ fn register_default_aspect_method(
             type_expr_to_infer_with_assoc_ctx(ann, &empty_generics, Some(target_name), &assoc_ctx)
         });
     // Bind each written nominal to the declaration visible from the declaring
-    // module now, so a caller that shadows the name (`Result`, `Perhaps`)
+    // module now, so a caller that shadows the name (`Result`, `Option`)
     // cannot redirect a method's signature by spelling.
     let mut method_ty = InferType::fun(param_types, ret_ty);
     resolve_declaring_nominals(&mut method_ty, registry, current_module_path);

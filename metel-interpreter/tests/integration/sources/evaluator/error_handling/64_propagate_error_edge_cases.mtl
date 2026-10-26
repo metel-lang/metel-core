@@ -13,7 +13,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 // ── Error hierarchy ────────────────────────────────────────────────────────────
@@ -97,11 +97,11 @@ extend Counter {
 }
 
 extend Counter: Iterable<i64> {
-    fun next(&var self) -> Perhaps<i64> {
+    fun next(&var self) -> Option<i64> {
         if (self.current < self.limit) {
             let v := self.current;
             self.current := self.current + 1;
-            Perhaps::Some { value = v }
+            Option::Some { value = v }
         } else {
             None
         }

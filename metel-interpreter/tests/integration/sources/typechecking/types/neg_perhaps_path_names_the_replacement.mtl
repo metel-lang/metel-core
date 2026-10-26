@@ -1,0 +1,4 @@
+// RFC-0184 (metel-core#1625): the removed name as the leading segment of a path.
+fun main() {
+    let a := Perhaps::None;
+}

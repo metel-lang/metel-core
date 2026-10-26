@@ -72,7 +72,7 @@ public fun task_titles(tasks: [Task]) -> [String] {
     map_array(tasks, |t: &Task| -> String { (*t).title.substring(0, (*t).title.len()) })
 }
 
-public fun find_by_title(tasks: [Task], title: String) -> Perhaps<Task> {
+public fun find_by_title(tasks: [Task], title: String) -> Option<Task> {
     find_first(
         tasks,
         [&title] |t: &Task| -> boolean { (*t).title == title },

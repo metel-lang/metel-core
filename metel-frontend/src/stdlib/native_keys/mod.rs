@@ -27,7 +27,7 @@ pub enum NativeKey {
     StdCoreAssertMsg,
     /// `std::core::clock` — milliseconds since the Unix epoch.
     StdCoreClock,
-    /// `std::core::yolo_none` — panics unconditionally; `Perhaps::yolo()`'s `None` arm.
+    /// `std::core::yolo_none` — panics unconditionally; `Option::yolo()`'s `None` arm.
     StdCoreYoloNone,
     /// `std::core::yolo_err` — panics unconditionally, including the `Err` value's
     /// debug representation; `Result::yolo()`'s `Err` arm.
@@ -54,7 +54,7 @@ pub enum NativeKey {
     StdCoreStringStartsWith,
     /// `String::ends_with(self, String) -> boolean`.
     StdCoreStringEndsWith,
-    /// `String::index_of(self, String) -> Perhaps<i64>` — scalar index.
+    /// `String::index_of(self, String) -> Option<i64>` — scalar index.
     StdCoreStringIndexOf,
     /// `String::split(self, String) -> String[]`.
     StdCoreStringSplit,
@@ -66,7 +66,7 @@ pub enum NativeKey {
     StdCoreStringJoin,
     /// `String::chars(self) -> Char[]`.
     StdCoreStringChars,
-    /// `String::char_at(self, i64) -> Perhaps<Char>` — scalar index.
+    /// `String::char_at(self, i64) -> Option<Char>` — scalar index.
     StdCoreStringCharAt,
     /// `String::substring(self, i64, i64) -> String` — clamped scalar range.
     StdCoreStringSubstring,
@@ -105,20 +105,20 @@ pub enum NativeKey {
     StdCoreListFrom,
     /// `List::push(&mut self, T)` — append an element.
     StdCoreListPush,
-    /// `List::pop(&mut self) -> Perhaps<T>` — remove and return the last element.
+    /// `List::pop(&mut self) -> Option<T>` — remove and return the last element.
     StdCoreListPop,
     /// `List::len(self) -> i64` — number of elements.
     StdCoreListLen,
-    /// `List::get(self, i64) -> Perhaps<T>` — element at an index.
+    /// `List::get(self, i64) -> Option<T>` — element at an index.
     StdCoreListGet,
-    /// `List::set(&mut self, i64, T) -> Perhaps<T>` — overwrite an element in place,
+    /// `List::set(&mut self, i64, T) -> Option<T>` — overwrite an element in place,
     /// returning the value it replaced, or `None` if the index was out of bounds.
     StdCoreListSet,
     /// `List::as_slice(self) -> T[]` — the backing array.
     StdCoreListAsSlice,
 
     // ── std::env ────────────────────────────────────────────────────────────
-    /// `env::get(String) -> Perhaps<String>` — value of an environment variable.
+    /// `env::get(String) -> Option<String>` — value of an environment variable.
     StdEnvVar,
     /// `env::vars() -> EnvVar[]` — all environment variables.
     StdEnvVars,

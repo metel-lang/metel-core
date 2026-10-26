@@ -1,0 +1,15 @@
+// RFC-0184 (metel-core#1625): after the rename Perhaps is no name of std::core's, so a module's own Perhaps is a plain user type
+// that sits beside the core Option; neither shadows the other and no hint applies.
+enum Perhaps { Maybe, Not }
+
+fun main() {
+    let m := Perhaps::Maybe;
+    var s := 0;
+    match (m) {
+        Perhaps::Maybe => { s := 1; },
+        Perhaps::Not => { s := 2; },
+    }
+    assert(s == 1);
+    let o: Option<i64> := Some { value = 3 };
+    assert(o.unwrap_or(0) == 3);
+}

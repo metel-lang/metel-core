@@ -1,6 +1,6 @@
 // 08 — Error handling
 // Covers: Result<T,E>, ? operator (error propagation, matching error types),
-//         Perhaps<T>, .yolo() panic, nested error propagation.
+//         Option<T>, .yolo() panic, nested error propagation.
 
 fun parse_positive(s: String) -> Result<i64, String> {
     // pretend parsing: accept only "1" through "5" for simplicity
@@ -25,7 +25,7 @@ fun sum_parsed(a: String, b: String) -> Result<i64, String> {
     return Result::Ok { value = x + y };
 }
 
-fun lookup(arr: [String], index: i64) -> Perhaps<String> {
+fun lookup(arr: [String], index: i64) -> Option<String> {
     if (index < 0 || index >= array_len(arr)) {
         return nope;
     }
@@ -63,16 +63,16 @@ fun main() {
         Result::Err { error } => println("err: " + error),               // err: not a recognised digit: bad
     }
 
-    // --- Perhaps and lookup ---
+    // --- Option and lookup ---
     let items: [String] := ["apple", "banana", "cherry"];
 
     match (lookup(items, 1)) {
-        Perhaps::Some { value } => println(value),                        // banana
-        Perhaps::None => println("not found"),
+        Option::Some { value } => println(value),                        // banana
+        Option::None => println("not found"),
     }
     match (lookup(items, 10)) {
-        Perhaps::Some { value } => println(value),
-        Perhaps::None => println("not found"),                            // not found
+        Option::Some { value } => println(value),
+        Option::None => println("not found"),                            // not found
     }
 
     // --- .yolo() on a present value ---

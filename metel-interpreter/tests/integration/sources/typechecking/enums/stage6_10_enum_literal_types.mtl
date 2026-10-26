@@ -1,13 +1,13 @@
 // Stage 6: enum variant literals correctly preserve type arguments.
 
-// Perhaps<i64> literal
-let _: Perhaps<i64> := Perhaps::Some { value = 42 };
+// Option<i64> literal
+let _: Option<i64> := Option::Some { value = 42 };
 
-// Perhaps<boolean> literal
-let _: Perhaps<boolean> := Perhaps::Some { value = true };
+// Option<boolean> literal
+let _: Option<boolean> := Option::Some { value = true };
 
-// Perhaps<String> literal
-let _: Perhaps<String> := Perhaps::Some { value = "hello" };
+// Option<String> literal
+let _: Option<String> := Option::Some { value = "hello" };
 
 // Result<i64, String> literal
 let _: Result<i64, String> := Result::Ok { value = 0 };

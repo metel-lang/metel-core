@@ -20,8 +20,8 @@ fun main() {
     let g: Colour := favourite();
     assert(paint(g) == 1);
 
-    let p: Perhaps<i64> := Some { value = 5 };
-    let q: Perhaps<i64> := None;
+    let p: Option<i64> := Some { value = 5 };
+    let q: Option<i64> := None;
     assert(paint(annotated_closure()) == 1);
 
     // An empty array literal is deferred too, and is *genuinely* polymorphic -- the

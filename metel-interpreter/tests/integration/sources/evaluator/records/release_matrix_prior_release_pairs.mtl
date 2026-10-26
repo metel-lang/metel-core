@@ -33,6 +33,6 @@ fun main() {
     let moved := names;
     assert(moved.len() == 2);
     match (identity(Msg::Num { n = 4 })) { Msg::Num { n } => assert(n == 4), Msg::Text { s } => assert(false) }
-    let o: Perhaps<[i64]> := Perhaps::Some { value = [1, 2] };
-    match (o) { Perhaps::Some { value } => assert(value.len() == 2), None => assert(false) }
+    let o: Option<[i64]> := Option::Some { value = [1, 2] };
+    match (o) { Option::Some { value } => assert(value.len() == 2), None => assert(false) }
 }

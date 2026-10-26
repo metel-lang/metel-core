@@ -383,7 +383,7 @@ pub(super) fn infer_stmt(
                                 match subst.apply(&scheme.ty) {
                                     InferType::Fun(_, ret, ..) => match *ret {
                                         InferType::Named(n, mut args, ..)
-                                            if n == "Perhaps" && args.len() == 1 =>
+                                            if n == "Option" && args.len() == 1 =>
                                         {
                                             Some(args.remove(0))
                                         }
@@ -1859,7 +1859,7 @@ fn infer_expr_inner(
                         };
                         // Resolve return type: Self → the TypeVar itself. A bare
                         // associated-type name (RFC-0082 §1.2 sugar, e.g. `Item` in
-                        // `fun next(...) -> Perhaps<Item>`'s inner `Item`, or here the
+                        // `fun next(...) -> Option<Item>`'s inner `Item`, or here the
                         // whole return type) means `Self::Item` -- mint the same
                         // projection placeholder as an explicit `T::Item` would.
                         let ret_ty = method_def.return_type.as_ref().map_or(

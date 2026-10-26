@@ -57,7 +57,7 @@ fun main() {
 
     // Verify individual samples.
     match ((&samples).get(0)) {
-        Perhaps::Some { value } => {
+        Option::Some { value } => {
             assert(value.raw   == 10i16);
             assert(value.scaled == 5.0f32);
             assert(value.bucket == 0u8);   // 5.0 / 25.0 = 0.2 → 0u8
@@ -65,7 +65,7 @@ fun main() {
         None => assert(false),
     };
     match ((&samples).get(2)) {
-        Perhaps::Some { value } => {
+        Option::Some { value } => {
             assert(value.raw    == 100i16);
             assert(value.scaled == 50.0f32);
             assert(value.bucket == 2u8);   // 50.0 / 25.0 = 2.0 → 2u8
@@ -73,7 +73,7 @@ fun main() {
         None => assert(false),
     };
     match ((&samples).get(4)) {
-        Perhaps::Some { value } => {
+        Option::Some { value } => {
             assert(value.raw    == 255i16);
             assert(value.scaled == 127.5f32);
             assert(value.bucket == 5u8);   // 127.5 / 25.0 = 5.1 → 5u8

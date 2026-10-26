@@ -3,7 +3,7 @@
 // Feature coverage:
 //   enums (unit + field variants), structs/impl, tuples as return values,
 //   match-with-blocks (RFC-0018), return None / return Err (RFC-0019),
-//   Perhaps<T>, closures as strategy values, while loop, for-in (range + array),
+//   Option<T>, closures as strategy values, while loop, for-in (range + array),
 //   C-style for, higher-order functions, string operations, arrays of structs,
 //   closure capture, named-function as closure argument.
 
@@ -184,7 +184,7 @@ fun total_party_hp(party: [Fighter]) -> i64 {
 }
 
 // Index of the fighter with highest attack.  Returns None for an empty party.
-fun best_attacker_idx(party: [Fighter]) -> Perhaps<i64> {
+fun best_attacker_idx(party: [Fighter]) -> Option<i64> {
     let n := party.len();
     if (n == 0) { return None; }
     var best := 0;
@@ -193,7 +193,7 @@ fun best_attacker_idx(party: [Fighter]) -> Perhaps<i64> {
             best := i;
         }
     }
-    Perhaps::Some { value = best }
+    Option::Some { value = best }
 }
 
 // Apply `action_fn` for `n` rounds (f1 always acts, f2 never).
@@ -220,15 +220,15 @@ fun simulate_rounds(
 // ── Battle simulation ─────────────────────────────────────────────────────────
 
 // Simulate up to `max_rounds` alternating rounds.
-// Returns Perhaps::Some with the winner's name, or None for a draw.
-// Uses RFC-0019: `return Perhaps::Some { value: ... }` and `return None`.
+// Returns Option::Some with the winner's name, or None for a draw.
+// Uses RFC-0019: `return Option::Some { value: ... }` and `return None`.
 fun battle(
     f1_init:    Fighter,
     s1:         |&Fighter, &Fighter| -> Action,
     f2_init:    Fighter,
     s2:         |&Fighter, &Fighter| -> Action,
     max_rounds: i64
-) -> Perhaps<String> {
+) -> Option<String> {
     var f1 := f1_init;
     var f2 := f2_init;
     var round := 0;
@@ -239,7 +239,7 @@ fun battle(
         f1 := r1.0;
         f2 := r1.1;
         if (!(&f2).is_alive()) {
-            return Perhaps::Some { value = f1.name };
+            return Option::Some { value = f1.name };
         } else {
             // Fighter 2 acts.
             let a2 := s2(&f2, &f1);
@@ -247,7 +247,7 @@ fun battle(
             f2 := r2.0;
             f1 := r2.1;
             if (!(&f1).is_alive()) {
-                return Perhaps::Some { value = f2.name };
+                return Option::Some { value = f2.name };
             }
         }
         round += 1;
@@ -370,7 +370,7 @@ fun main() {
     let attack_s2 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let result1 := battle(battle_knight, attack_s1, battle_goblin, attack_s2, 10);
     match (result1) {
-        Perhaps::Some { value } => assert(value.len() > 0),
+        Option::Some { value } => assert(value.len() > 0),
         None => assert(false, "expected Some"),
     };
 
@@ -380,7 +380,7 @@ fun main() {
     let draw_s1 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let draw_s2 := |actor: &Fighter, target: &Fighter| -> Action { Action::Attack };
     let draw := battle(draw_knight, draw_s1, draw_goblin, draw_s2, 0);
-    match (draw) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (draw) { Option::Some { value } => assert(false, "expected None"), None => (), };
 
     // 16. Battle with inline closure strategy and named-function strategy.
     //   Mage (atk=30, def=1) always attacks; Healer uses smart_healer.
@@ -394,7 +394,7 @@ fun main() {
         20
     );
     match (result2) {
-        Perhaps::Some { value } => (),
+        Option::Some { value } => (),
         None => assert(false, "expected Some"),
     };
 
@@ -434,13 +434,13 @@ fun main() {
     ];
     let best_idx := best_attacker_idx(party_for_best);
     match (best_idx) {
-        Perhaps::Some { value } => assert(value == 1),
+        Option::Some { value } => assert(value == 1),
         None => assert(false, "expected Some"),
     };
     // Empty party returns None.
     let empty_party: [Fighter] := [];
     let no_best := best_attacker_idx(empty_party);
-    match (no_best) { Perhaps::Some { value } => assert(false, "expected None"), None => (), };
+    match (no_best) { Option::Some { value } => assert(false, "expected None"), None => (), };
 
     // 19. Count alive fighters in party via for-in (all have hp > 0).
     let party_for_alive: [Fighter] := [

@@ -15,17 +15,17 @@ fun name(c: Colour) -> String {
     }
 }
 
-fun unwrap_or(v: Perhaps<i64>, d: i64) -> i64 {
+fun unwrap_or(v: Option<i64>, d: i64) -> i64 {
     match (v) {
         Some { value } => value,
         None           => d,
     }
 }
 
-fun qualified_still_works(v: Perhaps<i64>) -> i64 {
+fun qualified_still_works(v: Option<i64>) -> i64 {
     match (v) {
-        Perhaps::Some { value } => value,
-        Perhaps::None => -1,
+        Option::Some { value } => value,
+        Option::None => -1,
     }
 }
 
@@ -43,11 +43,11 @@ fun main() {
     assert(name(Colour::Green) == "green");
     assert(name(Colour::Blue) == "blue");
 
-    assert(unwrap_or(Perhaps::Some { value = 5 }, 0) == 5);
-    assert(unwrap_or(Perhaps::None, 9) == 9);
+    assert(unwrap_or(Option::Some { value = 5 }, 0) == 5);
+    assert(unwrap_or(Option::None, 9) == 9);
 
-    assert(qualified_still_works(Perhaps::Some { value = 3 }) == 3);
-    assert(qualified_still_works(Perhaps::None) == -1);
+    assert(qualified_still_works(Option::Some { value = 3 }) == 3);
+    assert(qualified_still_works(Option::None) == -1);
 
     assert(binding_fallback(Colour::Red) == "red");
     assert(binding_fallback(Colour::Blue) == "blue");

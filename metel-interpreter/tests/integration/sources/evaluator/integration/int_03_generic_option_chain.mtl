@@ -6,7 +6,7 @@
 //   braceless if
 // Feature coverage (v0.1/v0.2):
 //   match-with-blocks, closures, higher-order functions, arrays,
-//   Perhaps<T>, string operations, Result<T,E>, ? operator
+//   Option<T>, string operations, Result<T,E>, ? operator
 
 // ── User-defined Option<T> ────────────────────────────────────────────────────
 

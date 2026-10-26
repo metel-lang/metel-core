@@ -3,7 +3,7 @@ fun main() {
     let arr := [-1, -2, 7, 3];         
     let r := find_first_positive(arr);         
     match (r) {         
-        Perhaps::Some { value } => assert(value == 7),         
+        Option::Some { value } => assert(value == 7),         
         None => assert(false),         
     };         
 }

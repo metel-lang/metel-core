@@ -323,7 +323,7 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                 Type::Array(elem) | Type::SizedArray(elem, _) => *elem.clone(),
                 Type::Named(name, ..) if name == "Range" => Type::I64,
                 Type::Named(type_name, type_args, id) => {
-                    // User-defined Iterable: derive elem type from next() -> Perhaps<T>.
+                    // User-defined Iterable: derive elem type from next() -> Option<T>.
                     // Concrete-impl method_env first; fall back to the polymorphic
                     // method_scheme_env (mirrors the method-call construction path
                     // above) for a generic struct implementing Iterable<T> generically
@@ -356,12 +356,12 @@ pub(super) fn construct_stmt(stmt: &Stmt, ctx: &mut ConstructCtx) -> Result<Type
                             }
                         });
                     match next_ret {
-                        Some(Type::Named(n, mut args, ..)) if n == "Perhaps" && args.len() == 1 => {
+                        Some(Type::Named(n, mut args, ..)) if n == "Option" && args.len() == 1 => {
                             args.remove(0)
                         }
                         _ => {
                             return Err(MetelError::internal(format!(
-                                "for-in: `{type_name}` has no `next() -> Perhaps<T>` method"
+                                "for-in: `{type_name}` has no `next() -> Option<T>` method"
                             )));
                         }
                     }
@@ -1303,7 +1303,7 @@ pub(super) fn construct_expr(
                 // same generic target) -- try each and use the one whose bounds the
                 // receiver's concrete type args actually satisfy.
                 // The receiver's own type names its declaration; looking the name up in the
-                // module would find a user type that shadows a core one (`Perhaps`, `Result`)
+                // module would find a user type that shadows a core one (`Option`, `Result`)
                 // instead (metel-core#1585).
                 let candidates = match struct_id {
                     Some(id) => ctx.registry.method_scheme_variants_by_id(id, method),

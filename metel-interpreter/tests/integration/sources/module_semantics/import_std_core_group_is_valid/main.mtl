@@ -1,2 +1,2 @@
-import std::core::{Perhaps, Result};
-fun main() { let x := Perhaps::Some { value = 1 }; }
+import std::core::{Option, Result};
+fun main() { let x := Option::Some { value = 1 }; }

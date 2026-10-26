@@ -15,6 +15,6 @@ fun main() {
     assert(total({ n = 5, flag = true }) == 5);
     let it := Item { id = 1, shape = [2, 3] };
     match (it.shape) { [a, b] => assert(a + b == 5) }
-    let r: Perhaps<{ n: i64 }> := Perhaps::Some { value = { n = 4 } };
-    match (r) { Perhaps::Some { value } => assert(value.n == 4), None => assert(false) }
+    let r: Option<{ n: i64 }> := Option::Some { value = { n = 4 } };
+    match (r) { Option::Some { value } => assert(value.n == 4), None => assert(false) }
 }

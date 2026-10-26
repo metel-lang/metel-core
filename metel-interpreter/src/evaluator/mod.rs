@@ -106,7 +106,7 @@ pub enum Value {
         type_id: Option<SymbolId>,
         fields: HashMap<String, Value>,
     },
-    // Perhaps<T> and Result<T,E> use Value::Enum like all other enums. See ADR-0028.
+    // Option<T> and Result<T,E> use Value::Enum like all other enums. See ADR-0028.
     Enum {
         name: String,
         /// Stable identity of the enum's declaration. See `Struct::type_id`.
@@ -3144,7 +3144,7 @@ fn eval_for_in(
                 variant,
                 mut fields,
                 ..
-            } if name == "Perhaps" => {
+            } if name == "Option" => {
                 if variant == "None" {
                     None
                 } else {
@@ -3153,7 +3153,7 @@ fn eval_for_in(
             }
             _ => {
                 return Err(MetelError::internal(
-                    "Iterable::next: expected Perhaps value",
+                    "Iterable::next: expected Option value",
                 ));
             }
         };
@@ -5010,22 +5010,27 @@ mod architecture_evidence_tests {
 
     // arch-verifies: ["arch.evaluation.requirement-3"]
     #[test]
-    fn perhaps_and_result_have_no_dedicated_value_variants() {
+    fn option_and_result_have_no_dedicated_value_variants() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/evaluator/mod.rs");
         let source = std::fs::read_to_string(path).expect("evaluator/mod.rs readable");
         let start = source.find("pub enum Value {").expect("Value enum");
         let end = start + source[start..].find("\n}\n").expect("end of Value enum");
+        // Variant names only: the identifier that opens each line at the enum's own indent. A field
+        // type deeper in (`Option<Rc<..>>` is Rust's own) is not a variant.
         let variants: Vec<&str> = source[start..end]
             .lines()
-            .filter(|line| !line.trim_start().starts_with("//"))
+            .filter(|line| line.starts_with("    ") && !line.starts_with("     "))
+            .map(str::trim_start)
+            .filter(|line| !line.starts_with("//") && !line.starts_with('#'))
+            .filter_map(|line| {
+                line.split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .next()
+            })
             .collect();
-        let body = variants.join("\n");
-        for forbidden in ["Perhaps", "Result", "Some", "Ok", "Err"] {
+        for forbidden in ["Option", "Result", "Some", "Ok", "Err"] {
             assert!(
-                !body
-                    .split(|c: char| !c.is_alphanumeric())
-                    .any(|word| word == forbidden),
-                "`Value` has a dedicated `{forbidden}` variant; Perhaps/Result must be ordinary `Value::Enum`s"
+                !variants.contains(&forbidden),
+                "`Value` has a dedicated `{forbidden}` variant; Option/Result must be ordinary `Value::Enum`s"
             );
         }
     }

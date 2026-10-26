@@ -11,10 +11,10 @@
 //   y : f64        (annotation f64, value infers f64)
 //   z : boolean         (annotation boolean, value infers boolean)
 //   s : String       (annotation String, value infers String)
-//   n : Perhaps<i64> (None literal; type comes from annotation — Pass 2 expected_ty path)
+//   n : Option<i64> (None literal; type comes from annotation — Pass 2 expected_ty path)
 
 let x: i64 := 100;
 let y: f64 := 2.718;
 let z: boolean := false;
 let s: String := "metel";
-let n: Perhaps<i64> := None;
+let n: Option<i64> := None;

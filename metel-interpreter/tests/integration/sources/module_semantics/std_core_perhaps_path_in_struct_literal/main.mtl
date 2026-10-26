@@ -1,1 +1,1 @@
-fun main() { let x := std::core::Perhaps::Some { value = 42 }; }
+fun main() { let x := std::core::Option::Some { value = 42 }; }

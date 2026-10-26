@@ -18,9 +18,9 @@ let area: f64 := match (s) {
 };
 
 // Block arm producing unit (no tail expression).
-let msg: Perhaps<i64> := Perhaps::Some { value = 1 };
+let msg: Option<i64> := Option::Some { value = 1 };
 match (msg) {
-    Perhaps::Some { value } => {
+    Option::Some { value } => {
         let v := value;
     },
     None => {},

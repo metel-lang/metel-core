@@ -122,7 +122,7 @@ fn native_assert_msg(args: &[Value], span: &crate::data::ast::Span) -> Result<Va
     }
 }
 
-/// `Perhaps::yolo()`'s `None` arm. Always panics — there is no value to report,
+/// `Option::yolo()`'s `None` arm. Always panics — there is no value to report,
 /// unlike `yolo_err` below. Its declared return type `T` is resolved at each call
 /// site from the enclosing function's declared return type (see
 /// `construct_call`'s bare-identifier branch in `src/typechecker/construction.rs`,
@@ -527,8 +527,8 @@ fn perhaps_value(v: Option<Value>) -> Value {
             let mut f = std::collections::HashMap::new();
             f.insert("value".to_string(), val);
             Value::Enum {
-                name: "Perhaps".to_string(),
-                type_id: Some(crate::identity::symbols::SYM_TYPE_PERHAPS),
+                name: "Option".to_string(),
+                type_id: Some(crate::identity::symbols::SYM_TYPE_OPTION),
                 variant: "Some".to_string(),
                 // Well-known builtin, not user-declarable under this fixed
                 // SymbolId, so the name-based match fallback (#1128) carries
@@ -538,8 +538,8 @@ fn perhaps_value(v: Option<Value>) -> Value {
             }
         }
         None => Value::Enum {
-            name: "Perhaps".to_string(),
-            type_id: Some(crate::identity::symbols::SYM_TYPE_PERHAPS),
+            name: "Option".to_string(),
+            type_id: Some(crate::identity::symbols::SYM_TYPE_OPTION),
             variant: "None".to_string(),
             variant_id: None,
             fields: std::collections::HashMap::new(),

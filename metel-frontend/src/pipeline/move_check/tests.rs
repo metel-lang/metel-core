@@ -476,7 +476,7 @@ fn abstract_ownership_does_not_confuse_associated_copy_bound_identity() {
 fn abstract_ownership_retains_expected_type_resolved_unit_variants() {
     let report = move_report_for_source_with(
         r#"
-fun unqualified<T>() -> Perhaps<T> { None : Perhaps<T> }
+fun unqualified<T>() -> Option<T> { None : Option<T> }
 fun main() {}
 "#,
         |graph| {
@@ -641,7 +641,7 @@ fun copied<T: Copy>(value: T) {
     match (value) { moved => { let copied := moved; moved; } }
     value;
 }
-fun make<T>(value: T) -> Perhaps<T> { Perhaps::Some { value = value } }
+fun make<T>(value: T) -> Option<T> { Option::Some { value = value } }
 fun payload<T>(value: T) {
     match (make(value)) { Some { value } => { let consumed := value; value; }, None => {} }
 }

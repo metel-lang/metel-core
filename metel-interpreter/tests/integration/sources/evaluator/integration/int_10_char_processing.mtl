@@ -100,11 +100,11 @@ fun main() {
     }
     assert((&alphabet_slice).len() == 5);
     match ((&alphabet_slice).get(0)) {
-        Perhaps::Some { value } => assert(value == 'a'),
+        Option::Some { value } => assert(value == 'a'),
         None => assert(false),
     };
     match ((&alphabet_slice).get(4)) {
-        Perhaps::Some { value } => assert(value == 'e'),
+        Option::Some { value } => assert(value == 'e'),
         None => assert(false),
     };
 

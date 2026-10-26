@@ -1504,7 +1504,7 @@ fn construct_binop(
             // other*, so mixed types were caught by unification while same-type-on-both
             // -sides reached an evaluator that only has `==` arms for the primitive
             // scalars — producing an I0001 internal error at run time for references,
-            // structs, enums (including `Perhaps`), arrays, tuples and unit.
+            // structs, enums (including `Option`), arrays, tuples and unit.
             //
             // Deliberately *rejects* rather than peeling references: peeling would
             // silently commit the language to referent-equality semantics, and whether

@@ -4,7 +4,7 @@
 //   generic functions, user-defined generic enum (Result<T,E>), generic struct
 //   (Stack<T>), let-polymorphism, recursive generic functions, braceless if
 // Feature coverage (v0.1/v0.2):
-//   closures, higher-order functions, arrays, loops, match, Perhaps<T>
+//   closures, higher-order functions, arrays, loops, match, Option<T>
 
 // ── User-defined Result<T, E> ─────────────────────────────────────────────────
 
@@ -207,29 +207,29 @@ fun concat_int(a: [i64], b: [i64]) -> [i64] {
     out.as_slice()
 }
 
-// ── Perhaps<T> combinators ────────────────────────────────────────────────────
+// ── Option<T> combinators ────────────────────────────────────────────────────
 
-fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Perhaps<T> {
+fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Perhaps::Some { value = clone(&arr[i as u64]) };
+            return Option::Some { value = clone(&arr[i as u64]) };
         }
         i += 1;
     }
     None
 }
 
-fun perhaps_or<T>(p: Perhaps<T>, default: T) -> T {
+fun perhaps_or<T>(p: Option<T>, default: T) -> T {
     match (p) {
-        Perhaps::Some { value } => value,
+        Option::Some { value } => value,
         _                       => default,
     }
 }
 
-fun perhaps_is_some<T>(p: Perhaps<T>) -> boolean {
+fun perhaps_is_some<T>(p: Option<T>) -> boolean {
     match (p) {
-        Perhaps::Some { value } => true,
+        Option::Some { value } => true,
         _                       => false,
     }
 }
@@ -459,7 +459,7 @@ fun main() {
     assert(merged[0] == 1);
     assert(merged[5] == 6);
 
-    // ── find_first (Perhaps<T>) ───────────────────────────────────────────────
+    // ── find_first (Option<T>) ───────────────────────────────────────────────
     let nums_first_big: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first_big := find_first(
         nums_first_big,
