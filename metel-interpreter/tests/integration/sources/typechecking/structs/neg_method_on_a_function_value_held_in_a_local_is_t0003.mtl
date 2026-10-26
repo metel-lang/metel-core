@@ -1,0 +1,8 @@
+// metel-core#1617 (v0.14.1 integration session): a method call on a function value reaches the T0003 wording even through a local binding (#1242 x #1578).
+
+fun f() -> i64 { 1 }
+
+fun main() {
+    let g := f;
+    let h := g.clone();
+}

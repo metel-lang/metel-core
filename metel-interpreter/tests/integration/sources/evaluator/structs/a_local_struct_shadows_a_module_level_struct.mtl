@@ -1,0 +1,9 @@
+// metel-core#1617 (v0.14.1 integration session): a block-local struct shadows a module-level struct of the same name; the local one must win.
+
+struct P { x: i64 }
+
+fun main() {
+    struct P { y: i64 }
+    let q := P { y = 2 };
+    assert(q.y == 2);
+}

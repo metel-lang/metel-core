@@ -1,0 +1,32 @@
+// metel-core#1617 (v0.14.1 integration session): a closure parameter, a `for` binding, a pattern binding, a nested `fun` and a `let` each shadow a same-named module function used as a value (#1578 x closures x patterns).
+
+fun f() -> i64 { 100 }
+fun h() -> i64 { 1 }
+fun x() -> i64 { 7 }
+fun id<T>(v: T) -> T { v }
+
+fun main() {
+    let g := |f: i64| -> i64 { f + 1 };
+    assert(g(2) == 3);
+    assert(f() == 100);
+
+    var total := 0;
+    for (f in [1, 2, 3]) { total := total + f; }
+    assert(total == 6);
+    assert(f() == 100);
+
+    fun h() -> i64 { 2 }
+    assert(h() == 2);
+    let k := h;
+    assert(k() == 2);
+
+    struct P { x: i64 }
+    let p := P { x = 4 };
+    var got := 0;
+    match (p) { P { x } => { got := x; }, }
+    assert(got == 4);
+    assert(x() == 7);
+
+    let f := 9;
+    assert(id(f) == 9);
+}

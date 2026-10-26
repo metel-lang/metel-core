@@ -1,0 +1,13 @@
+// metel-core#1617 (v0.14.1 integration session): a generic block-local record with no fields is Copy whatever its argument (#1555 x #1556).
+
+fun a() -> i64 {
+    record Marker<T> {}
+    let m: Marker<i64> := Marker {};
+    let n := m;
+    let o := m;
+    1
+}
+
+fun main() {
+    assert(a() == 1);
+}

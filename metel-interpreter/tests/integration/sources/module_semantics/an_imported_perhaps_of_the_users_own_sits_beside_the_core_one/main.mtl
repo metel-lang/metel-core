@@ -1,0 +1,12 @@
+import lib::Perhaps;
+
+fun main() {
+    let m := Perhaps::Maybe;
+    var s := 0;
+    match (m) { Perhaps::Maybe => { s := 1; }, Perhaps::Not => { s := 2; }, }
+    assert(s == 1);
+    let c: std::core::Perhaps<i64> := None;
+    assert(c.is_none());
+    let d: std::core::Perhaps<i64> := Some { value = 4 };
+    assert(d.unwrap_or(0) == 4);
+}

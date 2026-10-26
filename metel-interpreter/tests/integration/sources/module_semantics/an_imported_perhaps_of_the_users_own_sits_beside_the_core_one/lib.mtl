@@ -1,0 +1,2 @@
+// metel-core#1617 (v0.14.1 integration session): a module exports its own `Perhaps`; the importer names the core one by its qualified path (#1585 x #1587).
+public enum Perhaps { Maybe, Not }

@@ -1,0 +1,19 @@
+// metel-core#1617 (v0.14.1 integration session): two functions each declare a generic record `Box<T>` of the same name with different fields; each is judged by its own fields (#1553 x #1556).
+
+fun a() -> i64 {
+    record Box<T> { x: T }
+    let b := Box { x = 1 };
+    let c := b;
+    b.x + c.x
+}
+
+fun b() -> String {
+    record Box<T> { x: T, y: T }
+    let q := Box { x = "a", y = "b" };
+    q.x
+}
+
+fun main() {
+    assert(a() == 2);
+    assert(b() == "a");
+}

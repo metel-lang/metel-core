@@ -1,0 +1,8 @@
+// metel-core#1617 (v0.14.1 integration session): std::core::Result::Ok in an expression names the core variant even where the module declares its own Result.
+
+enum Result { Good, Bad }
+
+fun main() {
+    let r := std::core::Result::Ok { value = 1 };
+    assert(r.unwrap_or(0) == 1);
+}

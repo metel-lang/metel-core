@@ -1,0 +1,7 @@
+import lib::Foo as F;
+
+fun main() {
+    let a := F { x = 1 };
+    assert(a.x == 1);
+    assert(F() == 5);
+}

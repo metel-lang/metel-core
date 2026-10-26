@@ -1,0 +1,7 @@
+// metel-core#1617 (v0.14.1 integration session): a record literal checked against a named record reports a record diff, not an inference variable.
+
+record P { x: i64, y: i64 }
+
+fun main() {
+    let p: P := { x = 1 };
+}

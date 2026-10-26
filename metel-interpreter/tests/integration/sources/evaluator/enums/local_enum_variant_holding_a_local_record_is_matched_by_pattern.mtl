@@ -1,0 +1,15 @@
+// metel-core#1617 (v0.14.1 integration session): a block-local enum variant holds a block-local record, matched with a nested struct pattern (#1557 x #1565).
+
+fun main() {
+    record Pt { x: i64, y: i64 }
+    enum Shape { At { p: Pt }, Nowhere }
+    let s := Shape::At { p = Pt { x = 1, y = 2 } };
+    var sum := 0;
+    match (s) {
+        Shape::At { p } => {
+            match (p) { Pt { x, y } => { sum := x + y; }, }
+        },
+        Shape::Nowhere => { sum := 0; },
+    }
+    assert(sum == 3);
+}

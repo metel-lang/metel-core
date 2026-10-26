@@ -1,0 +1,16 @@
+// metel-core#1617 (v0.14.1 integration session): an inner-block type shadows an outer local type while an inner `let` shadows a module function (#1561 x #1578).
+
+fun f() -> i64 { 1 }
+
+fun main() {
+    struct P { x: i64 }
+    let a := P { x = 1 };
+    if (true) {
+        struct P { y: i64 }
+        let f := 5;
+        let b := P { y = f };
+        assert(b.y == 5);
+    }
+    assert(a.x == 1);
+    assert(f() == 1);
+}

@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-4"]
