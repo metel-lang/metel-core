@@ -5,9 +5,9 @@
 //   generic functions with 3 type params, let-polymorphism,
 //   braceless if, nested generic types
 // Feature coverage (v0.1/v0.2):
-//   closures, for-in, while, match, string ops, arrays, Perhaps<T>
+//   closures, for-in, while, match, string ops, arrays, Option<T>
 
-// ── Maybe<T> (distinct from built-in Perhaps to exercise user generics) ───────
+// ── Maybe<T> (distinct from built-in Option to exercise user generics) ───────
 
 enum Maybe<T> {
     Just { val: T },

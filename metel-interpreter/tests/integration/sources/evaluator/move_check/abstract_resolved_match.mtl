@@ -29,9 +29,9 @@ fun whole<T>(value: T) -> T {
     match (value) { bound => bound }
 }
 
-fun make<T>(value: T, mark: &var i64) -> Perhaps<T> {
+fun make<T>(value: T, mark: &var i64) -> Option<T> {
     *mark := *mark + 1;
-    Perhaps::Some { value = value }
+    Option::Some { value = value }
 }
 
 fun extract<T>(value: T, mark: &var i64) -> T {

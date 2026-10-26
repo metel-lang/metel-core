@@ -3035,7 +3035,7 @@ fn infer_enum_variant_pattern(
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
     // The scrutinee's own declaration wins over the spelling: a user enum that
-    // shadows `Perhaps`/`Result` must not capture patterns on a core value.
+    // shadows `Option`/`Result` must not capture patterns on a core value.
     let by_id = scrutinee_nominal_id(scrutinee_ty).filter(|id| {
         ctx.registry().declared_type_name(*id) == Some(enum_name)
             && ctx

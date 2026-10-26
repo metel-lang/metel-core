@@ -1,13 +1,13 @@
-// RFC-0078 §5: Perhaps<!> has only one inhabited variant -- None. The Some
+// RFC-0078 §5: Option<!> has only one inhabited variant -- None. The Some
 // variant would require a value of type !, which cannot be constructed, so
 // a match omitting Some is exhaustive.
-fun use_perhaps(p: Perhaps<!>) -> i64 {
+fun use_perhaps(p: Option<!>) -> i64 {
     match (p) {
-        Perhaps::None => 0,
+        Option::None => 0,
         // Some omitted -- exhaustive; Some is uninhabited when T = !.
     }
 }
 
 fun main() -> i64 {
-    use_perhaps(Perhaps::None)
+    use_perhaps(Option::None)
 }

@@ -623,8 +623,8 @@ pub(super) fn construct_impl_decl(
         .and_then(|aspect_name| super::calls::resolve_aspect_id(ctx, aspect_name));
 
     // metel-core#1228: does this impl's target name one specific instantiation
-    // (`extend W<i64>: Tag`) or every one of them (`extend Perhaps<T> { ... }`,
-    // whose written argument is exactly `Perhaps`'s own declared generic
+    // (`extend W<i64>: Tag`) or every one of them (`extend Option<T> { ... }`,
+    // whose written argument is exactly `Option`'s own declared generic
     // parameter, in the same position -- not a real generic re-declaration on
     // the `extend` itself, which `ib.generics` alone would miss)?
     let target_instantiation_args =

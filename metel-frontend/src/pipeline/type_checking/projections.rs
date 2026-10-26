@@ -1263,9 +1263,9 @@ impl Cx<'_> {
     }
 
     /// Inherent impl blocks on generic nominal types use the declaration's type
-    /// parameter names without repeating an `impl<T>` binder (`extend Perhaps<T>`).
+    /// parameter names without repeating an `impl<T>` binder (`extend Option<T>`).
     /// Treat only an argument that repeats its declared parameter name as that inherited
-    /// binder; `extend Perhaps<i64>` must not accidentally make a free `T` valid.
+    /// binder; `extend Option<i64>` must not accidentally make a free `T` valid.
     fn inherited_impl_generics(&self, target: &TypeExpr) -> HashSet<String> {
         let TypeExpr::Named(name, args) = target else {
             return HashSet::new();

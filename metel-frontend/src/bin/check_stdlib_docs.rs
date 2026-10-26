@@ -66,7 +66,7 @@ fn parse_stdlib(file: &str) -> metel_frontend::data::ast::Program {
 /// One real declaration, reduced to exactly what the doc's own signature
 /// convention renders: whether the receiver becomes a leading `&var self`
 /// (only `RefMut` -- `self`/`&self` both render receiver-less, matching
-/// e.g. `.yolo()` -> `() -> T` and `.get(i)` -> `(i64) -> Perhaps<T>` in the
+/// e.g. `.yolo()` -> `() -> T` and `.get(i)` -> `(i64) -> Option<T>` in the
 /// existing table), the non-receiver params (with names, for the one table
 /// that shows them), the return type, and any method-level (not
 /// receiver-type-level) generics.
@@ -106,7 +106,7 @@ fn render_type(t: &TypeExpr) -> String {
         // The doc's own convention for a function-type parameter uses
         // ordinary parens (`(T) -> U`), not the real `|T| -> U` written-type
         // syntax (RFC-0154) -- e.g. `.map(f)`'s documented signature is
-        // `<U>((T) -> U) -> Perhaps<U>`. Matched here, not the literal
+        // `<U>((T) -> U) -> Option<U>`. Matched here, not the literal
         // source spelling, since that's what a correct row actually reads.
         TypeExpr::Fun {
             params,
@@ -129,7 +129,7 @@ fn render_type(t: &TypeExpr) -> String {
 
 /// `include_names`: only the "Built-in Functions" table spells
 /// out `(cond: boolean)`; every method table in runtime.md is type-only
-/// (`(i64) -> Perhaps<T>`) -- a real, if inconsistent, distinction in the
+/// (`(i64) -> Option<T>`) -- a real, if inconsistent, distinction in the
 /// hand-written doc today, matched here rather than judged.
 fn render_sig(f: &RealFn, include_names: bool) -> String {
     let mut out = String::new();
@@ -254,7 +254,7 @@ struct DocRow {
 /// tables in source order -- a section can hold more than one table
 /// (`## String Methods` has an instance-method table and a separate
 /// `Associated function` table for the static `String::join`; `## Core Sum
-/// Types` has one table for `Perhaps<T>` and one for `Result<T, E>`, with
+/// Types` has one table for `Option<T>` and one for `Result<T, E>`, with
 /// no sub-heading between them at all, just a bold prose line). A blank
 /// line ends whatever table is in progress so the next pipe-line-run is
 /// treated as a fresh header + separator, not a data row of the previous
@@ -344,7 +344,7 @@ struct Surface {
     heading: &'static str,
     /// `Some(n)`: only that table (0-indexed, in source order) within the
     /// section counts -- needed when one heading covers multiple types
-    /// whose method names overlap (`Core Sum Types`' `Perhaps<T>` table and
+    /// whose method names overlap (`Core Sum Types`' `Option<T>` table and
     /// `Result<T, E>` table both have `.map()`/`.and_then()`/...; checking
     /// them pooled could match a row against the *other* type's
     /// declaration and miss a real mismatch). `None`: pool every table in
@@ -474,9 +474,9 @@ fn main() -> ExitCode {
         },
         Surface {
             heading: "Core Sum Types",
-            table_index: Some(0), // Perhaps<T> -- see the table_index doc comment
+            table_index: Some(0), // Option<T> -- see the table_index doc comment
             include_param_names: false,
-            real: extend_methods(&core.decls, "Perhaps", None),
+            real: extend_methods(&core.decls, "Option", None),
         },
         Surface {
             heading: "Core Sum Types",

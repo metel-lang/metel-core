@@ -1,0 +1,4 @@
+// RFC-0184 (metel-core#1625): importing the removed name from std::core is T0003 and says Perhaps is now Option.
+import std::core::Perhaps;
+
+fun main() { }

@@ -1,8 +1,8 @@
-import std::core::Perhaps;         
+import std::core::Option;         
 fun main() {         
-    let p := Perhaps::Some { value = 42 };         
+    let p := Option::Some { value = 42 };         
     match (p) {         
-        Perhaps::Some { value } => assert(value == 42),         
+        Option::Some { value } => assert(value == 42),         
         None => assert(false),         
     };         
 }

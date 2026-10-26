@@ -25,7 +25,7 @@ aspect Describable {
 }
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 aspect From<T> {
@@ -88,11 +88,11 @@ extend AreaList {
 }
 
 extend AreaList: Iterable<f64> {
-    fun next(&var self) -> Perhaps<f64> {
+    fun next(&var self) -> Option<f64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
             self.pos := self.pos + 1;
-            Perhaps::Some { value = v }
+            Option::Some { value = v }
         } else {
             None
         }

@@ -1,7 +1,7 @@
 // 05 — Enums and pattern matching
 // Covers: unit variants, data-carrying variants, impl on enums, match as statement
 //         and expression, destructuring, guards, wildcard, literal patterns,
-//         Perhaps<T>, nope, Result<T,E>, .yolo().
+//         Option<T>, nope, Result<T,E>, .yolo().
 
 enum Direction {
     North,
@@ -66,7 +66,7 @@ fun classify(n: i64) -> String {
     }
 }
 
-fun safe_head(arr: [i64]) -> Perhaps<i64> {
+fun safe_head(arr: [i64]) -> Option<i64> {
     if (array_len(arr) == 0) {
         return nope;
     }
@@ -101,17 +101,17 @@ fun main() {
     println(classify(-5));    // negative
     println(classify(99));    // large
 
-    // --- Perhaps<T> ---
+    // --- Option<T> ---
     let full: [i64] := [10, 20, 30];
     let empty: [i64] := [];
 
     match (safe_head(full)) {
-        Perhaps::Some { value } => println(int_to_string(value)),  // 10
-        Perhaps::None => println("empty"),
+        Option::Some { value } => println(int_to_string(value)),  // 10
+        Option::None => println("empty"),
     }
     match (safe_head(empty)) {
-        Perhaps::Some { value } => println(int_to_string(value)),
-        Perhaps::None => println("empty"),                          // empty
+        Option::Some { value } => println(int_to_string(value)),
+        Option::None => println("empty"),                          // empty
     }
 
     // --- .yolo() unwrap ---

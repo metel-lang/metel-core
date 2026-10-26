@@ -15,12 +15,12 @@ fun sign(n: i64) -> i64 {
     }
 }
 
-fun first_err(xs: [i64]) -> Perhaps<i64> {
+fun first_err(xs: [i64]) -> Option<i64> {
     let a := match (xs[0]) {
         0 => return None,
         n => n,
     };
-    Perhaps::Some { value = a }
+    Option::Some { value = a }
 }
 
 fun find_nonzero(arr: [i64]) -> i64 {
@@ -46,13 +46,13 @@ fun main() {
 
     let vals := [3, 1, 2];
     match (first_err(vals)) {
-        Perhaps::Some { value } => assert(value == 3),
+        Option::Some { value } => assert(value == 3),
         None => assert(false),
     };
 
     let zeros := [0, 1, 2];
     match (first_err(zeros)) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
 

@@ -1,12 +1,12 @@
-// issue #232: Perhaps<->Result conversion methods.
+// issue #232: Option<->Result conversion methods.
 //
 // map_err/ok take `self` by value (RFC-0067a SS3a: a value can never be moved
 // out of a reference), so `ok`/`err` get a fresh binding per consuming call
 // rather than being reused across both.
 fun main() {
-    // Perhaps::ok_or
-    let some: Perhaps<i64> := Perhaps::Some { value = 5 };
-    let none: Perhaps<i64> := Perhaps::None;
+    // Option::ok_or
+    let some: Option<i64> := Option::Some { value = 5 };
+    let none: Option<i64> := Option::None;
 
     match (some.ok_or("missing")) {
         Result::Ok { value } => assert(value == 5),
@@ -35,11 +35,11 @@ fun main() {
     let err2: Result<i64, i64> := Result::Err { error = 2 };
 
     match (ok2.ok()) {
-        Perhaps::Some { value } => assert(value == 10),
-        Perhaps::None => assert(false),
+        Option::Some { value } => assert(value == 10),
+        Option::None => assert(false),
     }
     match (err2.ok()) {
-        Perhaps::Some { value } => assert(false),
-        Perhaps::None => assert(true),
+        Option::Some { value } => assert(false),
+        Option::None => assert(true),
     }
 }

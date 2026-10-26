@@ -1,0 +1,4 @@
+// RFC-0184 (metel-core#1625): the removed name qualified through std::core in a type position.
+fun main() {
+    let a: std::core::Perhaps<i64> := None;
+}

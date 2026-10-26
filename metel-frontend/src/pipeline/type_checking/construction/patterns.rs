@@ -407,7 +407,7 @@ pub(super) fn enum_variant_type_param_remap(
 /// RFC-0078 §3.2: a variant is uninhabited if any of its fields' (substituted)
 /// type is `!` — no value of that variant can ever be constructed, since a struct
 /// literal needs a value for every field and none exists of type `!`. A zero-field
-/// variant is always inhabited (e.g. `Perhaps::None`).
+/// variant is always inhabited (e.g. `Option::None`).
 pub(super) fn is_variant_uninhabited(
     variant: &VariantInfo,
     remap: &Substitution,
@@ -444,7 +444,7 @@ pub(super) fn check_match_exhaustiveness(
         // RFC-0078 §3.2: a variant whose payload is uninhabited (some field's type
         // is `!`) can never be constructed, so it doesn't need a covering arm to be
         // exhaustive. This subsumes `Result<T, !>` (§4.1) as the general rule's
-        // special case, rather than hardcoding `Result`/`Perhaps` separately —
+        // special case, rather than hardcoding `Result`/`Option` separately —
         // both are ordinary entries in `enum_env` like any user enum.
         Type::Named(name, type_args, ..) => {
             if let Some(enum_info) = scrutinee_enum {
@@ -857,9 +857,9 @@ pub(super) fn construct_enum_literal_ty(
     }
 
     // Apply the local substitution to recover concrete type arguments.
-    // If a type param remains unresolved (fieldless variants like `Perhaps::None`),
+    // If a type param remains unresolved (fieldless variants like `Option::None`),
     // fall back to the annotation's args.
-    // type_to_infer normalises Perhaps/Result into Named for uniform handling.
+    // type_to_infer normalises Option/Result into Named for uniform handling.
     let hint_args: Vec<Type> = expected_ty
         .map(|ty| {
             if let InferType::Named(n, args, nominal) = type_to_infer(ty) {

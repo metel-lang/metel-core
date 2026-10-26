@@ -31,18 +31,18 @@ fun main() {
     lst.push(20);
     lst.push(30);
     assert((&lst).len() == 3);
-    // get returns Perhaps<T> (bounds-checked)
+    // get returns Option<T> (bounds-checked)
     match ((&lst).get(1)) {
-        Perhaps::Some { value } => assert(value == 20),
+        Option::Some { value } => assert(value == 20),
         None => assert(false),
     };
     match ((&lst).get(99)) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
     // pop removes and returns the last element
     match (lst.pop()) {
-        Perhaps::Some { value } => assert(value == 30),
+        Option::Some { value } => assert(value == 30),
         None => assert(false),
     };
     assert((&lst).len() == 2);
@@ -72,17 +72,17 @@ fun main() {
     boundary.push(200);
     boundary.push(300);
     match ((&boundary).get(0)) {
-        Perhaps::Some { value } => assert(value == 100),
+        Option::Some { value } => assert(value == 100),
         None => assert(false),
     };
     match ((&boundary).get(2)) {
-        Perhaps::Some { value } => assert(value == 300),
+        Option::Some { value } => assert(value == 300),
         None => assert(false),
     };
     // pop on empty list returns None
     var empty_lst: List<i64> := List::new();
     match (empty_lst.pop()) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
     // pop until empty, verifying each value
@@ -91,19 +91,19 @@ fun main() {
     drain.push(8);
     drain.push(9);
     match (drain.pop()) {
-        Perhaps::Some { value } => assert(value == 9),
+        Option::Some { value } => assert(value == 9),
         None => assert(false),
     };
     match (drain.pop()) {
-        Perhaps::Some { value } => assert(value == 8),
+        Option::Some { value } => assert(value == 8),
         None => assert(false),
     };
     match (drain.pop()) {
-        Perhaps::Some { value } => assert(value == 7),
+        Option::Some { value } => assert(value == 7),
         None => assert(false),
     };
     match (drain.pop()) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
     assert(drain.len() == 0);
@@ -115,7 +115,7 @@ fun main() {
     reuse.push(99);
     assert((&reuse).len() == 2);
     match ((&reuse).get(1)) {
-        Perhaps::Some { value } => assert(value == 99),
+        Option::Some { value } => assert(value == 99),
         None => assert(false),
     };
     // List::from on empty array
@@ -131,11 +131,11 @@ fun main() {
     words.push("world");
     assert((&words).len() == 2);
     match ((&words).get(0)) {
-        Perhaps::Some { value } => assert(value == "hello"),
+        Option::Some { value } => assert(value == "hello"),
         None => assert(false),
     };
     match (words.pop()) {
-        Perhaps::Some { value } => assert(value == "world"),
+        Option::Some { value } => assert(value == "world"),
         None => assert(false),
     };
     assert((&words).len() == 1);
@@ -146,7 +146,7 @@ fun main() {
     floats.push(3.5);
     assert((&floats).len() == 3);
     match ((&floats).get(1)) {
-        Perhaps::Some { value } => assert(value == 2.5),
+        Option::Some { value } => assert(value == 2.5),
         None => assert(false),
     };
     // List<boolean>
@@ -156,7 +156,7 @@ fun main() {
     flags.push(true);
     assert((&flags).len() == 3);
     match ((&flags).get(2)) {
-        Perhaps::Some { value } => assert(value == true),
+        Option::Some { value } => assert(value == true),
         None => assert(false),
     };
     // for-in over as_slice result

@@ -778,9 +778,12 @@ fn build_import_schemes(
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0003,
                     format!(
-                        "cannot import `{}` from module `{}`: name does not exist",
+                        "cannot import `{}` from module `{}`: name does not exist{}",
                         binding.source_name,
-                        binding.source_module.join("::")
+                        binding.source_module.join("::"),
+                        renamed_core_type(&binding.source_name)
+                            .filter(|_| binding.source_module == ["std", "core"])
+                            .map_or_else(String::new, |new| rename_hint(&binding.source_name, new))
                     ),
                     &span,
                 ));
@@ -1305,7 +1308,7 @@ pub fn construct_generic_body(
 /// then read off each of the type's own quantified type variables from the
 /// resulting substitution. Best-effort, matching `construct_generic_body`'s own
 /// tolerance for the same underlying reason — a field that doesn't mention a
-/// given type param at all (e.g. `Perhaps::None`, no payload) leaves it
+/// given type param at all (e.g. `Option::None`, no payload) leaves it
 /// unresolved, defaulted to `Unit` exactly as before this fix for that case.
 #[must_use]
 #[allow(clippy::implicit_hasher)]
@@ -1375,6 +1378,77 @@ pub fn infer_named_type_args(
 ///
 /// The report carries the typed declarations, the module's `scheme_env`, and the registry
 /// (this module's type definitions merged with the base) for the next module to use.
+/// Core types that were renamed, `(old, new)` (RFC-0184). `std::core` declares no type under the old
+/// name, so a reference to it that resolves to nothing is `T0003`; the message says what it became
+/// (`spec.types.perhaps-t.legality-2`).
+const RENAMED_CORE_TYPES: &[(&str, &str)] = &[("Perhaps", "Option")];
+
+/// What `old` was renamed to, if it is a renamed core type.
+fn renamed_core_type(old: &str) -> Option<&'static str> {
+    RENAMED_CORE_TYPES
+        .iter()
+        .find_map(|(from, to)| (*from == old).then_some(*to))
+}
+
+/// The clause that names the replacement of a renamed core type.
+fn rename_hint(old: &str, new: &str) -> String {
+    format!("; `{old}` is now `{new}`")
+}
+
+/// The subject (the first backticked name) of an "unresolved name" `T0003` message, for the message
+/// shapes that report a name resolving to nothing.
+fn unresolved_subject(message: &str) -> Option<&str> {
+    const SHAPES: [&str; 5] = [
+        "unknown type `",
+        "unknown enum `",
+        "undefined name `",
+        "unresolved path `",
+        "cannot import `",
+    ];
+    let rest = SHAPES
+        .iter()
+        .find_map(|shape| message.strip_prefix(shape))?;
+    rest.split('`').next()
+}
+
+/// Add the replacement to a `T0003` that reports a renamed core type (written alone, as the first
+/// segment of a path, or as `std::core::Old`) resolving to nothing. A module that declares its own
+/// type of that name, at module level or in a block, gets no hint: the name does resolve there.
+fn with_rename_hint(
+    mut err: MetelError,
+    registry: &TypeDefinitionRegistry,
+    module: &[String],
+) -> MetelError {
+    let MetelError::TypeError {
+        code: TypeErrorCode::T0003,
+        message,
+        ..
+    } = &mut err
+    else {
+        return err;
+    };
+    let Some(subject) = unresolved_subject(message) else {
+        return err;
+    };
+    let mut segments = subject.split("::");
+    let first = segments.next().unwrap_or_default();
+    let named = if first == "std" && segments.next() == Some("core") {
+        segments.next().unwrap_or_default()
+    } else {
+        first
+    };
+    let Some(new) = renamed_core_type(named) else {
+        return err;
+    };
+    if registry.resolve_type_id(module, named).is_some()
+        || !registry.archived_local_type_ids(named).is_empty()
+    {
+        return err;
+    }
+    message.push_str(&rename_hint(named, new));
+    err
+}
+
 #[allow(clippy::too_many_arguments)]
 fn check_impl_with_report(
     program: &Program,
@@ -1416,7 +1490,8 @@ fn check_impl_with_report(
     // Diagnose bad record projections (RFC-0116 §4) now that the registry is complete:
     // the conversion path is infallible and can only leave a stand-in behind, so precise
     // "unknown type / not a struct / no such field" reporting has to happen here.
-    projections::check(program, &reg, current_module_path)?;
+    projections::check(program, &reg, current_module_path)
+        .map_err(|e| with_rename_hint(e, &reg, current_module_path))?;
     let mut ctx = InferContext::new(
         reg,
         type_var_gen,
@@ -1448,7 +1523,8 @@ fn check_impl_with_report(
     // Pass 1: walk AST, emit constraints, collect function generalizations.
     let started = Instant::now();
     let mut fun_generalizations: Vec<FunGeneralization> = vec![];
-    inference::infer_program(program, &mut ctx, &mut fun_generalizations)?;
+    inference::infer_program(program, &mut ctx, &mut fun_generalizations)
+        .map_err(|e| with_rename_hint(e, ctx.registry(), current_module_path))?;
     let infer_total_ns = elapsed_ns(started);
     let solve_after_inference = ctx.solve_stats();
 
@@ -1497,7 +1573,8 @@ fn check_impl_with_report(
         current_module_path,
         &resolved_facts,
         identity,
-    )?;
+    )
+    .map_err(|e| with_rename_hint(e, ctx.registry(), current_module_path))?;
     let construction_ns = elapsed_ns(started);
 
     // Return only user-defined names. Builtins (from CorePrelude) are available to

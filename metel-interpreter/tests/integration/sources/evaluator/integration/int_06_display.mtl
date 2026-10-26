@@ -22,7 +22,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 // ── Wrapper types ──────────────────────────────────────────────────────────────
@@ -60,12 +60,12 @@ extend StringBag {
 }
 
 extend StringBag: Iterable<String> {
-    fun next(&var self) -> Perhaps<String> {
+    fun next(&var self) -> Option<String> {
         if (self.pos < self.items.len()) {
             let pos := self.pos;
             self.pos := pos + 1;
             let v := (&self.items[pos as u64]).to_string();
-            Perhaps::Some { value = v }
+            Option::Some { value = v }
         } else {
             None
         }

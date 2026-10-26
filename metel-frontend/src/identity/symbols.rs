@@ -241,7 +241,7 @@ builtins! {
     F32, "f32", Type;
     F64, "f64", Type;
     List, "List", Type;
-    Perhaps, "Perhaps", Type;
+    Option, "Option", Type;
     Result, "Result", Type;
     Range, "Range", Type;
     RangeInclusive, "RangeInclusive", Type;
@@ -282,7 +282,7 @@ pub const SYM_TYPE_U64: SymbolId = Builtin::U64.id();
 pub const SYM_TYPE_F32: SymbolId = Builtin::F32.id();
 pub const SYM_TYPE_F64: SymbolId = Builtin::F64.id();
 pub const SYM_TYPE_LIST: SymbolId = Builtin::List.id();
-pub const SYM_TYPE_PERHAPS: SymbolId = Builtin::Perhaps.id();
+pub const SYM_TYPE_OPTION: SymbolId = Builtin::Option.id();
 pub const SYM_TYPE_RESULT: SymbolId = Builtin::Result.id();
 pub const SYM_TYPE_RANGE: SymbolId = Builtin::Range.id();
 pub const SYM_TYPE_RANGE_INCLUSIVE: SymbolId = Builtin::RangeInclusive.id();
@@ -446,8 +446,8 @@ mod architecture_evidence_tests {
     fn builtin_std_core_declarations_are_pre_seeded_at_their_fixed_ids() {
         let mut table = SymbolTable::new();
         assert_eq!(
-            table.intern(&std_core(), Namespace::Type, "Perhaps"),
-            SYM_TYPE_PERHAPS
+            table.intern(&std_core(), Namespace::Type, "Option"),
+            SYM_TYPE_OPTION
         );
         assert_eq!(
             table.intern(&std_core(), Namespace::Type, "String"),
@@ -610,8 +610,8 @@ mod architecture_evidence_tests {
         );
         assert_eq!(builtin_symbol("Display", BuiltinKind::Type), None);
         assert_eq!(
-            builtin_symbol("Perhaps", BuiltinKind::Type),
-            Some(SYM_TYPE_PERHAPS)
+            builtin_symbol("Option", BuiltinKind::Type),
+            Some(SYM_TYPE_OPTION)
         );
         assert_eq!(builtin_symbol("NotABuiltin", BuiltinKind::Type), None);
     }

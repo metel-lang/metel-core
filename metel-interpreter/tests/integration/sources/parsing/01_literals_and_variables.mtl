@@ -37,10 +37,10 @@ fun main() {
     println(plain_dollar);              // $5
 
     // --- None literal ---
-    let maybe: Perhaps<i64> := None;
+    let maybe: Option<i64> := None;
     match (maybe) {
-        Perhaps::Some { value } => println(int_to_string(value)),
-        Perhaps::None => println("nope"),   // nope
+        Option::Some { value } => println(int_to_string(value)),
+        Option::None => println("nope"),   // nope
     }
 
     // --- mutable bindings ---

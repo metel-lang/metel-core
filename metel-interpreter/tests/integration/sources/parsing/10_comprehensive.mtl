@@ -19,7 +19,7 @@ extend Stack<i64> {
         array_push(self.items, value);
     }
 
-    fun pop(&var self) -> Perhaps<i64> {
+    fun pop(&var self) -> Option<i64> {
         let len := array_len(self.items);
         if (len == 0) {
             return nope;
@@ -36,7 +36,7 @@ extend Stack<i64> {
         return top;
     }
 
-    fun peek(self) -> Perhaps<i64> {
+    fun peek(self) -> Option<i64> {
         let len := array_len(self.items);
         if (len == 0) {
             return nope;
@@ -135,27 +135,27 @@ fun main() {
     println(int_to_string(s.size()));        // 3
 
     match (s.peek()) {
-        Perhaps::Some { value } => println(int_to_string(value)),   // 30
-        Perhaps::None => println("empty"),
+        Option::Some { value } => println(int_to_string(value)),   // 30
+        Option::None => println("empty"),
     }
 
     match (s.pop()) {
-        Perhaps::Some { value } => println(int_to_string(value)),   // 30
-        Perhaps::None => println("empty"),
+        Option::Some { value } => println(int_to_string(value)),   // 30
+        Option::None => println("empty"),
     }
     println(int_to_string(s.size()));        // 2
 
     match (s.pop()) {
-        Perhaps::Some { value } => println(int_to_string(value)),   // 20
-        Perhaps::None => println("empty"),
+        Option::Some { value } => println(int_to_string(value)),   // 20
+        Option::None => println("empty"),
     }
     match (s.pop()) {
-        Perhaps::Some { value } => println(int_to_string(value)),   // 10
-        Perhaps::None => println("empty"),
+        Option::Some { value } => println(int_to_string(value)),   // 10
+        Option::None => println("empty"),
     }
     match (s.pop()) {
-        Perhaps::Some { value } => println(int_to_string(value)),
-        Perhaps::None => println("stack empty"),                     // stack empty
+        Option::Some { value } => println(int_to_string(value)),
+        Option::None => println("stack empty"),                     // stack empty
     }
 
     // --- Tokens ---

@@ -1,0 +1,17 @@
+// RFC-0184 (metel-core#1625): Option<T> is the built-in optional type: annotations, qualified paths and std::core's own
+// APIs all spell it.
+fun first(xs: [i64]) -> Option<i64> {
+    if (xs.len() == 0) {
+        return None;
+    }
+    Some { value = xs[0] }
+}
+
+fun main() {
+    assert(first([4, 5]).unwrap_or(0) == 4);
+    assert(first([]).is_none());
+    let q: std::core::Option<i64> := std::core::Option::Some { value = 2 };
+    assert(q.unwrap_or(0) == 2);
+    let r: Result<i64, String> := Ok { value = 1 };
+    assert(r.ok().unwrap_or(0) == 1);
+}

@@ -17,7 +17,7 @@
 // not the bogus placeholder.
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 struct Wrapper<T> {
@@ -26,12 +26,12 @@ struct Wrapper<T> {
 }
 
 extend<T: Clone> Wrapper<T>: Iterable<T> {
-    fun next(&var self) -> Perhaps<T> {
+    fun next(&var self) -> Option<T> {
         if (self.used) {
             return None;
         }
         self.used := true;
-        return Perhaps::Some { value = self.value.clone() };
+        return Option::Some { value = self.value.clone() };
     }
 }
 

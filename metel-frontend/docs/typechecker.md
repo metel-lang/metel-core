@@ -607,7 +607,7 @@ restoration, and also checks unused or shadowed captures. See
 - An unguarded `_`, bare binding pattern, or irrefutable tuple `(a, b, ...)` is a catch-all — exhaustive.
 - **Guarded arms do not count**: a guard may fail at runtime.
 - `Bool`: must cover `true` and `false` (both unguarded).
-- `Perhaps(_)`: must cover `Perhaps::Some` and `Perhaps::Nope`.
+- `Option(_)`: must cover `Option::Some` and `Option::Nope`.
 - `Result(_, _)`: must cover `Result::Ok` and `Result::Err`.
 - Named enum: must cover every variant.
 - `Never`: vacuously exhaustive.

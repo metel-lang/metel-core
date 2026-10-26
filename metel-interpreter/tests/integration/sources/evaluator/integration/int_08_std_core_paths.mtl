@@ -1,10 +1,10 @@
-// Integration Test 8 — Core type completeness: Perhaps and Result (v0.6.0)
+// Integration Test 8 — Core type completeness: Option and Result (v0.6.0)
 //
 // Feature coverage:
-//   Perhaps<T> construction, matching, and chaining
+//   Option<T> construction, matching, and chaining
 //   Result<T,E> construction, matching, ? propagation, and From coercion
-//   Generic functions over Perhaps and Result
-//   Interaction: function returning Perhaps used in Result context via map
+//   Generic functions over Option and Result
+//   Interaction: function returning Option used in Result context via map
 //   Regression: ensure #133 (TypeDefinitionRegistry) did not break these paths
 
 // ── Result helpers ────────────────────────────────────────────────────────────
@@ -44,27 +44,27 @@ fun add_parsed(a: String, b: String) -> Result<i64, MathError> {
     Result::Ok { value = x + y }
 }
 
-// ── Perhaps helpers ───────────────────────────────────────────────────────────
+// ── Option helpers ───────────────────────────────────────────────────────────
 
-fun find_in(arr: [i64], target: i64) -> Perhaps<i64> {
+fun find_in(arr: [i64], target: i64) -> Option<i64> {
     var i := 0;
     while (i < arr.len()) {
-        if (arr[i as u64] == target) { return Perhaps::Some { value = i }; }
+        if (arr[i as u64] == target) { return Option::Some { value = i }; }
         i += 1;
     }
     None
 }
 
-fun map_some(p: Perhaps<i64>, factor: i64) -> Perhaps<i64> {
+fun map_some(p: Option<i64>, factor: i64) -> Option<i64> {
     match (p) {
-        Perhaps::Some { value } => Perhaps::Some { value = value * factor },
+        Option::Some { value } => Option::Some { value = value * factor },
         None => None,
     }
 }
 
-fun perhaps_to_result(p: Perhaps<i64>, error: String) -> Result<i64, String> {
+fun perhaps_to_result(p: Option<i64>, error: String) -> Result<i64, String> {
     match (p) {
-        Perhaps::Some { value } => Result::Ok { value = value },
+        Option::Some { value } => Result::Ok { value = value },
         None => Result::Err { error = error },
     }
 }
@@ -118,46 +118,46 @@ fun main() {
         Result::Err { error } => assert(error.msg == "parse: bad input: x"),
     };
 
-    // ── Perhaps: find_in ──────────────────────────────────────────────────────
+    // ── Option: find_in ──────────────────────────────────────────────────────
 
     let arr := [10, 20, 30, 40, 50];
 
     let f1 := find_in(arr, 30);
     match (f1) {
-        Perhaps::Some { value } => assert(value == 2),
+        Option::Some { value } => assert(value == 2),
         None => assert(false),
     };
 
     let f2 := find_in(arr, 99);
     match (f2) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
 
-    // ── Perhaps chaining via map_some ─────────────────────────────────────────
+    // ── Option chaining via map_some ─────────────────────────────────────────
 
-    let m1 := map_some(Perhaps::Some { value = 5 }, 3);
+    let m1 := map_some(Option::Some { value = 5 }, 3);
     match (m1) {
-        Perhaps::Some { value } => assert(value == 15),
+        Option::Some { value } => assert(value == 15),
         None => assert(false),
     };
 
     let m2 := map_some(None, 3);
     match (m2) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None => assert(true),
     };
 
     // map_some of a find_in result
     let mapped := map_some(find_in(arr, 20), 10);
     match (mapped) {
-        Perhaps::Some { value } => assert(value == 10), // index 1, multiplied by 10
+        Option::Some { value } => assert(value == 10), // index 1, multiplied by 10
         None => assert(false),
     };
 
     // ── perhaps_to_result bridge ──────────────────────────────────────────────
 
-    let p2r_ok := perhaps_to_result(Perhaps::Some { value = 7 }, "not found");
+    let p2r_ok := perhaps_to_result(Option::Some { value = 7 }, "not found");
     match (p2r_ok) {
         Result::Ok  { value } => assert(value == 7),
         Result::Err { error } => assert(false),
@@ -169,7 +169,7 @@ fun main() {
         Result::Err { error } => assert(error == "not found"),
     };
 
-    // Combine find_in (returns Perhaps) with perhaps_to_result (converts to Result)
+    // Combine find_in (returns Option) with perhaps_to_result (converts to Result)
     let bridge := perhaps_to_result(find_in(arr, 40), "missing");
     match (bridge) {
         Result::Ok  { value } => assert(value == 3), // index 3

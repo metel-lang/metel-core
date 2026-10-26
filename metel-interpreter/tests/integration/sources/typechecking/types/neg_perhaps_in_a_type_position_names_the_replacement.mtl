@@ -1,0 +1,4 @@
+// RFC-0184 (metel-core#1625): the removed name written as a parameter type.
+fun f(x: Perhaps<i64>) -> i64 { 0 }
+
+fun main() { }

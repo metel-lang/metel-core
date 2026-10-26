@@ -59,8 +59,7 @@ fn the_intrinsic_type_names_are_the_builtin_types_core_does_not_declare() {
         assert!(is_intrinsic_type_name(name), "{name}");
     }
     for name in [
-        "List", "Perhaps", "Result", "Display", "Iterable", "From", "Copy", "Point", "string",
-        "I64",
+        "List", "Option", "Result", "Display", "Iterable", "From", "Copy", "Point", "string", "I64",
     ] {
         assert!(!is_intrinsic_type_name(name), "{name}");
     }

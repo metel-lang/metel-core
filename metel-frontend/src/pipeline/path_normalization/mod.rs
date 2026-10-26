@@ -585,7 +585,7 @@ fn try_resolve_path(
 
 /// Resolve a struct-literal path by stripping a module prefix, returning the local
 /// `type[+variant]` path and the constructed type's stable `SymbolId` (METEL-185).
-/// For `["std", "core", "Perhaps", "Some"]` returns `(["Perhaps", "Some"], id_of(Perhaps))`.
+/// For `["std", "core", "Option", "Some"]` returns `(["Option", "Some"], id_of(Option))`.
 /// Returns `None` if the path starts with a type name, not a module.
 fn try_normalize_struct_path(
     path: &[String],

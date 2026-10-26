@@ -1,4 +1,4 @@
-// metel-core#279: `==` on an enum, including the builtin `Perhaps` previously typechecked and then aborted at run time
+// metel-core#279: `==` on an enum, including the builtin `Option` previously typechecked and then aborted at run time
 // with `[I0001] internal error: binop: unsupported operand types ... (typechecker should
 // have caught this)` — `construct_binop`'s Eq/Ne arm returned `Type::Boolean` with no
 // operand check at all, beside an ordering arm that does check.
@@ -7,7 +7,7 @@
 // RFC-0062. For references specifically, peeling would also silently settle whether two
 // references compare referents or identity, which is deliberately open.
 fun main() {
-    let a: Perhaps<i64> := None;
-    let b: Perhaps<i64> := None;
+    let a: Option<i64> := None;
+    let b: Option<i64> := None;
     let same := a == b; // ERROR[T0005]
 }

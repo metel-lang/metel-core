@@ -24,7 +24,7 @@ aspect From<T> {
 }
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 // ── Error types ────────────────────────────────────────────────────────────────
@@ -71,11 +71,11 @@ extend NumberList {
 }
 
 extend NumberList: Iterable<i64> {
-    fun next(&var self) -> Perhaps<i64> {
+    fun next(&var self) -> Option<i64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
             self.pos := self.pos + 1;
-            Perhaps::Some { value = v }
+            Option::Some { value = v }
         } else {
             None
         }

@@ -1,15 +1,15 @@
-// std::core Perhaps<T> and Result<T, E> ergonomic methods (METEL-159).
+// std::core Option<T> and Result<T, E> ergonomic methods (METEL-159).
 // Pure-Metel methods defined on the core sum types, auto-imported via std::core.
 //
 // map/and_then/unwrap_or/unwrap_or_else/map_err/ok all take `self` by value
 // (RFC-0067a SS3a: a value can never be moved out of a reference), so each
-// consuming call below gets its own fresh Perhaps/Result rather than reusing
+// consuming call below gets its own fresh Option/Result rather than reusing
 // one binding across several by-value calls.
 
 fun main() {
-    // ── Perhaps ──────────────────────────────────────────────────────────────
-    let some := Perhaps::Some { value = 21 };
-    let none: Perhaps<i64> := Perhaps::None;
+    // ── Option ──────────────────────────────────────────────────────────────
+    let some := Option::Some { value = 21 };
+    let none: Option<i64> := Option::None;
 
     assert((&some).is_some());
     assert(!(&some).is_none());
@@ -17,28 +17,28 @@ fun main() {
     assert(!(&none).is_some());
 
     // map transforms Some, passes through None
-    let some_map1 := Perhaps::Some { value = 21 };
+    let some_map1 := Option::Some { value = 21 };
     assert(some_map1.map(|x: i64| -> i64 { x * 2 }).unwrap_or(0) == 42);
-    let none_map: Perhaps<i64> := Perhaps::None;
+    let none_map: Option<i64> := Option::None;
     assert(none_map.map(|x: i64| -> i64 { x * 2 }).unwrap_or(-1) == -1);
     // map may change the element type
-    let some_map2 := Perhaps::Some { value = 21 };
+    let some_map2 := Option::Some { value = 21 };
     assert(some_map2.map(|x: i64| -> String { "v" }).unwrap_or("none") == "v");
 
-    // and_then chains a Perhaps-returning function
-    let some_and_then1 := Perhaps::Some { value = 21 };
-    assert(some_and_then1.and_then(|x: i64| -> Perhaps<i64> { Perhaps::Some { value = x + 1 } }).unwrap_or(0) == 22);
-    let some_and_then2 := Perhaps::Some { value = 21 };
-    assert(some_and_then2.and_then(|x: i64| -> Perhaps<i64> { Perhaps::None }).is_none());
+    // and_then chains a Option-returning function
+    let some_and_then1 := Option::Some { value = 21 };
+    assert(some_and_then1.and_then(|x: i64| -> Option<i64> { Option::Some { value = x + 1 } }).unwrap_or(0) == 22);
+    let some_and_then2 := Option::Some { value = 21 };
+    assert(some_and_then2.and_then(|x: i64| -> Option<i64> { Option::None }).is_none());
 
     // unwrap_or / unwrap_or_else
-    let some_unwrap1 := Perhaps::Some { value = 21 };
+    let some_unwrap1 := Option::Some { value = 21 };
     assert(some_unwrap1.unwrap_or(0) == 21);
-    let none_unwrap1: Perhaps<i64> := Perhaps::None;
+    let none_unwrap1: Option<i64> := Option::None;
     assert(none_unwrap1.unwrap_or(7) == 7);
-    let none_unwrap2: Perhaps<i64> := Perhaps::None;
+    let none_unwrap2: Option<i64> := Option::None;
     assert(none_unwrap2.unwrap_or_else(|| -> i64 { 9 }) == 9);
-    let some_unwrap2 := Perhaps::Some { value = 21 };
+    let some_unwrap2 := Option::Some { value = 21 };
     assert(some_unwrap2.unwrap_or_else(|| -> i64 { 9 }) == 21);
 
     // ── Result ───────────────────────────────────────────────────────────────

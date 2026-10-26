@@ -8,7 +8,7 @@
 All three remaining points are implemented and committed on this branch:
 
 ### 1. The full core surface lives in `stdlib/core.mtl`
-- `Perhaps`/`Result` enums, the `Display`/`From<S>`/`Iterable<T>` aspects,
+- `Option`/`Result` enums, the `Display`/`From<S>`/`Iterable<T>` aspects,
   `struct List<T>` + its seven native methods, the 13 primitive Display impls,
   the full numeric `From` cross-product, and `Char ↔ u32` — all declared in
   the embedded std::core source, bound to Rust hosts via the closed `NativeKey`

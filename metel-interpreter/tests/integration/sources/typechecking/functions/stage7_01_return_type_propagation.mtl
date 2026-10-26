@@ -2,8 +2,8 @@
 // Pass 2 must propagate the declared return type into return/break expressions
 // so that None and bare enum variants can be typed without a local annotation.
 
-// Return None in a Perhaps<i64>-returning function.
-fun find(arr: [i64], target: i64) -> Perhaps<i64> {
+// Return None in a Option<i64>-returning function.
+fun find(arr: [i64], target: i64) -> Option<i64> {
     return None;
 }
 
@@ -15,9 +15,9 @@ fun divide(a: f64, b: f64) -> Result<f64, String> {
     return Result::Ok { value = a / b };
 }
 
-// Break None in a loop whose result is annotated as Perhaps<i64>.
-fun first_positive(arr: [i64]) -> Perhaps<i64> {
-    let result: Perhaps<i64> := loop {
+// Break None in a loop whose result is annotated as Option<i64>.
+fun first_positive(arr: [i64]) -> Option<i64> {
+    let result: Option<i64> := loop {
         break None;
     };
     result

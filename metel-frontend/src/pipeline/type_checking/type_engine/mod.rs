@@ -3619,7 +3619,7 @@ impl TypeDefinitionRegistry {
         }
 
         // `std::core` is in every module's scope without an import, so its explicit
-        // path names its types too (`std::core::Perhaps<i64>`), the same as the
+        // path names its types too (`std::core::Option<i64>`), the same as the
         // expression-path form (spec.modules.std-core-auto-import.legality-1).
         if first == "std"
             && rest == ["core"]

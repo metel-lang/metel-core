@@ -1,7 +1,7 @@
 // User-defined Iterable via aspect — for-in dispatches through next().
 
 aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 struct Counter {
@@ -16,11 +16,11 @@ extend Counter {
 }
 
 extend Counter: Iterable<i64> {
-    fun next(&var self) -> Perhaps<i64> {
+    fun next(&var self) -> Option<i64> {
         if (self.current < self.limit) {
             let val := self.current;
             self.current := self.current + 1;
-            return Perhaps::Some { value = val };
+            return Option::Some { value = val };
         }
         return None;
     }

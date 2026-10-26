@@ -1,1 +1,1 @@
-fun main() { let x := Perhaps::Some { value = 1 }; }
+fun main() { let x := Option::Some { value = 1 }; }

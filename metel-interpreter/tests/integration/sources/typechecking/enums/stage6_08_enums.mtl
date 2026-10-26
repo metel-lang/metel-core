@@ -25,13 +25,13 @@ let area: f64 := match (s1) {
     Shape::Rectangle { width, height } => width * height,
 };
 
-// Built-in Perhaps<T>
-let some_val: Perhaps<i64> := Perhaps::Some { value = 42 };
-let no_val: Perhaps<i64> := Perhaps::None;
+// Built-in Option<T>
+let some_val: Option<i64> := Option::Some { value = 42 };
+let no_val: Option<i64> := Option::None;
 
-// Match on Perhaps
+// Match on Option
 let result_int: i64 := match (some_val) {
-    Perhaps::Some { value } => value,
+    Option::Some { value } => value,
     None => 0,
 };
 

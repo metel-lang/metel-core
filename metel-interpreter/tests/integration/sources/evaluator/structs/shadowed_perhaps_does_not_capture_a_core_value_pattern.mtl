@@ -1,8 +1,8 @@
-// metel-core#1585: a user enum named `Perhaps` shadows the core one in this module, but a
-// `Perhaps` value that comes from std is matched against its own declaration, not the spelling.
+// metel-core#1585: a user enum named `Option` shadows the core one in this module, but a
+// `Option` value that comes from std is matched against its own declaration, not the spelling.
 import std::env::get;
 
-enum Perhaps<T> {
+enum Option<T> {
     Nope,
 }
 

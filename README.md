@@ -118,7 +118,7 @@ fun load_config() -> Result<String, AppError> {
 ```
 
 Also: generics with full monomorphization, a module system (`import`/`export`, `pub`
-visibility), `Perhaps<T>` instead of null, string interpolation, and a growing standard
+visibility), `Option<T>` instead of null, string interpolation, and a growing standard
 library (`List<T>`, `String`, host-backed `fs`/`env`/`process` modules).
 
 ## What's next

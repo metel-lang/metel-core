@@ -1,10 +1,10 @@
 // metel-core#1587: the explicit `std::core::` path names a core type in a type position, also where
 // the module declares a type of the same name.
-enum Perhaps<T> {
+enum Option<T> {
     Nope,
 }
 
-fun first(values: [i64]) -> std::core::Perhaps<i64> {
+fun first(values: [i64]) -> std::core::Option<i64> {
     if (values.len() == 0) {
         return None;
     }

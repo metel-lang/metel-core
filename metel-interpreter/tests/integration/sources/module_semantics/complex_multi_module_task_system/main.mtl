@@ -92,7 +92,7 @@ fun main() {
     let tasks_for_found := make_tasks();
     let found := find_by_title(tasks_for_found, "Write tests");
     match (found) {
-        Perhaps::Some { value } => assert(value.effort == 3),
+        Option::Some { value } => assert(value.effort == 3),
         None                    => assert(false),
     };
 
@@ -100,7 +100,7 @@ fun main() {
     let tasks_for_not_found := make_tasks();
     let not_found := find_by_title(tasks_for_not_found, "nonexistent");
     match (not_found) {
-        Perhaps::Some { value } => assert(false),
+        Option::Some { value } => assert(false),
         None                    => (),
     };
 
@@ -123,7 +123,7 @@ fun main() {
         clone_task,
     );
     match (first_done) {
-        Perhaps::Some { value } => assert(value.title == "Deploy"),
+        Option::Some { value } => assert(value.title == "Deploy"),
         None                    => assert(false),
     };
 

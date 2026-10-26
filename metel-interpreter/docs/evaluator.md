@@ -61,7 +61,7 @@ pub enum RuntimeCallable {
 - Passing an array to a function gives the function its own copy; `array_push` inside the function does not mutate the caller's array.
 - `array_push` applied to the binding itself mutates through the `Rc<RefCell>` as expected.
 
-**`Perhaps` and `Result`** are represented as `Value::Enum` — the same general enum representation used for all user-defined enum types. `Perhaps::Some { value: v }` produces `Value::Enum { name: "Perhaps", variant: "Some", fields: { "value": v } }`, `None` produces `Value::Enum { name: "Perhaps", variant: "None", fields: {} }`, and so on. Pattern matching and the `?` operator use the general enum path, not dedicated variants. (Dedicated `Value::Perhaps` and `Value::Result` variants were removed in #205.)
+**`Option` and `Result`** are represented as `Value::Enum` — the same general enum representation used for all user-defined enum types. `Option::Some { value: v }` produces `Value::Enum { name: "Option", variant: "Some", fields: { "value": v } }`, `None` produces `Value::Enum { name: "Option", variant: "None", fields: {} }`, and so on. Pattern matching and the `?` operator use the general enum path, not dedicated variants. (Dedicated `Value::Option` and `Value::Result` variants were removed in #205.)
 
 ### Range representation
 

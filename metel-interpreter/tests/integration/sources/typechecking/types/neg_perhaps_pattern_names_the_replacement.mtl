@@ -1,0 +1,8 @@
+// RFC-0184 (metel-core#1625): the removed name as the enum of a pattern.
+fun main() {
+    let v: Option<i64> := None;
+    match (v) {
+        Perhaps::None => { },
+        Perhaps::Some { value } => { },
+    }
+}

@@ -298,7 +298,7 @@ Sensitive rules:
 
 - `Substitution::compose` is ordered; verify direction at every changed call.
 - `Never` is a bottom type; typechecking alone cannot prove runtime behavior.
-- `Perhaps` and `Result` are distinct `Type` variants; normalize through established
+- `Option` and `Result` are distinct `Type` variants; normalize through established
   conversions where named types are handled uniformly.
 - Apply substitutions before `infer_type_to_type`; unresolved variables are errors.
 - `crate::data::types::Type` contains no type variables. Abstract parameters are

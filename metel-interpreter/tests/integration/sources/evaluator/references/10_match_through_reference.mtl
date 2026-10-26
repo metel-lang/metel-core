@@ -32,7 +32,7 @@ fun name_mut(c: &var Colour) -> String {
 }
 
 // Bindings introduced through a reference-matched pattern copy the referent.
-fun payload(v: &Perhaps<i64>) -> i64 {
+fun payload(v: &Option<i64>) -> i64 {
     match (v) {
         Some { value } => value,
         None           => -1,
@@ -47,8 +47,8 @@ fun main() {
     var d := Colour::Blue;
     assert(name_mut(&var d) == "blue");
 
-    let some: Perhaps<i64> := Perhaps::Some { value = 7 };
-    let none: Perhaps<i64> := Perhaps::None;
+    let some: Option<i64> := Option::Some { value = 7 };
+    let none: Option<i64> := Option::None;
     assert(payload(&some) == 7);
     assert(payload(&none) == -1);
 

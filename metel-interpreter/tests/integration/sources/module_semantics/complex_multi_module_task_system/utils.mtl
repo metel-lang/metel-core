@@ -7,11 +7,11 @@ public fun fold_left<T, A>(arr: [T], init: A, f: |A, &T| -> A) -> A {
     acc
 }
 
-public fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Perhaps<T> {
+public fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Perhaps::Some { value = clone(&arr[i as u64]) };
+            return Option::Some { value = clone(&arr[i as u64]) };
         }
         i += 1;
     }

@@ -2,8 +2,8 @@ enum Colour { Red, Green, Blue }
 
 struct Holder {
     colour: Colour,
-    maybe: Perhaps<i64>,
-    nothing: Perhaps<i64>,
+    maybe: Option<i64>,
+    nothing: Option<i64>,
     ok: Result<i64, String>,
     err: Result<i64, String>,
 }

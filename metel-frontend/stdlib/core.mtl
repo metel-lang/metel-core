@@ -16,51 +16,51 @@
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
-public enum Perhaps<T> {
+public enum Option<T> {
     Some { public value: T },
     None,
 }
 
-extend Perhaps<T> {
+extend Option<T> {
     // True when this is `Some`.
     public fun is_some(&self) -> boolean {
         match (self) {
-            Perhaps::Some { value } => true,
+            Option::Some { value } => true,
             _ => false,
         }
     }
     // True when this is `None`.
     public fun is_none(&self) -> boolean {
         match (self) {
-            Perhaps::Some { value } => false,
+            Option::Some { value } => false,
             _ => true,
         }
     }
     // Transform the contained value, leaving `None` untouched.
-    public fun map<U>(self, f: |T| -> U) -> Perhaps<U> {
+    public fun map<U>(self, f: |T| -> U) -> Option<U> {
         match (self) {
-            Perhaps::Some { value } => Perhaps::Some { value = f(value) },
-            _ => Perhaps::None,
+            Option::Some { value } => Option::Some { value = f(value) },
+            _ => Option::None,
         }
     }
-    // Chain a computation that itself returns a `Perhaps`.
-    public fun and_then<U>(self, f: |T| -> Perhaps<U>) -> Perhaps<U> {
+    // Chain a computation that itself returns a `Option`.
+    public fun and_then<U>(self, f: |T| -> Option<U>) -> Option<U> {
         match (self) {
-            Perhaps::Some { value } => f(value),
-            _ => Perhaps::None,
+            Option::Some { value } => f(value),
+            _ => Option::None,
         }
     }
     // The contained value, or `fallback` when `None`.
     public fun unwrap_or(self, fallback: T) -> T {
         match (self) {
-            Perhaps::Some { value } => value,
+            Option::Some { value } => value,
             _ => fallback,
         }
     }
     // The contained value, or the result of `f()` when `None`.
     public fun unwrap_or_else(self, f: || -> T) -> T {
         match (self) {
-            Perhaps::Some { value } => value,
+            Option::Some { value } => value,
             _ => f(),
         }
     }
@@ -69,7 +69,7 @@ extend Perhaps<T> {
     // `.unwrap_or`/`.unwrap_or_else` for expected absence.
     public fun yolo(self) -> T {
         match (self) {
-            Perhaps::Some { value } => value,
+            Option::Some { value } => value,
             _ => yolo_none(),
         }
     }
@@ -77,7 +77,7 @@ extend Perhaps<T> {
     // becomes `Err { error }`.
     public fun ok_or<E>(self, error: E) -> Result<T, E> {
         match (self) {
-            Perhaps::Some { value } => Result::Ok { value = value },
+            Option::Some { value } => Result::Ok { value = value },
             _ => Result::Err { error = error },
         }
     }
@@ -148,12 +148,12 @@ extend Result<T, E> {
             Result::Err { error } => Result::Err { error = f(error) },
         }
     }
-    // Converts to `Perhaps<T>`: `Ok { value }` becomes `Some { value }`; `Err`
+    // Converts to `Option<T>`: `Ok { value }` becomes `Some { value }`; `Err`
     // becomes `None`. The error value is discarded.
-    public fun ok(self) -> Perhaps<T> {
+    public fun ok(self) -> Option<T> {
         match (self) {
-            Result::Ok { value } => Perhaps::Some { value = value },
-            _ => Perhaps::None,
+            Result::Ok { value } => Option::Some { value = value },
+            _ => Option::None,
         }
     }
 }
@@ -207,7 +207,7 @@ public aspect From<S> {
 }
 
 public aspect Iterable<T> {
-    fun next(&var self) -> Perhaps<T>;
+    fun next(&var self) -> Option<T>;
 }
 
 extend i8: Copy;
@@ -240,12 +240,12 @@ extend List<T> {
     native(@std.core.list_new)      fun new() -> List<T>;
     native(@std.core.list_from)     fun from(src: [T]) -> List<T>;
     native(@std.core.list_push)     fun push(&var self, x: T);
-    native(@std.core.list_pop)      fun pop(&var self) -> Perhaps<T>;
+    native(@std.core.list_pop)      fun pop(&var self) -> Option<T>;
     native(@std.core.list_len)      fun len(&self) -> i64;
-    native(@std.core.list_get)      fun get(&self, i: i64) -> Perhaps<T>;
+    native(@std.core.list_get)      fun get(&self, i: i64) -> Option<T>;
     // Overwrites the element at `i`, returning the value it replaced, or `None`
     // if `i` is out of bounds — total, like `get`, rather than panicking.
-    native(@std.core.list_set)      fun set(&var self, i: i64, value: T) -> Perhaps<T>;
+    native(@std.core.list_set)      fun set(&var self, i: i64, value: T) -> Option<T>;
     native(@std.core.list_as_slice) fun as_slice(&self) -> [T];
 
     // ── Ergonomics (METEL-160) ──────────────────────────────────────────────
@@ -280,13 +280,13 @@ extend List<T> {
         acc
     }
     // The first element satisfying `pred`, or `None`.
-    public fun find(&self, pred: |T| -> boolean) -> Perhaps<T> {
+    public fun find(&self, pred: |T| -> boolean) -> Option<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
-                return Perhaps::Some { value = x };
+                return Option::Some { value = x };
             }
         }
-        Perhaps::None
+        Option::None
     }
     // A new list with this list's elements followed by `other`'s.
     public fun concat(&self, other: &List<T>) -> List<T> {
@@ -306,7 +306,7 @@ extend List<T> {
 // concurrent loops each get an independent cursor while sharing the backing
 // array's normal list semantics.
 extend<T> List<T>: Iterable<T> {
-    fun next(&var self) -> Perhaps<T> {
+    fun next(&var self) -> Option<T> {
         let index := self.cursor;
         self.cursor := self.cursor + 1;
         self.get(index)
@@ -335,7 +335,7 @@ extend String {
     native(@std.core.string_starts_with) fun starts_with(&self, prefix: String) -> boolean;
     native(@std.core.string_ends_with)   fun ends_with(&self, suffix: String) -> boolean;
     // Scalar index of the first occurrence of `needle`, or `None`.
-    native(@std.core.string_index_of)    fun index_of(&self, needle: String) -> Perhaps<i64>;
+    native(@std.core.string_index_of)    fun index_of(&self, needle: String) -> Option<i64>;
 
     // ── Split, join, replace ────────────────────────────────────────────────
     // Split on every occurrence of `sep`. An empty `sep` yields the whole string.
@@ -349,7 +349,7 @@ extend String {
     // ── Chars & slicing ─────────────────────────────────────────────────────
     native(@std.core.string_chars)     fun chars(&self) -> [Char];
     // The character at scalar index `i`, or `None` if out of range.
-    native(@std.core.string_char_at)   fun char_at(&self, i: i64) -> Perhaps<Char>;
+    native(@std.core.string_char_at)   fun char_at(&self, i: i64) -> Option<Char>;
     // The substring over the scalar range [start, end), with indices clamped.
     native(@std.core.string_substring) fun substring(&self, start: i64, end: i64) -> String;
 }
@@ -379,7 +379,7 @@ native(@std.core.clock)      public fun clock() -> i64;
 
 // `.yolo()`'s two panicking arms (issue #232). Both always panic — there is no
 // well-typed "success" case — so `T` is inferred from the enclosing function's
-// declared return type at each call site, the same way `Perhaps::None` itself
+// declared return type at each call site, the same way `Option::None` itself
 // infers `T` with no value argument at all.
 native(@std.core.yolo_none) fun yolo_none<T>() -> T;
 native(@std.core.yolo_err)  fun yolo_err<T, E>(error: E) -> T;

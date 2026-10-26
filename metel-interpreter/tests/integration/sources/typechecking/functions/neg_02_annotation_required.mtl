@@ -1,6 +1,6 @@
 // Test: None without annotation
 //
-// `None` infers to Perhaps<?t0> where ?t0 is unconstrained. The solver
+// `None` infers to Option<?t0> where ?t0 is unconstrained. The solver
 // cannot pin it to a concrete type, so the program is a type error (T0002).
 
 let x := None;  // ERROR[T0002]
