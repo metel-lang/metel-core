@@ -2243,7 +2243,6 @@ fn infer_binop(
     }
 }
 
-// arch-implements: ["arch.type-inference.requirement-3"]
 /// Which core constructor a `?` operand or return type names (RFC-0182).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PropagateKind {
@@ -2300,6 +2299,7 @@ fn propagate_head(ty: &InferType) -> Option<(PropagateKind, String)> {
         .map(|kind| (kind, name.clone()))
 }
 
+// arch-implements: ["arch.type-inference.requirement-3"]
 fn infer_propagate_error(
     expr: &Expr,
     span: &Span,
