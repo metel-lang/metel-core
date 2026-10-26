@@ -75,7 +75,7 @@ Bugs are not planned work, so they are not scheduled into themes.
 The numbered list is the priority order: each theme comes after the ones it lists in its
 milestone description (`After:`). The tag is its horizon, how near it is.
 
-1. **v0.14.1** [now]: CI and documentation tooling stop failing for unrelated reasons; the pending-marker process exists.
+1. **v0.15.0** [now]: The language-surface RFCs drafted 2026-10-24 are settled and, where accepted, integrated.
 2. **Copy/Clone settlement** [next]: The Copy/Clone model is decided, so ownership work has a stable target.
 3. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
 4. **Move check default-on** [next]: The move check runs by default on every program.
