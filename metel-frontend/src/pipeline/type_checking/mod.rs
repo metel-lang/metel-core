@@ -523,16 +523,10 @@ fn check_one_module(
         .collect();
     let pub_overloads = filter_pub_overloads(&report.overloads, loaded, names);
 
-    // Add builtin schemes so construction-at-call-time can resolve builtins
-    // like `array_len` inside generic function bodies.
-    let mut full_scheme_env = report.scheme_env;
-    registry::register_builtin_schemes(&mut full_scheme_env, std_prelude);
-
     Ok(CheckedModule {
         typed_module: TypedModule {
             module_path: loaded.module_path.clone(),
             decls: report.typed_decls,
-            scheme_env: full_scheme_env,
             scheme_ids: report.scheme_ids,
             overloads: std::rc::Rc::new(report.overloads.clone()),
         },
@@ -1499,7 +1493,6 @@ fn check_impl_with_report(
         &scheme_ids,
         ctx.registry(),
         type_var_gen,
-        symbols,
         &overloads,
         current_module_path,
         &resolved_facts,

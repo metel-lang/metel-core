@@ -19,7 +19,7 @@ fn move_report_for_source(source: &str) -> MoveCheckReport {
 /// on, so a generic body genuinely cannot be analysed.
 fn make_generic_bodies_unanalyzable(graph: &mut TypedModuleGraph) {
     for module in &mut graph.modules {
-        module.scheme_env.clear();
+        module.scheme_ids.clear();
         for decl in &mut module.decls {
             if let TypedDecl::Fun(fun) = decl {
                 fun.abstract_body = None;
@@ -84,7 +84,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -120,7 +120,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -179,7 +179,7 @@ fun main() {}
                         );
                     }
                 }
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -208,7 +208,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -266,7 +266,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -302,7 +302,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -341,7 +341,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -368,7 +368,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -394,7 +394,7 @@ fn abstract_ownership_retains_method_body_only_parameters() {
         );
         let report = move_report_for_source_with(&source, |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         });
         assert_eq!(
@@ -428,7 +428,7 @@ fn abstract_ownership_keeps_all_associated_result_origins() {
             );
             let report = move_report_for_source_with(&source, |graph| {
                 for module in &mut graph.modules {
-                    module.scheme_env.clear();
+                    module.scheme_ids.clear();
                 }
             });
             assert_eq!(
@@ -459,7 +459,7 @@ fn abstract_ownership_does_not_confuse_associated_copy_bound_identity() {
         );
         let report = move_report_for_source_with(&source, |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         });
         assert_eq!(
@@ -481,7 +481,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -516,7 +516,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -544,7 +544,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -577,7 +577,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -601,7 +601,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -657,7 +657,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -687,7 +687,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -716,7 +716,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -743,7 +743,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -768,7 +768,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -792,7 +792,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -816,7 +816,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -863,7 +863,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -885,7 +885,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -930,7 +930,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -952,7 +952,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -991,7 +991,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1027,7 +1027,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1050,7 +1050,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1091,7 +1091,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1115,7 +1115,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1162,7 +1162,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1187,7 +1187,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1214,7 +1214,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1244,7 +1244,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1286,7 +1286,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1320,7 +1320,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1352,7 +1352,7 @@ fn abstract_ownership_does_not_consume_unreachable_for_tails() {
         "fun bad<T>(value: T) { for (;;) { continue; (value, value) } } fun main() {}",
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1405,7 +1405,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1456,7 +1456,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1489,7 +1489,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1547,7 +1547,7 @@ fun main() {}
                 );
             }
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1583,7 +1583,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1613,7 +1613,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1642,7 +1642,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1675,7 +1675,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1706,7 +1706,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1731,7 +1731,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1768,7 +1768,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1795,7 +1795,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1824,7 +1824,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1853,7 +1853,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -1888,7 +1888,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2066,7 +2066,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2117,7 +2117,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2159,7 +2159,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2204,7 +2204,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2244,7 +2244,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2281,7 +2281,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2308,7 +2308,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2378,7 +2378,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2402,7 +2402,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2447,7 +2447,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2489,7 +2489,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2527,7 +2527,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2568,7 +2568,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2601,7 +2601,7 @@ fn abstract_ownership_checks_explicit_call_bound_forwarding() {
         "fun no_drop<T: !Drop>(value: T) -> T { value } fun copied<T: Copy>(value: T) -> T { no_drop::<T>(value) } fun main() {}",
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2627,7 +2627,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2693,7 +2693,7 @@ fun main() {}
                 );
             }
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2755,7 +2755,7 @@ fun main() {}
                 ));
             }
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2782,7 +2782,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2812,7 +2812,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2841,7 +2841,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2872,7 +2872,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
                 for decl in &mut module.decls {
                     let TypedDecl::Fun(fun) = decl else { continue };
                     let label = match fun.name.as_str() {
@@ -2926,7 +2926,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -2966,7 +2966,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3019,7 +3019,7 @@ fun main() {}
                         );
                     }
                 }
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3057,7 +3057,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3088,7 +3088,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3124,7 +3124,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3165,7 +3165,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3203,7 +3203,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3235,7 +3235,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3264,7 +3264,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3564,7 +3564,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -3594,7 +3594,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );
@@ -5315,7 +5315,7 @@ fun main() {}
 "#,
         |graph| {
             for module in &mut graph.modules {
-                module.scheme_env.clear();
+                module.scheme_ids.clear();
             }
         },
     );

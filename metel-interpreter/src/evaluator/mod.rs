@@ -54,7 +54,7 @@ use crate::data::typed_ast::{
     TypedProgram, TypedStmt,
 };
 use crate::identity::symbols::SymbolId;
-use crate::identity::{LocalId, VariantId};
+use crate::identity::{BindingId, LocalId, VariantId};
 use crate::pipeline::elaboration::ElaboratedModuleGraph;
 
 // ── Runtime values ────────────────────────────────────────────────────────────
@@ -1193,6 +1193,10 @@ pub struct ClosureValue {
     /// selected the implementation, so construction must not try to rediscover it by
     /// receiver name (which does not exist for primitive targets).
     pub generic_method_scheme: Option<TypeScheme>,
+    /// The declaration this generic closure's scheme is filed under in the defining module's
+    /// `TypeCtx::scheme_ids`: how its body is reconstructed per call. `None` for a method, whose
+    /// scheme the registry holds.
+    pub scheme_id: Option<BindingId>,
     /// The concrete function type of this closure, if known. Used by `value_to_type` to
     /// recover the closure's parameter/return types when it is passed as a generic argument.
     pub fun_type: Option<crate::data::types::Type>,
@@ -1232,6 +1236,7 @@ fn deep_clone_value(v: Value) -> Value {
                 in_call: Cell::new(false),
                 type_ctx: closure.type_ctx.clone(),
                 generic_method_scheme: closure.generic_method_scheme.clone(),
+                scheme_id: None,
                 fun_type: closure.fun_type.clone(),
             })))
         }
@@ -1625,6 +1630,7 @@ fn structural_method_callable(
         in_call: Cell::new(false),
         type_ctx,
         generic_method_scheme: generic_method_scheme(method, env),
+        scheme_id: None,
         fun_type: None,
     }))
 }
@@ -2201,13 +2207,11 @@ pub fn evaluate_graph_with_options(
 
         // Build type context for construction-at-call-time of generic function bodies.
         let type_ctx = std::rc::Rc::new(TypeCtx {
-            scheme_env: module.scheme_env.clone(),
             scheme_ids: module.scheme_ids.clone(),
             overloads: Rc::clone(&module.overloads),
             registry: graph.type_registry.clone(),
             members: Rc::clone(&identity.members),
             binding_spans: Rc::clone(&identity.binding_spans),
-            symbols: Some(Rc::clone(&identity.symbols)),
             current_module: module.module_path.clone(),
         });
 
@@ -2396,6 +2400,10 @@ fn run_passes(
                     in_call: Cell::new(false),
                     type_ctx: ctx,
                     generic_method_scheme: None,
+                    scheme_id: f
+                        .def_id
+                        .map(BindingId::Global)
+                        .or(f.local_id.map(BindingId::Local)),
                     fun_type: None,
                 })));
                 if let Some(id) = f.symbol_id.or(f.def_id) {
@@ -2438,6 +2446,7 @@ fn run_passes(
                                 in_call: Cell::new(false),
                                 type_ctx: None,
                                 generic_method_scheme: None,
+                                scheme_id: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
@@ -2454,6 +2463,7 @@ fn run_passes(
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     generic_method_scheme: generic_method_scheme(method, env),
+                                    scheme_id: None,
                                     fun_type: None,
                                 }))
                             }
@@ -2544,6 +2554,7 @@ fn run_passes(
                                 in_call: Cell::new(false),
                                 type_ctx: None,
                                 generic_method_scheme: None,
+                                scheme_id: None,
                                 fun_type: None,
                             })),
                             FunBody::Generic(b) => {
@@ -2560,6 +2571,7 @@ fn run_passes(
                                     in_call: Cell::new(false),
                                     type_ctx: env.type_ctx.clone(),
                                     generic_method_scheme: generic_method_scheme(method, env),
+                                    scheme_id: None,
                                     fun_type: None,
                                 }))
                             }
@@ -2713,7 +2725,7 @@ fn run_main(
         // generic body despite having no source-level generic parameters. Construct
         // that zero-argument body here just as ordinary generic calls do.
         ClosureBody::Untyped(b) => match main_type_ctx {
-            Some(type_ctx) => match type_ctx.scheme_env.get("main") {
+            Some(type_ctx) => match type_ctx.scheme_ids.get(&BindingId::Global(main_def_id)) {
                 Some(scheme) => crate::pipeline::type_checking::construct_generic_body(
                     scheme,
                     &main_params,
@@ -2777,6 +2789,10 @@ fn build_and_set_nested_fun(
         in_call: Cell::new(false),
         type_ctx: ctx,
         generic_method_scheme: None,
+        scheme_id: f
+            .def_id
+            .map(BindingId::Global)
+            .or(f.local_id.map(BindingId::Local)),
         fun_type: None,
     })));
     // `f.local_id` is the same id `hoist_nested_funs` filed the placeholder
@@ -4604,6 +4620,7 @@ pub fn eval_expr(
                     in_call: Cell::new(false),
                     type_ctx: None,
                     generic_method_scheme: None,
+                    scheme_id: None,
                     fun_type: Some(ty.clone()),
                 }),
             ))))
@@ -4611,6 +4628,7 @@ pub fn eval_expr(
 
         TypedExpr::GenericClosure {
             name,
+            scheme_id,
             captures,
             capture_ids,
             capture_types,
@@ -4636,6 +4654,7 @@ pub fn eval_expr(
                     in_call: Cell::new(false),
                     type_ctx: env.type_ctx.clone(),
                     generic_method_scheme: None,
+                    scheme_id: *scheme_id,
                     fun_type: None,
                 }),
             ))))

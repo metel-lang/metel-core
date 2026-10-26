@@ -1422,19 +1422,22 @@ fn construct_generic_body_stamps_a_real_local_id() {
         .find(|m| m.module_path == module.module_path)
         .expect("the matching typed module");
     let scheme = typed_module
-        .scheme_env
-        .get("pick")
+        .scheme_ids
+        .get(
+            &allocation
+                .binding_spans
+                .get(&fun.span)
+                .expect("a binding for `pick`"),
+        )
         .expect("a scheme for `pick`")
         .clone();
 
     let type_ctx = crate::pipeline::type_checking::type_engine::TypeCtx {
-        scheme_env: typed_module.scheme_env.clone(),
         scheme_ids: typed_module.scheme_ids.clone(),
         overloads: Rc::clone(&typed_module.overloads),
         registry: typed_report.graph.type_registry.clone(),
         members: Rc::new(members),
         binding_spans: Rc::new(allocation.binding_spans),
-        symbols: Some(Rc::new(names.symbols.clone())),
         current_module: typed_module.module_path.clone(),
     };
 

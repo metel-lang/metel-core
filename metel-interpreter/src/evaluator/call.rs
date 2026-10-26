@@ -114,6 +114,37 @@ pub(super) enum ReceiverBinding {
 /// `receiver_type`: an array impl's, a record-target impl's whose row condition the
 /// receiver satisfies (RFC-0121 §3), or the nominal type's own -- falling back, for a
 /// nominal record, to a record-target impl.
+/// The scheme a generic method closure is reconstructed against. A generic method is registered
+/// in the registry's method env under (receiver type, method name); the closure's own binding in
+/// the module's schemes covers the rare case a free generic closure reaches the method path.
+fn closure_method_scheme<'a>(
+    closure: &'a ClosureValue,
+    receiver_type: &crate::data::types::Type,
+) -> Option<(
+    &'a crate::pipeline::type_checking::type_engine::TypeScheme,
+    &'a std::rc::Rc<crate::pipeline::type_checking::type_engine::TypeCtx>,
+)> {
+    closure
+        .generic_method_scheme
+        .as_ref()
+        .zip(closure.type_ctx.as_ref())
+        .or_else(|| {
+            closure
+                .name
+                .as_deref()
+                .zip(closure.type_ctx.as_ref())
+                .and_then(|(name, type_ctx)| {
+                    method_scheme_for_receiver(type_ctx, name, receiver_type)
+                        .or_else(|| {
+                            closure
+                                .scheme_id
+                                .and_then(|id| type_ctx.scheme_ids.get(&id))
+                        })
+                        .map(|scheme| (scheme, type_ctx))
+                })
+        })
+}
+
 fn method_scheme_for_receiver<'a>(
     type_ctx: &'a crate::pipeline::type_checking::type_engine::TypeCtx,
     name: &str,
@@ -191,13 +222,9 @@ fn call_runtime_callable(
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
                 ClosureBody::Untyped(b) => {
-                    let scheme_and_ctx = closure
-                        .name
-                        .as_deref()
-                        .zip(closure.type_ctx.as_ref())
-                        .and_then(|(name, type_ctx)| {
-                            type_ctx.scheme_env.get(name).map(|s| (s, type_ctx))
-                        });
+                    let scheme_and_ctx = closure.scheme_id.zip(closure.type_ctx.as_ref()).and_then(
+                        |(id, type_ctx)| type_ctx.scheme_ids.get(&id).map(|s| (s, type_ctx)),
+                    );
                     match scheme_and_ctx {
                         Some((scheme, type_ctx)) => {
                             // metel-core#286: prefer the argument types recorded at the
@@ -340,27 +367,7 @@ pub(super) fn call_method_function(
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
                 ClosureBody::Untyped(b) => {
-                    // Resolve the method's scheme. A generic method is registered
-                    // in the registry's method env under (receiver type, method
-                    // name); fall back to the flat scheme env for the rare case a
-                    // free generic closure reaches this path.
-                    let resolved = closure
-                        .generic_method_scheme
-                        .as_ref()
-                        .zip(closure.type_ctx.as_ref())
-                        .or_else(|| {
-                            closure
-                                .name
-                                .as_deref()
-                                .zip(closure.type_ctx.as_ref())
-                                .and_then(|(name, type_ctx)| {
-                                    let method_scheme =
-                                        method_scheme_for_receiver(type_ctx, name, &receiver_type);
-                                    method_scheme
-                                        .or_else(|| type_ctx.scheme_env.get(name))
-                                        .map(|scheme| (scheme, type_ctx))
-                                })
-                        });
+                    let resolved = closure_method_scheme(&closure, &receiver_type);
                     match resolved {
                         Some((scheme, type_ctx)) => {
                             // The scheme's signature includes `self`, so the arg
