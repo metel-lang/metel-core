@@ -1378,6 +1378,20 @@ pub fn infer_named_type_args(
 ///
 /// The report carries the typed declarations, the module's `scheme_env`, and the registry
 /// (this module's type definitions merged with the base) for the next module to use.
+/// The module's own schemes: `scheme_env` without the builtins from `CorePrelude`, which every
+/// module sees through the auto-glob, unless the module declares a value of that name itself.
+fn user_defined_schemes(
+    scheme_env: SchemeEnv,
+    std_prelude: &CorePrelude,
+    program: &Program,
+) -> SchemeEnv {
+    let local_value_names = top_level_value_names(program);
+    scheme_env
+        .into_iter()
+        .filter(|(name, _)| !std_prelude.contains(name) || local_value_names.contains(name))
+        .collect()
+}
+
 /// Core types that were renamed, `(old, new)` (RFC-0184). `std::core` declares no type under the old
 /// name, so a reference to it that resolves to nothing is `T0003`; the message says what it became
 /// (`spec.types.perhaps-t.legality-2`).
@@ -1580,11 +1594,7 @@ fn check_impl_with_report(
     // Return only user-defined names. Builtins (from CorePrelude) are available to
     // every module via the auto-glob and don't need to be in GlobalExports.
     let started = Instant::now();
-    let local_value_names = top_level_value_names(program);
-    let user_scheme_env: SchemeEnv = scheme_env
-        .into_iter()
-        .filter(|(name, _)| !std_prelude.contains(name) || local_value_names.contains(name))
-        .collect();
+    let user_scheme_env = user_defined_schemes(scheme_env, std_prelude, program);
     let finalize_ns = elapsed_ns(started);
 
     let final_registry = ctx.into_registry();
