@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.type-ascription.legality-1", "spec.types.references.reading-a-value-out-of-a-reference.legality-1"]

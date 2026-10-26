@@ -1,6 +1,5 @@
 // RFC-0045: Mutable address-of lvalue paths — fat pointer (MutFieldPointer) tests.
-// RFC-0067a: *T/*mut T renamed to &T/&var T; explicit *p deref replaced by
-// write-through assignment and type-directed read-copy.
+// RFC-0067a: *T/*mut T renamed to &T/&var T. RFC-0185: reads are explicit `*p`.
 
 struct Point { x: i64, y: i64 }
 struct Rect { top_left: Point, bottom_right: Point }
@@ -17,8 +16,8 @@ fun main() {
     *px += 5;
     assert(p.x == 15);
 
-    // Read through fat pointer — type-directed copy yields current field value.
-    let read_x: i64 := px;
+    // Read through fat pointer — explicit `*px` yields current field value.
+    let read_x: i64 := *px;
     assert(read_x == 15);
 
     // &var tuple element.

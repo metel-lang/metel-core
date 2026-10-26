@@ -1,10 +1,10 @@
-// RFC-0067a §3a: reading a plain value out of a reference via an explicit `return`
-// with a declared return type. This is the RFC's own worked example.
+// RFC-0185: reading a plain value out of a reference at a `return` is spelled `*p`;
+// the reference is never converted implicitly.
 fun f() -> i64 {
     var n := 1;
     let p: &var i64 := &var n;
     *p := 4;
-    return p;
+    return *p;
 }
 
 fun main() {

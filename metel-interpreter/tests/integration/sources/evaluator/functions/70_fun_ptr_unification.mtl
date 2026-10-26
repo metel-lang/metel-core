@@ -80,7 +80,7 @@ fun get_closures2(ptr: &var i64) {
     let ptr3: &&var i64 := &ptr;
     let a := || { **ptr1 += 1; };
     let b := || { **ptr2 += 2; };
-    let read := || -> i64 { return ptr3; };
+    let read := || -> i64 { return **ptr3; };
     (a, b, read)
 }
 
@@ -112,7 +112,7 @@ fun get_closures_f(ptr: &var i64) {
     let third_ptr: &&var i64 := &ptr;
     let first_closure := || { **first_ptr += 1; };
     let second_closure := || { **second_ptr += 2; };
-    let third_closure := || -> i64 { return third_ptr; };
+    let third_closure := || -> i64 { return **third_ptr; };
     return (first_closure, second_closure, third_closure);
 }
 

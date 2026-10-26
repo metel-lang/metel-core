@@ -1331,13 +1331,6 @@ fn construct_block(
             let constructed = construct_expr(e, expected_tail_ty, ctx)?;
             let constructed = match expected_tail_ty {
                 Some(t) => {
-                    let constructed = maybe_read_copy(
-                        t,
-                        constructed,
-                        e.span(),
-                        ctx.registry,
-                        ctx.current_module,
-                    )?;
                     let constructed =
                         maybe_singleton_coerce(t, constructed, e.span(), ctx.registry)?;
                     maybe_dyn_coerce(t, constructed, e.span(), ctx)?
@@ -1858,7 +1851,7 @@ fn construct_unaryop(
 
 /// Peels every reference layer of a chain down to the first non-reference type
 /// (RFC-0067a §3's auto-deref chain guarantee — `&&T` derefs through both levels —
-/// applies uniformly to field access, method dispatch, and read-copy; a single-level
+/// applies uniformly to field access and method dispatch; a single-level
 /// peel leaves a receiver like `&&mut Counter` still wrapped after one step).
 fn peel_type_references(ty: &Type) -> &Type {
     match ty {
@@ -1875,70 +1868,11 @@ fn type_chain_provides_mut_access(ty: &Type) -> bool {
     }
 }
 
-/// RFC-0067a §3a: if `actual`'s type is a reference to exactly `expected`, synthesize
-/// the internal deref-copy node so the value is copied out of the reference. The parser
-/// never produces `UnaryOp::Deref` any more (§3 removed explicit `*p`); this is the only
-/// place it's constructed post-RFC-0067a. Only called from sites that have a genuine
-/// declared/expected type in hand (`construct_block`'s tail, `Stmt::Return`/`Break`,
-/// `Decl::Let`/`Mut`, `Expr::Ascribe`) — never from `construct_expr`'s or
-/// `construct_unaryop`'s generic dispatch, which call-argument construction also goes
-/// through and must not gain this coercion.
-/// Peels *every* reference layer needed to reach `expected`, not just one — RFC-0067a
-/// §3's auto-deref chain guarantee (`&&T` derefs through both levels) applies to
-/// read-copy the same as ordinary auto-deref: `let x: i64 = rr;` where `rr: &&i64`
-/// synthesizes two nested internal `Deref` nodes, one per layer, matching how the
-/// evaluator already unwraps one `Value::Reference`/`MutReference` per node.
-///
-/// #649: this is a *copy* — the referent is duplicated, not moved, and the reference
-/// keeps pointing at a still-valid original — so it's only sound when the fully
-/// peeled referent type is `Copy` (RFC-0067a §3a's own words: "a non-`Copy` `T`
-/// cannot be produced this way"). Checked once against the final, fully-dereferenced
-/// type, not each intermediate reference layer: a `&T`/`&var T` layer being read
-/// *through* isn't itself what's being duplicated, only the payload at the end of
-/// the chain is.
-fn maybe_read_copy(
-    expected: &Type,
-    actual: TypedExpr,
-    span: &Span,
-    registry: &TypeDefinitionRegistry,
-    current_module: &[String],
-) -> Result<TypedExpr, MetelError> {
-    // If `expected` is itself a reference type, this isn't read-copy at all — it's the
-    // ordinary `&mut T` -> `&T` widening coercion (unify() already accepts it; nothing
-    // to synthesize here). Peeling anyway would over-run past the intended coercion
-    // down to the fully-dereferenced value, which is wrong.
-    if matches!(expected, Type::Reference(_) | Type::MutReference(_)) {
-        return Ok(actual);
-    }
-    let mut current = actual;
-    let mut peeled_any = false;
-    while current.ty() != expected {
-        let inner = match current.ty() {
-            Type::Reference(inner) | Type::MutReference(inner) => (**inner).clone(),
-            _ => break,
-        };
-        peeled_any = true;
-        current = TypedExpr::UnaryOp(UnaryOp::Deref, Box::new(current), inner, span.clone());
-    }
-    if peeled_any && !registry.type_satisfies_aspect(current_module, current.ty(), "Copy") {
-        let ty = current.ty();
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0024,
-            format!(
-                "cannot copy `{ty}` out of a reference: `{ty}` does not implement `Copy`\n\
-                 \x20      hint: use `.clone()` if `{ty}` implements `Clone`, or restructure to take ownership instead"
-            ),
-            span,
-        ));
-    }
-    Ok(current)
-}
-
 /// RFC-0078 §3.3: the inhabited-singleton coercion. If `actual`'s type is a named
 /// enum with more than one variant, exactly one of which is inhabited (by the same
 /// rule `check_match_exhaustiveness` uses) with exactly one field, and that field's
 /// (substituted) type equals `expected`, wrap `actual` in `SingletonCoerce`.
-/// Otherwise return `actual` unchanged. Mirrors `maybe_read_copy`'s shape and
+/// Otherwise return `actual` unchanged. Mirrors `maybe_dyn_coerce`'s shape and
 /// call-site pattern — called from the same handful of sites that have a genuine
 /// expected type in hand.
 fn maybe_singleton_coerce(
@@ -1991,7 +1925,7 @@ fn maybe_singleton_coerce(
 }
 
 /// RFC-0008 §6: implicit coercion of a concrete value to an aspect object (`dyn
-/// Aspect`). Mirrors `maybe_read_copy`/`maybe_singleton_coerce`'s shape and
+/// Aspect`). Mirrors `maybe_singleton_coerce`'s shape and
 /// call-site pattern — called from the same handful of sites that have a genuine
 /// expected type in hand, plus the monomorphic argument-construction site (which
 /// those two don't reach; argument-passing is checked by direct `Type` equality,

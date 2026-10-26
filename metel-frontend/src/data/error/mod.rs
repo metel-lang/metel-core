@@ -43,7 +43,7 @@ pub enum TypeErrorCode {
     T0021, // `break` or `continue` outside an enclosing loop
     T0022, // `extends Aspect` used outside parameter or return position
     T0023, // Assignment through a non-owning view (`[T]`)
-    T0024, // Read-copy of a non-`Copy` value out of a reference (RFC-0067a §3a)
+    T0024, // Retired (RFC-0185): the read-copy out of a reference it rejected no longer exists; the number is never reused
     T0025, // Aspect is not object-safe, used in `dyn` position (RFC-0008 §3)
     T0026, // Closure capture-list error (RFC-0050)
     T0027, // Closure requires `once` (RFC-0134)

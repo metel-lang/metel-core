@@ -1,10 +1,5 @@
-// Read-copy (RFC-0067a §3a) must decide whether to peel against the *substituted* type,
-// not the raw one. A call returning `&T` yields a fresh inference variable at the point
-// `constrain_with_read_copy` runs; matching that raw variable against a reference pattern
-// fails, so the peel was silently skipped and the later unification reported T0001.
-//
-// The effect was that `let n: i64 = g();` failed where `let n: i64 = r;` succeeded --
-// same position, same types, different value shape. RFC-0112 §1.0.
+// RFC-0185: a call returning `&T` is read out with `*` exactly like a reference
+// binding -- same position, same types, same spelling (formerly RFC-0112 §1.0).
 
 fun shared() -> &i64 {
     let a := 42;
@@ -18,28 +13,28 @@ fun chained() -> &&i64 {
 }
 
 fun through_return() -> i64 {
-    return shared();
+    return *shared();
 }
 
 fun main() {
     // let annotation
-    let n: i64 := shared();
+    let n: i64 := *shared();
     assert(n == 42);
 
     // binding the call result first, then copying out at the annotation
     let r := shared();
-    let m: i64 := r;
+    let m: i64 := *r;
     assert(m == 42);
 
     // ascription
-    let a := shared(): i64;
+    let a := (*shared()): i64;
     assert(a == 42);
 
     // return position
     assert(through_return() == 42);
 
     // every layer is peeled, not just one
-    let c: i64 := chained();
+    let c: i64 := **chained();
     assert(c == 42);
 
     // the reference itself is still available when that is what is asked for

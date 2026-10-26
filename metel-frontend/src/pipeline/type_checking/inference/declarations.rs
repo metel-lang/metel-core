@@ -6,7 +6,7 @@ use super::{
     build_assoc_projection_map, check_copy_impl_eligibility, closed_nominal_target,
     collect_fun_assoc_eq_constraints, collect_fun_row_exclusions, collect_fun_type_var_bounds,
     collect_fun_type_var_record_kinds, collect_negative_fun_type_var_bounds,
-    collect_open_record_param_vars, constrain_with_read_copy, dyn_array_elem_ann, free_vars,
+    collect_open_record_param_vars, constrain_at_declared_boundary, dyn_array_elem_ann, free_vars,
     fun_generic_map, generalize, infer_block, infer_dyn_array_literal, infer_expr, infer_stmt,
     infer_type_to_type, native_fun_ty, open_record_param_type, primitive_type_from_name,
     type_expr_to_infer_with_assoc_ctx, type_expr_to_infer_with_ctx,
@@ -52,7 +52,7 @@ pub(super) fn infer_decl(
                 // fixtures (a match-pattern exhaustiveness case among them --
                 // the array-literal bypass that attempt needed to add here,
                 // to route around its own breaking change, itself broke a
-                // *different* case by skipping `constrain_with_read_copy`
+                // *different* case by skipping `constrain_at_declared_boundary`
                 // entirely for every array literal). So: check this one
                 // direction explicitly and narrowly instead, skipped for a
                 // literal (`[1, 2, 3]`) since a literal's Pass-1 type is
@@ -72,7 +72,7 @@ pub(super) fn infer_decl(
                         &ld.span,
                     ));
                 }
-                constrain_with_read_copy(ctx, val_ty.clone(), declared, ld.span.clone())
+                constrain_at_declared_boundary(ctx, val_ty.clone(), declared, ld.span.clone())
             } else {
                 val_ty.clone()
             };
@@ -151,7 +151,7 @@ pub(super) fn infer_decl(
                         &md.span,
                     ));
                 }
-                constrain_with_read_copy(ctx, val_ty, declared, md.span.clone())
+                constrain_at_declared_boundary(ctx, val_ty, declared, md.span.clone())
             } else {
                 val_ty
             };
@@ -1075,7 +1075,7 @@ pub(super) fn infer_fun_decl(
         .tail
         .as_ref()
         .map_or_else(|| fun.body.span.clone(), |tail| tail.span().clone());
-    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), return_span);
+    constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), return_span);
 
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
@@ -2096,7 +2096,7 @@ pub(super) fn infer_impl_method(
             .tail
             .as_ref()
             .map_or_else(|| method.body.span.clone(), |tail| tail.span().clone());
-        constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), return_span);
+        constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), return_span);
         ctx.pop_return_type(saved_ret);
         ctx.restore_row_field_vars(saved_row_field_vars);
         ctx.swap_row_exclusions(saved_row_exclusions);
@@ -2731,7 +2731,7 @@ pub(super) fn infer_default_aspect_method(
     let saved_type_params = ctx.swap_type_params(generic_map);
     let saved_ret = ctx.push_return_type(ret_ty.clone());
     let body_ty = infer_block(body, ctx, fun_generalizations)?;
-    constrain_with_read_copy(ctx, body_ty, ret_ty.clone(), body.span.clone());
+    constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_params(saved_type_params);
     ctx.flow_exit_body(saved_flow);

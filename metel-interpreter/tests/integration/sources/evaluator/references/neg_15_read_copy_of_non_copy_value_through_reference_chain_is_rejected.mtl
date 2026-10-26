@@ -1,7 +1,6 @@
-// TYPECHECK_ERROR[T0024]
-// #649: the same `Copy` requirement applies no matter how many reference layers
-// are peeled through to reach the non-`Copy` referent -- mirrors
-// `07_read_copy_through_reference_chain.mtl`, but for a non-`Copy` type.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): no implicit read through any number of reference layers --
+// mirrors `07_read_copy_through_reference_chain.mtl`, which spells `**rr`.
 struct NotCopy { v: String }
 
 fun main() {

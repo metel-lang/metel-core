@@ -1,8 +1,7 @@
-// RFC-0067a §3a: read-copy at an implicit tail expression (no `return` keyword),
-// including through an `if`/`else` whose branches are both reference-typed while the
-// function's own declared return type is the plain referent type.
+// RFC-0185: an explicit read `*a` at an implicit tail expression (no `return`
+// keyword), through an `if`/`else` whose branches read out of references.
 fun pick(cond: boolean, a: &i64, b: &i64) -> i64 {
-    if (cond) { a } else { b }
+    if (cond) { *a } else { *b }
 }
 
 fun main() {

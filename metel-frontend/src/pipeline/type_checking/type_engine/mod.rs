@@ -1335,6 +1335,25 @@ fn operand_mismatch_error(
     }
 }
 
+/// RFC-0185: `found` is a reference whose referent (through every layer) would satisfy
+/// `expected`, and `expected` is not itself a reference — the program wanted the value
+/// read out of the reference, which is spelled `*r`.
+fn reads_through_reference(found: &InferType, expected: &InferType) -> bool {
+    if matches!(
+        expected,
+        InferType::Reference(_) | InferType::MutReference(_)
+    ) {
+        return false;
+    }
+    let mut peeled = found;
+    let mut any = false;
+    while let InferType::Reference(inner) | InferType::MutReference(inner) = peeled {
+        peeled = inner;
+        any = true;
+    }
+    any && unify(peeled, expected).is_ok()
+}
+
 /// A diagnostic for a residual meeting a wider row / whole brand of itself. `found_then_expected`
 /// says that `a` is the value and `b` the type its position requires (metel-core#1458); without
 /// it the direction is unknown and the message is worded to be true either way.
@@ -1704,11 +1723,21 @@ fn apply_constraint_with_coercion(
                 );
             }
             let mut rendered = render_types(&[&lhs, &rhs], known_names);
-            let rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
-            let lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
+            let rendered_rhs = rendered.pop().unwrap_or_else(|| rhs.to_string());
+            let rendered_lhs = rendered.pop().unwrap_or_else(|| lhs.to_string());
+            if constraint.found_then_expected && reads_through_reference(&lhs, &rhs) {
+                return MetelError::type_error(
+                    crate::data::error::TypeErrorCode::T0001,
+                    format!(
+                        "expected {rendered_rhs}, found {rendered_lhs}\n\
+                         \x20      help: read the value out with `*r` (copies a Copy referent)"
+                    ),
+                    &constraint.span,
+                );
+            }
             MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0001,
-                format!("cannot unify {lhs} with {rhs}"),
+                format!("cannot unify {rendered_lhs} with {rendered_rhs}"),
                 &constraint.span,
             )
         };

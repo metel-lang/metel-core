@@ -1,7 +1,6 @@
-// TYPECHECK_ERROR[T0024]
-// #649: RFC-0067a §3a's read-copy requires the referent to be `Copy` -- reading a
-// non-`Copy` value out of a shared reference at a `let` binding must be rejected,
-// not silently duplicated.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): a reference is never implicitly read out as its referent,
+// whether or not the referent is `Copy` -- a `let` annotation does not dereference.
 struct NotCopy { v: String }
 
 fun main() {

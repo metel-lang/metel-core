@@ -1,10 +1,9 @@
-// RFC-0067a §3a: read-copy at a `loop { break value; }` where the break value is a
-// reference, made concrete via an explicit ascription on the break value itself.
+// RFC-0185: an explicit read `*p` as the value of a `loop { break value; }`.
 fun main() {
     var n := 0;
     let p: &var i64 := &var n;
     let result: i64 := loop {
-        break (p: i64);
+        break *p;
     };
     assert(result == 0);
 }

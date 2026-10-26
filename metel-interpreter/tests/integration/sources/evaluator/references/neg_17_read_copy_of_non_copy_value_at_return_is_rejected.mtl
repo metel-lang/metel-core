@@ -1,6 +1,6 @@
-// TYPECHECK_ERROR[T0024]
-// #649: mirrors `01_read_copy_at_return.mtl`, but for a non-`Copy` type -- a
-// reference cannot be returned as its non-`Copy` referent type.
+// TYPECHECK_ERROR[T0001]
+// RFC-0185 (formerly #649): a reference cannot be returned as its referent type;
+// mirrors `01_read_copy_at_return.mtl`, which spells `*p`.
 struct NotCopy { v: String }
 
 fun f(r: &NotCopy) -> NotCopy {

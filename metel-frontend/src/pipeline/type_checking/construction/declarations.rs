@@ -4,7 +4,7 @@ use super::{
     InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar,
     TypedAspectDecl, TypedDecl, TypedEnumDecl, TypedExpr, TypedFunDecl, TypedImplBlock,
     TypedLetDecl, TypedMutDecl, TypedStructDecl, construct_block, construct_expr, construct_stmt,
-    fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_read_copy,
+    fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce,
     maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
 };
 
@@ -196,8 +196,6 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             let value = construct_expr(&ld.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
                 Some(t) => {
-                    let value =
-                        maybe_read_copy(t, value, &ld.span, ctx.registry, ctx.current_module)?;
                     let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
                     let value = maybe_dyn_coerce(t, value, &ld.span, ctx)?;
                     maybe_fn_move_coerce(t, value)
@@ -237,8 +235,6 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             let value = construct_expr(&md.value, expected_ty.as_ref(), ctx)?;
             let value = match &expected_ty {
                 Some(t) => {
-                    let value =
-                        maybe_read_copy(t, value, &md.span, ctx.registry, ctx.current_module)?;
                     let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
                     let value = maybe_dyn_coerce(t, value, &md.span, ctx)?;
                     maybe_fn_move_coerce(t, value)

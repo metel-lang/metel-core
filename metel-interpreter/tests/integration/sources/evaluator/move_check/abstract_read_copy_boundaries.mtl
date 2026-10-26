@@ -1,16 +1,16 @@
 fun copied<T>(unused: T, value: &&i64) -> i64 {
-    let first: i64 := value;
-    let second := (value: i64);
+    let first: i64 := **value;
+    let second := (**value: i64);
     first + second
 }
 
-fun returned<T>(unused: T, value: &i64) -> i64 { value }
-fun explicit<T>(unused: T, value: &i64) -> i64 { return value; }
-fun exited<T>(unused: T, value: &i64) -> i64 { loop { break value; } }
-fun copied_record<T: Copy>(value: &{ item: T }) -> { item: T } { value }
+fun returned<T>(unused: T, value: &i64) -> i64 { *value }
+fun explicit<T>(unused: T, value: &i64) -> i64 { return *value; }
+fun exited<T>(unused: T, value: &i64) -> i64 { loop { break *value; } }
+fun copied_record<T: Copy>(value: &{ item: T }) -> { item: T } { *value }
 fun mutable_read<T>(unused: T, value: &var i64) -> i64 {
-    let first: i64 := value;
-    let second: i64 := value;
+    let first: i64 := *value;
+    let second: i64 := *value;
     first + second
 }
 

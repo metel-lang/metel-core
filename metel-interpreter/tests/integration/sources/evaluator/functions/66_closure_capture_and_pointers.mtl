@@ -9,7 +9,7 @@ fun main() {
     var ptr := &var shared;
     var bump := [&var ptr] var || -> i64 {
         *ptr += 1;
-        ptr
+        *ptr
     };
 
     let first := bump();

@@ -25,9 +25,9 @@ headed, in [Introducing Metel](https://metel-lang.org/blog/introducing-metel).
 **Ownership is affine by default.** A non-`Copy` value has exactly one owner; moving it
 invalidates the source, checked statically with `--move-check`. `Copy` and `Drop` are
 opt-in aspects, mutually exclusive by construction. References (`&T`, `&var T`) are
-explicit aliases with auto-deref through field access and method calls, and reading a
-`Copy` value back out of a reference ("read-copy") is the only implicit duplication
-allowed.
+explicit aliases with auto-deref through field access and method calls; reading the
+value a reference points to is always spelled `*r`, and only a `Copy` value can be read
+out that way.
 
 **Aspects stand in for interfaces.** `aspect Name { fun method(&self) -> T; }` declares
 a capability; `extend Type: Aspect { ... }` implements it, with default methods,
