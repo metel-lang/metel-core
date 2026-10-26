@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.the-operator.legality-1", "spec.functions.the-operator.dynamics-3"]

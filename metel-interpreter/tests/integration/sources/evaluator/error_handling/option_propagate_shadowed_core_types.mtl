@@ -1,0 +1,18 @@
+// RFC-0182: `?` recognises the core `Result`/`Option` by declaration identity, so a module
+// that declares its own `Result` and `Option` does not break `?` on std values.
+enum Result { A, B }
+enum Option { X, Y }
+
+fun through_result(r: std::core::Result<i64, String>) -> std::core::Result<i64, String> {
+    let x := r?;
+    r
+}
+
+fun through_option(o: std::core::Option<i64>) -> std::core::Option<i64> {
+    let x := o?;
+    o
+}
+
+fun main() {
+    println("typechecks with shadowed Result and Option");
+}

@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+spec = ["spec.functions.the-operator.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "help: discard the error visibly first: `.ok()`"
