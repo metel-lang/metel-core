@@ -2422,6 +2422,11 @@ fn infer_expr_inner(
                     }
                 })
                 .collect();
+            for (p, pt) in params.iter().zip(param_types.iter()) {
+                if p.type_ann.is_none() {
+                    ctx.record_closure_param_type(p.span.clone(), pt.clone());
+                }
+            }
             // Not rewritten to `map_or_else` (clippy's own suggestion): both
             // closures would capture `ctx` mutably, and `map_or_else` requires
             // constructing both simultaneously as arguments, which the borrow

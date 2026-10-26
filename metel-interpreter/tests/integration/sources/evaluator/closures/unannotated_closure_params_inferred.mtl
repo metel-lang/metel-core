@@ -1,0 +1,27 @@
+// metel-core#1624: a closure parameter written without a type takes its type from the
+// expected function type or from the body, exactly as the return type does.
+struct Op { f: |i64| -> i64 }
+
+fun apply(f: |i64| -> i64, v: i64) -> i64 { f(v) }
+
+fun main() {
+    // argument position: the parameter type comes from `apply`'s signature
+    assert(apply(|x| { x * 2 }, 4) == 8);
+
+    // annotated let: the expected function type supplies it
+    let inc: |i64| -> i64 := |x| { x + 1 };
+    assert(inc(1) == 2);
+
+    // a struct field with a written function type
+    let op := Op { f = |x| { x - 1 } };
+    assert((op.f)(10) == 9);
+
+    // no expected type: the body determines it
+    let add_one := |a| { a + 1 };
+    assert(add_one(1) == 2);
+
+    // a closure that stays generic is unchanged
+    let id := |x| { x };
+    assert(id(3) == 3);
+    assert(id("s") == "s");
+}

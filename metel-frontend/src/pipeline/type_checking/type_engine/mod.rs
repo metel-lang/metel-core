@@ -6570,6 +6570,9 @@ pub struct InferContext {
     /// Inferred return type for each closure expression, keyed by the closure span.
     /// Pass 2 reuses this so unannotated closures keep their solved return type.
     closure_return_types: HashMap<Span, InferType>,
+    /// Solved type of each closure parameter written without an annotation, keyed by the
+    /// parameter's span (metel-core#1624).
+    closure_param_types: HashMap<Span, InferType>,
     /// Transient provenance joined at handoff; durable abstract operations contain
     /// resolved types and binding identities, never this span-keyed solver table.
     definition_expression_types: HashMap<Span, InferType>,
@@ -6686,6 +6689,7 @@ impl InferContext {
             declared_var_names: HashMap::new(),
             opaque_return_vars: HashSet::new(),
             closure_return_types: HashMap::new(),
+            closure_param_types: HashMap::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
@@ -8191,6 +8195,10 @@ impl InferContext {
         self.closure_return_types.insert(span, ty);
     }
 
+    pub fn record_closure_param_type(&mut self, span: Span, ty: InferType) {
+        self.closure_param_types.insert(span, ty);
+    }
+
     pub(crate) fn record_definition_expression_type(&mut self, span: Span, ty: InferType) {
         self.definition_expression_types.insert(span, ty);
     }
@@ -8423,6 +8431,11 @@ impl InferContext {
 
     pub(crate) fn definition_diverging_loops(&self) -> &HashSet<Span> {
         &self.definition_diverging_loops
+    }
+
+    #[must_use]
+    pub fn closure_param_types(&self) -> &HashMap<Span, InferType> {
+        &self.closure_param_types
     }
 
     #[must_use]
