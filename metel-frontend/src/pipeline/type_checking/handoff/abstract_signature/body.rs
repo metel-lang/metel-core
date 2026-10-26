@@ -318,7 +318,7 @@ impl BodyFreezer<'_, '_> {
                 .freeze(inferred)
                 .map_err(|error| error.to_string())?;
             // A solved equality needs no new ownership operation. A coercion
-            // may change consumption (for example read-copy through a borrow).
+            // may change consumption (for example a shared view of a mutable borrow).
             value = self.coerce_boundary(value, &declared, span)?;
             declared
         } else {
@@ -2246,21 +2246,12 @@ impl BodyFreezer<'_, '_> {
             retained |= source == value.ty && destination == *target;
         }
         if retained {
-            let (referent, depth) = peel_references(&value.ty);
-            let read_copy = depth > 0
-                && referent == target
-                && !matches!(
-                    target,
-                    AbstractType::Reference(_) | AbstractType::MutReference(_)
-                );
             let shared_view = matches!((&value.ty, target), (AbstractType::MutReference(source), AbstractType::Reference(destination)) if source == destination);
             let array_view = Self::is_array_view_coercion(&value.ty, target);
-            if read_copy || shared_view || array_view {
+            if shared_view || array_view {
                 let span = value.span.clone();
                 let value = Box::new(value);
-                let kind = if read_copy {
-                    AbstractExprKind::ReadCopy(value)
-                } else if shared_view {
+                let kind = if shared_view {
                     AbstractExprKind::SharedReferenceView(value)
                 } else {
                     AbstractExprKind::ArrayView(value)

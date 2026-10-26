@@ -521,12 +521,6 @@ impl Checker<'_> {
         }
         match &expr.kind {
             AbstractExprKind::ArrayView(value) => self.borrow_abstract_receiver(value, env, state),
-            AbstractExprKind::ReadCopy(value) => {
-                if !self.abstract_is_copy(&expr.ty, env)? {
-                    return Err("read-copy lacks a definition-time Copy proof".to_string());
-                }
-                self.observe_abstract_expr(value, env, state)
-            }
             AbstractExprKind::SharedReferenceView(value)
             | AbstractExprKind::CallableView(value)
             | AbstractExprKind::RepeatArray { value, .. } => {
