@@ -1,0 +1,18 @@
+// metel-core#1080 (fixed by #1578, covered here with the issue's own forms): a parameter or a
+// local `let` named like a top-level `fun` is the binding in the body, not the function.
+fun double(n: i64) -> i64 { n * 2 }
+
+fun f(double: i64) -> i64 {
+    double + 1
+}
+
+fun uses_local_double() -> i64 {
+    let double := 7;
+    double + 1
+}
+
+fun main() {
+    assert(f(7) == 8);
+    assert(uses_local_double() == 8);
+    assert(double(4) == 8);
+}
