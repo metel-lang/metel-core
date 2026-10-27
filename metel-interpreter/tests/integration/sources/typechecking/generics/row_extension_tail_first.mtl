@@ -1,5 +1,5 @@
 // RFC-0121: row extension permits the tail before newly-added fields.
-record Box<row R> {
+record Box<record R> {
     value: { ..R, auth: String },
 }
 

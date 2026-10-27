@@ -1,8 +1,8 @@
-record Session<row R> { data: { ..R } }
-extend<row R: !{ token }> Session<..R> {
+record Session<record R> { data: { ..R } }
+extend<record R: !{ token }> Session<..R> {
     fun cleared(&self) -> i64 { 2 }
 }
-fun strip<row R, row Rest>(session: Session<..R>) -> i64
+fun strip<record R, record Rest>(session: Session<..R>) -> i64
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := session.data;
     let cleared: Session<..Rest> := Session { data = rest };

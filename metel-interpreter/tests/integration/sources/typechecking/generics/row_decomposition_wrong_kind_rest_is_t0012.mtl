@@ -1,7 +1,7 @@
-// RFC-0121 sec3: `Rest` needs `row Rest` declared, not a plain type
+// RFC-0121 sec3: `Rest` needs `record Rest` declared, not a plain type
 // parameter -- the same binder-kind distinction `R` itself already draws.
 
-fun split<row R, Rest>(p: { token: i64, ..R }) -> i64
+fun split<record R, Rest>(p: { token: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
     p.token

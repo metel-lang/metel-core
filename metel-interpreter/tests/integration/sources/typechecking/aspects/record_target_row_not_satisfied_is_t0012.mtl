@@ -3,7 +3,7 @@
 
 aspect Area { fun area(&self) -> i64; }
 
-extend<row R: { w: i64, .. }> { ..R }: Area {
+extend<record R: { w: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w }
 }
 

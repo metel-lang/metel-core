@@ -1,6 +1,6 @@
 import describe_aspect::Describe;
 
 // `importer` imports `Describe` but does not declare it, so it is foreign here.
-extend<row R: { h: i64, .. }> { ..R }: Describe { // ERROR[T0014]
+extend<record R: { h: i64, .. }> { ..R }: Describe { // ERROR[T0014]
     fun describe(&self) -> String { "h".to_string() }
 }

@@ -1,5 +1,5 @@
 struct Handle { fd: i64, name: String }
 
-fun read<row R>(h: &Handle.{ fd, ..R }) -> i64 { h.fd } // ERROR[P0001]
+fun read<record R>(h: &Handle.{ fd, ..R }) -> i64 { h.fd } // ERROR[P0001]
 
 fun main() {}

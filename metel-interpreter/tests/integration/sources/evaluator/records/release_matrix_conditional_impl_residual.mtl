@@ -1,6 +1,6 @@
-record Session<row R> { id: i64, data: { ..R } }
-extend<row R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
-extend<row R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
+record Session<record R> { id: i64, data: { ..R } }
+extend<record R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
+extend<record R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
 fun after_rest() {
     let s := Session { id = 1, data = { token = "t", n = 5 } };
     assert(s.kind() == 1);

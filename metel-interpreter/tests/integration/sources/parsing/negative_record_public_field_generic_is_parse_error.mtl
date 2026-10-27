@@ -1,5 +1,5 @@
 // The rule applies to a generic record too, whatever the field's type (metel-core#1440).
-record Box<row R> {
+record Box<record R> {
     public data: { ..R },
 }
 

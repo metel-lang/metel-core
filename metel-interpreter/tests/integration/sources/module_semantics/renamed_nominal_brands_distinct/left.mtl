@@ -1,1 +1,1 @@
-public record Packet<row R> { data: { ..R } }
+public record Packet<record R> { data: { ..R } }

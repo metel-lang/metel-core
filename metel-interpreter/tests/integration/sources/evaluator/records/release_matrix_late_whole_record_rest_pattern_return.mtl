@@ -1,6 +1,6 @@
 // Whole-record open rows x rest patterns x ownership (RFC-0179, RFC-0178): the callee owns the
 // whole record, destructures the remainder out and returns it; the caller owns the result.
-fun strip<row Rest>(d: { token: String, ..Rest }) -> { ..Rest } {
+fun strip<record Rest>(d: { token: String, ..Rest }) -> { ..Rest } {
     let { token: _, ..rest } := d;
     rest
 }

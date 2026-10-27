@@ -1,2 +1,2 @@
-public record Packet<row R> { id: i64, data: { ..R } }
+public record Packet<record R> { id: i64, data: { ..R } }
 public type EmptyPacket := Packet<{}>;

@@ -4,7 +4,7 @@
 // rather than silently dropped (it has no row-polymorphic meaning designed
 // for this position at all, unlike generic-argument position itself).
 
-fun foo<row R>() -> i64 { 0 }
+fun foo<record R>() -> i64 { 0 }
 
 fun main() {
     let _ := foo::<..R>();

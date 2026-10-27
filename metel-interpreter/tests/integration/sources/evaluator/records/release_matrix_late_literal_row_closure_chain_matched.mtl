@@ -1,8 +1,8 @@
 // Literal rows x closures x matching x chained row extension (RFC-0180, #1472): a closure builds
 // a request through a consuming setter, and the result's field is matched on.
-record Req<row R> { data: { ..R } }
+record Req<record R> { data: { ..R } }
 
-extend<row R: !{ host }> Req<..R> {
+extend<record R: !{ host }> Req<..R> {
     fun host(self, h: String) -> Req<..{ host: String, ..R }> {
         Req { data = { host = h, ..self.data } }
     }

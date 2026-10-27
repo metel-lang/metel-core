@@ -1,19 +1,19 @@
 // metel-core#1456: only a label-only exclusion proves a label absent, so only it allows a spread
 // that writes that label. A typed exclusion still works as the bound it is.
-fun add_inline<row R: !{ token }>(d: { ..R }) -> { token: String, ..R } {
+fun add_inline<record R: !{ token }>(d: { ..R }) -> { token: String, ..R } {
     { token = "secret".to_string(), ..d }
 }
 
-fun add_where<row R>(d: { ..R }) -> { token: String, ..R } where R: !{ token } {
+fun add_where<record R>(d: { ..R }) -> { token: String, ..R } where R: !{ token } {
     { token = "secret".to_string(), ..d }
 }
 
-fun add_both<row R: !{ token } + !{ token: String }>(d: { ..R }) -> { token: String, ..R } {
+fun add_both<record R: !{ token } + !{ token: String }>(d: { ..R }) -> { token: String, ..R } {
     { token = "secret".to_string(), ..d }
 }
 
 // A typed exclusion constrains callers by type only: a `token: i64` still satisfies it.
-fun typed_only<row R: !{ token: String }>(d: { ..R }) -> i64 { 1 }
+fun typed_only<record R: !{ token: String }>(d: { ..R }) -> i64 { 1 }
 
 fun main() {
     assert(add_inline({ user = 3 }).token == "secret");

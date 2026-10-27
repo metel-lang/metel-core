@@ -1,4 +1,4 @@
-fun need_id<row R>(v: { id: i64, ..R }) -> i64 { v.id }
+fun need_id<record R>(v: { id: i64, ..R }) -> i64 { v.id }
 fun main() {
     need_id({ name = "x" }); // ERROR[T0012]
 }

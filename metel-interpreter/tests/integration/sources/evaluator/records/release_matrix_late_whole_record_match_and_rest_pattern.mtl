@@ -1,6 +1,6 @@
 // Whole-record open rows x pattern matching x rest patterns (RFC-0179, RFC-0178): one arm of a
 // match destructures the remainder out of the owned parameter, the other leaves it to drop.
-fun split<row R>(p: { kind: i64, ..R }) -> i64 {
+fun split<record R>(p: { kind: i64, ..R }) -> i64 {
     match (p.kind) {
         1 => {
             let { kind: _, ..rest } := p;

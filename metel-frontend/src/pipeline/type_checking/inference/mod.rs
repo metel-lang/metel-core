@@ -223,7 +223,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
 }
 
 /// Give every anonymous row splice in a body annotation its own inference
-/// variable.  Unlike a named `<row R>` argument, `..` is intentionally fresh at
+/// variable.  Unlike a named `<record R>` argument, `..` is intentionally fresh at
 /// each occurrence, including return/local annotations and nested reusable types.
 fn freshen_anonymous_row_args(ty: InferType, ctx: &mut InferContext) -> InferType {
     match ty {
@@ -557,7 +557,7 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         }
         // RFC-0121 item 2 (metel-core#1310), representation-only slice:
         // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
-        // *can* appear in an impl block's target type (`impl<row R>
+        // *can* appear in an impl block's target type (`impl<record R>
         // Session<..R>: Aspect`), parsed before `projections::check` gets a
         // chance to reject it. Mirrors the `Named` case above: the spliced
         // row variable "mentions" a param exactly when it names one.
@@ -1047,7 +1047,7 @@ pub(super) fn collect_fun_type_var_bounds(
                     }));
             }
         }
-        // RFC-0123 / metel-core#1444: `where all R: A` on a row generic that is the row
+        // RFC-0123 / metel-core#1444: `where each R: A` on a row generic that is the row
         // argument of a nominal type (`Packet<..R>`) constrains every field of that row.
         // The constraint rides on `R`'s own type variable, like the equation above; an
         // open-row parameter's tail (and a decomposition remainder) attaches through
@@ -1212,14 +1212,14 @@ fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelE
             TypeErrorCode::T0003,
             format!(
                 "undefined row variable `{name}` -- declare it as a generic \
-                 parameter (`<row {name}>`)"
+                 parameter (`<record {name}>`)"
             ),
             &tail.span,
         )),
         Some(gp) if !gp.is_row => Err(MetelError::type_error(
             TypeErrorCode::T0012,
             format!(
-                "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                "`{name}` is not a row parameter; declare it `<record {name}>`, \
                  not `<{name}>`"
             ),
             &tail.span,
@@ -1251,7 +1251,7 @@ fn resolve_decomposed_fields(
     Ok(equation.fields.clone())
 }
 
-/// RFC-0123 `where all R: Aspect` for an open-row parameter's tail: the aspects
+/// RFC-0123 `where each R: Aspect` for an open-row parameter's tail: the aspects
 /// every field of the argument must satisfy, outside the labels the parameter
 /// already names. `R` itself (the tail) covers the argument's fields minus the
 /// pattern's own; the tail of a `where R = { .. , ..Rest }` equation (`Rest`)
@@ -1303,7 +1303,7 @@ fn field_wise_bounds(
     Ok(out)
 }
 
-/// Whether `fun`'s `where all R: ..` constraint number `index` names a declared `row`
+/// Whether `fun`'s `where each R: ..` constraint number `index` names a declared `row`
 /// generic that appears as the row argument of a nominal type in a parameter or the
 /// return type (`Packet<..R>`), the shape that has a row to walk without being an
 /// open-row parameter's tail (metel-core#1444).
@@ -1352,7 +1352,7 @@ fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
     }
 }
 
-/// Every `where all R: ..` must name the row tail of some open-row parameter (or
+/// Every `where each R: ..` must name the row tail of some open-row parameter (or
 /// a decomposition's remainder), or a row generic used as a nominal type's row argument.
 fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), MetelError> {
     let Some(where_clause) = &fun.where_clause else {

@@ -10,7 +10,7 @@
 
 record Point { x: f64, y: f64 }
 
-fun get_x<row R>(p: { x: f64, ..R }) -> f64 { p.x }
+fun get_x<record R>(p: { x: f64, ..R }) -> f64 { p.x }
 
 fun main() {
     let anon := { x = 3.0, y = 4.0 };

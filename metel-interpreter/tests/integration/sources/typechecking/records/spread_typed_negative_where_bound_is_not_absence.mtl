@@ -1,5 +1,5 @@
 // The same rule for a negative bound written in a `where` clause.
-fun add_token<row R>(d: { ..R }) -> { token: String, ..R } where R: !{ token: String } {
+fun add_token<record R>(d: { ..R }) -> { token: String, ..R } where R: !{ token: String } {
     { token = "secret".to_string(), ..d } // ERROR[T0012]
 }
 

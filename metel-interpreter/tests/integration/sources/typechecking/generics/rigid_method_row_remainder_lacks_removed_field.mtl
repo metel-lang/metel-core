@@ -1,10 +1,10 @@
 // RFC-0173 D1: a generic method carries row-equation remainder facts into
 // its body as well.
-record Session<row R> { data: { ..R } }
+record Session<record R> { data: { ..R } }
 struct Host {}
 
 extend Host {
-    fun read_removed<row R, row Rest>(value: Session<..Rest>) -> String
+    fun read_removed<record R, record Rest>(value: Session<..Rest>) -> String
     where R = { token: String, ..Rest } {
         value.data.token // ERROR[T0003]
     }

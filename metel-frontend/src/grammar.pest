@@ -131,6 +131,8 @@ fun_decl_param_list = { fun_decl_param ~ ("," ~ fun_decl_param)* ~ ","? }
 fun_decl_param      = { ("&" ~ mut_kw? ~ "self") | "self" | (ident ~ (":" ~ (open_record_type | open_record_projection_type | type_expr))?) }
 
 generic_params   = { "<" ~ generic_param ~ ("," ~ generic_param)* ~ ">" }
+// RFC-0186: a record-valued parameter is `record R`. `row_kw` is still read so the removed
+// `row R` form gets a targeted error instead of a bare parse failure.
 generic_param    = { (record_kw | row_kw)? ~ ident ~ (":" ~ bound_list)? }
 // A bound is always an aspect name (+ optional generics/assoc-bindings), never a
 // full `type_expr` — so `bound_head` starts from `type_path`, not `type_expr`, and
@@ -158,13 +160,14 @@ where_constraint = { row_equation | field_wise_constraint | (record_kw? ~ ident 
 // `type_expr` so a malformed (tail-less) equation gets a clear parse-time
 // rejection downstream rather than silently failing to match this rule.
 row_equation = { ident ~ "=" ~ (open_record_type | type_expr) }
-// RFC-0123 §1's field-wise constraint (`where all R: Display`): the aspect
-// bound applies to every field of the row `R`, not to `R` as a whole. `all` is
-// contextual -- it is not a reserved word, so `all` stays an ordinary identifier
+// RFC-0123 §1's field-wise constraint (`where each R: Display`): the aspect
+// bound applies to every field of the row `R`, not to `R` as a whole. `each` is
+// contextual -- it is not a reserved word, so `each` stays an ordinary identifier
 // everywhere else (a method name, a binding); only this position reads it as a
-// keyword, and `all: Bound` (a type parameter named `all`) still parses as an
-// ordinary bound because the next token is not an identifier.
-field_wise_constraint = { all_kw ~ ident ~ ":" ~ bound_list }
+// keyword, and `each: Bound` (a type parameter named `each`) still parses as an
+// ordinary bound because the next token is not an identifier. RFC-0186 renamed it
+// from `all`; `all_kw` is still read so the old spelling gets a targeted error.
+field_wise_constraint = { (each_kw | all_kw) ~ ident ~ ":" ~ bound_list }
 
 // ── Statements ────────────────────────────────────────────────────────────────
 
@@ -486,6 +489,7 @@ super_kw = @{ "super" ~ !(ASCII_ALPHANUMERIC | "_") }
 record_kw = @{ "record" ~ !(ASCII_ALPHANUMERIC | "_") }
 row_kw    = @{ "row" ~ !(ASCII_ALPHANUMERIC | "_") }
 all_kw    = @{ "all" ~ !(ASCII_ALPHANUMERIC | "_") }
+each_kw   = @{ "each" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // arch-implements: ["arch.parsing.requirement-5"]
 ident = @{
@@ -498,7 +502,7 @@ keyword = @{
      "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
      "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "pub" |
      "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
-     "true" | "var" | "record" | "row" |
+     "true" | "var" | "record" |
      "where" | "while")
     ~ !(ASCII_ALPHANUMERIC | "_")
 }

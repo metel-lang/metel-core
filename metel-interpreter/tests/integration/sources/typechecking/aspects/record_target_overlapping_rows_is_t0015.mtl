@@ -4,11 +4,11 @@
 
 aspect Describe { fun describe(&self) -> String; }
 
-extend<row R: { w: i64, .. }> { ..R }: Describe {
+extend<record R: { w: i64, .. }> { ..R }: Describe {
     fun describe(&self) -> String { "a".to_string() }
 }
 
-extend<row R: { h: i64, .. }> { ..R }: Describe {
+extend<record R: { h: i64, .. }> { ..R }: Describe {
     fun describe(&self) -> String { "b".to_string() }
 }
 

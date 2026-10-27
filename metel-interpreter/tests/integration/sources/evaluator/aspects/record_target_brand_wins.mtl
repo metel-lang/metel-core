@@ -12,7 +12,7 @@ extend Tagged: Describe {
     fun describe(&self) -> String { "brand".to_string() }
 }
 
-extend<row R: { w: i64, .. }> { ..R }: Describe {
+extend<record R: { w: i64, .. }> { ..R }: Describe {
     fun describe(&self) -> String { "row".to_string() }
 }
 

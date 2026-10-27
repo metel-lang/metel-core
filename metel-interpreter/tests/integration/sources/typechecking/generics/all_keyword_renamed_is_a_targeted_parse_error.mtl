@@ -1,0 +1,5 @@
+// RFC-0186: the field-wise constraint keyword `all` is renamed `each`. The old spelling gets
+// a targeted error that names the replacement.
+fun consume<record R>(r: { ..R }) -> i64 where all R: Copy { 1 }
+
+fun main() {}

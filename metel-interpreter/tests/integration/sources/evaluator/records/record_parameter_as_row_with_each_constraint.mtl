@@ -1,0 +1,29 @@
+// RFC-0186: a `record R` parameter used as `..R` is a row; `R` and `{ ..R }` both name the
+// remainder; `where each R: A` bounds every field; a branded `record` flows through a row
+// parameter with the remainder anonymous; `each` stays an ordinary identifier elsewhere.
+record Point { x: i64, name: i64 }
+
+fun get_x<record R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun rest_of<record R>(p: { x: i64, ..R }) -> R {
+    let { x, ..rest } := p;
+    rest
+}
+
+fun twice<record R>(p: { x: i64, ..R }) -> ({ ..R }, R) where each R: Copy {
+    let { x, ..rest } := p;
+    (rest, rest)
+}
+
+fun main() {
+    let each := 3;
+    assert(each == 3);
+
+    let p := Point { x = 1, name = 2 };
+    assert(get_x(p) == 1);
+    assert(rest_of(p).name == 2);
+
+    let pair := twice({ x = 1, k = 5 });
+    assert(pair.0.k == 5);
+    assert(pair.1.k == 5);
+}

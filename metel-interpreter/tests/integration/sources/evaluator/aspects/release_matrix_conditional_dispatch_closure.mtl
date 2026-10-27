@@ -1,7 +1,7 @@
 record Notice { title: String, priority: i64 }
 aspect Summary { fun summary(&self) -> String; }
 
-extend<row R: { title: String, .. }> { ..R }: Summary {
+extend<record R: { title: String, .. }> { ..R }: Summary {
     fun summary(&self) -> String { self.title.clone() }
 }
 

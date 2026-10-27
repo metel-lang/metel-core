@@ -2,7 +2,7 @@
 // is the callee's to drop.
 struct Handle { fd: i64, name: String }
 
-fun read_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun read_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 
 fun main() {
     let h := Handle { fd = 3, name = "x".to_string() };

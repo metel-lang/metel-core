@@ -1,3 +1,3 @@
-public record Packet<row R> { data: { ..R } }
-public fun inspect<row R>(packet: &Packet<..R>) -> i64 { 1 }
-public fun identity<row R>(packet: Packet<..R>) -> Packet<..R> { packet }
+public record Packet<record R> { data: { ..R } }
+public fun inspect<record R>(packet: &Packet<..R>) -> i64 { 1 }
+public fun identity<record R>(packet: Packet<..R>) -> Packet<..R> { packet }

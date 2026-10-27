@@ -8,11 +8,11 @@
 struct Handle { fd: i64 }
 
 extend Handle {
-    fun add<row R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
-    fun peek<row R>(&self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
-    fun bump<row R>(&var self, t: { x: i64, ..R }) { self.fd := self.fd + t.x; }
+    fun add<record R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun peek<record R>(&self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun bump<record R>(&var self, t: { x: i64, ..R }) { self.fd := self.fd + t.x; }
     fun anon(self, t: { x: i64, .. }) -> i64 { self.fd + t.x }
-    fun both<row R, row Rest>(self, t: { x: i64, ..R }) -> i64
+    fun both<record R, record Rest>(self, t: { x: i64, ..R }) -> i64
     where R = { z: i64, ..Rest }
     {
         self.fd + t.x + t.z
@@ -22,7 +22,7 @@ extend Handle {
 struct Box<T> { v: T }
 
 extend<T> Box<T> {
-    fun with<row R>(self, t: { x: i64, ..R }) -> i64 { t.x }
+    fun with<record R>(self, t: { x: i64, ..R }) -> i64 { t.x }
 }
 
 fun main() {

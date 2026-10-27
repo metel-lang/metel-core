@@ -5,7 +5,7 @@
 import ticket::Ticket;
 import ticket::make;
 
-fun id_of<row R>(t: Ticket.{ id, ..R }) -> i64 { t.id }
+fun id_of<record R>(t: Ticket.{ id, ..R }) -> i64 { t.id }
 fun pass<T>(x: T) -> T { x }
 
 fun main() {

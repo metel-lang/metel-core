@@ -2,17 +2,17 @@
 // nominal type takes a closed record type as its argument; `Builder<..R>`
 // splices the row variable, and a `where R = { .. }` equation bounds it.
 
-record Builder<row R> { name: String, data: { ..R } }
+record Builder<record R> { name: String, data: { ..R } }
 
-struct Tagged<T, row R> { public v: T, public extra: { ..R } }
+struct Tagged<T, record R> { public v: T, public extra: { ..R } }
 
-fun describe<row R>(b: Builder<..R>) -> String { b.name }
+fun describe<record R>(b: Builder<..R>) -> String { b.name }
 
-fun auth_of<row R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
+fun auth_of<record R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
     b.data.auth
 }
 
-fun get<T, row R>(t: Tagged<T, ..R>) -> T { t.v }
+fun get<T, record R>(t: Tagged<T, ..R>) -> T { t.v }
 
 fun main() {
     let b := Builder { name = "req", data = { auth = "tok", retries = 3 } };

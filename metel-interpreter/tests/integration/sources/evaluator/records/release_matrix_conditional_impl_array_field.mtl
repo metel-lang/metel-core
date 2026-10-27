@@ -1,6 +1,6 @@
-record Series<row R> { points: [i64; 3], extra: { ..R } }
-extend<row R: { unit: String, .. }> Series<..R> { fun total(&self) -> i64 { self.points[0] + self.points[1] + self.points[2] } }
-extend<row R: !{ unit }> Series<..R> { fun total(&self) -> i64 { 0 } }
+record Series<record R> { points: [i64; 3], extra: { ..R } }
+extend<record R: { unit: String, .. }> Series<..R> { fun total(&self) -> i64 { self.points[0] + self.points[1] + self.points[2] } }
+extend<record R: !{ unit }> Series<..R> { fun total(&self) -> i64 { 0 } }
 fun main() {
     let a := Series { points = [1, 2, 3], extra = { unit = "m" } };
     let b := Series { points = [1, 2, 3], extra = {} };

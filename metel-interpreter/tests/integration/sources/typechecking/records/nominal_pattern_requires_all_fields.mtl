@@ -1,5 +1,5 @@
-record Pair<row R> { id: i64, data: { ..R } }
-fun incomplete<row R>(p: Pair<..R>) -> i64 {
+record Pair<record R> { id: i64, data: { ..R } }
+fun incomplete<record R>(p: Pair<..R>) -> i64 {
     let { id } := p; // ERROR[T0012]
     id
 }

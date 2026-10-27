@@ -1,7 +1,7 @@
 // RFC-0121 item 2 (metel-core#1310): an anonymous row as a generic argument in a free function's
 // parameter type (`b: Session<..>`) means "any row": each one is a fresh, nameless type variable
 // of the function's signature, so two parameters may carry different rows.
-record Session<row R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: { ..R } }
 
 fun pair(a: Session<..>, b: Session<..>) -> i64 { a.id + b.id }
 

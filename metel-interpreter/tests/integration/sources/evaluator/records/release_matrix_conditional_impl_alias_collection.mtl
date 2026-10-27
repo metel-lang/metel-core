@@ -1,9 +1,9 @@
 // IM x TA, IM x OW, IM x PM, IM x CO
-record Session<row R> { id: i64, data: { ..R } }
-type Open<row R> := Session<..R>;
-extend<row R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
-extend<row R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
-fun via_alias<row R: { token: String, .. }>(s: Open<..R>) -> i64 { s.kind() }
+record Session<record R> { id: i64, data: { ..R } }
+type Open<record R> := Session<..R>;
+extend<record R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
+extend<record R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
+fun via_alias<record R: { token: String, .. }>(s: Open<..R>) -> i64 { s.kind() }
 fun main() {
     let s := Session { id = 1, data = { token = "t", n = 1 } };
     assert(via_alias(s) == 1);

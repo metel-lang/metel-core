@@ -1,11 +1,11 @@
 type Callback := once || -> i64;
 fun invoke(f: Callback) -> i64 { f() }
 
-fun transition<row R: !{token}>(r: { ..R }) -> { token: String, ..R } {
+fun transition<record R: !{token}>(r: { ..R }) -> { token: String, ..R } {
     { ..r, token = "secret" }
 }
 
-fun copied_tail<row R: !{token}>(r: { id: i64, ..R }) -> i64 where all R: Copy {
+fun copied_tail<record R: !{token}>(r: { id: i64, ..R }) -> i64 where each R: Copy {
     let { id, ..rest } := r;
     let copy := rest;
     let callback := [copy, id] once || {

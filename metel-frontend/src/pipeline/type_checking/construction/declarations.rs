@@ -634,7 +634,7 @@ pub(super) fn construct_impl_decl(
                 let covers_every_instantiation = args.len() == struct_generic_names.len()
                 && args.iter().zip(struct_generic_names.iter()).all(|(arg, gname)| {
                     matches!(arg, TypeExpr::Named(n, inner) if inner.is_empty() && n == gname)
-                        // RFC-0121 item 2: `extend<row R> Session<..R>` splices the impl's
+                        // RFC-0121 item 2: `extend<record R> Session<..R>` splices the impl's
                         // own row generic, which any instantiation's row binds -- the
                         // same "every instantiation" as writing the param's own name.
                         || matches!(arg, TypeExpr::RowArg(tail)

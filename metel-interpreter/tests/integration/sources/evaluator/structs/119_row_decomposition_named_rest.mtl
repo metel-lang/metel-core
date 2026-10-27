@@ -7,7 +7,7 @@
 // `row`-kinded generic but carries no further value yet, mirroring sec1's
 // own treatment of a bare row variable.
 
-fun split<row R, row Rest>(p: { token: i64, ..R }) -> i64
+fun split<record R, record Rest>(p: { token: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
     p.token + p.extra

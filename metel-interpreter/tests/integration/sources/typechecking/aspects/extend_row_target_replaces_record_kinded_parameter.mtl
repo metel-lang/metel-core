@@ -2,7 +2,7 @@
 // records and nominal `record`s whose row carries the bound's fields.
 aspect A { fun f(self) -> i64; }
 
-extend<row R: { x: f64, .. }> { ..R }: A {
+extend<record R: { x: f64, .. }> { ..R }: A {
     fun f(self) -> i64 { 1 }
 }
 

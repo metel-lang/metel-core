@@ -3,6 +3,6 @@
 
 struct Wrapper<T> { v: T }
 
-fun foo<row R>(w: Wrapper<..R>) -> i64 { 0 }
+fun foo<record R>(w: Wrapper<..R>) -> i64 { 0 }
 
 fun main() {}

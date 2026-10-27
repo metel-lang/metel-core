@@ -3,9 +3,9 @@
 // and the annotation `Session<{ extra: i64 }>` is accepted. The body is
 // `panic`, so the call is guarded: this checks the types, it never runs it.
 
-record Session<row R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: { ..R } }
 
-fun authenticate<row R, row Rest>(s: Session<..R>) -> Session<..Rest>
+fun authenticate<record R, record Rest>(s: Session<..R>) -> Session<..Rest>
 where R = { token: String, ..Rest } {
     panic("unimplemented")
 }

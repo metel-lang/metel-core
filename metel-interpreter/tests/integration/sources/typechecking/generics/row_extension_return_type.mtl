@@ -1,10 +1,10 @@
 // RFC-0121 / #1380: an open row may be carried through a reusable return type.
-fun identity<row R>(value: { x: i64, ..R }) -> ({ x: i64, ..R }, i64) {
+fun identity<record R>(value: { x: i64, ..R }) -> ({ x: i64, ..R }, i64) {
     let typed: { x: i64, ..R } := value;
     (typed, 1)
 }
 
-fun tail_identity<row R>(value: { ..R }) -> { ..R } {
+fun tail_identity<record R>(value: { ..R }) -> { ..R } {
     value
 }
 

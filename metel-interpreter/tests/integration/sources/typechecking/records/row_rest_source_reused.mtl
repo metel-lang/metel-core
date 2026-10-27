@@ -1,4 +1,4 @@
-fun consume<row R>(value: { ..R }) {}
+fun consume<record R>(value: { ..R }) {}
 fun main() {
     let source := { token = "gone", owned = "kept" };
     let { token: _, ..rest } := source;

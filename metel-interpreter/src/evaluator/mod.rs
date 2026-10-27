@@ -533,7 +533,7 @@ pub struct RuntimeRegistry {
     /// wins entry.
     pattern_aspect_methods: HashMap<RuntimeTypePattern, Vec<RuntimeAspectImpl>>,
     /// Aspect impls whose target is a record type (`extend { x: f64 }: A`,
-    /// `extend<row R: { x, .. }> { ..R }: A`; RFC-0121 §3). One entry per `extend`
+    /// `extend<record R: { x, .. }> { ..R }: A`; RFC-0121 §3). One entry per `extend`
     /// block, each carrying the row guard its receiver must satisfy -- unlike
     /// `pattern_aspect_methods`, two impls of one aspect with disjoint rows must stay
     /// separate candidates, picked by the receiver's own row.

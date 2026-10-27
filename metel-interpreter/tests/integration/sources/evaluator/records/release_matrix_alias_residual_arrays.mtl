@@ -1,7 +1,7 @@
 type Pair<T> := { left: T, right: T };
 type Grid := [i64; 3];
 record Cell { value: i64, grid: Grid }
-type Residual<row R> := { ..R };
+type Residual<record R> := { ..R };
 fun swap(p: Pair<i64>) -> Pair<i64> { { left = p.right, right = p.left } }
 fun strip(c: Cell) -> Residual<{ grid: Grid }> {
     let { value: _, ..rest } := c;

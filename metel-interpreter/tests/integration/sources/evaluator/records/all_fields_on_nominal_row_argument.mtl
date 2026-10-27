@@ -1,9 +1,9 @@
-// metel-core#1444: `where all R: A` constrains the fields of a row that is the row
+// metel-core#1444: `where each R: A` constrains the fields of a row that is the row
 // argument of a named record (`Packet<..R>`), not only an open-row parameter's tail.
 aspect Mark { fun mark(&self) -> i64; }
-record Packet<row R> { data: { ..R } }
+record Packet<record R> { data: { ..R } }
 
-extend<row R> Packet<..R>: Mark where all R: Copy {
+extend<record R> Packet<..R>: Mark where each R: Copy {
     fun mark(&self) -> i64 {
         // the grant lets the inner row be copied out of a reference
         let first := self.data;
@@ -12,9 +12,9 @@ extend<row R> Packet<..R>: Mark where all R: Copy {
     }
 }
 
-fun count<row R>(p: &Packet<..R>) -> i64 where all R: Copy { 1 }
+fun count<record R>(p: &Packet<..R>) -> i64 where each R: Copy { 1 }
 
-fun both<row R>(p: Packet<..R>) -> ({ ..R }, { ..R }) where all R: Copy {
+fun both<record R>(p: Packet<..R>) -> ({ ..R }, { ..R }) where each R: Copy {
     let d := p.data;
     (d, d)
 }

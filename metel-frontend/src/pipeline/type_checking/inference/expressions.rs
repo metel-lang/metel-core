@@ -169,7 +169,7 @@ fn check_forwarded_generic_bounds(
     }
     // RFC-0179: an open-row parameter owns its whole argument, so forwarding an abstract
     // open-row parameter by value to another open-row parameter forgets nothing and needs no
-    // `where all R: Copy` (that bound still lets a body *use* the row more than once). The
+    // `where each R: Copy` (that bound still lets a body *use* the row more than once). The
     // field-wise bound forwarding below is all that is left to check.
     let required = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
     let granted = |need: &GenericBound| {

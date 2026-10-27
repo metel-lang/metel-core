@@ -1,4 +1,4 @@
-public record Packet<row R> { id: i64, data: { ..R } }
+public record Packet<record R> { id: i64, data: { ..R } }
 public type EmptyPacket := Packet<{}>;
 public struct Box<T> { public value: T }
 public type NumericBox := Box<i64>;

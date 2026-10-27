@@ -5,24 +5,24 @@
 
 aspect Describe { fun describe(self) -> i64; }
 
-record Session<row R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: { ..R } }
 
-extend<row R: { token: String, .. }> Session<..R>: Describe {
+extend<record R: { token: String, .. }> Session<..R>: Describe {
     fun describe(self) -> i64 { 1 }
 }
 
-extend<row R: !{ token }> Session<..R>: Describe {
+extend<record R: !{ token }> Session<..R>: Describe {
     fun describe(self) -> i64 { 2 }
 }
 
 // `a: i64` and `a: String` cannot both hold of one row, so these are disjoint too.
 aspect Tag { fun tag(self) -> i64; }
 
-extend<row R: { a: i64, .. }> Session<..R>: Tag {
+extend<record R: { a: i64, .. }> Session<..R>: Tag {
     fun tag(self) -> i64 { 10 }
 }
 
-extend<row R: { a: String, .. }> Session<..R>: Tag {
+extend<record R: { a: String, .. }> Session<..R>: Tag {
     fun tag(self) -> i64 { 20 }
 }
 

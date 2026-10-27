@@ -1018,8 +1018,8 @@ pub(crate) fn impl_defers_method_bodies(ib: &crate::data::ast::ImplBlock) -> boo
     !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
 }
 
-/// RFC-0123: a `where all R: ..` on an `extend` must name the row tail of a record
-/// target (`extend<row R> { ..R }: A where all R: B`), the only impl shape with a row to
+/// RFC-0123: a `where each R: ..` on an `extend` must name the row tail of a record
+/// target (`extend<record R> { ..R }: A where each R: B`), the only impl shape with a row to
 /// walk; anywhere else it would be silently ignored.
 fn check_impl_field_wise_constraints(
     ib: &crate::data::ast::ImplBlock,
@@ -1038,7 +1038,7 @@ fn check_impl_field_wise_constraints(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
                     "`all {}` on an `extend` must name the row tail of its record target \
-                     (`extend<row {}> {{ ..{} }}: Aspect`)",
+                     (`extend<record {}> {{ ..{} }}: Aspect`)",
                     constraint.var, constraint.var, constraint.var
                 ),
                 &constraint.span,
@@ -1062,8 +1062,8 @@ fn check_impl_field_wise_constraints(
 }
 
 /// Whether `ib`'s target is a nominal type taking the declared `row` generic `var` as a row
-/// argument (`extend<row R> Packet<..R>: A`), the other impl shape with a row for
-/// `where all R: ..` to walk (metel-core#1444).
+/// argument (`extend<record R> Packet<..R>: A`), the other impl shape with a row for
+/// `where each R: ..` to walk (metel-core#1444).
 fn impl_target_row_arg_names(ib: &crate::data::ast::ImplBlock, var: &str) -> bool {
     use crate::data::ast::TypeExpr;
     ib.generics.iter().any(|g| g.is_row && g.name == var)
@@ -1150,7 +1150,7 @@ pub(crate) fn reject_unregisterable_impl_target(
             format!(
                 "cannot `extend` the record-kinded type parameter `{name}`: this block's methods \
                  could never be found. To fix it, write the target as a row, \
-                 `extend<row R: {{ .. }}> {{ ..R }}: Aspect` (the bound moves onto `R`)"
+                 `extend<record R: {{ .. }}> {{ ..R }}: Aspect` (the bound moves onto `R`)"
             ),
             &ib.span,
         ));
@@ -1180,7 +1180,7 @@ pub(crate) fn reject_unregisterable_impl_target(
             crate::data::error::TypeErrorCode::T0003,
             format!(
                 "undefined row variable `{var}` -- declare it as a generic parameter \
-                 (`extend<row {var}> {{ ..{var} }}: Aspect`)"
+                 (`extend<record {var}> {{ ..{var} }}: Aspect`)"
             ),
             &tail.span,
         ));

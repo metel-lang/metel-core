@@ -1,4 +1,4 @@
-fun take_id<row R, row Rest>(r: { id: i64, ..R }) -> i64
+fun take_id<record R, record Rest>(r: { id: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
     let var { id, ..rest } := r;
@@ -12,7 +12,7 @@ fun take_extra(r: { id: i64, extra: i64 }) -> i64 {
     extra
 }
 
-fun add_auth<row R: !{ auth }>(r: { ..R }, auth: i64) -> { ..R, auth: i64 } {
+fun add_auth<record R: !{ auth }>(r: { ..R }, auth: i64) -> { ..R, auth: i64 } {
     { ..r, auth = auth }
 }
 

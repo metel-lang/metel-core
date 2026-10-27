@@ -226,7 +226,7 @@ pub struct TypedImplBlock {
     /// every instantiation" without needing registry access of its own.
     pub target_instantiation_args: Option<Vec<TypeExpr>>,
     /// RFC-0121 item 5: the row conditions of a row-conditional impl
-    /// (`extend<row R: !{ token }> Session<..R>`), one entry per target type-argument
+    /// (`extend<record R: !{ token }> Session<..R>`), one entry per target type-argument
     /// position that carries a row bound. Empty for an ordinary impl. Lets the
     /// evaluator's runtime dispatch tell two disjoint conditional impls of the same
     /// target apart -- both are "blanket" (`target_instantiation_args: None`), so

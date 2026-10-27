@@ -1,7 +1,7 @@
 // metel-core#1473 (RFC-0180): a parameter typed with a literal row requires its fields at the call.
-record Req<row R> { data: { ..R } }
+record Req<record R> { data: { ..R } }
 
-fun host_of<row R>(r: Req<..{ host: String, ..R }>) -> String { r.data.host }
+fun host_of<record R>(r: Req<..{ host: String, ..R }>) -> String { r.data.host }
 
 fun main() {
     let r := Req { data = { port = 1 } };
