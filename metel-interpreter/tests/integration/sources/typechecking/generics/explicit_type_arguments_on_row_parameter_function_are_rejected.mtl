@@ -1,0 +1,9 @@
+// TYPECHECK_ERROR[T0004]
+// metel-core#1646 / GAP-FUNCTIONS-005: a function with an open-record (row) parameter quantifies a
+// synthetic variable for that parameter, so written type arguments cannot be matched to the
+// declared generics. The call says so instead of miscounting or binding the wrong variable.
+fun get_x<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun main() {
+    get_x::<{ name: i64 }>({ x = 1, name = 2 });
+}

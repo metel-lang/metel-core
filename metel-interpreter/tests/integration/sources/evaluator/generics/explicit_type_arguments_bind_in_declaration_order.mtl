@@ -1,0 +1,11 @@
+// metel-core#1646: explicit type arguments pin the declared generics in declaration order,
+// whatever order the parameters mention them in. (A function with a row parameter is a
+// separate case: GAP-FUNCTIONS-005.)
+fun pair<A, B>(b: B, a: A) -> A { a }
+
+fun pick<T: Copy, U>(u: U, t: T) -> T { t }
+
+fun main() {
+    assert(pair::<i64, String>("s", 1) == 1);
+    assert(pick::<i64, String>("s", 2) == 2);
+}
