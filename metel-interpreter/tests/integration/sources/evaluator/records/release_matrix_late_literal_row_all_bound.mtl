@@ -1,8 +1,8 @@
-// Literal rows x field-wise bounds (RFC-0180, RFC-0123, metel-core#1493): `where each R: Copy`
+// Literal rows x field-wise bounds (RFC-0180, RFC-0123, metel-core#1493): `where ..R: Copy`
 // names the tail of a literal row argument, and a call whose remainder is Copy is accepted.
 record Req<record R> { data: { ..R } }
 
-fun id_of<record R>(r: Req<..{ id: i64, ..R }>) -> (i64, i64) where each R: Copy {
+fun id_of<record R>(r: Req<..{ id: i64, ..R }>) -> (i64, i64) where ..R: Copy {
     (r.data.id, r.data.id)
 }
 

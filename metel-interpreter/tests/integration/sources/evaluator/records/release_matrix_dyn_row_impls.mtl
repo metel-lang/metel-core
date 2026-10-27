@@ -1,7 +1,7 @@
 aspect Describe { fun describe(&self) -> String; }
 record Point { x: i64, y: i64 }
 extend Point: Describe { fun describe(&self) -> String { "point".to_string() } }
-extend<record R> { ..R }: Describe where each R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
+extend<record R> { ..R }: Describe where ..R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
 record Packet<record R> { data: { ..R } }
 extend<record R> Packet<..R>: Describe { fun describe(&self) -> String { "packet".to_string() } }
 fun show(d: &dyn Describe) -> String { d.describe() }

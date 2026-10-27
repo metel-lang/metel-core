@@ -45,7 +45,10 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
         };
         MetelError::ParseError {
             code: ParseErrorCode::P0001,
-            message: e.variant.to_string(),
+            message: removed_field_wise_keyword(source, start).map_or_else(
+                || e.variant.to_string(),
+                |keyword| format!("`{keyword}` was removed; write `where ..R: A`"),
+            ),
             start,
             end,
             filename: filename.to_string(),
@@ -56,6 +59,44 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
     })?;
 
     parse_program(&mut pairs, filename)
+}
+
+/// Classify the two removed bound spellings only at the grammar's error site.
+/// They are absent from the grammar, so valid identifiers named `all` or `each`
+/// retain their ordinary meaning in other positions.
+fn removed_field_wise_keyword(source: &str, offset: usize) -> Option<&'static str> {
+    let mut rest = source.get(offset..)?.trim_start();
+    if let Some(after) = rest.strip_prefix("where") {
+        rest = after.trim_start();
+    } else if let Some(after) = rest.strip_prefix(',') {
+        rest = after.trim_start();
+    }
+    let (keyword, after) = if let Some(after) = rest.strip_prefix("all") {
+        ("all", after)
+    } else if let Some(after) = rest.strip_prefix("each") {
+        ("each", after)
+    } else {
+        return None;
+    };
+    if after.starts_with(|ch: char| ch.is_alphanumeric() || ch == '_') {
+        return None;
+    }
+    let rest = after
+        .trim_start()
+        .strip_prefix("..")
+        .unwrap_or(after.trim_start());
+    let rest = rest.trim_start();
+    let name_len = rest
+        .bytes()
+        .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+        .count();
+    if name_len == 0 || !rest.as_bytes()[0].is_ascii_alphabetic() && rest.as_bytes()[0] != b'_' {
+        return None;
+    }
+    rest.get(name_len..)?
+        .trim_start()
+        .starts_with(':')
+        .then_some(keyword)
 }
 
 fn parse_program(pairs: &mut Pairs<Rule>, filename: &str) -> Result<Program, MetelError> {
@@ -3735,15 +3776,6 @@ fn parse_where_clause(
         if first.as_rule() == Rule::field_wise_constraint {
             let span = Span::of(&first, filename);
             let mut inner = first.into_inner();
-            if let Some(keyword) = inner.next()
-                && keyword.as_rule() == Rule::all_kw
-            {
-                return Err(MetelError::parse(
-                    ParseErrorCode::P0001,
-                    "`all` was renamed (RFC-0186); write `where each R: A`",
-                    &Span::of(&keyword, filename),
-                ));
-            }
             let var = inner
                 .next()
                 .ok_or_else(|| {

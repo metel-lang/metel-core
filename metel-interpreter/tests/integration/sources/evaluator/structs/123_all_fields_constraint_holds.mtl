@@ -1,8 +1,8 @@
-// RFC-0123 sec1 (metel-core#1302): `where each R: Aspect` holds when every field
+// RFC-0123 sec1 (metel-core#1302): `where ..R: Aspect` holds when every field
 // of the row `R` -- the argument's fields beyond the ones the parameter names --
 // satisfies the aspect. It is vacuous on an empty remainder, covers a named
 // record argument as well as an anonymous one, and in a `where R = { .., ..Rest }`
-// decomposition `each Rest: A` skips the decomposed labels and `each R: A` does not.
+// decomposition `..Rest: A` skips the decomposed labels and `..R: A` does not.
 
 aspect Tag { fun tag(self) -> i64; }
 extend i64: Tag { fun tag(self) -> i64 { 1 } }
@@ -10,16 +10,16 @@ extend f64: Tag { fun tag(self) -> i64 { 2 } }
 
 record Item { id: i64, weight: f64 }
 
-fun id_of<record R>(p: { id: i64, ..R }) -> i64 where each R: Tag { p.id }
+fun id_of<record R>(p: { id: i64, ..R }) -> i64 where ..R: Tag { p.id }
 
 fun token_of<record R, record Rest>(p: { ..R }) -> i64
-where R = { token: i64, ..Rest }, each Rest: Copy
+where R = { token: i64, ..Rest }, ..Rest: Copy
 {
     p.token
 }
 
 fun whole<record R, record Rest>(p: { ..R }) -> i64
-where R = { token: i64, ..Rest }, each R: Tag
+where R = { token: i64, ..Rest }, ..R: Tag
 {
     p.token
 }

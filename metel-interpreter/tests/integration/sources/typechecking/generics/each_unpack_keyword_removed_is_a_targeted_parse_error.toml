@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.types.generics.field-wise-row-constraints.legality-1"]
+
+[expect]
+status = "parse_error"
+contains = "write `where ..R: A`"

@@ -1047,7 +1047,7 @@ pub(super) fn collect_fun_type_var_bounds(
                     }));
             }
         }
-        // RFC-0123 / metel-core#1444: `where each R: A` on a row generic that is the row
+        // RFC-0123 / metel-core#1444: `where ..R: A` on a row generic that is the row
         // argument of a nominal type (`Packet<..R>`) constrains every field of that row.
         // The constraint rides on `R`'s own type variable, like the equation above; an
         // open-row parameter's tail (and a decomposition remainder) attaches through
@@ -1218,10 +1218,7 @@ fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelE
         )),
         Some(gp) if !gp.is_row => Err(MetelError::type_error(
             TypeErrorCode::T0012,
-            format!(
-                "`{name}` is not a row parameter; declare it `<record {name}>`, \
-                 not `<{name}>`"
-            ),
+            format!("`..{name}` takes the row of a record parameter; declare `record {name}`"),
             &tail.span,
         )),
         Some(_) => Ok(()),
@@ -1251,7 +1248,7 @@ fn resolve_decomposed_fields(
     Ok(equation.fields.clone())
 }
 
-/// RFC-0123 `where each R: Aspect` for an open-row parameter's tail: the aspects
+/// RFC-0123 `where ..R: Aspect` for an open-row parameter's tail: the aspects
 /// every field of the argument must satisfy, outside the labels the parameter
 /// already names. `R` itself (the tail) covers the argument's fields minus the
 /// pattern's own; the tail of a `where R = { .. , ..Rest }` equation (`Rest`)
@@ -1288,7 +1285,7 @@ fn field_wise_bounds(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!(
-                            "`each {}` takes aspect bounds only -- a row bound or a negative \
+                            "`..{}` takes aspect bounds only -- a row bound or a negative \
                              bound does not apply field by field (RFC-0123 §1)",
                             constraint.var
                         ),
@@ -1303,7 +1300,7 @@ fn field_wise_bounds(
     Ok(out)
 }
 
-/// Whether `fun`'s `where each R: ..` constraint number `index` names a declared `row`
+/// Whether `fun`'s `where ..R: ..` constraint number `index` names a declared `row`
 /// generic that appears as the row argument of a nominal type in a parameter or the
 /// return type (`Packet<..R>`), the shape that has a row to walk without being an
 /// open-row parameter's tail (metel-core#1444).
@@ -1352,7 +1349,7 @@ fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
     }
 }
 
-/// Every `where each R: ..` must name the row tail of some open-row parameter (or
+/// Every `where ..R: ..` must name the row tail of some open-row parameter (or
 /// a decomposition's remainder), or a row generic used as a nominal type's row argument.
 fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), MetelError> {
     let Some(where_clause) = &fun.where_clause else {
@@ -1370,7 +1367,7 @@ fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), Me
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!(
-                    "`each {}` must name the row tail of an open-row parameter \
+                    "`..{}` must name the row tail of an open-row parameter \
                      (`{{ .., ..{}}}`) or the remainder of a `where` decomposition",
                     constraint.var, constraint.var
                 ),

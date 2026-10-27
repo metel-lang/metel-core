@@ -1018,8 +1018,8 @@ pub(crate) fn impl_defers_method_bodies(ib: &crate::data::ast::ImplBlock) -> boo
     !ib.generics.is_empty() || impl_target_head(&ib.target_type).is_none()
 }
 
-/// RFC-0123: a `where each R: ..` on an `extend` must name the row tail of a record
-/// target (`extend<record R> { ..R }: A where each R: B`), the only impl shape with a row to
+/// RFC-0123: a `where ..R: ..` on an `extend` must name the row tail of a record
+/// target (`extend<record R> { ..R }: A where ..R: B`), the only impl shape with a row to
 /// walk; anywhere else it would be silently ignored.
 fn check_impl_field_wise_constraints(
     ib: &crate::data::ast::ImplBlock,
@@ -1037,7 +1037,7 @@ fn check_impl_field_wise_constraints(
             return Err(crate::data::error::MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
-                    "`each {}` on an `extend` must name the row tail of its record target \
+                    "`..{}` on an `extend` must name the row tail of its record target \
                      (`extend<record {}> {{ ..{} }}: Aspect`)",
                     constraint.var, constraint.var, constraint.var
                 ),
@@ -1050,7 +1050,7 @@ fn check_impl_field_wise_constraints(
             return Err(crate::data::error::MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
-                    "`each {}` takes aspect bounds only -- a row bound or a negative bound \
+                    "`..{}` takes aspect bounds only -- a row bound or a negative bound \
                      does not apply field by field (RFC-0123 §1)",
                     constraint.var
                 ),
@@ -1063,7 +1063,7 @@ fn check_impl_field_wise_constraints(
 
 /// Whether `ib`'s target is a nominal type taking the declared `row` generic `var` as a row
 /// argument (`extend<record R> Packet<..R>: A`), the other impl shape with a row for
-/// `where each R: ..` to walk (metel-core#1444).
+/// `where ..R: ..` to walk (metel-core#1444).
 fn impl_target_row_arg_names(ib: &crate::data::ast::ImplBlock, var: &str) -> bool {
     use crate::data::ast::TypeExpr;
     ib.generics.iter().any(|g| g.is_row && g.name == var)

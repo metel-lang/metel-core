@@ -1,0 +1,2 @@
+fun invalid<T>(value: T) -> i64 where ..T: Copy { 1 }
+fun main() {}

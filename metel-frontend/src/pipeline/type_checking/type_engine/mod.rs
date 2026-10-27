@@ -2382,7 +2382,7 @@ pub type AspectTypeArguments = HashMap<(TypeVar, String), Vec<InferType>>;
 pub enum GenericBound {
     Aspect(String),
     Row(RowConstraint),
-    /// RFC-0123 `where each R: A`, on the type variable of an open-row-tailed
+    /// RFC-0123 `where ..R: A`, on the type variable of an open-row-tailed
     /// parameter: every field of the argument *except* the labels in `except`
     /// (those the parameter's pattern, or a `where R = { .. }` decomposition,
     /// already names) satisfies each aspect in `aspects`.
@@ -4437,7 +4437,7 @@ impl TypeDefinitionRegistry {
         true
     }
 
-    /// RFC-0123 `where each R: A` as an impl condition: does every field of `arg`'s row
+    /// RFC-0123 `where ..R: A` as an impl condition: does every field of `arg`'s row
     /// outside `except` satisfy each aspect? A type with no known row does not.
     fn all_fields_hold(
         &self,
@@ -5812,7 +5812,7 @@ impl TypeDefinitionRegistry {
     /// A record-target impl's field-wise requirement on the whole receiver can
     /// follow from the same requirement on an open tail plus typed facts for
     /// the receiver's explicitly named fields. Those fixed fields are exactly
-    /// the exclusions carried by `all R: Aspect` on a `{ fixed, ..R }` bound.
+    /// the exclusions carried by `..R: Aspect` on a `{ fixed, ..R }` bound.
     fn all_fields_bound_entailed(
         &self,
         current_module: &[String],

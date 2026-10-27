@@ -5,12 +5,12 @@
 aspect Describe { fun describe(&self) -> String; }
 record Point { x: i64, y: i64 }
 extend Point: Describe { fun describe(&self) -> String { "point".to_string() } }
-extend<record R> { ..R }: Describe where each R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
+extend<record R> { ..R }: Describe where ..R: Copy { fun describe(&self) -> String { "copy-row".to_string() } }
 
 record Tok { value: String, id: i64, n: i64 }
 aspect Keyed { fun key(&self) -> String; }
 extend Tok: Keyed { fun key(&self) -> String { "tok".to_string() } }
-extend<record R: { id: i64, .. }> { ..R }: Keyed where each R: Copy { fun key(&self) -> String { "row".to_string() } }
+extend<record R: { id: i64, .. }> { ..R }: Keyed where ..R: Copy { fun key(&self) -> String { "row".to_string() } }
 
 fun erase(p: Point) -> {} {
     let { x: _, y: _, ..rest } := p;

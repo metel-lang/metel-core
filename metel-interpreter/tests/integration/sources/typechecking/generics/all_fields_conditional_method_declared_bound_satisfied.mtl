@@ -1,13 +1,13 @@
 // RFC-0173 D6: a generic body may select a record-target conditional method
-// when its `each R: Mark` entitlement matches the impl's condition.
+// when its `..R: Mark` entitlement matches the impl's condition.
 
 aspect Mark {}
 aspect Label { fun label(&self) -> String; }
 
-extend<record R> { ..R }: Label where each R: Mark {
+extend<record R> { ..R }: Label where ..R: Mark {
     fun label(&self) -> String { "marked".to_string() }
 }
 
-fun use<record R>(value: { ..R }) -> String where each R: Mark {
+fun use<record R>(value: { ..R }) -> String where ..R: Mark {
     value.label()
 }

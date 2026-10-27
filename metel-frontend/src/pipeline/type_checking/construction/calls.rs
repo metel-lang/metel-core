@@ -973,7 +973,7 @@ pub(super) fn row_bound_error_prefix(bound: &GenericBound) -> String {
         GenericBound::Row(_) => format!("row bound `{bound}`"),
         GenericBound::Aspect(name) => format!("bound `{name}`"),
         GenericBound::AllFields { aspects, .. } => {
-            format!("field-wise bound `each: {}`", aspects.join(" + "))
+            format!("the field-wise bound `..R: {}`", aspects.join(" + "))
         }
     }
 }
@@ -1261,7 +1261,7 @@ pub(super) fn check_negative_row_bound(
     Ok(())
 }
 
-/// RFC-0123 `where each R: Aspect`, concrete case: every field of the argument
+/// RFC-0123 `where ..R: Aspect`, concrete case: every field of the argument
 /// outside `except` (the labels the parameter already names) must satisfy each
 /// aspect. Vacuous on an empty remainder.
 fn check_all_fields(

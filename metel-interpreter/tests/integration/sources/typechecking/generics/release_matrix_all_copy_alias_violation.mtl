@@ -1,5 +1,5 @@
 type Pair<T> := (T, T);
-fun duplicate<record R>(value: { ..R }) -> Pair<{ ..R }> where each R: Copy {
+fun duplicate<record R>(value: { ..R }) -> Pair<{ ..R }> where ..R: Copy {
     (value, value)
 }
 fun main() { duplicate({ text = "owned" }); } // ERROR[T0012]

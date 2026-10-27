@@ -1,0 +1,2 @@
+fun invalid<record R>(value: { ..R }) -> i64 where ..(R): Copy { 1 }
+fun main() {}

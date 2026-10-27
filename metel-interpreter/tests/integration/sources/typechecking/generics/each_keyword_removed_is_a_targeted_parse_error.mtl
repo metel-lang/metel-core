@@ -1,0 +1,2 @@
+fun consume<record R>(r: { ..R }) -> i64 where each R: Copy { 1 }
+fun main() {}
