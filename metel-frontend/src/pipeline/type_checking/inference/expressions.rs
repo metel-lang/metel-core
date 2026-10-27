@@ -93,6 +93,21 @@ fn constrain_explicit_call_arguments(
     if annotations.is_empty() {
         return Ok(());
     }
+    // A function with an open-record parameter (`{ x: i64, ..R }`) quantifies a synthetic
+    // variable for that parameter's own type, so its quantified variables are not the
+    // generics the program declared and written arguments cannot be matched to them
+    // (metel-core#1646, GAP-FUNCTIONS-005). Say so rather than miscount or mis-bind.
+    if scheme.open_row_params.iter().any(|&open| open) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0004,
+            format!(
+                "explicit type arguments are not supported on `{callee_name}`: it takes an \
+                 open-record parameter (a row). Remove the `::<…>`; the row is inferred from \
+                 the arguments"
+            ),
+            span,
+        ));
+    }
     if annotations.len() != scheme.quantified_vars.len() {
         return Err(MetelError::type_error(
             TypeErrorCode::T0004,

@@ -1,0 +1,8 @@
+[options]
+error = ["T0004"]
+spec = ["spec.functions.turbofish.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0004"
+contains = "explicit type arguments are not supported on `get_x`"
