@@ -1037,7 +1037,7 @@ fn check_impl_field_wise_constraints(
             return Err(crate::data::error::MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
-                    "`all {}` on an `extend` must name the row tail of its record target \
+                    "`each {}` on an `extend` must name the row tail of its record target \
                      (`extend<record {}> {{ ..{} }}: Aspect`)",
                     constraint.var, constraint.var, constraint.var
                 ),
@@ -1050,7 +1050,7 @@ fn check_impl_field_wise_constraints(
             return Err(crate::data::error::MetelError::type_error(
                 crate::data::error::TypeErrorCode::T0012,
                 format!(
-                    "`all {}` takes aspect bounds only -- a row bound or a negative bound \
+                    "`each {}` takes aspect bounds only -- a row bound or a negative bound \
                      does not apply field by field (RFC-0123 §1)",
                     constraint.var
                 ),

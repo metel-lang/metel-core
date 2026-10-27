@@ -1288,7 +1288,7 @@ fn field_wise_bounds(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!(
-                            "`all {}` takes aspect bounds only -- a row bound or a negative \
+                            "`each {}` takes aspect bounds only -- a row bound or a negative \
                              bound does not apply field by field (RFC-0123 §1)",
                             constraint.var
                         ),
@@ -1370,7 +1370,7 @@ fn check_field_wise_consumed(fun: &FunDecl, consumed: &[usize]) -> Result<(), Me
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!(
-                    "`all {}` must name the row tail of an open-row parameter \
+                    "`each {}` must name the row tail of an open-row parameter \
                      (`{{ .., ..{}}}`) or the remainder of a `where` decomposition",
                     constraint.var, constraint.var
                 ),

@@ -1,0 +1,15 @@
+// RFC-0186: used as a whole record (`p: R`, `-> R`) a `record R` parameter keeps the brand of a
+// branded `record` it is instantiated with, so the brand's methods stay reachable.
+record P { x: i64, name: i64 }
+
+extend P {
+    fun brand(&self) -> i64 { 7 }
+}
+
+fun keep<record R: { x: i64, .. }>(p: R) -> R { p }
+
+fun main() {
+    let p := P { x = 1, name = 2 };
+    assert(keep(p).brand() == 7);
+    assert(keep(p).name == 2);
+}
