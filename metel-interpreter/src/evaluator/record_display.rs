@@ -1,11 +1,11 @@
-//! `Display` for a record, the built-in body of `extend<record R> { ..R }: Display where each R:
+//! `Display` for a record, the built-in body of `extend<record R> { ..R }: Display where ..R:
 //! Display` in `std::core` (RFC-0123, metel-core#1338).
 //!
 //! A host function cannot walk a row generically in Metel itself, so this stands in for the
 //! `comptime for` loop of RFC-0174: it formats the receiver's fields in label order at
 //! runtime, rendering each through that field's own `to_string` (a primitive directly, a
 //! nested record recursively, any other type through its registered `Display` impl). The
-//! static `where each R: Display` check has already guaranteed every field has one.
+//! static `where ..R: Display` check has already guaranteed every field has one.
 //! `LIMIT-TYPES-003` records this as a limitation to be replaced when RFC-0174 lands.
 
 use crate::data::ast::Span;
