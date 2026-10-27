@@ -1,7 +1,7 @@
 // Anonymous-tail annotations x whole-record open rows (RFC-0181 decision, RFC-0179): a binding
 // annotated with an anonymous tail keeps its extra fields, and is then passed by value to an
 // open-row parameter whose remainder holds a String.
-fun take<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+fun take<record R>(p: { x: i64, ..R }) -> i64 { p.x }
 
 fun main() {
     let a: { x: i64, .. } := { x = 1, name = "n".to_string() };

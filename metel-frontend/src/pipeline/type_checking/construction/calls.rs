@@ -1261,7 +1261,7 @@ pub(super) fn check_negative_row_bound(
     Ok(())
 }
 
-/// RFC-0123 `where all R: Aspect`, concrete case: every field of the argument
+/// RFC-0123 `where each R: Aspect`, concrete case: every field of the argument
 /// outside `except` (the labels the parameter already names) must satisfy each
 /// aspect. Vacuous on an empty remainder.
 fn check_all_fields(
@@ -1488,7 +1488,7 @@ pub(super) fn check_type_satisfies_bounds(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0012,
                         format!(
-                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: an anonymous record satisfies the auto-derived aspects field-wise, and an aspect only through an `extend` on a record target whose row it has (`extend<row R: {{ .. }}> {{ ..R }}: {aspect}`); otherwise declare a `struct` and implement `{aspect}` there"
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: an anonymous record satisfies the auto-derived aspects field-wise, and an aspect only through an `extend` on a record target whose row it has (`extend<record R: {{ .. }}> {{ ..R }}: {aspect}`); otherwise declare a `struct` and implement `{aspect}` there"
                         ),
                         span,
                     ));

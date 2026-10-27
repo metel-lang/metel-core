@@ -1,8 +1,8 @@
-fun clone_row<row R>(value: &{ ..R }) -> { ..R } where all R: Clone {
+fun clone_row<record R>(value: &{ ..R }) -> { ..R } where each R: Clone {
     value.clone()
 }
 
-fun copy_head<row R>(value: { id: i64, ..R }) -> i64 where all R: Copy {
+fun copy_head<record R>(value: { id: i64, ..R }) -> i64 where each R: Copy {
     value.id
 }
 

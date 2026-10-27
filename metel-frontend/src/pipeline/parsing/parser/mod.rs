@@ -421,9 +421,10 @@ fn parse_fun_decl(
     let mut params = vec![];
     let mut return_type = None;
     let mut body = None;
+    let row_uses = row_uses_of(inner.clone());
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
             Rule::fun_decl_param_list => params = parse_param_list(p, filename)?,
             Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
@@ -499,9 +500,10 @@ fn parse_struct_decl(
     let mut generics = vec![];
     let mut where_clause = None;
     let mut fields = vec![];
+    let row_uses = row_uses_of(inner.clone());
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
             Rule::struct_fields => fields = parse_struct_fields(p, filename)?,
             _ => {}
@@ -566,9 +568,10 @@ fn parse_enum_decl(
     let mut generics = vec![];
     let mut where_clause = None;
     let mut variants = vec![];
+    let row_uses = row_uses_of(inner.clone());
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
             Rule::enum_variants => {
                 for v in p.into_inner() {
@@ -620,9 +623,10 @@ fn parse_extend_impl_block(
     let mut aspects = vec![];
     let mut bodyless = false;
 
+    let row_uses = row_uses_of(pair.clone().into_inner());
     for p in pair.into_inner() {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::type_expr | Rule::open_record_type => {
                 target_type = Some(parse_type_expr(p, filename)?);
             }
@@ -939,9 +943,10 @@ fn parse_aspect_method(
     let mut params = vec![];
     let mut return_type = None;
     let mut default_body = None;
+    let row_uses = row_uses_of(inner.clone());
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::param_list => params = parse_param_list(p, filename)?,
             Rule::type_expr => return_type = Some(parse_type_expr(p, filename)?),
             Rule::block => default_body = Some(parse_block(p, filename)?),
@@ -3730,7 +3735,15 @@ fn parse_where_clause(
         if first.as_rule() == Rule::field_wise_constraint {
             let span = Span::of(&first, filename);
             let mut inner = first.into_inner();
-            inner.next(); // `all`
+            if let Some(keyword) = inner.next()
+                && keyword.as_rule() == Rule::all_kw
+            {
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    "`all` was renamed (RFC-0186); write `where each R: A`",
+                    &Span::of(&keyword, filename),
+                ));
+            }
             let var = inner
                 .next()
                 .ok_or_else(|| {
@@ -3773,9 +3786,39 @@ fn parse_where_clause(
     })
 }
 
+/// Names written as the row of a record parameter anywhere in an item: a `..R` tail or row
+/// argument, the variable of a field-wise constraint, or the left side of a row equation.
+/// RFC-0186: a `record R` parameter used this way is a row parameter; no separate kind
+/// keyword says so.
+fn row_uses_of<'i>(
+    pairs: impl Iterator<Item = pest::iterators::Pair<'i, Rule>>,
+) -> std::collections::HashSet<String> {
+    let mut uses = std::collections::HashSet::new();
+    for top in pairs {
+        for p in std::iter::once(top.clone()).chain(top.into_inner().flatten()) {
+            match p.as_rule() {
+                Rule::row_tail => {
+                    if let Some(name) = p.into_inner().next() {
+                        uses.insert(name.as_str().to_string());
+                    }
+                }
+                Rule::field_wise_constraint | Rule::row_equation => {
+                    if let Some(name) = p.into_inner().find(|inner| inner.as_rule() == Rule::ident)
+                    {
+                        uses.insert(name.as_str().to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    uses
+}
+
 fn parse_generic_params(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
+    row_uses: &std::collections::HashSet<String>,
 ) -> Result<Vec<GenericParam>, MetelError> {
     let mut params = vec![];
     for p in pair.into_inner() {
@@ -3793,13 +3836,23 @@ fn parse_generic_params(
                         .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
                 }
                 Rule::row_kw => {
-                    is_row = true;
-                    it.next()
-                        .ok_or_else(|| MetelError::internal("generic_param: expected name"))?
+                    let span = Span::of(&first, filename);
+                    let written = it.next().map_or("R", |name| name.as_str()).to_string();
+                    return Err(MetelError::parse(
+                        ParseErrorCode::P0001,
+                        format!(
+                            "the `row` kind was removed (RFC-0186); declare `record {written}`"
+                        ),
+                        &span,
+                    ));
                 }
                 _ => first,
             };
             let name = name_pair.as_str().to_string();
+            if is_record && row_uses.contains(&name) {
+                is_record = false;
+                is_row = true;
+            }
             let bounds = it
                 .next()
                 .map(|bl| parse_bound_list(bl, filename))
@@ -3909,9 +3962,10 @@ fn parse_type_alias(
         .to_string();
     let mut generics = vec![];
     let mut target = None;
+    let row_uses = row_uses_of(inner.clone());
     for p in inner {
         match p.as_rule() {
-            Rule::generic_params => generics = parse_generic_params(p, filename)?,
+            Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::type_expr => target = Some(parse_type_expr(p, filename)?),
             _ => {}
         }

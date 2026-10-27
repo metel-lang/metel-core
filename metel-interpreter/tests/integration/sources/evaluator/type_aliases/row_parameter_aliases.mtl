@@ -1,11 +1,11 @@
 // metel-core#1425: row tails are alias parameters, not free names after expansion.
-record Packet<row R> { data: { ..R } }
-type Row<row R> := { ..R };
-type Tagged<T, row R> := { tag: T, ..R };
-type PacketAlias<row R> := Packet<..R>;
-type Nested<row R> := (Row<..R>, PacketAlias<..R>);
-fun identity<row R>(value: Row<..R>) -> Row<..R> { value }
-fun tagged<T, row R>(tag: T, value: Row<..R>) -> Tagged<T, ..R>
+record Packet<record R> { data: { ..R } }
+type Row<record R> := { ..R };
+type Tagged<T, record R> := { tag: T, ..R };
+type PacketAlias<record R> := Packet<..R>;
+type Nested<record R> := (Row<..R>, PacketAlias<..R>);
+fun identity<record R>(value: Row<..R>) -> Row<..R> { value }
+fun tagged<T, record R>(tag: T, value: Row<..R>) -> Tagged<T, ..R>
 where R: !{tag} { { tag = tag, ..value } }
 fun main() {
     let empty: Row<{}> := identity({});

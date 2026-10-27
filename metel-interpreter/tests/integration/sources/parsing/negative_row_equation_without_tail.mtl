@@ -4,7 +4,7 @@
 // only to reject it explicitly at parse time, rather than silently failing
 // to match the `row_equation` rule.
 
-fun split<row R>(p: { token: i64, ..R }) -> i64
+fun split<record R>(p: { token: i64, ..R }) -> i64
 where R = i64
 {
     p.token

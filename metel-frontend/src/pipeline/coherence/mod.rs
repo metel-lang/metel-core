@@ -155,7 +155,7 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
         // `Session<..R>` stays opaque for the same reason as the others
         // here. Unlike `OpenRecord`/`OpenRecordProjection`, it's reachable
         // in *any* type-argument position, including an impl target's or
-        // bound's own (`impl<row R> Foo<..R>: Aspect`, parsed before
+        // bound's own (`impl<record R> Foo<..R>: Aspect`, parsed before
         // `projections::check` gets a chance to reject it) -- opaque
         // rather than panicking on ordinary (if not-yet-implemented) input.
         TypeExpr::ImplAspect { .. }
@@ -331,7 +331,7 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
                 .collect();
             (items.len(), map)
         }
-        // `extend<row R: { .. }> { ..R }: Aspect`: the whole receiver row is position 0,
+        // `extend<record R: { .. }> { ..R }: Aspect`: the whole receiver row is position 0,
         // so the tail variable's row bound attaches there.
         TypeExpr::OpenRecord(_, tail) => {
             let map = tail

@@ -1,8 +1,8 @@
 // metel-core#1473 (RFC-0180, RFC-0181): an anonymous tail inside a literal row follows the same
 // positional rule as any anonymous open record; in a return type it is T0032.
-record Req<row R> { data: { ..R } }
+record Req<record R> { data: { ..R } }
 
-fun add<row R: !{ host }>(r: Req<..R>) -> Req<..{ host: String, .. }> { // ERROR[T0032]
+fun add<record R: !{ host }>(r: Req<..R>) -> Req<..{ host: String, .. }> { // ERROR[T0032]
     Req { data = { host = "x".to_string(), ..r.data } }
 }
 

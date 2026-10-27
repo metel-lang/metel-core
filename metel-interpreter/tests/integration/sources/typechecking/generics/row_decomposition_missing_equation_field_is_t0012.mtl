@@ -2,7 +2,7 @@
 // named fields are real requirements, checked structurally like any other
 // row bound -- a record missing one is rejected at compile time.
 
-fun split<row R, row Rest>(p: { token: i64, ..R }) -> i64
+fun split<record R, record Rest>(p: { token: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
     p.token

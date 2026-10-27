@@ -1,4 +1,4 @@
-fun head<row R>(v: { xs: [i64; 3], ..R }) -> i64 where all R: Copy {
+fun head<record R>(v: { xs: [i64; 3], ..R }) -> i64 where each R: Copy {
     let w := v;
     v.xs[0] + w.xs[1]
 }

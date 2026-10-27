@@ -4,7 +4,7 @@
 struct Handle { fd: i64, name: String }
 type H := Handle;
 
-fun any_handle<row R>(h: Handle.{ ..R }) -> i64 { 1 }
+fun any_handle<record R>(h: Handle.{ ..R }) -> i64 { 1 }
 
 fun main() {
     let h: H := Handle { fd = 3, name = "x".to_string() };

@@ -1,5 +1,5 @@
-record Packet<row R> { data: { ..R } }
-fun count<row R>(p: &Packet<..R>) -> i64 where all R: Copy { 1 }
+record Packet<record R> { data: { ..R } }
+fun count<record R>(p: &Packet<..R>) -> i64 where each R: Copy { 1 }
 fun main() {
     let p := Packet { data = { a = "s".to_string() } };
     let _ := count(&p); // ERROR[T0012]

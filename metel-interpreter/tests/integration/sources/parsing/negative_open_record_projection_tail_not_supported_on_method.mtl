@@ -7,7 +7,7 @@
 struct Handle { fd: i64 }
 
 extend Handle {
-    fun get_fd<row R>(self, extra: Handle.{ fd, ..R }) -> i64 { extra.fd }
+    fun get_fd<record R>(self, extra: Handle.{ fd, ..R }) -> i64 { extra.fd }
 }
 
 fun main() {}

@@ -142,7 +142,7 @@ pub(super) fn synth_generics_for_impl(
 }
 
 /// RFC-0121 item 5: an impl's own generics, with each row generic that the target
-/// splices (`extend<row Q: { .. }> Session<..Q>`) renamed to the struct's own
+/// splices (`extend<record Q: { .. }> Session<..Q>`) renamed to the struct's own
 /// parameter at that position, so `synth_generics_for_impl`'s by-name lookup finds
 /// its bounds whatever the impl calls it. A rename that would collide with another
 /// impl generic is skipped.
@@ -187,7 +187,7 @@ fn bare_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Option<&str> {
 /// The row condition an `extend` on a record target imposes on its receiver
 /// (RFC-0121 §3, `spec.types.generics.row-conditional-impls`): a closed record target
 /// (`extend { x: f64, y: f64 }: A`) matches exactly that row, a row-tailed one
-/// (`extend<row R: { x: f64, .. }> { ..R }: A`) every row carrying its named fields plus
+/// (`extend<record R: { x: f64, .. }> { ..R }: A`) every row carrying its named fields plus
 /// whatever the tail variable's own bound, `where` bound or `where R = { .. }`
 /// decomposition requires. `None` for any other target.
 pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowConstraint> {
@@ -249,8 +249,8 @@ pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowC
     }
 }
 
-/// RFC-0123 `where all R: Aspect` on an `extend` whose target is a nominal type taking the
-/// declared `row` generic `R` as a row argument (`extend<row R> Packet<..R>: A`): every
+/// RFC-0123 `where each R: Aspect` on an `extend` whose target is a nominal type taking the
+/// declared `row` generic `R` as a row argument (`extend<record R> Packet<..R>: A`): every
 /// field of that row satisfies each aspect (metel-core#1444). Pairs each constrained row
 /// variable with its bound.
 pub(crate) fn impl_nominal_row_arg_all_fields(
@@ -284,7 +284,7 @@ pub(crate) fn impl_nominal_row_arg_all_fields(
         .collect()
 }
 
-/// RFC-0123 `where all R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
+/// RFC-0123 `where each R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
 /// field of the receiver beyond the target's own named ones satisfies each aspect.
 pub(crate) fn record_target_all_fields(ib: &crate::data::ast::ImplBlock) -> Vec<GenericBound> {
     let TypeExpr::OpenRecord(fields, tail) = &ib.target_type else {
@@ -548,7 +548,7 @@ pub(super) fn fresh_generic_params(
 }
 
 /// Everything the registry records about a generic struct beyond its fields, keyed by the
-/// declaration's `SymbolId`: type parameters, their names, aspect arguments, row and record kinds,
+/// declaration's `SymbolId`: type parameters, their names, aspect arguments, record and record kinds,
 /// and bounds. Shared by module-level structs and block-local ones (metel-core#1556).
 pub(super) fn register_struct_generic_metadata(
     registry: &mut TypeDefinitionRegistry,
@@ -1132,7 +1132,7 @@ fn register_generic_impl_method_schemes(
         .cloned()
         .zip(type_params.iter().copied())
         .collect();
-    // RFC-0121 item 2: an `extend<row R, row Rest> Session<..R>` block names its own
+    // RFC-0121 item 2: an `extend<record R, record Rest> Session<..R>` block names its own
     // row generics. A row splice in the target (`..R`) is the struct's param at that
     // position, whatever the impl calls it; a row generic the target doesn't splice
     // (`Rest`) is an extra quantified var, pinned later by its decomposition equation.
@@ -1197,7 +1197,7 @@ fn register_generic_impl_method_schemes(
                 .push((r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()));
         }
     }
-    // metel-core#1444: `where all R: A` on an impl whose target takes `R` as a row argument.
+    // metel-core#1444: `where each R: A` on an impl whose target takes `R` as a row argument.
     for (var, bound) in impl_nominal_row_arg_all_fields(ib) {
         if let Some(&r_tv) = type_gen_map.get(var.as_str()) {
             impl_row_bounds.entry(r_tv).or_default().push(bound);

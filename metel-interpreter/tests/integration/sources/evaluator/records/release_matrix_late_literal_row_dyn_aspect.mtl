@@ -4,13 +4,13 @@ aspect Named {
     fun name(&self) -> String;
 }
 
-record Req<row R> { data: { ..R } }
+record Req<record R> { data: { ..R } }
 
-extend<row R: { host: String, .. }> Req<..R>: Named {
+extend<record R: { host: String, .. }> Req<..R>: Named {
     fun name(&self) -> String { self.data.host.clone() }
 }
 
-extend<row R: !{ host }> Req<..R> {
+extend<record R: !{ host }> Req<..R> {
     fun host(self, h: String) -> Req<..{ host: String, ..R }> {
         Req { data = { host = h, ..self.data } }
     }

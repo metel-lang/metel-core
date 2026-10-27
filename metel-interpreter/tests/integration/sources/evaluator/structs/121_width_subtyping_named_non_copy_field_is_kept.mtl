@@ -3,9 +3,9 @@
 // tail, or through a `where R = { .. }` decomposition -- is kept visible and
 // owned, so passing a record that carries it by value is fine.
 
-fun take_name<row R>(p: { name: String, ..R }) -> String { p.name }
+fun take_name<record R>(p: { name: String, ..R }) -> String { p.name }
 
-fun take_both<row R, row Rest>(p: { name: String, ..R }) -> String
+fun take_both<record R, record Rest>(p: { name: String, ..R }) -> String
 where R = { note: String, ..Rest }
 {
     p.name + p.note

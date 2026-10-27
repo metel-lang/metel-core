@@ -11,7 +11,7 @@ extend { n: i64 }: Area {
     fun area(&self) -> i64 { self.n }
 }
 
-extend<row R: { w: i64, .. }> { ..R }: Area {
+extend<record R: { w: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w }
 }
 

@@ -499,7 +499,7 @@ pub struct RowTail {
 pub struct GenericParam {
     pub name: String,
     pub is_record: bool,
-    /// RFC-0121: declared `row R` rather than a plain or `record`-kinded `T`.
+    /// RFC-0121 / RFC-0186: a `record R` parameter used as a row (`..R`, `each R`, or a row equation) rather than as a whole record `T`.
     /// Mutually exclusive with `is_record` (the grammar's `record_kw | row_kw`
     /// alternation already guarantees this); never a bound carrier itself --
     /// a row variable is used as `..R` in an open record type or as a row
@@ -532,7 +532,7 @@ pub struct RowEquation {
     pub span: Span,
 }
 
-/// RFC-0123 §1's `where all R: Aspect`: every field of the row `var` satisfies
+/// RFC-0123 §1's `where each R: Aspect`: every field of the row `var` satisfies
 /// each bound. Like `RowEquation`, a separate `WhereClause` field rather than a
 /// `WhereConstraint` variant, so every ordinary-bound pass stays oblivious to it.
 #[derive(Debug, Clone)]

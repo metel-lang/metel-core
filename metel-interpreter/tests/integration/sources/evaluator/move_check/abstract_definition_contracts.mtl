@@ -18,17 +18,17 @@ extend<T: Copy> Holder<T> { fun touch(&self) -> i64 { 1 } }
 extend<T: !Copy> Holder<T> { fun touch(self) -> i64 { 2 } }
 fun borrowed<T: Copy>(value: Holder<T>) -> i64 { value.touch() + value.touch() }
 
-fun strip<row R, row Rest>(value: { ..R }) -> { ..Rest }
+fun strip<record R, record Rest>(value: { ..R }) -> { ..Rest }
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := value;
     rest
 }
-fun strip_two<row R, row Mid, row Rest>(value: { ..R }) -> { ..Rest }
+fun strip_two<record R, record Mid, record Rest>(value: { ..R }) -> { ..Rest }
 where R = { token: String, ..Mid }, Mid = { count: i64, ..Rest } {
     let { token: _, count: _, ..rest } := value;
     rest
 }
-fun alternate<row R, row A, row B>(value: { ..R }) -> { ..B }
+fun alternate<record R, record A, record B>(value: { ..R }) -> { ..B }
 where R = { a: i64, ..A }, R = { b: i64, ..B } {
     let { b, ..rest } := value;
     rest

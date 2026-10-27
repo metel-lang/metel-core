@@ -2382,7 +2382,7 @@ pub type AspectTypeArguments = HashMap<(TypeVar, String), Vec<InferType>>;
 pub enum GenericBound {
     Aspect(String),
     Row(RowConstraint),
-    /// RFC-0123 `where all R: A`, on the type variable of an open-row-tailed
+    /// RFC-0123 `where each R: A`, on the type variable of an open-row-tailed
     /// parameter: every field of the argument *except* the labels in `except`
     /// (those the parameter's pattern, or a `where R = { .. }` decomposition,
     /// already names) satisfies each aspect in `aspects`.
@@ -3135,7 +3135,7 @@ pub struct TypeDefinitionRegistry {
     array_method_env: HashMap<String, InferType>,
     array_method_receiver_env: HashMap<String, ReceiverKind>,
     /// Variant list for impls whose target is a record type (`extend { x: f64 }: A`,
-    /// `extend<row R: { x, .. }> { ..R }: A`): every candidate for a method name, each
+    /// `extend<record R: { x, .. }> { ..R }: A`): every candidate for a method name, each
     /// scheme's first quantified var standing for the receiver and carrying the impl's
     /// row condition as its bound, so a receiver is matched by the ordinary bound check.
     record_method_scheme_variants: HashMap<String, Vec<ArrayMethodSchemeVariant>>,
@@ -3203,7 +3203,7 @@ pub struct TypeDefinitionRegistry {
     /// Bare-parameter blanket impl metadata (`impl<T> Aspect for T`), keyed by
     /// aspect name alone because the target has no nominal head to resolve.
     bare_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
-    /// Conditions of impls whose target is a record type (`extend<row R> { ..R }: Aspect`),
+    /// Conditions of impls whose target is a record type (`extend<record R> { ..R }: Aspect`),
     /// keyed by aspect. Unlike `bare_impl_bounds` they apply only to a record-kinded type --
     /// an anonymous record, a residual, or a nominal `record` -- never to a `struct`.
     record_impl_bounds: HashMap<String, Vec<ConditionalImplBoundEntry>>,
@@ -4437,7 +4437,7 @@ impl TypeDefinitionRegistry {
         true
     }
 
-    /// RFC-0123 `where all R: A` as an impl condition: does every field of `arg`'s row
+    /// RFC-0123 `where each R: A` as an impl condition: does every field of `arg`'s row
     /// outside `except` satisfy each aspect? A type with no known row does not.
     fn all_fields_hold(
         &self,
@@ -7822,7 +7822,7 @@ impl InferContext {
                 let span = p
                     .span
                     .clone()
-                    .unwrap_or_else(|| Span::new(0, 0, "<row decomposition>"));
+                    .unwrap_or_else(|| Span::new(0, 0, "<record decomposition>"));
                 let delta =
                     unify(&subst.apply(&InferType::Var(p.rest)), &derived).map_err(|_| {
                         MetelError::type_error(

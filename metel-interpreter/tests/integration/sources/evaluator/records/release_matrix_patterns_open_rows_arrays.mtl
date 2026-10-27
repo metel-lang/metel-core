@@ -6,7 +6,7 @@ fun area(s: Shape) -> i64 {
         Shape::Square { s, tag } => s * s + tag.len(),
     }
 }
-fun total<row R>(v: { n: i64, ..R }) -> i64 where all R: Copy {
+fun total<record R>(v: { n: i64, ..R }) -> i64 where each R: Copy {
     match (v) { { n, ..rest } => n }
 }
 fun main() {

@@ -1,6 +1,6 @@
 struct Handle { fd: i64, name: String }
 
-fun keep<row R>(h: Handle.{ fd, ..R }) -> Handle.{ fd, ..R } { // ERROR[P0001]
+fun keep<record R>(h: Handle.{ fd, ..R }) -> Handle.{ fd, ..R } { // ERROR[P0001]
     h
 }
 

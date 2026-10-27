@@ -1,8 +1,8 @@
-// RFC-0123 sec1 (metel-core#1302): in a decomposition, `all R: Copy` covers the
-// decomposed labels too (here `name: String`), where `all Rest: Copy` would not.
+// RFC-0123 sec1 (metel-core#1302): in a decomposition, `each R: Copy` covers the
+// decomposed labels too (here `name: String`), where `each Rest: Copy` would not.
 
-fun pick<row R, row Rest>(p: { ..R }) -> i64
-where R = { id: i64, name: String, ..Rest }, all R: Copy
+fun pick<record R, record Rest>(p: { ..R }) -> i64
+where R = { id: i64, name: String, ..Rest }, each R: Copy
 {
     p.id
 }

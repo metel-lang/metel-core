@@ -9,7 +9,7 @@ aspect Bar<T> {
 
 struct Foo { x: i64 }
 
-extend<row R> Foo: Bar<..R> {
+extend<record R> Foo: Bar<..R> {
     fun bar(self) -> i64 { self.x }
 }
 

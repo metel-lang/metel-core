@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.types.generics.open-rows.legality-1"]
+
+[expect]
+status = "parse_error"
+contains = "the `row` kind was removed"

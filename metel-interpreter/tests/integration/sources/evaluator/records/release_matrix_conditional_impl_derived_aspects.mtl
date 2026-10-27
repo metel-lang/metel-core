@@ -1,6 +1,6 @@
-record Session<row R> { id: i64, data: { ..R } }
-extend<row R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
-extend<row R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
+record Session<record R> { id: i64, data: { ..R } }
+extend<record R: { token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
+extend<record R: !{ token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
 fun main() {
     let s := Session { id = 1, data = { count = 3 } };
     let t := s.clone();

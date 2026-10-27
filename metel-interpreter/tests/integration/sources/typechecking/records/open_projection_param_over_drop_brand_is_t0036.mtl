@@ -6,7 +6,7 @@ extend Handle: Drop {
     fun drop(&var self) { }
 }
 
-fun read_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun read_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 
 fun main() {
     let h := Handle { fd = 3, name = "x".to_string() };

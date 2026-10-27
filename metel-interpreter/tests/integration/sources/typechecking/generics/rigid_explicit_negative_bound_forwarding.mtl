@@ -1,6 +1,6 @@
-fun absent<row R: !{token}>(values: [{..R}]) -> i64 { values.len() }
+fun absent<record R: !{token}>(values: [{..R}]) -> i64 { values.len() }
 
-fun caller<row T>() -> i64 {
+fun caller<record T>() -> i64 {
     absent::<T>([]) // ERROR[T0012]
 }
 

@@ -1,0 +1,5 @@
+// RFC-0186: the `row` generic-parameter kind is removed; a record parameter that stands
+// for the rest of a record is declared `record R`. The old spelling gets a targeted error.
+fun get_x<row R>(p: { x: i64, ..R }) -> i64 { p.x }
+
+fun main() {}

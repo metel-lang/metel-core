@@ -3,10 +3,10 @@ type PairAlias := Pair;
 type Restore := once var || -> PairAlias;
 
 aspect State { fun state(&self) -> i64; }
-extend<row R: { right: String, .. }> { ..R }: State {
+extend<record R: { right: String, .. }> { ..R }: State {
     fun state(&self) -> i64 { 1 }
 }
-extend<row R: !{ right }> { ..R }: State {
+extend<record R: !{ right }> { ..R }: State {
     fun state(&self) -> i64 { 0 }
 }
 

@@ -7,7 +7,7 @@
 struct Point { x: f64, y: f64 }
 
 extend Point {
-    fun get_x<row R>(extra: { x: f64, ..R }) -> f64 { extra.x }
+    fun get_x<record R>(extra: { x: f64, ..R }) -> f64 { extra.x }
 }
 
 fun main() {}

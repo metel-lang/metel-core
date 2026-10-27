@@ -5,7 +5,7 @@
 struct Handle { fd: i64 }
 struct Other { fd: i64 }
 
-fun get_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun get_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 
 fun main() {
     let o := Other { fd = 1 };

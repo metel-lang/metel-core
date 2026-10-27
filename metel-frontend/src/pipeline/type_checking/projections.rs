@@ -1244,7 +1244,7 @@ impl Cx<'_> {
                 TypeErrorCode::T0003,
                 format!(
                     "undefined row variable `{name}` -- declare it as a generic \
-                     parameter (`<row {name}>`)"
+                     parameter (`<record {name}>`)"
                 ),
                 span,
             ));
@@ -1253,7 +1253,7 @@ impl Cx<'_> {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0012,
                 format!(
-                    "`{name}` is not a row parameter; declare it `<row {name}>`, \
+                    "`{name}` is not a row parameter; declare it `<record {name}>`, \
                      not `<{name}>`"
                 ),
                 &tail.span,

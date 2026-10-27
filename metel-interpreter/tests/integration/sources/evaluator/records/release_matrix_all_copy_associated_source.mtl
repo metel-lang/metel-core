@@ -3,7 +3,7 @@ fun inner_of<T: Copy>(w: Wrapper<T>) -> T {
     let { tag: _, ..rest } := w;
     rest.inner
 }
-fun sum_all<row R>(v: { a: i64, b: i64, ..R }) -> i64 where all R: Copy { v.a + v.b }
+fun sum_all<record R>(v: { a: i64, b: i64, ..R }) -> i64 where each R: Copy { v.a + v.b }
 aspect Source { type Item; fun take(self) -> Item; }
 struct Holder { value: { a: i64, b: i64, c: boolean } }
 extend Holder: Source { type Item := { a: i64, b: i64, c: boolean }; fun take(self) -> { a: i64, b: i64, c: boolean } { self.value } }

@@ -1,4 +1,4 @@
-fun bad<row R>(r: { ..R }) -> i64 {
+fun bad<record R>(r: { ..R }) -> i64 {
     match (r) {
         { id, ..rest } => id // ERROR[T0012]
     }

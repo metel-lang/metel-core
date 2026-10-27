@@ -1,9 +1,9 @@
 // RFC-0121 §2 (metel-core#1310): the derived `Rest` is `{ extra: i64 }`, so an
 // annotation naming any other remainder is a type mismatch.
 
-record Session<row R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: { ..R } }
 
-fun authenticate<row R, row Rest>(s: Session<..R>) -> Session<..Rest>
+fun authenticate<record R, record Rest>(s: Session<..R>) -> Session<..Rest>
 where R = { token: String, ..Rest } {
     panic("unimplemented")
 }

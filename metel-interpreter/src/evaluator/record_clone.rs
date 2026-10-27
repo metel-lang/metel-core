@@ -1,4 +1,4 @@
-//! `Clone` for records, the built-in body of `extend<row R> { ..R }: Clone where
+//! `Clone` for records, the built-in body of `extend<record R> { ..R }: Clone where
 //! all R: Clone` in `std::core` (metel-core#1350).
 //!
 //! A host function is used until RFC-0174's compile-time row iteration can express

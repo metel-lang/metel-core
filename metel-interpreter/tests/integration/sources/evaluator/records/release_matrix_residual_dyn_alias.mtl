@@ -1,6 +1,6 @@
 record Item { name: String, token: String }
 aspect Describe { fun describe(&self) -> String; }
-extend<row R: { name: String, .. }> { ..R }: Describe {
+extend<record R: { name: String, .. }> { ..R }: Describe {
     fun describe(&self) -> String { self.name.clone() }
 }
 type View := dyn Describe;

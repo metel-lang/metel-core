@@ -1,7 +1,7 @@
 // RFC-0121 item 2 (metel-core#1310): the spliced row variable must be a
 // declared generic in scope -- `foo` declares none, so `R` is undefined.
 
-record Builder<row R> { data: { ..R } }
+record Builder<record R> { data: { ..R } }
 
 fun foo(b: Builder<..R>) -> i64 { 0 }
 

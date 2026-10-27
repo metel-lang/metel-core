@@ -3,13 +3,13 @@
 // as it does not for the anonymous `{ ..R }`. A whole struct with a non-`Copy` field passes.
 struct Handle { fd: i64, name: String }
 
-fun any_handle<row R>(h: Handle.{ ..R }) -> i64 { 1 }
+fun any_handle<record R>(h: Handle.{ ..R }) -> i64 { 1 }
 
-fun fd_of<row R, row Rest>(h: Handle.{ ..R }) -> i64 where R = { fd: i64, ..Rest } { h.fd }
+fun fd_of<record R, record Rest>(h: Handle.{ ..R }) -> i64 where R = { fd: i64, ..Rest } { h.fd }
 
-fun read_fd<row R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun read_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 
-fun anon<row R>(d: { ..R }) -> i64 { 1 }
+fun anon<record R>(d: { ..R }) -> i64 { 1 }
 
 fun main() {
     assert(any_handle(Handle { fd = 3, name = "x".to_string() }) == 1);

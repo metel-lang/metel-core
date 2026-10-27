@@ -2,7 +2,7 @@
 // (`where R = { extra: i64, .. }`), exactly as an open row tail's remainder
 // can be anonymous at the other use sites.
 
-fun split<row R>(p: { token: i64, ..R }) -> i64
+fun split<record R>(p: { token: i64, ..R }) -> i64
 where R = { extra: i64, .. }
 {
     p.token + p.extra

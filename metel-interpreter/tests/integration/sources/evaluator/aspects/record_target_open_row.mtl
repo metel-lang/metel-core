@@ -1,16 +1,16 @@
-// RFC-0121 sec3 / metel-core#1306 item 8: `extend<row R> { ..R }: Aspect` and the
-// bounded form `extend<row R: { w: i64, .. }> { ..R }: Aspect` -- impls on every
+// RFC-0121 sec3 / metel-core#1306 item 8: `extend<record R> { ..R }: Aspect` and the
+// bounded form `extend<record R: { w: i64, .. }> { ..R }: Aspect` -- impls on every
 // row, or every row of a given shape. They apply to anonymous records and to a
 // nominal `record` whose fields satisfy the row, and satisfy aspect bounds.
 
 aspect Describe { fun describe(&self) -> String; }
 aspect Area { fun area(&self) -> i64; }
 
-extend<row R> { ..R }: Describe {
+extend<record R> { ..R }: Describe {
     fun describe(&self) -> String { "a record".to_string() }
 }
 
-extend<row R: { w: i64, h: i64, .. }> { ..R }: Area {
+extend<record R: { w: i64, h: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w * self.h }
 }
 

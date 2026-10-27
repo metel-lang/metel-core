@@ -1,11 +1,11 @@
-record Packet<row R> { data: { ..R } }
+record Packet<record R> { data: { ..R } }
 type EmptyRow := {};
 type EmptyPacket := Packet<{}>;
 type Envelope<T> := (T, i64);
-fun same<row R>(value: Envelope<{ ..R }>) -> Envelope<{ ..R }> { value }
-fun copy_twice<row R>(value: { ..R }) -> Envelope<({ ..R }, { ..R })>
-where all R: Copy { ((value, value), 11) }
-fun strip<row R, row Rest>(value: Packet<..R>) -> Packet<..Rest>
+fun same<record R>(value: Envelope<{ ..R }>) -> Envelope<{ ..R }> { value }
+fun copy_twice<record R>(value: { ..R }) -> Envelope<({ ..R }, { ..R })>
+where each R: Copy { ((value, value), 11) }
+fun strip<record R, record Rest>(value: Packet<..R>) -> Packet<..Rest>
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := value.data;
     Packet { data = rest }

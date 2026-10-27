@@ -1,9 +1,9 @@
-public record LeftPacket<row R> { data: { ..R } }
+public record LeftPacket<record R> { data: { ..R } }
 public aspect LeftRead { fun read(&self) -> i64; }
-extend<row R: { count: i64, .. }> LeftPacket<..R>: LeftRead {
+extend<record R: { count: i64, .. }> LeftPacket<..R>: LeftRead {
     fun read(&self) -> i64 { self.data.count }
 }
-public fun inspect_left<row R: { count: i64, .. }>(packet: &LeftPacket<..R>) -> i64 {
+public fun inspect_left<record R: { count: i64, .. }>(packet: &LeftPacket<..R>) -> i64 {
     packet.read()
 }
-public fun identity_left<row R>(packet: LeftPacket<..R>) -> LeftPacket<..R> { packet }
+public fun identity_left<record R>(packet: LeftPacket<..R>) -> LeftPacket<..R> { packet }

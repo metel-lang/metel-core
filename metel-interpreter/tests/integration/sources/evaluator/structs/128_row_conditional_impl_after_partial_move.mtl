@@ -5,11 +5,11 @@ record Handle { id: i64, name: String }
 
 aspect Describe { fun state(&self) -> String; }
 
-extend<row R: !{ name }> { ..R }: Describe {
+extend<record R: !{ name }> { ..R }: Describe {
     fun state(&self) -> String { "no name" }
 }
 
-extend<row R: { name: String, .. }> { ..R }: Describe {
+extend<record R: { name: String, .. }> { ..R }: Describe {
     fun state(&self) -> String { "has name" }
 }
 

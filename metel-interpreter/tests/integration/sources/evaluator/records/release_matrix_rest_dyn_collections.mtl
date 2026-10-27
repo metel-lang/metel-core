@@ -1,7 +1,7 @@
 // RP x DY, RP x CO, ER x PM, ER x CO, AR x OW, AR x GA
 aspect Name { fun name(&self) -> String; }
 record User { id: i64, name: String, tags: [String; 2] }
-extend<row R: { name: String, .. }> { ..R }: Name { fun name(&self) -> String { self.name.clone() } }
+extend<record R: { name: String, .. }> { ..R }: Name { fun name(&self) -> String { self.name.clone() } }
 fun first<T: Copy>(xs: [T; 2]) -> T { xs[0] }
 fun main() {
     let u := User { id = 1, name = "ann", tags = ["a", "b"] };

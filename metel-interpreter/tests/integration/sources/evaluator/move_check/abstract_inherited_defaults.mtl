@@ -10,7 +10,7 @@ struct Box<T> { public value: T }
 struct Other<T> { public value: T }
 extend<T> Box<T>: Echo {}
 extend<T> Other<T>: Echo {}
-extend<row R> { ..R }: Echo {}
+extend<record R> { ..R }: Echo {}
 extend<T: Copy> Box<T>: Repeat<T> {}
 
 fun main() {

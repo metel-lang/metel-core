@@ -1,5 +1,5 @@
 record Row { id: i64, name: String }
-fun key_of<row R>(v: { k: i64, ..R }) -> i64 where all R: Copy { v.k }
+fun key_of<record R>(v: { k: i64, ..R }) -> i64 where each R: Copy { v.k }
 fun main() {
     let rows: [Row] := [Row { id = 1, name = "a" }, Row { id = 2, name = "b" }];
     var names := "";

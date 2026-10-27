@@ -1,41 +1,41 @@
-fun strip<row R, row Rest>(d: { ..R }) -> { ..Rest }
+fun strip<record R, record Rest>(d: { ..R }) -> { ..Rest }
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := d;
     rest
 }
 
-fun strip_extra<row R, row Rest>(d: { ..R }) -> { user: i64, ..Rest }
+fun strip_extra<record R, record Rest>(d: { ..R }) -> { user: i64, ..Rest }
 where R = { token: String, user: i64, ..Rest } {
     let var { token: _, ..rest } := d;
     rest.user := rest.user + 1;
     rest
 }
 
-fun strip_two<row R, row Mid, row Rest>(d: { ..R }) -> { ..Rest }
+fun strip_two<record R, record Mid, record Rest>(d: { ..R }) -> { ..Rest }
 where R = { token: String, ..Mid }, Mid = { user: i64, ..Rest } {
     let { token: _, user: _, ..rest } := d;
     rest
 }
 
-fun take<row R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
+fun take<record R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
     let { x: _, ..rest } := a;
     rest
 }
 
-record Box<row R> { data: { ..R } }
+record Box<record R> { data: { ..R } }
 record Credentials { token: String, name: String }
-extend<row R> Box<..R> {
-    fun strip<row Rest>(self) -> { ..Rest }
+extend<record R> Box<..R> {
+    fun strip<record Rest>(self) -> { ..Rest }
     where R = { token: String, ..Rest } {
         let { token: _, ..rest } := self.data;
         rest
     }
-    fun from_arg<row Q, row Rest>(self, d: { id: i64, ..Q }) -> { ..Rest }
+    fun from_arg<record Q, record Rest>(self, d: { id: i64, ..Q }) -> { ..Rest }
     where Q = { token: String, ..Rest } {
         let { id: _, token: _, ..rest } := d;
         rest
     }
-    fun add<row Q: !{token}>(self, d: { ..Q }) -> { token: String, ..Q } {
+    fun add<record Q: !{token}>(self, d: { ..Q }) -> { token: String, ..Q } {
         { token = "new", ..d }
     }
 }

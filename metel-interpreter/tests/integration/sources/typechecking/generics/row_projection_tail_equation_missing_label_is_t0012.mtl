@@ -4,7 +4,7 @@
 
 struct Handle { public fd: i64, public other: i64 }
 
-fun use_it<row R, row Rest>(h: Handle.{ fd, ..R }) -> i64
+fun use_it<record R, record Rest>(h: Handle.{ fd, ..R }) -> i64
 where R = { extra: i64, ..Rest } {
     h.fd
 }
