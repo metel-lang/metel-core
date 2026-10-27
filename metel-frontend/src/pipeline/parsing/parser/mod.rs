@@ -73,10 +73,9 @@ fn removed_field_wise_keyword(source: &str, offset: usize) -> Option<&'static st
     }
     let (keyword, after) = if let Some(after) = rest.strip_prefix("all") {
         ("all", after)
-    } else if let Some(after) = rest.strip_prefix("each") {
-        ("each", after)
     } else {
-        return None;
+        let after = rest.strip_prefix("each")?;
+        ("each", after)
     };
     if after.starts_with(|ch: char| ch.is_alphanumeric() || ch == '_') {
         return None;
