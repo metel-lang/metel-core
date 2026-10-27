@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.generics.open-rows.legality-1", "spec.types.generics.field-wise-row-constraints.legality-1"]

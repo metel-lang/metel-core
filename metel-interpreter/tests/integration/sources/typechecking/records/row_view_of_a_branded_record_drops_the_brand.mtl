@@ -1,0 +1,17 @@
+// TYPECHECK_ERROR[T0003]
+// RFC-0186 / metel-core#1650: `{ ..R }` is the anonymous record with R's fields, so a branded
+// `record` seen through it loses the brand and its methods. Today the row view of a branded
+// record keeps the brand, so this program is accepted.
+record P { x: i64 }
+
+extend P {
+    fun brand(&self) -> i64 { 7 }
+}
+
+fun both<record R: { x: i64, .. }>(p: R) -> { ..R } { p }
+
+fun main() {
+    let p := P { x = 1 };
+    let q := both(p);
+    q.brand();
+}

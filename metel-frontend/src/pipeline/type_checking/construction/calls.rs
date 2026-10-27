@@ -973,7 +973,7 @@ pub(super) fn row_bound_error_prefix(bound: &GenericBound) -> String {
         GenericBound::Row(_) => format!("row bound `{bound}`"),
         GenericBound::Aspect(name) => format!("bound `{name}`"),
         GenericBound::AllFields { aspects, .. } => {
-            format!("field-wise bound `all: {}`", aspects.join(" + "))
+            format!("field-wise bound `each: {}`", aspects.join(" + "))
         }
     }
 }

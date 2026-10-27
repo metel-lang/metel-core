@@ -1,0 +1,31 @@
+// RFC-0186: a `record R` parameter is a record type (`p: R`, with the fields its bound lists
+// readable) and also has a row (`..R`, `{ ..R }`) -- both in one signature.
+fun both<record R: { x: i64, .. }>(p: R) -> { ..R } { p }
+
+fun split<record R: { x: i64, .. }>(p: R) -> (i64, { ..R }) { (p.x, p) }
+
+fun with_token<record R: !{ token }>(p: R, t: i64) -> { token: i64, ..R } {
+    { token = t, ..p }
+}
+
+fun row_and_whole<record R>(p: { x: i64, ..R }) -> R where each R: Copy {
+    let { x, ..rest } := p;
+    rest
+}
+
+fun main() {
+    let a := both({ x = 1, name = 2 });
+    assert(a.x == 1);
+    assert(a.name == 2);
+
+    let s := split({ x = 4, name = 2 });
+    assert(s.0 == 4);
+    assert(s.1.name == 2);
+
+    let t := with_token({ x = 1 }, 9);
+    assert(t.token == 9);
+    assert(t.x == 1);
+
+    let r := row_and_whole({ x = 1, k = 3 });
+    assert(r.k == 3);
+}
