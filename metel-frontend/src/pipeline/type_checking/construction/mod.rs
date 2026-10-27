@@ -173,10 +173,10 @@ struct ConstructCtx<'a> {
     /// function has no lexical identity, and this table is filled before any declaration is
     /// constructed.
     module_fn_decls: HashMap<BindingId, FnDeclShape>,
-    /// By-value capture names for each enclosing closure body. This is the
+    /// By-value capture identities for each enclosing closure body. This is the
     /// temporary RFC-0050 boundary: nested borrowing of one is rejected until
     /// RFC-0122 can model the environment borrow's lifetime.
-    closure_owned_captures: Vec<HashSet<String>>,
+    closure_owned_captures: Vec<HashSet<BindingId>>,
     /// RFC-0137 slice 2 (metel-core#858): flow-sensitive moved-field tracking for
     /// the function/method body currently being constructed. A partial move of a
     /// non-`Copy` struct/record field narrows the base binding's *type* to a
@@ -526,7 +526,7 @@ impl<'a> ConstructCtx<'a> {
         }
     }
 
-    fn enter_closure(&mut self, owned_captures: HashSet<String>) {
+    fn enter_closure(&mut self, owned_captures: HashSet<BindingId>) {
         self.closure_owned_captures.push(owned_captures);
     }
 
@@ -534,11 +534,13 @@ impl<'a> ConstructCtx<'a> {
         self.closure_owned_captures.pop();
     }
 
-    fn is_enclosing_owned_capture(&self, name: &str) -> bool {
-        self.closure_owned_captures
-            .iter()
-            .rev()
-            .any(|captures| captures.contains(name))
+    fn is_enclosing_owned_capture(&self, span: &Span) -> bool {
+        self.binding_id_at(span).is_some_and(|binding| {
+            self.closure_owned_captures
+                .iter()
+                .rev()
+                .any(|captures| captures.contains(&binding))
+        })
     }
 
     /// metel-core#736 / RFC-0138: register a generic `FunDecl`'s own shape (its

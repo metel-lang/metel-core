@@ -188,7 +188,7 @@ fn verify_capture_specs(
             capture,
             crate::data::ast::CaptureSpec::SharedRef { .. }
                 | crate::data::ast::CaptureSpec::MutRef { .. }
-        ) && ctx.is_enclosing_owned_capture(capture_name(capture))
+        ) && ctx.is_enclosing_owned_capture(capture_span(capture))
         {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0030,
@@ -1947,8 +1947,10 @@ pub(super) fn construct_expr(
                 captures
                     .iter()
                     .filter_map(|capture| match capture {
-                        crate::data::ast::CaptureSpec::Owned { name, .. }
-                        | crate::data::ast::CaptureSpec::Clone { name, .. } => Some(name.clone()),
+                        crate::data::ast::CaptureSpec::Owned { span, .. }
+                        | crate::data::ast::CaptureSpec::Clone { span, .. } => {
+                            ctx.binding_id_at(span)
+                        }
                         crate::data::ast::CaptureSpec::SharedRef { .. }
                         | crate::data::ast::CaptureSpec::MutRef { .. } => None,
                     })

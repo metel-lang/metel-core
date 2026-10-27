@@ -1,0 +1,8 @@
+[options]
+error = ["T0030"]
+spec = ["spec.functions.closures.legality-11"]
+
+[expect]
+status = "typecheck_error"
+code = "T0030"
+contains = "cannot borrow `x` into an enclosing closure's environment"
