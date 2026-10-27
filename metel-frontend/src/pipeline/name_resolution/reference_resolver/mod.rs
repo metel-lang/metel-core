@@ -1,7 +1,7 @@
 //! Reference resolution pass (METEL-187 / ADR-0041, step 1).
 //!
 //! The name resolver interns every *declaration* to a [`SymbolId`]. This pass walks
-//! every *reference* (expression `Ident` sites) and classifies it as either:
+//! every *reference* (expression `Ident` sites and closure capture-list sites) and classifies it as either:
 //!
 //! - [`Res::Def`] — a reference to a top-level declaration (a function, `let`/`mut`,
 //!   imported item, or glob-visible name), carrying that declaration's stable
@@ -18,13 +18,14 @@
 //! This pass runs *inside* [`crate::pipeline::name_resolution::name_resolver::resolve`], before path
 //! normalization. Multi-segment `Expr::Path` references are therefore left untouched
 //! here: the path normalizer rewrites them to `Expr::ResolvedPath` carrying their own
-//! `symbol_id`, so construction reads their identity directly from the node. Only bare
-//! single-segment `Expr::Ident` references need this side table.
+//! `symbol_id`, so construction reads their identity directly from the node. Bare
+//! single-segment identifiers and capture-list references use this side table.
 
 use std::collections::{HashMap, HashSet};
 
 use crate::data::ast::{
-    AssignTarget, Block, Decl, Expr, ForInit, FunDecl, MatchArm, Pattern, Span, Stmt,
+    AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, FunDecl, MatchArm, Param, Pattern, Span,
+    Stmt,
 };
 use crate::identity::symbols::{Namespace, SymbolId};
 use crate::pipeline::name_resolution::name_resolver::{
@@ -195,6 +196,28 @@ impl Walker<'_, '_> {
         if let Some(id) = self.resolve_name(name) {
             self.table.insert(span.clone(), id);
         }
+    }
+
+    fn resolve_capture_refs(&mut self, captures: &[CaptureSpec]) {
+        for capture in captures {
+            let (name, span) = match capture {
+                CaptureSpec::Owned { name, span }
+                | CaptureSpec::SharedRef { name, span }
+                | CaptureSpec::MutRef { name, span }
+                | CaptureSpec::Clone { name, span } => (name, span),
+            };
+            self.record_ref(name, span);
+        }
+    }
+
+    fn resolve_closure(&mut self, captures: &[CaptureSpec], params: &[Param], body: &Block) {
+        self.resolve_capture_refs(captures);
+        self.push_scope();
+        for param in params {
+            self.bind_local(&param.name);
+        }
+        self.resolve_block(body);
+        self.pop_scope();
     }
 
     // ── Declarations ──────────────────────────────────────────────────────────
@@ -377,14 +400,12 @@ impl Walker<'_, '_> {
                 }
             }
             Expr::Loop { body, .. } => self.resolve_block(body),
-            Expr::Closure { params, body, .. } => {
-                self.push_scope();
-                for p in params {
-                    self.bind_local(&p.name);
-                }
-                self.resolve_block(body);
-                self.pop_scope();
-            }
+            Expr::Closure {
+                captures,
+                params,
+                body,
+                ..
+            } => self.resolve_closure(captures, params, body),
             Expr::Match(m) => {
                 self.resolve_expr(&m.scrutinee);
                 for arm in &m.arms {

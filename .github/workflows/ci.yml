@@ -324,8 +324,10 @@ jobs:
 
       # Pure file scan, no Rust toolchain: the structural backstop ADR-0054
       # step 9 / metel-core#1054 calls for -- fails the PR if the frozen IR or
-      # the durable ResolutionMap grows a HashMap/BTreeMap field keyed by
+      # the durable ResolutionMap grows a HashMap/BTreeMap or HashSet keyed by
       # String/Span without a `// resolution-freeze-allow: <reason>` comment.
+      - name: semantic name lookup scanner tests
+        run: python3 -m unittest tools.test_check_no_semantic_name_lookup
       - name: frozen IR / ResolutionMap carry no String/Span key
         run: tools/check_no_semantic_name_lookup.py --check
 

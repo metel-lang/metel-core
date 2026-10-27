@@ -1,0 +1,8 @@
+fun main() {
+    let x := "outer".to_string();
+    let f := [x.clone()] || -> i64 {
+        let g := [&x] || -> i64 { 1 };
+        g()
+    };
+    assert(f() == 1);
+}

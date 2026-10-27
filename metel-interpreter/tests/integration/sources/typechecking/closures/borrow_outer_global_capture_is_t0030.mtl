@@ -1,0 +1,9 @@
+let x := 1;
+
+fun main() {
+    let f := [x] || -> i64 {
+        let g := [&x] || -> i64 { x };
+        g()
+    };
+    assert(f() == 1);
+}

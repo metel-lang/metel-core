@@ -798,10 +798,12 @@ Construction no longer finds a module-level value, or the scheme of a generic fu
   `scheme_id`; `run_main` looks `main` up by its `def_id`.
 - `symbols` is not passed into construction. `inherited_method_identity` asks
   `TypeDefinitionRegistry::aspect_default_method_symbol` for an aspect default method's source symbol.
+- Enclosing by-value closure captures are tracked by `BindingId`; reference resolution records
+  capture-list spans before entering the closure scope so global captures receive their `SymbolId`.
+  A shadowing local therefore cannot be confused with a captured binding during the T0030 check.
 - Construction still reads by spelling only what is definition-scoped: generic parameter names, one literal's
   field labels and the one place a written block-local type name becomes an id (`written_type_id`).
-  Giving those an identity needs spans on `TypeExpr` (#1612). `closure_owned_captures` is also by name
-  (#1613).
+  Giving those an identity needs spans on `TypeExpr` (#1612).
 
 ---
 

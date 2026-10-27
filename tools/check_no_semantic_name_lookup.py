@@ -7,9 +7,9 @@ new escape hatches the ADR calls for, not the primary defence: the primary
 defence is that these types simply have no such field today.
 
 Scans a curated list of files holding the frozen IR / resolution-map types
-(SCAN_FILES below) for a `HashMap<..>` / `BTreeMap<..>` field whose key type
-mentions `String` or `Span` anywhere (covers a bare key and a container of one,
-e.g. `Vec<String>`). A field is exempted with an inline
+(SCAN_FILES below) for a `HashMap<..>` / `BTreeMap<..>` key or `HashSet<..>`
+element type that mentions `String` or `Span` anywhere (covers a bare key and a
+container of one, e.g. `Vec<String>`). A field is exempted with an inline
 `// resolution-freeze-allow: <reason>` comment, trailing the field or on the
 line (or contiguous comment block) immediately above it -- the same convention
 `clippy_allow_ratchet.py` uses for `clippy-allow:`. Every exemption must
@@ -72,6 +72,7 @@ SCAN_FILES = [
 ]
 
 MAP_RE = re.compile(r"\b(?:HashMap|BTreeMap)\s*<")
+SET_RE = re.compile(r"\bHashSet\s*<")
 KEY_TOKEN_RE = re.compile(r"\b(String|Span)\b")
 JUSTIFY_TOKEN = "resolution-freeze-allow:"
 
@@ -81,10 +82,9 @@ def rel(path: Path) -> str:
 
 
 def _extract_key_type(text: str, open_idx: int) -> str | None:
-    """`text[open_idx]` is the `<` right after `HashMap`/`BTreeMap`. Return the
-    key type's source text (up to the top-level comma that separates it from
-    the value type), or `None` if the generic never closes on this line (a
-    map type split across lines -- not seen in the current scan targets; a
+    """`text[open_idx]` is the `<` right after a map or set. Return the map key
+    or set element type's source text, or `None` if the generic never closes
+    on this line (a collection type split across lines -- not seen in the current scan targets; a
     field like that would need reformatting or this function extending)."""
     depth_angle = 1
     depth_paren = 0
@@ -133,7 +133,7 @@ def _comment_block_above(lines: list[str], i: int) -> str:
 
 def scan() -> list[tuple[str, int, str, str]]:
     """Return a list of (relpath, line_no (1-based), line_text, key_type) for
-    every unexempted String/Span-keyed HashMap/BTreeMap field found."""
+    every unexempted String/Span-keyed map or set found."""
     findings = []
     for path in SCAN_FILES:
         if not path.exists():
@@ -141,18 +141,19 @@ def scan() -> list[tuple[str, int, str, str]]:
         relpath = rel(path)
         lines = path.read_text().splitlines()
         for i, line in enumerate(lines):
-            m = MAP_RE.search(line)
-            if not m:
-                continue
-            key_type = _extract_key_type(line, m.end() - 1)
-            if key_type is None or not KEY_TOKEN_RE.search(key_type):
-                continue
-            justified = JUSTIFY_TOKEN in _comment_of(line[m.end():]) or (
-                JUSTIFY_TOKEN in _comment_block_above(lines, i)
-            )
-            if justified:
-                continue
-            findings.append((relpath, i + 1, line.strip(), key_type.strip()))
+            code = line.split("//", 1)[0]
+            map_match = MAP_RE.search(code)
+            matches = ([map_match] if map_match else []) + list(SET_RE.finditer(code))
+            for m in matches:
+                key_type = _extract_key_type(code, m.end() - 1)
+                if key_type is None or not KEY_TOKEN_RE.search(key_type):
+                    continue
+                justified = JUSTIFY_TOKEN in _comment_of(line[m.end():]) or (
+                    JUSTIFY_TOKEN in _comment_block_above(lines, i)
+                )
+                if justified:
+                    continue
+                findings.append((relpath, i + 1, line.strip(), key_type.strip()))
     return findings
 
 
@@ -173,14 +174,14 @@ def cmd_check(_args) -> int:
         )
         return 1
     print("check_no_semantic_name_lookup: ok (no unexempted String/Span-keyed "
-          "map in the frozen IR / ResolutionMap).")
+          "map or set in the frozen IR / ResolutionMap).")
     return 0
 
 
 def cmd_list(_args) -> int:
     findings = scan()
     if not findings:
-        print("No unexempted String/Span-keyed map found in the scanned files.")
+        print("No unexempted String/Span-keyed map or set found in the scanned files.")
         return 0
     for relpath, lineno, text, key_type in findings:
         print(f"{relpath}:{lineno}\tkey={key_type}\t{text}")
