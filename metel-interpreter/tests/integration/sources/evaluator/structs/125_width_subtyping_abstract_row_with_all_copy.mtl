@@ -1,9 +1,9 @@
-// RFC-0121 sec4 + RFC-0123: `each R: Copy` on the enclosing generic states that every field of
+// RFC-0121 sec4 + RFC-0123: `..R: Copy` on the enclosing generic states that every field of
 // the unknown remainder is `Copy`, so narrowing by value inside the body is sound; a row of
 // `Copy` fields instantiates it.
 fun consume<record R>(p: { x: i64, ..R }) -> i64 { p.x }
 
-fun outer<record R>(s: { x: i64, ..R }) -> i64 where each R: Copy { consume(s) + 1 }
+fun outer<record R>(s: { x: i64, ..R }) -> i64 where ..R: Copy { consume(s) + 1 }
 
 fun main() {
     assert(outer({ x = 1, k = 2, flag = true }) == 2);

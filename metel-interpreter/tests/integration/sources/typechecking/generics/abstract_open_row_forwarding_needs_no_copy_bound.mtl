@@ -1,5 +1,5 @@
 // RFC-0179: an open-row parameter owns its whole argument, so a generic body can pass it on to
-// another by-value open-row function without `where each R: Copy`; nothing is forgotten.
+// another by-value open-row function without `where ..R: Copy`; nothing is forgotten.
 fun keep_x<record R>(value: { x: i64, ..R }) -> i64 { value.x }
 
 fun forward<record R>(value: { x: i64, ..R }) -> i64 {

@@ -1,7 +1,7 @@
 [expect]
 status = "typecheck_error"
 code = "T0012"
-contains = "not a row parameter"
+contains = "takes the row of a record parameter"
 
 [options]
 error = ["T0012"]

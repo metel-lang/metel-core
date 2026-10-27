@@ -1,6 +1,6 @@
 aspect Mark { fun mark(&self) -> i64; }
 record Packet<record R> { data: { ..R } }
-extend<record R> Packet<..R>: Mark where each R: Copy { fun mark(&self) -> i64 { 1 } }
+extend<record R> Packet<..R>: Mark where ..R: Copy { fun mark(&self) -> i64 { 1 } }
 fun main() {
     let p := Packet { data = { a = "s".to_string() } };
     let _ := p.mark(); // ERROR[T0012]

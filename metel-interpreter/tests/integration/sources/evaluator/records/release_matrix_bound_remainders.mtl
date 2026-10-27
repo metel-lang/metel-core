@@ -1,5 +1,5 @@
 fun duplicate_rest<record R, record Rest>(value: { ..R }) -> ({ ..Rest }, { ..Rest })
-where R = { token: String, ..Rest }, each Rest: Copy {
+where R = { token: String, ..Rest }, ..Rest: Copy {
     let { token: _, ..rest } := value;
     let first := rest;
     let second := rest;

@@ -6,10 +6,10 @@ extend<record R: !{ token }> Session<..R> {
     fun kind(self) -> i64 { 2 }
 }
 aspect Mark { fun mark(&self) -> i64; }
-extend<record R> { ..R }: Mark where each R: Copy {
+extend<record R> { ..R }: Mark where ..R: Copy {
     fun mark(&self) -> i64 { 7 }
 }
-fun marked<record R>(value: &{ ..R }) -> i64 where each R: Copy {
+fun marked<record R>(value: &{ ..R }) -> i64 where ..R: Copy {
     value.mark()
 }
 fun remove_token<record R, record Rest>(session: Session<..R>) -> Session<..Rest>

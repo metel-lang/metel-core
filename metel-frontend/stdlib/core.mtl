@@ -396,20 +396,20 @@ native(@std.core.panic) public fun panic(msg: String) -> !;
 // body is a built-in that walks the receiver's fields at runtime, calling each field's own
 // `to_string`: a stand-in for the `comptime for` loop of RFC-0174 that will replace it
 // (LIMIT-TYPES-003).
-extend<record R> { ..R }: Display where each R: Display {
+extend<record R> { ..R }: Display where ..R: Display {
     native(@std.core.record_to_string) fun to_string(&self) -> String;
 }
 
 // Clone for every record whose fields are all Clone (RFC-0123, #1350). The host
 // implementation recursively clones the record fields; this is a temporary stand-in
 // for the field iteration that RFC-0174 will make expressible in Metel.
-extend<record R> { ..R }: Clone where each R: Clone {
+extend<record R> { ..R }: Clone where ..R: Clone {
     native(@std.core.record_clone) fun clone(&self) -> Self;
 }
 
 // Copy for every record whose fields are all Copy (RFC-0123, metel-core#1337): a bodyless
 // impl, so it needs no built-in.
-extend<record R> { ..R }: Copy where each R: Copy;
+extend<record R> { ..R }: Copy where ..R: Copy;
 
 extend i8: Display {
     native(@std.core.to_string) fun to_string(&self) -> String;

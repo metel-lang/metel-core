@@ -1,7 +1,7 @@
 struct NotClone {}
 
 fun clone_head<record R>(value: { fixed: NotClone, ..R })
-where each R: Clone {
+where ..R: Clone {
     value.clone() // ERROR[T0035]
 }
 

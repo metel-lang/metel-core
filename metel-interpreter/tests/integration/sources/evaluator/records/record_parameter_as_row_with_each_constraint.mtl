@@ -1,5 +1,5 @@
 // RFC-0186: a `record R` parameter used as `..R` is a row; `R` and `{ ..R }` both name the
-// remainder; `where each R: A` bounds every field; a branded `record` flows through a row
+// remainder; `where ..R: A` bounds every field; a branded `record` flows through a row
 // parameter with the remainder anonymous; `each` stays an ordinary identifier elsewhere.
 record Point { x: i64, name: i64 }
 
@@ -10,7 +10,7 @@ fun rest_of<record R>(p: { x: i64, ..R }) -> R {
     rest
 }
 
-fun twice<record R>(p: { x: i64, ..R }) -> ({ ..R }, R) where each R: Copy {
+fun twice<record R>(p: { x: i64, ..R }) -> ({ ..R }, R) where ..R: Copy {
     let { x, ..rest } := p;
     (rest, rest)
 }

@@ -1,7 +1,7 @@
 // TYPECHECK_ERROR[T0012]
-// RFC-0186: `each R: A` quantifies over a row, so `R` must appear as a row (`..R`, a `{ ..R }`
+// RFC-0186: `..R: A` quantifies over a row, so `R` must appear as a row (`..R`, a `{ ..R }`
 // parameter, or a `where` remainder). A `record R` used only as a whole record has none.
-fun whole_only<record R: { x: i64, .. }>(p: R) -> i64 where each R: Copy {
+fun whole_only<record R: { x: i64, .. }>(p: R) -> i64 where ..R: Copy {
     p.x
 }
 

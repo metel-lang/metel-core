@@ -160,14 +160,8 @@ where_constraint = { row_equation | field_wise_constraint | (record_kw? ~ ident 
 // `type_expr` so a malformed (tail-less) equation gets a clear parse-time
 // rejection downstream rather than silently failing to match this rule.
 row_equation = { ident ~ "=" ~ (open_record_type | type_expr) }
-// RFC-0123 §1's field-wise constraint (`where each R: Display`): the aspect
-// bound applies to every field of the row `R`, not to `R` as a whole. `each` is
-// contextual -- it is not a reserved word, so `each` stays an ordinary identifier
-// everywhere else (a method name, a binding); only this position reads it as a
-// keyword, and `each: Bound` (a type parameter named `each`) still parses as an
-// ordinary bound because the next token is not an identifier. RFC-0186 renamed it
-// from `all`; `all_kw` is still read so the old spelling gets a targeted error.
-field_wise_constraint = { (each_kw | all_kw) ~ ident ~ ":" ~ bound_list }
+// RFC-0123 / RFC-0186: the unpacked row operand bounds every field type.
+field_wise_constraint = { ".." ~ ident ~ ":" ~ bound_list }
 
 // ── Statements ────────────────────────────────────────────────────────────────
 
@@ -488,8 +482,6 @@ self_kw  = @{ "self" ~ !(ASCII_ALPHANUMERIC | "_") }
 super_kw = @{ "super" ~ !(ASCII_ALPHANUMERIC | "_") }
 record_kw = @{ "record" ~ !(ASCII_ALPHANUMERIC | "_") }
 row_kw    = @{ "row" ~ !(ASCII_ALPHANUMERIC | "_") }
-all_kw    = @{ "all" ~ !(ASCII_ALPHANUMERIC | "_") }
-each_kw   = @{ "each" ~ !(ASCII_ALPHANUMERIC | "_") }
 
 // arch-implements: ["arch.parsing.requirement-5"]
 ident = @{

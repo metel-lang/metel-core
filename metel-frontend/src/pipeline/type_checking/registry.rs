@@ -249,7 +249,7 @@ pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowC
     }
 }
 
-/// RFC-0123 `where each R: Aspect` on an `extend` whose target is a nominal type taking the
+/// RFC-0123 `where ..R: Aspect` on an `extend` whose target is a nominal type taking the
 /// declared `row` generic `R` as a row argument (`extend<record R> Packet<..R>: A`): every
 /// field of that row satisfies each aspect (metel-core#1444). Pairs each constrained row
 /// variable with its bound.
@@ -284,7 +284,7 @@ pub(crate) fn impl_nominal_row_arg_all_fields(
         .collect()
 }
 
-/// RFC-0123 `where each R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
+/// RFC-0123 `where ..R: Aspect` on an `extend` whose target is `{ .., ..R }`: every
 /// field of the receiver beyond the target's own named ones satisfies each aspect.
 pub(crate) fn record_target_all_fields(ib: &crate::data::ast::ImplBlock) -> Vec<GenericBound> {
     let TypeExpr::OpenRecord(fields, tail) = &ib.target_type else {
@@ -1197,7 +1197,7 @@ fn register_generic_impl_method_schemes(
                 .push((r_tv, eq.fields.iter().map(|(l, _)| l.clone()).collect()));
         }
     }
-    // metel-core#1444: `where each R: A` on an impl whose target takes `R` as a row argument.
+    // metel-core#1444: `where ..R: A` on an impl whose target takes `R` as a row argument.
     for (var, bound) in impl_nominal_row_arg_all_fields(ib) {
         if let Some(&r_tv) = type_gen_map.get(var.as_str()) {
             impl_row_bounds.entry(r_tv).or_default().push(bound);

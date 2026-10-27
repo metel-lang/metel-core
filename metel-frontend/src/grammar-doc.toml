@@ -864,14 +864,6 @@ pest = "row_kw"
 mode = "literal"
 values = ["row"]
 [[rule]]
-pest = "all_kw"
-mode = "literal"
-values = ["all"]
-[[rule]]
-pest = "each_kw"
-mode = "literal"
-values = ["each"]
-[[rule]]
 pest = "ident"
 mode = "terminal"
 name = "IDENTIFIER"

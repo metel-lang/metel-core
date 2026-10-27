@@ -1,5 +1,5 @@
 // RFC-0179: a closure that captures an open-row parameter and passes it on forgets nothing, so
-// no `where each R: Copy` is needed.
+// no `where ..R: Copy` is needed.
 type Callback := once || -> i64;
 fun head<record R>(value: { id: i64, ..R }) -> i64 { value.id }
 fun accepted<record R>(value: { id: i64, ..R }) -> i64 {

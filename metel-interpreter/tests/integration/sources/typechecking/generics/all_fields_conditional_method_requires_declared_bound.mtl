@@ -4,7 +4,7 @@
 aspect Mark {}
 aspect Label { fun label(&self) -> String; }
 
-extend<record R> { ..R }: Label where each R: Mark {
+extend<record R> { ..R }: Label where ..R: Mark {
     fun label(&self) -> String { "marked".to_string() }
 }
 

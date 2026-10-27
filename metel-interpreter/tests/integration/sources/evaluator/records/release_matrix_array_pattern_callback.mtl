@@ -2,7 +2,7 @@ record Batch { samples: [i64; 3], label: String }
 type Samples := [i64; 3];
 type Sum := once || -> i64;
 
-fun sum_head<record R>(value: { samples: Samples, ..R }) -> i64 where each R: Copy {
+fun sum_head<record R>(value: { samples: Samples, ..R }) -> i64 where ..R: Copy {
     var total := 0;
     for (sample in value.samples) { total := total + sample; }
     total

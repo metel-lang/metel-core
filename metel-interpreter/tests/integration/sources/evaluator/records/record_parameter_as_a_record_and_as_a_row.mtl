@@ -8,7 +8,7 @@ fun with_token<record R: !{ token }>(p: R, t: i64) -> { token: i64, ..R } {
     { token = t, ..p }
 }
 
-fun row_and_whole<record R>(p: { x: i64, ..R }) -> R where each R: Copy {
+fun row_and_whole<record R>(p: { x: i64, ..R }) -> R where ..R: Copy {
     let { x, ..rest } := p;
     rest
 }

@@ -5,7 +5,7 @@ fun transition<record R: !{token}>(r: { ..R }) -> { token: String, ..R } {
     { ..r, token = "secret" }
 }
 
-fun copied_tail<record R: !{token}>(r: { id: i64, ..R }) -> i64 where each R: Copy {
+fun copied_tail<record R: !{token}>(r: { id: i64, ..R }) -> i64 where ..R: Copy {
     let { id, ..rest } := r;
     let copy := rest;
     let callback := [copy] once || { // ERROR[T0026]

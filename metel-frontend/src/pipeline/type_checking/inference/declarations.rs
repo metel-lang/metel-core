@@ -1681,7 +1681,7 @@ pub(super) fn infer_impl_method(
         }
     }
 
-    // metel-core#1444: `where each R: A` on an impl whose target takes `R` as a row argument.
+    // metel-core#1444: `where ..R: A` on an impl whose target takes `R` as a row argument.
     for (var, bound) in
         crate::pipeline::type_checking::registry::impl_nominal_row_arg_all_fields(ib)
     {

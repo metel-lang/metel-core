@@ -328,7 +328,7 @@ extend<record R> { ..R }: Consume where R: Copy {
     fun consume(self) { let first := self; let second := self; }
     fun other<R>(&self, value: R) { let first := value; let second := value; }
 }
-extend<record R> { ..R }: Copied where each R: Copy {
+extend<record R> { ..R }: Copied where ..R: Copy {
     fun copied(self) { let first := self; let second := self; }
 }
 aspect Absent { fun no_token(&self); }
@@ -1942,7 +1942,7 @@ fn abstract_ownership_distinguishes_unknown_and_copy_row_tails() {
     let report = move_report_for_source(
         r#"
 fun repeated<record R>(value: { ..R }) { let first := value; let second := value; }
-fun copied<record R>(value: { ..R }) where each R: Copy { let first := value; let second := value; }
+fun copied<record R>(value: { ..R }) where ..R: Copy { let first := value; let second := value; }
 fun main() {}
 "#,
     );
@@ -2801,11 +2801,11 @@ fn abstract_ownership_inherits_fieldwise_copy_through_row_remainders() {
     let report = move_report_for_source_with(
         r#"
 fun copied<record R, record Rest>(source: { ..R }, rest: { ..Rest })
-where R = { token: i64, ..Rest }, each R: Copy {
+where R = { token: i64, ..Rest }, ..R: Copy {
     let first := rest; let second := rest;
 }
 fun chained<record R, record Mid, record Rest>(source: { ..R }, rest: { ..Rest })
-where R = { token: i64, ..Mid }, Mid = { count: i64, ..Rest }, each R: Copy {
+where R = { token: i64, ..Mid }, Mid = { count: i64, ..Rest }, ..R: Copy {
     let first := rest; let second := rest;
 }
 fun main() {}
@@ -2830,7 +2830,7 @@ fn abstract_ownership_does_not_reverse_row_remainder_copy_grants() {
     let report = move_report_for_source_with(
         r#"
 fun source<record R, record Rest>(value: { ..R }, rest: { ..Rest })
-where R = { token: String, ..Rest }, each Rest: Copy {
+where R = { token: String, ..Rest }, ..Rest: Copy {
     let first := value; let second := value;
 }
 fun unbounded<record R, record Rest>(rest: { ..Rest })
@@ -2861,11 +2861,11 @@ fn abstract_ownership_remainder_copy_requires_every_exception_removed() {
     let report = move_report_for_source_with(
         r#"
 fun covered<record R, record Rest>(source: { ..R }, rest: { ..Rest })
-where R = { token: i64, ..Rest }, each R: Copy {
+where R = { token: i64, ..Rest }, ..R: Copy {
     let first := rest; let second := rest;
 }
 fun uncovered<record R, record Rest>(source: { ..R }, rest: { ..Rest })
-where R = { token: i64, ..Rest }, each R: Copy {
+where R = { token: i64, ..Rest }, ..R: Copy {
     let first := rest; let second := rest;
 }
 fun main() {}
@@ -3105,7 +3105,7 @@ fun main() {}
 fn abstract_ownership_preserves_empty_rows_and_pattern_identities_without_guessing_open_shapes() {
     let report = move_report_for_source_with(
         r#"
-fun copied<record R>(value: { payload: String, ..R }) where each R: Copy {
+fun copied<record R>(value: { payload: String, ..R }) where ..R: Copy {
     let { payload: _, ..rest } := value; let first := rest; let again := rest;
 }
 fun owned<record R>(value: { payload: String, ..R }) {
@@ -3142,19 +3142,19 @@ fn abstract_ownership_composes_row_heads_and_copy_tails() {
     let report = move_report_for_source_with(
         r#"
 fun copied<record R, record Tail>(value: { ..R })
-where R = { count: i64, ..Tail }, each Tail: Copy {
+where R = { count: i64, ..Tail }, ..Tail: Copy {
     let first := value; let again := value;
 }
 fun chained<record R, record Rest, record Tail>(rest: { ..Rest })
-where R = { token: String, ..Rest }, Rest = { count: i64, ..Tail }, each Tail: Copy {
+where R = { token: String, ..Rest }, Rest = { count: i64, ..Tail }, ..Tail: Copy {
     let first := rest; let again := rest;
 }
 fun owned<record R, record Tail>(value: { ..R })
-where R = { token: String, ..Tail }, each Tail: Copy {
+where R = { token: String, ..Tail }, ..Tail: Copy {
     let first := value; let again := value;
 }
 fun alternatives<T, record R, record A, record B: Copy>(value: { ..R })
-where R = { a: T, ..A }, R = { b: i64, ..B }, each A: Copy {
+where R = { a: T, ..A }, R = { b: i64, ..B }, ..A: Copy {
     let first := value; let again := value;
 }
 fun closed_alternative<T, record R: { a: T, b: i64 }, record B: Copy>(value: { ..R })
@@ -3221,7 +3221,7 @@ fun main() {}
 fn abstract_ownership_checks_parameter_backed_record_pattern_consumption() {
     let report = move_report_for_source_with(
         r#"
-fun whole<record R>(value: { payload: String, ..R }) where each R: Copy {
+fun whole<record R>(value: { payload: String, ..R }) where ..R: Copy {
     let { payload: _, ..rest } := value;
     let first := rest; let again := rest;
     let invalid := value;
@@ -3252,7 +3252,7 @@ fun main() {}
 fn abstract_ownership_checks_explicit_open_record_pattern_remainders() {
     let report = move_report_for_source_with(
         r#"
-fun copied<T, record R: !{ payload }>(payload: T, tail_value: { ..R }) where each R: Copy {
+fun copied<T, record R: !{ payload }>(payload: T, tail_value: { ..R }) where ..R: Copy {
     let { payload: _, ..rest } := { payload = payload, ..tail_value };
     let first := rest; let again := rest;
 }
@@ -3390,7 +3390,7 @@ fn symbolic_row_forwarding_closure_is_checked_without_skipping() {
 fun add<record R: !{token}>(r: { ..R }) -> { token: String, ..R } {
     { ..r, token = "secret" }
 }
-fun test<record R: !{token}>(r: { ..R }) -> i64 where each R: Copy {
+fun test<record R: !{token}>(r: { ..R }) -> i64 where ..R: Copy {
     let f := [r] once || {
         let added := add(r);
         let copy := r;
@@ -3434,7 +3434,7 @@ fun main() {}
 #[test]
 fn symbolic_row_known_copy_head_and_unknown_tail_are_distinct() {
     let source = r#"
-fun duplicate<record R: { count: i64, .. }>(r: { ..R }) -> i64 where each R: Copy {
+fun duplicate<record R: { count: i64, .. }>(r: { ..R }) -> i64 where ..R: Copy {
     let copy := r;
     let again := r;
     7

@@ -148,7 +148,7 @@ where R = { token: String, ..Rest } {
     let { token: _, ..rest } := value;
     rest
 }
-fun clone_row<record R>(value: &{ ..R }) -> { ..R } where each R: Clone { value.clone() }
+fun clone_row<record R>(value: &{ ..R }) -> { ..R } where ..R: Clone { value.clone() }
 fun main() {}
 "#,
     )
