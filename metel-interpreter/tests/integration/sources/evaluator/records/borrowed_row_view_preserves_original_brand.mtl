@@ -1,0 +1,19 @@
+record P { x: String }
+
+extend P {
+    fun brand(&self) -> i64 { 7 }
+}
+
+extend P: Drop {
+    fun drop(&var self) { }
+}
+
+fun read<record R>(p: &{ x: String, ..R }) -> i64 {
+    p.x.len() as i64
+}
+
+fun main() {
+    let p := P { x = "Ada".to_string() };
+    assert(read(&p) == 3);
+    assert(p.brand() == 7);
+}

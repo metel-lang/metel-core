@@ -668,6 +668,7 @@ impl<'a> Checker<'a> {
             }
             TypedExpr::Cast { expr, .. }
             | TypedExpr::SingletonCoerce { inner: expr, .. }
+            | TypedExpr::RowCoerce { inner: expr, .. }
             | TypedExpr::DynCoerce { inner: expr, .. } => {
                 self.observe_expr(expr, current_module, state);
             }
@@ -2019,7 +2020,7 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
                 .map(infer_to_type)
                 .collect::<Option<Vec<_>>>()?,
         }),
-        InferType::Var(_) => None,
+        InferType::RowView(_) | InferType::Var(_) => None,
     }
 }
 
@@ -2244,6 +2245,7 @@ impl FreeRootCollector {
             | TypedExpr::UnaryOp(_, value, ..)
             | TypedExpr::Cast { expr: value, .. }
             | TypedExpr::SingletonCoerce { inner: value, .. }
+            | TypedExpr::RowCoerce { inner: value, .. }
             | TypedExpr::DynCoerce { inner: value, .. }
             | TypedExpr::RefTemp { init: value, .. } => self.expr(value),
             TypedExpr::BinOp(left, _, right, ..) => {

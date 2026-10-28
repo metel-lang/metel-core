@@ -117,6 +117,9 @@ impl InferContext {
     /// field until its type is known.
     pub(super) fn field_is_copy(&self, ty: &InferType) -> bool {
         let resolved = self.apply_cached_subst(ty);
+        if let InferType::RowView(source) = &resolved {
+            return super::expressions::infer_row_is_copy(self, source);
+        }
         // An unsuffixed numeric literal's var will default to a `Copy` primitive.
         if let InferType::Var(tv) = &resolved {
             return self.is_numeric_literal_var(*tv);

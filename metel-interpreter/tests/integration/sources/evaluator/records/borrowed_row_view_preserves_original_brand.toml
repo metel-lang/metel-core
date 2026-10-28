@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.types.generics.open-rows.legality-1", "spec.types.generics.open-rows.legality-3"]
+
+[expect]
+status = "success"

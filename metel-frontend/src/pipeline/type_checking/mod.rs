@@ -136,6 +136,7 @@ struct FunGeneralization {
     /// `R` var and the labels the equation removes (RFC-0121 §2). Attached to the
     /// re-generalized scheme so `Rest` is derived from `R` at each call site.
     row_remainders: HashMap<TypeVar, Vec<(TypeVar, Vec<String>)>>,
+    row_view_consumes: HashSet<TypeVar>,
     /// Anonymous type variables that represent `{ ..R }` function parameters.
     /// Preserved when rebuilding the construction-pass scheme so callers can
     /// distinguish an abstract open row from an ordinary type parameter.
@@ -275,6 +276,7 @@ fn refresh_scheme_for_export(
         // Positional (var positions, not TypeVars), so the renaming is irrelevant;
         // dropping it would lose `Rest` derivation across modules.
         row_remainders: scheme.row_remainders.clone(),
+        row_view_consumes: scheme.row_view_consumes.clone(),
         assoc_projections: vec![],
         body_projections: vec![],
         assoc_eq_constraints: vec![],
@@ -1717,6 +1719,7 @@ fn build_module_scheme_env(
         // happened to appear in other functions' constraints. (METEL-137)
         let mut scheme = generalize_with_names(fg.fun_ty, &fg.env_fvs, &fg.name_map)
             .with_row_remainders(&fg.row_remainders)
+            .with_row_view_consumes(&fg.row_view_consumes)
             .with_bounds(&fg.bounds)
             .with_neg_bounds(&fg.neg_bounds)
             .with_record_kinds(&fg.record_kinds)

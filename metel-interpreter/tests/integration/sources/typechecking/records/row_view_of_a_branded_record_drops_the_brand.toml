@@ -1,5 +1,4 @@
 [options]
-skip = "pending: #1650"
 error = ["T0003"]
 spec = ["spec.types.generics.open-rows.legality-1"]
 

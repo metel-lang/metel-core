@@ -1,7 +1,6 @@
 // TYPECHECK_ERROR[T0003]
 // RFC-0186 / metel-core#1650: `{ ..R }` is the anonymous record with R's fields, so a branded
-// `record` seen through it loses the brand and its methods. Today the row view of a branded
-// record keeps the brand, so this program is accepted.
+// `record` seen through it loses the brand and its methods.
 record P { x: i64 }
 
 extend P {

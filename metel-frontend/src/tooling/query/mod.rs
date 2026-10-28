@@ -279,6 +279,7 @@ fn expr_at_expr<'a>(
         | TypedExpr::TupleAccess { object: value, .. }
         | TypedExpr::Cast { expr: value, .. }
         | TypedExpr::SingletonCoerce { inner: value, .. }
+        | TypedExpr::RowCoerce { inner: value, .. }
         | TypedExpr::DynCoerce { inner: value, .. } => expr_at_expr(value, filename, byte_offset),
         TypedExpr::BinOp(left, _, right, ..) => expr_at_expr(left, filename, byte_offset)
             .or_else(|| expr_at_expr(right, filename, byte_offset)),

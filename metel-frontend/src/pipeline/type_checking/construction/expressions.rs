@@ -1381,6 +1381,25 @@ pub(super) fn construct_expr(
                 .get_struct_fields(type_name)
                 .map(|fs| fs.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect())
                 .unwrap_or_default();
+            if let Some(Type::Named(_, expected_args, nominal)) = expected_ty
+                && let Some(type_id) = symbol_id.or_else(|| ctx.type_symbol_id(type_name))
+                && nominal.get() == Some(type_id)
+                && let Some(params) = ctx.registry.raw_struct_type_params().get(&type_id)
+                && let Some(raw_fields) = ctx.registry.raw_struct_env().get(&type_id)
+            {
+                let mut remap = Substitution::new();
+                for (&param, arg) in params.iter().zip(expected_args) {
+                    remap.bind(param, type_to_infer(arg));
+                }
+                for field in raw_fields {
+                    let resolved = ctx
+                        .registry
+                        .resolve_row_views(ctx.current_module, &remap.apply(&field.ty));
+                    if let Ok(ty) = infer_type_to_type(&resolved, span) {
+                        field_hints.insert(field.name.clone(), ty);
+                    }
+                }
+            }
             // A generic struct has no concrete field list to hint from, but a field whose
             // declared type mentions no type parameter is as concrete as any other: hint
             // it, or an unsuffixed literal takes its default type and later disagrees
@@ -1409,7 +1428,7 @@ pub(super) fn construct_expr(
                         .collect();
                 }
             }
-            let typed_fields: Vec<(String, TypedExpr)> = fields
+            let mut typed_fields: Vec<(String, TypedExpr)> = fields
                 .iter()
                 .map(|(name, expr)| {
                     let hint = field_hints.get(name.as_str());
@@ -1417,12 +1436,40 @@ pub(super) fn construct_expr(
                     // RFC-0008 §6: a struct field declared `dyn Aspect` needs
                     // the same coercion any other hinted site gets.
                     let typed = match hint {
-                        Some(h) => maybe_dyn_coerce(h, typed, expr.span(), ctx)?,
+                        Some(h) => {
+                            let typed =
+                                maybe_singleton_coerce(h, typed, expr.span(), ctx.registry)?;
+                            maybe_dyn_coerce(h, typed, expr.span(), ctx)?
+                        }
                         None => typed,
                     };
                     Ok((name.clone(), typed))
                 })
                 .collect::<Result<_, _>>()?;
+
+            if let Some(type_id) = symbol_id.or_else(|| ctx.type_symbol_id(type_name))
+                && let Some(raw_fields) = ctx.registry.raw_struct_env().get(&type_id)
+            {
+                for (name, value) in &mut typed_fields {
+                    if raw_fields.iter().any(|field| {
+                        field.name == *name && matches!(field.ty, InferType::RowView(_))
+                    }) && matches!(value.ty(), Type::Named(..))
+                    {
+                        let row = ctx.registry.resolve_row_views(
+                            ctx.current_module,
+                            &InferType::RowView(Box::new(type_to_infer(value.ty()))),
+                        );
+                        if let Ok(row) = infer_type_to_type(&row, expr.span()) {
+                            *value = maybe_singleton_coerce(
+                                &row,
+                                value.clone(),
+                                expr.span(),
+                                ctx.registry,
+                            )?;
+                        }
+                    }
+                }
+            }
 
             let ty = if resolved_path.len() == 2 {
                 let enum_id = expected_enum_id

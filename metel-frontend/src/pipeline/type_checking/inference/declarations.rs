@@ -111,6 +111,7 @@ pub(super) fn infer_decl(
                         assoc_eq: HashMap::new(),
                         opaque_returns: HashMap::new(),
                         row_remainders: HashMap::new(),
+                        row_view_consumes: HashSet::new(),
                         open_row_params: HashSet::new(),
                     });
                     return Ok(InferType::unit());
@@ -731,6 +732,20 @@ fn inherited_aspect_type_arguments(
         .collect()
 }
 
+fn collect_row_view_consumes(actual: &InferType, expected: &InferType, out: &mut HashSet<TypeVar>) {
+    match (actual, expected) {
+        (InferType::Var(var), InferType::RowView(source)) if source.as_ref() == actual => {
+            out.insert(*var);
+        }
+        (InferType::Tuple(actual), InferType::Tuple(expected)) => {
+            for (actual, expected) in actual.iter().zip(expected) {
+                collect_row_view_consumes(actual, expected, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -795,6 +810,7 @@ pub(super) fn infer_fun_decl(
             assoc_eq,
             opaque_returns: HashMap::new(),
             row_remainders: HashMap::new(),
+            row_view_consumes: HashSet::new(),
             open_row_params,
         });
         return Ok(());
@@ -1068,6 +1084,7 @@ pub(super) fn infer_fun_decl(
     // generalized with this declaration instead of leaking into its enclosing
     // inference context or being left for construction to rediscover.
     let row_remainder_checkpoint = ctx.row_remainder_checkpoint();
+    let row_view_checkpoint = ctx.row_view_consume_checkpoint();
     let body_ty = infer_block(&fun.body, ctx, fun_generalizations)?;
 
     let return_span = fun
@@ -1109,6 +1126,28 @@ pub(super) fn infer_fun_decl(
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
+    let mut row_view_consumes: HashSet<TypeVar> = ctx
+        .take_row_view_consumes_since(row_view_checkpoint)
+        .into_iter()
+        .filter_map(|var| match partial_subst.apply(&InferType::Var(var)) {
+            InferType::Var(var) => Some(var),
+            _ => None,
+        })
+        .collect();
+    for (span, boundaries) in ctx.definition_value_boundaries() {
+        if span.filename == fun.body.span.filename
+            && span.start >= fun.body.span.start
+            && span.end <= fun.body.span.end
+        {
+            for (actual, expected) in boundaries {
+                collect_row_view_consumes(
+                    &partial_subst.apply(actual),
+                    &partial_subst.apply(expected),
+                    &mut row_view_consumes,
+                );
+            }
+        }
+    }
     let declared: Vec<(&str, TypeVar)> = fun
         .generics
         .iter()
@@ -1223,6 +1262,19 @@ pub(super) fn infer_fun_decl(
         .filter_map(
             |(original, bounds)| match partial_subst.apply(&InferType::Var(*original)) {
                 InferType::Var(resolved) => Some((resolved, bounds.clone())),
+                InferType::RowView(source) if matches!(source.as_ref(), InferType::Var(_)) => {
+                    let InferType::Var(resolved) = *source else {
+                        unreachable!()
+                    };
+                    Some((
+                        resolved,
+                        bounds
+                            .iter()
+                            .filter(|b| matches!(b, GenericBound::AllFields { .. }))
+                            .cloned()
+                            .collect(),
+                    ))
+                }
                 _ => None,
             },
         )
@@ -1342,6 +1394,7 @@ pub(super) fn infer_fun_decl(
         .collect();
     let mut scheme = scheme
         .with_row_remainders(&row_remainders)
+        .with_row_view_consumes(&row_view_consumes)
         .with_record_kinds(&type_var_record_kinds)
         .with_bounds(&scheme_bounds)
         .with_neg_bounds(&scheme_neg_bounds)
@@ -1406,6 +1459,18 @@ pub(super) fn infer_fun_decl(
         .filter_map(
             |(orig_tv, b)| match partial_subst.apply(&InferType::Var(*orig_tv)) {
                 InferType::Var(final_tv) => Some((final_tv, b.clone())),
+                InferType::RowView(source) if matches!(source.as_ref(), InferType::Var(_)) => {
+                    let InferType::Var(resolved) = *source else {
+                        unreachable!()
+                    };
+                    Some((
+                        resolved,
+                        b.iter()
+                            .filter(|b| matches!(b, GenericBound::AllFields { .. }))
+                            .cloned()
+                            .collect(),
+                    ))
+                }
                 _ => None,
             },
         )
@@ -1483,6 +1548,7 @@ pub(super) fn infer_fun_decl(
         assoc_eq,
         opaque_returns: opaque_map,
         row_remainders,
+        row_view_consumes,
         open_row_params,
     });
     Ok(())
@@ -2058,6 +2124,7 @@ pub(super) fn infer_impl_method(
     // annotations (METEL-181). Skip body inference but still register the
     // method scheme below so call sites resolve.
     let row_remainder_checkpoint = ctx.row_remainder_checkpoint();
+    let method_row_view_checkpoint = ctx.row_view_consume_checkpoint();
     if method.native.is_none() {
         ctx.push_scope();
         let saved_flow = ctx.flow_enter_body();
@@ -2114,6 +2181,28 @@ pub(super) fn infer_impl_method(
     let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
+    let mut method_row_view_consumes: HashSet<TypeVar> = ctx
+        .take_row_view_consumes_since(method_row_view_checkpoint)
+        .into_iter()
+        .filter_map(|var| match partial_subst.apply(&InferType::Var(var)) {
+            InferType::Var(var) => Some(var),
+            _ => None,
+        })
+        .collect();
+    for (span, boundaries) in ctx.definition_value_boundaries() {
+        if span.filename == method.body.span.filename
+            && span.start >= method.body.span.start
+            && span.end <= method.body.span.end
+        {
+            for (actual, expected) in boundaries {
+                collect_row_view_consumes(
+                    &partial_subst.apply(actual),
+                    &partial_subst.apply(expected),
+                    &mut method_row_view_consumes,
+                );
+            }
+        }
+    }
     let mut declared = method_declared;
     for (name, tv) in &enclosing_declared {
         if !declared.iter().any(|(_, declared_tv)| *declared_tv == *tv) {
@@ -2363,7 +2452,9 @@ pub(super) fn infer_impl_method(
                     .push((source, fact.removed));
             }
         }
-        scheme = scheme.with_row_remainders(&row_remainders);
+        scheme = scheme
+            .with_row_remainders(&row_remainders)
+            .with_row_view_consumes(&method_row_view_consumes);
         scheme = scheme
             .with_bounds(&by_var)
             .with_neg_bounds(&by_neg_var)
@@ -2510,7 +2601,7 @@ pub(super) fn definition_body_scheme(
     named_variables.sort_by_key(|(name, _)| *name);
     for (index, var) in scheme.quantified_vars.iter().enumerate() {
         let mut seen = HashSet::new();
-        let grants = named_variables
+        let mut grants = named_variables
             .iter()
             .filter(|(_, original)| {
                 seen.insert(**original)
@@ -2518,6 +2609,19 @@ pub(super) fn definition_body_scheme(
             })
             .flat_map(|(_, original)| body_bounds.get(original).into_iter().flatten().cloned())
             .collect::<Vec<_>>();
+        for (_, original) in &named_variables {
+            if matches!(subst.apply(&InferType::Var(**original)), InferType::RowView(source) if source.as_ref() == &InferType::Var(*var))
+            {
+                grants.extend(
+                    body_bounds
+                        .get(original)
+                        .into_iter()
+                        .flatten()
+                        .filter(|b| matches!(b, GenericBound::AllFields { .. }))
+                        .cloned(),
+                );
+            }
+        }
         if scheme.bounds.len() <= index {
             scheme.bounds.resize(index + 1, Vec::new());
         }

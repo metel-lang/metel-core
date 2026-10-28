@@ -207,7 +207,8 @@ impl FactFreezer<'_> {
                     .any(|(_, ty)| self.has_unresolved_projection(ty))
                     || self.has_unresolved_projection(tail)
             }
-            InferType::Array(inner)
+            InferType::RowView(inner)
+            | InferType::Array(inner)
             | InferType::SizedArray(inner, _)
             | InferType::Reference(inner)
             | InferType::MutReference(inner) => self.has_unresolved_projection(inner),

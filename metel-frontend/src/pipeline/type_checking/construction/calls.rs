@@ -1761,7 +1761,10 @@ pub(super) fn instantiate_scheme_for_call(
         .iter()
         .map(|p| infer_type_to_type(&subst.apply(p), span))
         .collect::<Result<_, _>>()?;
-    let concrete_ret = infer_type_to_type(&subst.apply(&ret), span)?;
+    let concrete_ret = infer_type_to_type(
+        &registry.resolve_row_views(current_module, &subst.apply(&ret)),
+        span,
+    )?;
 
     // Build original-quantified-var → concrete-type mapping for bound checking.
     let mut var_to_concrete: HashMap<TypeVar, Type> = HashMap::new();

@@ -1392,6 +1392,7 @@ fn register_generic_impl_method_schemes(
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
+            row_view_consumes: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
@@ -1617,6 +1618,7 @@ fn register_array_impl_method_schemes(
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
+            row_view_consumes: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&method_by_var)
@@ -1704,6 +1706,7 @@ fn register_record_impl_method_schemes(
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
+            row_view_consumes: vec![],
             ty: InferType::fun(param_types, ret_ty),
         }
         .with_bounds(&by_var)
@@ -2076,7 +2079,8 @@ fn resolve_declaring_nominals(
             }
             resolve_declaring_nominals(tail, registry, module);
         }
-        InferType::Array(inner)
+        InferType::RowView(inner)
+        | InferType::Array(inner)
         | InferType::SizedArray(inner, _)
         | InferType::Reference(inner)
         | InferType::MutReference(inner) => resolve_declaring_nominals(inner, registry, module),
