@@ -519,6 +519,7 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
         | InferType::Var(_)
         | InferType::Fun(..)
         | InferType::Record(_)
+        | InferType::RowView(_)
         | InferType::RowExtend { .. }
         | InferType::Residual { .. } => None,
     }
@@ -628,6 +629,7 @@ fn substitute_impl_params(
                 .collect(),
             tail: Box::new(go(tail)),
         },
+        InferType::RowView(item) => InferType::RowView(Box::new(go(item))),
         InferType::Array(item) => InferType::Array(Box::new(go(item))),
         InferType::SizedArray(item, size) => InferType::SizedArray(Box::new(go(item)), *size),
         InferType::Reference(item) => InferType::Reference(Box::new(go(item))),
@@ -2491,6 +2493,12 @@ fn constrain_at_declared_boundary(
     span: Span,
 ) -> InferType {
     ctx.record_definition_value_boundary(span.clone(), actual.clone(), declared.clone());
+    if matches!(declared, InferType::Record(_) | InferType::RowView(_))
+        && matches!(actual, InferType::Named(..) | InferType::RowView(_))
+    {
+        ctx.add_expected_constraint(actual, declared.clone(), span);
+        return declared;
+    }
     // Erasure is a declared-type boundary, not just a coercion check: retaining
     // the concrete initializer would expose methods absent from the dyn vtable.
     if contains_dyn_erasure(&declared) {
@@ -2677,6 +2685,13 @@ fn infer_enum_variant_literal(
             other => other.clone(),
         };
         let expr_ty = infer_expr(expr, ctx, fun_generalizations)?;
+        if let (InferType::Var(_), InferType::RowView(source)) = (&expr_ty, &decl_ty) {
+            ctx.add_constraint(
+                source.as_ref().clone(),
+                InferType::RowView(Box::new(expr_ty.clone())),
+                span.clone(),
+            );
+        }
         ctx.add_expected_constraint(expr_ty, decl_ty, span.clone());
     }
     let type_args: Vec<InferType> = enum_info
@@ -2694,6 +2709,25 @@ fn infer_enum_variant_literal(
         type_args,
         crate::data::types::NominalId(type_id),
     ))
+}
+
+fn check_all_fields_present(
+    expected_fields: &[FieldEntry],
+    fields: &[(String, Expr)],
+    struct_name: &str,
+    span: &Span,
+) -> Result<(), MetelError> {
+    match expected_fields
+        .iter()
+        .find(|field| !fields.iter().any(|(n, _)| n == &field.name))
+    {
+        Some(field) => Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("missing field `{}` in `{struct_name}`", field.name),
+            span,
+        )),
+        None => Ok(()),
+    }
 }
 
 fn infer_struct_literal(
@@ -2787,17 +2821,17 @@ fn infer_struct_literal(
         )?;
         let decl_ty = apply_remap(&field.ty);
         let expr_ty = infer_expr(expr, ctx, fun_generalizations)?;
+        if let (InferType::Var(_), InferType::RowView(source)) = (&expr_ty, &decl_ty) {
+            ctx.add_constraint(
+                source.as_ref().clone(),
+                InferType::RowView(Box::new(expr_ty.clone())),
+                span.clone(),
+            );
+        }
+        ctx.record_definition_value_boundary(expr.span().clone(), expr_ty.clone(), decl_ty.clone());
         ctx.add_expected_constraint(expr_ty, decl_ty, span.clone());
     }
-    for field in &expected_fields {
-        if !fields.iter().any(|(n, _)| n == &field.name) {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("missing field `{}` in `{struct_name}`", field.name),
-                span,
-            ));
-        }
-    }
+    check_all_fields_present(&expected_fields, fields, &struct_name, span)?;
     let type_args: Vec<InferType> = type_params
         .as_deref()
         .unwrap_or(&[])
@@ -2818,7 +2852,8 @@ fn infer_struct_literal(
 fn contains_dyn_erasure(ty: &InferType) -> bool {
     match ty {
         InferType::Dyn { .. } => true,
-        InferType::Reference(inner)
+        InferType::RowView(inner)
+        | InferType::Reference(inner)
         | InferType::MutReference(inner)
         | InferType::Array(inner)
         | InferType::SizedArray(inner, _) => contains_dyn_erasure(inner),
@@ -2912,6 +2947,9 @@ fn infer_field_assign_type(
     }
     if let InferType::RowExtend { fields, tail } = &peeled {
         return infer_row_extend_field_type(fields, tail, field, target_span, ctx, &peeled);
+    }
+    if let InferType::RowView(source) = &peeled {
+        return infer_row_extend_field_type(&[], source, field, target_span, ctx, &peeled);
     }
     // Mirror of Expr::FieldAccess's row-bound branch above, so `p.x = value` works
     // symmetrically wherever `p.x` does. `fresh_row_field_var` is memoized by

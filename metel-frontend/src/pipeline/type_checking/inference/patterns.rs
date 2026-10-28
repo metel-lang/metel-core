@@ -589,6 +589,9 @@ fn collect_remainder_facts(
     let mut visited = std::collections::HashSet::new();
     loop {
         match current {
+            InferType::RowView(source) => {
+                current = *source;
+            }
             InferType::Record(mut row_fields) => {
                 known_fields.append(&mut row_fields);
                 break;
@@ -599,6 +602,9 @@ fn collect_remainder_facts(
             } => {
                 known_fields.append(&mut fields);
                 match *next {
+                    InferType::RowView(source) => {
+                        current = *source;
+                    }
                     InferType::Var(tv) => {
                         if !visited.insert(tv) {
                             tail = Some(InferType::Var(tv));

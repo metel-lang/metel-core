@@ -4435,6 +4435,21 @@ pub fn eval_expr(
         // RFC-0078 §3.3: inhabited-singleton coercion. No runtime tag check is
         // needed — the typecheck-time uninhabited-variant exemption that licenses
         // this node guarantees no other variant could ever have been constructed.
+        TypedExpr::RowCoerce { inner, .. } => {
+            let value = match eval_to_value(inner, env, runtime)? {
+                ControlFlow::Continue(value) => value,
+                ControlFlow::Break(signal) => return Ok(signal),
+            };
+            match value {
+                Value::Struct { fields, .. } | Value::Record { fields, .. } => {
+                    Ok(Signal::Value(Value::Record {
+                        fields,
+                        type_id: None,
+                    }))
+                }
+                _ => Err(MetelError::internal("row coercion on non-record value")),
+            }
+        }
         TypedExpr::SingletonCoerce { inner, field, .. } => {
             let value = match eval_to_value(inner, env, runtime)? {
                 ControlFlow::Continue(value) => value,

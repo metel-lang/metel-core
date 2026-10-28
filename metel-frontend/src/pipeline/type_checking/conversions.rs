@@ -451,12 +451,12 @@ fn type_expr_to_infer_in_context(
                     .as_deref()
                     .is_some_and(|v| generics.is_some_and(|g| g.contains_key(v))) =>
         {
-            InferType::Var(
+            InferType::RowView(Box::new(InferType::Var(
                 generics
                     .and_then(|g| g.get(tail.var.as_deref()?))
                     .copied()
                     .expect("guarded"),
-            )
+            )))
         }
         TypeExpr::OpenRecord(fields, tail)
             if !fields.is_empty()
@@ -479,7 +479,7 @@ fn type_expr_to_infer_in_context(
                         )
                     })
                     .collect(),
-                tail: Box::new(InferType::Var(tail_var)),
+                tail: Box::new(InferType::RowView(Box::new(InferType::Var(tail_var)))),
             }
         }
         // An anonymous tail (`{ .. }` / `{ x: T, .. }`) is the same fresh-per-occurrence
@@ -560,7 +560,7 @@ fn type_expr_to_infer_in_context(
                         crate::data::types::NominalId::NONE,
                     )
                 },
-                |&tv| InferType::Var(tv),
+                |&tv| InferType::RowView(Box::new(InferType::Var(tv))),
             ),
     }
 }
@@ -638,6 +638,17 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
                 .map(|(name, ty)| Ok((name.clone(), infer_type_to_type(ty, span)?)))
                 .collect::<Result<Vec<_>, MetelError>>()?,
         )),
+        InferType::RowView(source) => match source.as_ref() {
+            InferType::Concrete(
+                ty @ (Type::SymbolicRow { .. } | Type::Record(_) | Type::OpenRecord { .. }),
+            ) => Ok(ty.clone()),
+            InferType::Record(_) | InferType::RowExtend { .. } => infer_type_to_type(source, span),
+            _ => Err(MetelError::type_error(
+                TypeErrorCode::T0002,
+                "cannot infer anonymous row projection; add a type annotation",
+                span,
+            )),
+        },
         InferType::RowExtend { fields, tail } => {
             let resolved_tail = infer_type_to_type(tail, span)?;
             let mut resolved_fields: Vec<_> = fields

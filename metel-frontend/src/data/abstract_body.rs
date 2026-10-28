@@ -314,6 +314,8 @@ pub enum AbstractExprKind {
     /// A written callable slot forgets capture-derived Copy, but evaluation
     /// must still retain the source closure's capture effects.
     CallableView(Box<AbstractExpr>),
+    /// An owned record is transferred into its anonymous row.
+    RowView(Box<AbstractExpr>),
     /// Unlike reading with `*`, storing a shared view consumes the mutable reference.
     SharedReferenceView(Box<AbstractExpr>),
     /// A sized place is borrowed; an owned temporary evaluates its elements once.

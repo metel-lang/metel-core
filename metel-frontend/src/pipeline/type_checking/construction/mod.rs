@@ -1137,7 +1137,13 @@ pub(super) fn construct_generic_body(
         }
     }
 
-    let ret_ty = infer_type_to_type(&subst.apply(&ret_infertype), span).ok();
+    let ret_ty = infer_type_to_type(
+        &type_ctx
+            .registry
+            .resolve_row_views(&type_ctx.current_module, &subst.apply(&ret_infertype)),
+        span,
+    )
+    .ok();
 
     // An overloaded function is never itself generic, but a generic body calls them
     // (the standard `assert` is one). They are selected through the defining module's
@@ -2034,6 +2040,44 @@ fn maybe_singleton_coerce(
     let actual_ty = actual.ty().clone();
     if &actual_ty == expected {
         return Ok(actual);
+    }
+    if let (Type::Tuple(expected_items), TypedExpr::Tuple(items, _, tuple_span)) =
+        (expected, &actual)
+        && items.len() == expected_items.len()
+    {
+        let items = items
+            .iter()
+            .cloned()
+            .zip(expected_items)
+            .map(|(item, expected)| maybe_singleton_coerce(expected, item, span, registry))
+            .collect::<Result<Vec<_>, _>>()?;
+        return Ok(TypedExpr::Tuple(
+            items,
+            expected.clone(),
+            tuple_span.clone(),
+        ));
+    }
+    let actual_infer = type_to_infer(&actual_ty);
+    if matches!((&actual_ty, expected), (Type::Named(..), Type::Record(_)))
+        && registry.is_record_kinded(&[], &actual_infer)
+        && infer_type_to_type(
+            &registry.resolve_row_views(&[], &InferType::RowView(Box::new(actual_infer))),
+            span,
+        )
+        .is_ok_and(|ty| &ty == expected)
+    {
+        if registry.type_satisfies_aspect(&[], &actual_ty, "Drop") {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0036,
+                "cannot convert a record implementing `Drop` to an anonymous row",
+                span,
+            ));
+        }
+        return Ok(TypedExpr::RowCoerce {
+            inner: Box::new(actual),
+            ty: expected.clone(),
+            span: span.clone(),
+        });
     }
     let Type::Named(name, type_args, ..) = &actual_ty else {
         return Ok(actual);

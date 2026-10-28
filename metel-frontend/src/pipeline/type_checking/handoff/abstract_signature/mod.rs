@@ -133,7 +133,8 @@ fn signature_variables(ty: &InferType, scheme: &TypeScheme, ordered: &mut Vec<Ty
             }
             signature_variables(tail, scheme, ordered);
         }
-        InferType::Array(inner)
+        InferType::RowView(inner)
+        | InferType::Array(inner)
         | InferType::SizedArray(inner, _)
         | InferType::Reference(inner)
         | InferType::MutReference(inner) => {
@@ -184,10 +185,17 @@ impl SignatureFreezer<'_> {
             },
             InferType::Tuple(items) => AbstractType::Tuple(self.items(items)?),
             InferType::Record(fields) => AbstractType::Record(self.fields(fields)?),
+            InferType::RowView(tail) => AbstractType::OpenRecord {
+                fields: Vec::new(),
+                tail: Box::new(self.freeze(tail)?),
+            },
             InferType::RowExtend { fields, tail } if fields.is_empty() => self.freeze(tail)?,
             InferType::RowExtend { fields, tail } => AbstractType::OpenRecord {
                 fields: self.fields(fields)?,
-                tail: Box::new(self.freeze(tail)?),
+                tail: Box::new(self.freeze(match tail.as_ref() {
+                    InferType::RowView(source) => source,
+                    other => other,
+                })?),
             },
             InferType::Array(inner) => AbstractType::Array(Box::new(self.freeze(inner)?)),
             InferType::SizedArray(inner, len) => {

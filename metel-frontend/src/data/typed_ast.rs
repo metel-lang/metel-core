@@ -586,6 +586,12 @@ pub enum TypedExpr {
         ty: Type,
         span: Span,
     },
+    /// Transfer a nominal record's fields into an anonymous record.
+    RowCoerce {
+        inner: Box<TypedExpr>,
+        ty: Type,
+        span: Span,
+    },
     /// RFC-0008 §6: implicit coercion of a concrete value to an aspect object
     /// (`dyn Aspect`). `ty` is always `Type::Dyn { aspect, type_args }` — the
     /// erasure target — and carries everything the evaluator needs to rebuild it
@@ -636,6 +642,7 @@ impl TypedExpr {
             | TypedExpr::GenericClosure { ty, .. }
             | TypedExpr::StructLiteral { ty, .. }
             | TypedExpr::SingletonCoerce { ty, .. }
+            | TypedExpr::RowCoerce { ty, .. }
             | TypedExpr::DynCoerce { ty, .. } => ty,
             TypedExpr::Match(m) => &m.expr_type,
             TypedExpr::Return(_) | TypedExpr::Break(_) | TypedExpr::Continue(_) => &Type::Never,
@@ -672,6 +679,7 @@ impl TypedExpr {
             | TypedExpr::GenericClosure { ty, .. }
             | TypedExpr::StructLiteral { ty, .. }
             | TypedExpr::SingletonCoerce { ty, .. }
+            | TypedExpr::RowCoerce { ty, .. }
             | TypedExpr::DynCoerce { ty, .. } => *ty = new_ty,
             TypedExpr::Match(m) => m.expr_type = new_ty,
             TypedExpr::Return(_) | TypedExpr::Break(_) | TypedExpr::Continue(_) => {}
@@ -706,6 +714,7 @@ impl TypedExpr {
             | TypedExpr::GenericClosure { span: s, .. }
             | TypedExpr::StructLiteral { span: s, .. }
             | TypedExpr::SingletonCoerce { span: s, .. }
+            | TypedExpr::RowCoerce { span: s, .. }
             | TypedExpr::DynCoerce { span: s, .. }
             | TypedExpr::Continue(s) => s,
             TypedExpr::Match(m) => &m.span,

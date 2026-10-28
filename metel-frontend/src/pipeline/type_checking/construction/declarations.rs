@@ -337,6 +337,7 @@ pub(super) fn construct_fun_decl(
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
+            row_view_consumes: vec![],
             ty: InferType::fun(
                 entry
                     .params

@@ -1,0 +1,14 @@
+// A row view transfers the fields and cannot bypass a branded destructor.
+record P { x: String }
+
+extend P: Drop {
+    fun drop(&var self) { }
+}
+
+fun row<record R>(p: R) -> { ..R } { p }
+fun forward<record R>(p: R) -> { ..R } { row(p) }
+
+fun main() {
+    let p := P { x = "owned".to_string() };
+    let _ := forward(p);
+}

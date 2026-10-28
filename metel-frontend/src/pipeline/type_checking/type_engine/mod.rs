@@ -64,6 +64,8 @@ pub enum InferType {
     Tuple(Vec<InferType>),
     /// A closed anonymous record type with lexicographically sorted labels.
     Record(Vec<(String, InferType)>),
+    /// Anonymous row of a record-kinded type, retaining its source until resolved.
+    RowView(Box<InferType>),
     /// A record assembled from fixed fields and an open-row tail. This exists
     /// only while inferring a generic declaration: construction requires the
     /// tail to resolve and emits an ordinary closed `Record`.
@@ -191,6 +193,7 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, " }}")
             }
+            InferType::RowView(source) => write!(f, "{{ ..{source} }}"),
             InferType::RowExtend { fields, tail } => {
                 write!(f, "{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
@@ -327,7 +330,8 @@ fn collect_free_vars_in_order(
             }
             collect_free_vars_in_order(tail, known, local, next);
         }
-        InferType::Array(t)
+        InferType::RowView(t)
+        | InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => collect_free_vars_in_order(t, known, local, next),
@@ -535,6 +539,15 @@ impl Substitution {
                     .collect(),
                 self.apply(tail),
             ),
+            InferType::RowView(t) => {
+                let source = self.apply(t);
+                match source {
+                    InferType::Record(_) | InferType::RowExtend { .. } | InferType::RowView(_) => {
+                        source
+                    }
+                    _ => InferType::RowView(Box::new(source)),
+                }
+            }
             InferType::Array(t) => InferType::Array(Box::new(self.apply(t))),
             InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(self.apply(t)), *n),
             InferType::Reference(t) => InferType::Reference(Box::new(self.apply(t))),
@@ -677,7 +690,8 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         InferType::RowExtend { fields, tail } => {
             fields.iter().any(|(_, ty)| occurs_in(var, ty)) || occurs_in(var, tail)
         }
-        InferType::Array(t)
+        InferType::RowView(t)
+        | InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => occurs_in(var, t),
@@ -840,7 +854,8 @@ fn contains_type_var(ty: &InferType) -> bool {
         InferType::RowExtend { fields, tail } => {
             fields.iter().any(|(_, ty)| contains_type_var(ty)) || contains_type_var(tail)
         }
-        InferType::Array(item)
+        InferType::RowView(item)
+        | InferType::Array(item)
         | InferType::SizedArray(item, _)
         | InferType::Reference(item)
         | InferType::MutReference(item) => contains_type_var(item),
@@ -905,6 +920,27 @@ fn flatten_row_extend(mut fields: Vec<(String, InferType)>, tail: InferType) -> 
 #[allow(clippy::too_many_lines)]
 // arch-implements: ["arch.type-inference.requirement-6"]
 pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
+    if a == b {
+        return Ok(Substitution::new());
+    }
+    if let (InferType::RowExtend { fields, tail }, InferType::RowView(source)) = (a, b)
+        && fields.is_empty()
+    {
+        return if tail == source {
+            Ok(Substitution::new())
+        } else {
+            unify(source, &InferType::RowView(tail.clone()))
+        };
+    }
+    if let (InferType::RowView(source), InferType::RowExtend { fields, tail }) = (a, b)
+        && fields.is_empty()
+    {
+        return if tail == source {
+            Ok(Substitution::new())
+        } else {
+            unify(source, &InferType::RowView(tail.clone()))
+        };
+    }
     // A row with no added fields is its tail. Normalize before variable
     // binding so `{ ..R } = R` does not spuriously fail the occurs check.
     if let InferType::RowExtend { fields, tail } = a
@@ -929,6 +965,15 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
         }
         (InferType::Var(v), _) => bind_var(*v, b),
         (_, InferType::Var(v)) => bind_var(*v, a),
+        (InferType::RowView(a), InferType::RowView(b)) => unify(a, b),
+        (
+            InferType::RowView(source),
+            record @ (InferType::Record(_) | InferType::RowExtend { .. }),
+        )
+        | (
+            record @ (InferType::Record(_) | InferType::RowExtend { .. }),
+            InferType::RowView(source),
+        ) => unify(source, record),
         (
             InferType::Fun(params1, ret1, call1, use1, mut1),
             InferType::Fun(params2, ret2, call2, use2, mut2),
@@ -1025,7 +1070,15 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 }
                 unify_seq(&mut subst, left, right)?;
             }
-            unify_seq(&mut subst, left_tail, right_tail)?;
+            let left_tail = subst.apply(left_tail);
+            let right_tail = subst.apply(right_tail);
+            let same_row = matches!((&left_tail, &right_tail),
+                (InferType::RowView(source), other) | (other, InferType::RowView(source))
+                    if source.as_ref() == other);
+            if !same_row {
+                let delta = unify(&left_tail, &right_tail)?;
+                subst = subst.compose(&delta);
+            }
             Ok(subst)
         }
         (InferType::SizedArray(t1, n1), InferType::SizedArray(t2, n2)) => {
@@ -1682,6 +1735,8 @@ fn apply_constraint(
 /// its own constraint — only by the time `solve` substitutes and unifies is it
 /// actually known to be a concrete, possibly singleton-coercible, enum type.
 // arch-implements: ["arch.type-construction.requirement-3"]
+// clippy-allow: one solver step over every constraint-side shape; splitting it scatters the retry order across helpers
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn apply_constraint_with_coercion(
     subst: &mut Substitution,
     constraint: &Constraint,
@@ -1689,11 +1744,41 @@ fn apply_constraint_with_coercion(
     float_literal_vars: &HashSet<TypeVar>,
     opaque_return_vars: &HashSet<TypeVar>,
     registry: &TypeDefinitionRegistry,
+    module: &[String],
     known_names: &HashMap<TypeVar, String>,
 ) -> Result<(), MetelError> {
-    let lhs = subst.apply(&constraint.lhs);
-    let rhs = subst.apply(&constraint.rhs);
-    let solved = if let Ok(s) = unify(&lhs, &rhs) {
+    let lhs = registry.resolve_row_views(module, &subst.apply(&constraint.lhs));
+    let rhs = registry.resolve_row_views(module, &subst.apply(&constraint.rhs));
+    let attempt = if constraint.found_then_expected {
+        if matches!(
+            (&lhs, &rhs),
+            (
+                InferType::Named(..),
+                InferType::Record(_) | InferType::RowView(_)
+            )
+        ) && registry.is_record_kinded(module, &lhs)
+            && let Some(fields) = registry.row_condition_fields(module, &lhs)
+            && let Ok(s) = match &rhs {
+                InferType::RowView(source) => unify(source, &InferType::Record(fields)),
+                _ => unify(&InferType::Record(fields), &rhs),
+            }
+        {
+            if registry.infer_type_satisfies_aspect(module, &lhs, "Drop", &AspectAssumptions::new())
+            {
+                return Err(MetelError::type_error(
+                    crate::data::error::TypeErrorCode::T0036,
+                    "cannot convert a record implementing `Drop` to an anonymous row",
+                    &constraint.span,
+                ));
+            }
+            Ok(s)
+        } else {
+            unify_expected(&lhs, &rhs)
+        }
+    } else {
+        unify(&lhs, &rhs)
+    };
+    let solved = if let Ok(s) = attempt {
         s
     } else {
         let lhs_field = singleton_coerce_field_ty(registry, &lhs);
@@ -1811,6 +1896,23 @@ fn apply_constraint_with_coercion(
         }
     }
     Ok(())
+}
+
+fn unify_expected(actual: &InferType, expected: &InferType) -> Result<Substitution, MetelError> {
+    if matches!(expected, InferType::RowView(source) if source.as_ref() == actual) {
+        return Ok(Substitution::new());
+    }
+    if let (InferType::Tuple(actual), InferType::Tuple(expected)) = (actual, expected)
+        && actual.len() == expected.len()
+    {
+        let mut subst = Substitution::new();
+        for (actual, expected) in actual.iter().zip(expected) {
+            let delta = unify_expected(&subst.apply(actual), &subst.apply(expected))?;
+            subst = subst.compose(&delta);
+        }
+        return Ok(subst);
+    }
+    unify(actual, expected)
 }
 
 /// RFC-0078 §3.2-§3.3: if `actual` names an enum with more than one variant,
@@ -1939,7 +2041,8 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
             }
             collect_free_vars(tail, vars);
         }
-        InferType::Array(t)
+        InferType::RowView(t)
+        | InferType::Array(t)
         | InferType::SizedArray(t, _)
         | InferType::Reference(t)
         | InferType::MutReference(t) => collect_free_vars(t, vars),
@@ -2015,10 +2118,21 @@ pub struct TypeScheme {
     /// Multiple entries retain equality requirements when several parameters
     /// share one tail. Empty when the function has no decomposition equation.
     pub row_remainders: Vec<Vec<(usize, Vec<String>)>>,
+    /// Parameters consumed by an owned conversion to their anonymous row.
+    pub row_view_consumes: Vec<bool>,
     pub ty: InferType,
 }
 
 impl TypeScheme {
+    #[must_use]
+    pub fn with_row_view_consumes(mut self, vars: &HashSet<TypeVar>) -> Self {
+        self.row_view_consumes = self
+            .quantified_vars
+            .iter()
+            .map(|v| vars.contains(v))
+            .collect();
+        self
+    }
     /// A monomorphic scheme — no quantified variables.
     #[must_use]
     pub fn mono(ty: InferType) -> Self {
@@ -2034,6 +2148,7 @@ impl TypeScheme {
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
+            row_view_consumes: vec![],
             ty,
         }
     }
@@ -2248,6 +2363,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         opaque_returns: vec![],
         open_row_params: vec![],
         row_remainders: vec![],
+        row_view_consumes: vec![],
         ty,
     }
 }
@@ -4240,9 +4356,10 @@ impl TypeDefinitionRegistry {
 
     /// Whether `ty` is a type a record-target impl can apply to: an anonymous record, a
     /// residual, or a nominal `record` (never a `struct`).
-    fn is_record_kinded(&self, current_module: &[String], ty: &InferType) -> bool {
+    pub(crate) fn is_record_kinded(&self, current_module: &[String], ty: &InferType) -> bool {
         match ty {
             InferType::Record(_)
+            | InferType::RowView(_)
             | InferType::Residual { .. }
             | InferType::RowExtend { .. }
             | InferType::Concrete(Type::SymbolicRow { .. }) => true,
@@ -4704,6 +4821,66 @@ impl TypeDefinitionRegistry {
         }
     }
 
+    /// Resolve row projections only after their source record is known.
+    pub(crate) fn resolve_row_views(&self, module: &[String], ty: &InferType) -> InferType {
+        let resolve = |ty: &InferType| self.resolve_row_views(module, ty);
+        match ty {
+            InferType::RowView(source) => {
+                let source = resolve(source);
+                if matches!(source, InferType::Concrete(Type::SymbolicRow { .. })) {
+                    return source;
+                }
+                if let InferType::Concrete(ty @ (Type::Record(_) | Type::OpenRecord { .. })) =
+                    &source
+                {
+                    return type_to_infer(ty);
+                }
+                self.row_condition_fields(module, &source)
+                    .map_or_else(|| InferType::RowView(Box::new(source)), InferType::Record)
+            }
+            InferType::Fun(args, ret, call, usage, mutation) => InferType::Fun(
+                args.iter().map(resolve).collect(),
+                Box::new(resolve(ret)),
+                *call,
+                *usage,
+                *mutation,
+            ),
+            InferType::Tuple(items) => InferType::Tuple(items.iter().map(resolve).collect()),
+            InferType::Record(fields) => InferType::Record(
+                fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), resolve(t)))
+                    .collect(),
+            ),
+            InferType::RowExtend { fields, tail } => flatten_row_extend(
+                fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), resolve(t)))
+                    .collect(),
+                resolve(tail),
+            ),
+            InferType::Array(t) => InferType::Array(Box::new(resolve(t))),
+            InferType::SizedArray(t, n) => InferType::SizedArray(Box::new(resolve(t)), *n),
+            InferType::Reference(t) => InferType::Reference(Box::new(resolve(t))),
+            InferType::MutReference(t) => InferType::MutReference(Box::new(resolve(t))),
+            InferType::Named(n, args, id) => {
+                InferType::Named(n.clone(), args.iter().map(resolve).collect(), id.clone())
+            }
+            InferType::Residual { brand, fields } => InferType::Residual {
+                brand: brand.clone(),
+                fields: fields
+                    .iter()
+                    .map(|(n, t)| (n.clone(), resolve(t)))
+                    .collect(),
+            },
+            InferType::Dyn { aspect, type_args } => InferType::Dyn {
+                aspect: aspect.clone(),
+                type_args: type_args.iter().map(resolve).collect(),
+            },
+            InferType::Concrete(_) | InferType::Var(_) | InferType::Never => ty.clone(),
+        }
+    }
+
     /// Check whether a concrete `Type` satisfies `aspect_name`, recursing into
     /// nested generic type arguments. Consults `conditional_impl_bounds` (RFC-0036)
     /// in addition to the unconditional `impl_aspect_env`.
@@ -4972,7 +5149,7 @@ impl TypeDefinitionRegistry {
                     })
                     && self.infer_type_satisfies_aspect(current_module, tail, "Copy", assumptions)
             }
-            InferType::Var(_) | InferType::Never => false,
+            InferType::RowView(_) | InferType::Var(_) | InferType::Never => false,
             InferType::SizedArray(elem, _) => {
                 if aspect_name == "Copy" {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
@@ -5206,7 +5383,11 @@ impl TypeDefinitionRegistry {
                 };
                 let pos_bounds = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
                 let neg_bounds = scheme.neg_bounds.get(index).map_or(&[][..], Vec::as_slice);
-                if let InferType::Var(tv) = receiver_arg {
+                let declared_arg = match receiver_arg {
+                    InferType::RowView(source) => source.as_ref(),
+                    other => other,
+                };
+                if let InferType::Var(tv) = declared_arg {
                     let declared = entailment.bounds.get(tv).map_or(&[][..], Vec::as_slice);
                     let declared_negative = entailment
                         .negative_bounds
@@ -6599,6 +6780,7 @@ pub struct InferContext {
     /// RFC-0121 §2: `Rest` derivations waiting for their `R` to resolve to a closed
     /// record. Registered at instantiation, retried at the end of every `solve()`.
     pending_row_remainders: Vec<PendingRowRemainder>,
+    pending_row_view_consumes: Vec<(TypeVar, Option<Span>)>,
     /// Declared parameters whose constraint-induced substitutions need a
     /// definition-site diagnostic span (RFC-0173 D1).  This is independent of
     /// `current_type_params`: the latter is scope-swapped before the final
@@ -6712,6 +6894,7 @@ impl InferContext {
             cached_subst: Rc::new(Substitution::new()),
             solved_constraint_count: 0,
             pending_row_remainders: Vec::new(),
+            pending_row_view_consumes: Vec::new(),
             rigidity_tracked_vars: Vec::new(),
             rigidity_origins: HashMap::new(),
             solve_stats: SolveStats::default(),
@@ -7711,6 +7894,11 @@ impl InferContext {
                 self.tag_declared_var_name(fresh, name.clone());
             }
         }
+        for (original, consumes) in scheme.quantified_vars.iter().zip(&scheme.row_view_consumes) {
+            if *consumes && let Some(&fresh) = renaming.get(original) {
+                self.pending_row_view_consumes.push((fresh, None));
+            }
+        }
         for (i, (r_pos, removed)) in scheme
             .row_remainders
             .iter()
@@ -7738,6 +7926,11 @@ impl InferContext {
     /// Attach `span` to the `Rest` derivations registered since the last stamp, so a
     /// mismatch is reported at the call that instantiated the scheme.
     pub fn stamp_row_remainders(&mut self, span: &Span) {
+        for (_, origin) in &mut self.pending_row_view_consumes {
+            if origin.is_none() {
+                *origin = Some(span.clone());
+            }
+        }
         for pending in &mut self.pending_row_remainders {
             if pending.span.is_none() {
                 pending.span = Some(span.clone());
@@ -7752,6 +7945,18 @@ impl InferContext {
     #[must_use]
     pub fn row_remainder_checkpoint(&self) -> usize {
         self.pending_row_remainders.len()
+    }
+
+    pub(crate) fn row_view_consume_checkpoint(&self) -> usize {
+        self.pending_row_view_consumes.len()
+    }
+
+    pub(crate) fn take_row_view_consumes_since(&mut self, checkpoint: usize) -> Vec<TypeVar> {
+        self.pending_row_view_consumes
+            .split_off(checkpoint.min(self.pending_row_view_consumes.len()))
+            .into_iter()
+            .map(|(var, _)| var)
+            .collect()
     }
 
     /// Take unresolved row-decomposition facts added after `checkpoint`.
@@ -8143,6 +8348,7 @@ impl InferContext {
                 &self.float_literal_vars,
                 &self.opaque_return_vars,
                 &self.registry,
+                &self.current_module_path,
                 &self.declared_var_names,
             )?;
             for (var, previous) in before {
@@ -8165,6 +8371,26 @@ impl InferContext {
         }
 
         self.resolve_pending_row_remainders()?;
+
+        let pending = std::mem::take(&mut self.pending_row_view_consumes);
+        for (var, span) in pending {
+            let ty = self.cached_subst.apply(&InferType::Var(var));
+            if !free_vars(&ty).is_empty() {
+                self.pending_row_view_consumes.push((var, span));
+            } else if self.registry.infer_type_satisfies_aspect(
+                &self.current_module_path,
+                &ty,
+                "Drop",
+                &AspectAssumptions::new(),
+            ) {
+                let span = span.unwrap_or_else(|| Span::new(0, 0, "<row conversion>"));
+                return Err(MetelError::type_error(
+                    crate::data::error::TypeErrorCode::T0036,
+                    "cannot convert a record implementing `Drop` to an anonymous row",
+                    &span,
+                ));
+            }
+        }
 
         self.solve_stats.constraints_processed += (new_count - self.solved_constraint_count) as u64;
         self.solve_stats.solve_ns += started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;

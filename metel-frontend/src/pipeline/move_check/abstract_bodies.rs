@@ -523,6 +523,7 @@ impl Checker<'_> {
             AbstractExprKind::ArrayView(value) => self.borrow_abstract_receiver(value, env, state),
             AbstractExprKind::SharedReferenceView(value)
             | AbstractExprKind::CallableView(value)
+            | AbstractExprKind::RowView(value)
             | AbstractExprKind::RepeatArray { value, .. } => {
                 self.consume_abstract_expr(value, env, state, MoveCause::Other)
             }

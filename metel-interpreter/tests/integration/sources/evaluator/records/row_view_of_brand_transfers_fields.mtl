@@ -1,0 +1,35 @@
+record P { x: i64, name: String }
+record Point { x: i64 }
+record Box<record R> { value: { ..R } }
+aspect Tag { fun tag(&self) -> i64; }
+extend Point: Tag { fun tag(&self) -> i64 { 1 } }
+extend<record R> { ..R }: Tag where ..R: Copy { fun tag(&self) -> i64 { 2 } }
+
+fun row<record R>(p: R) -> { ..R } { p }
+fun boxed<record R>(p: R) -> Box<..R> { Box { value = p } }
+fun extended<record R: !{ extra }>(p: R) -> { extra: i64, ..R } {
+    { extra = 11, ..p }
+}
+
+fun main() {
+    let p := P { x = 4, name = "Ada".to_string() };
+    let q: { x: i64, name: String } := row(p);
+    assert(q.x == 4);
+    assert(q.name == "Ada");
+    let direct: { x: i64, name: String } := P { x = 9, name = "Grace".to_string() };
+    assert(direct.x == 9);
+    assert(direct.name == "Grace");
+    let point := Point { x = 7 };
+    assert(point.tag() == 1);
+    assert(row(point).tag() == 2);
+    let boxed := boxed(Point { x = 3 });
+    assert(boxed.value.x == 3);
+    assert(boxed.value.tag() == 2);
+    let inferred := Box { value = Point { x = 4 } };
+    assert(inferred.value.x == 4);
+    assert(inferred.value.tag() == 2);
+    let extended := extended(Point { x = 5 });
+    assert(extended.x == 5);
+    assert(extended.extra == 11);
+    assert(extended.tag() == 2);
+}

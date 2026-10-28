@@ -820,6 +820,8 @@ impl BodyFreezer<'_, '_> {
         Ok(Some(AbstractType::Record(fields)))
     }
 
+    // clippy-allow: exhaustive match over every InferType variant; splitting it scatters one dispatch table
+    #[allow(clippy::too_many_lines)]
     fn freeze_nominal_record_field_type(
         &self,
         ty: &InferType,
@@ -858,6 +860,10 @@ impl BodyFreezer<'_, '_> {
                     })
                     .collect::<Result<_, _>>()?,
             ),
+            InferType::RowView(tail) => AbstractType::OpenRecord {
+                fields: Vec::new(),
+                tail: Box::new(self.freeze_nominal_record_field_type(tail, substitutions)?),
+            },
             InferType::RowExtend { fields, tail } if fields.is_empty() => {
                 self.freeze_nominal_record_field_type(tail, substitutions)?
             }
@@ -869,7 +875,13 @@ impl BodyFreezer<'_, '_> {
                             .map(|ty| (label.clone(), ty))
                     })
                     .collect::<Result<_, _>>()?,
-                tail: Box::new(self.freeze_nominal_record_field_type(tail, substitutions)?),
+                tail: Box::new(self.freeze_nominal_record_field_type(
+                    match tail.as_ref() {
+                        InferType::RowView(source) => source,
+                        other => other,
+                    },
+                    substitutions,
+                )?),
             },
             InferType::Array(inner) => AbstractType::Array(Box::new(
                 self.freeze_nominal_record_field_type(inner, substitutions)?,
@@ -2219,6 +2231,30 @@ impl BodyFreezer<'_, '_> {
     ) -> Result<AbstractExpr, String> {
         if value.ty == *target || value.ty == AbstractType::Never {
             return Ok(value);
+        }
+        if let (AbstractExprKind::Tuple(items), AbstractType::Tuple(target_items)) =
+            (&value.kind, target)
+            && items.len() == target_items.len()
+        {
+            let items = items
+                .iter()
+                .cloned()
+                .zip(target_items)
+                .map(|(item, target)| self.coerce_boundary(item, target, span))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(AbstractExpr {
+                ty: target.clone(),
+                span: value.span,
+                kind: AbstractExprKind::Tuple(items),
+            });
+        }
+        if matches!(target, AbstractType::OpenRecord { fields, tail } if fields.is_empty() && tail.as_ref() == &value.ty)
+        {
+            return Ok(AbstractExpr {
+                ty: target.clone(),
+                span: value.span.clone(),
+                kind: AbstractExprKind::RowView(Box::new(value)),
+            });
         }
         if !matches!(
             value.ty,

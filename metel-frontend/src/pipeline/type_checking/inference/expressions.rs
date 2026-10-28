@@ -611,7 +611,11 @@ fn infer_expr_inner(
                     }
                     var @ InferType::Var(_) => Ok(InferType::RowExtend {
                         fields: inferred_fields,
-                        tail: Box::new(var),
+                        tail: Box::new(InferType::RowView(Box::new(var))),
+                    }),
+                    row @ InferType::RowView(_) => Ok(InferType::RowExtend {
+                        fields: inferred_fields,
+                        tail: Box::new(row),
                     }),
                     other => Err(MetelError::type_error(
                         TypeErrorCode::T0012,
@@ -800,6 +804,7 @@ fn infer_expr_inner(
                 && !scheme.quantified_vars.is_empty()
             {
                 let (callee_ty, renaming) = ctx.instantiate_with_renaming(&scheme);
+                ctx.stamp_row_remainders(span);
                 constrain_explicit_call_arguments(
                     callee_name,
                     &scheme,
@@ -841,6 +846,7 @@ fn infer_expr_inner(
             }
 
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
+            ctx.stamp_row_remainders(span);
             // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
             let callee_ty = match ctx.solve()?.apply(&callee_ty) {
                 InferType::Reference(inner) | InferType::MutReference(inner)
@@ -1098,6 +1104,9 @@ fn infer_expr_inner(
         } => {
             let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
             let obj_ty = ctx.solve()?.apply(&obj_ty);
+            let obj_ty = ctx
+                .registry()
+                .resolve_row_views(ctx.current_module_path(), &obj_ty);
             let peeled = peel_all_references(&obj_ty);
             // RFC-0137 (metel-core#857): a Residual resolves field access exactly like
             // Record does -- directly from its own field list, no struct-registry lookup
@@ -1196,12 +1205,16 @@ fn infer_expr_inner(
             // through to the nominal-struct path, which can't name a struct for a bare
             // TypeVar and would otherwise mislead with "add a type annotation" — no
             // annotation fixes a missing row-bound field.
-            if let InferType::Var(tv) = &peeled
+            let bound_receiver = match &peeled {
+                InferType::RowView(source) => source.as_ref(),
+                other => other,
+            };
+            if let InferType::Var(tv) = bound_receiver
                 && let Some(result) = resolve_row_bound_field(ctx, *tv, field, span)
             {
                 return result;
             }
-            if let InferType::Var(tv) = &peeled
+            if let InferType::Var(tv) = bound_receiver
                 && let Some(param) = ctx.declared_type_param_name(*tv)
             {
                 // RFC-0173 D2: only a row bound grants a field of a declared parameter.
@@ -1294,6 +1307,9 @@ fn infer_expr_inner(
             // arithmetic path below — already worked).
             let defaulted = ctx.default_literal_vars(&solved);
             let recv_ty = defaulted.apply(&recv_ty);
+            let recv_ty = ctx
+                .registry()
+                .resolve_row_views(ctx.current_module_path(), &recv_ty);
 
             let arg_tys: Vec<InferType> = args
                 .iter()
@@ -1380,13 +1396,12 @@ fn infer_expr_inner(
 
             // A record receiver (`{ w = 2, h = 3 }.area()`) dispatches through the
             // impls whose target is a record type and whose row condition it satisfies.
-            if matches!(
-                &peeled_recv,
-                InferType::Record(_) | InferType::Residual { .. }
-            ) && !ctx
-                .registry()
-                .record_method_scheme_variants_for(method)
-                .is_empty()
+            if matches!(&peeled_recv, InferType::Record(_))
+                || (matches!(&peeled_recv, InferType::Residual { .. })
+                    && !ctx
+                        .registry()
+                        .record_method_scheme_variants_for(method)
+                        .is_empty())
             {
                 return infer_record_method_call(
                     receiver,
@@ -1506,6 +1521,10 @@ fn infer_expr_inner(
                     )
                     .to_vec();
                 let declared_receiver_param = recv_type_args.iter().find_map(|arg| {
+                    let arg = match arg {
+                        InferType::RowView(source) => source.as_ref(),
+                        other => other,
+                    };
                     let InferType::Var(tv) = arg else {
                         return None;
                     };
@@ -2588,7 +2607,7 @@ fn require_spread_field_absent(
                 !fixed_present && !tail_present && tail_absent,
             )
         }
-        InferType::Var(tv) => known_row_label_facts(ctx, &InferType::Var(*tv), label),
+        InferType::Var(_) | InferType::RowView(_) => known_row_label_facts(ctx, &row, label),
         _ => (false, false),
     };
     if present {
@@ -2613,6 +2632,7 @@ fn require_spread_field_absent(
 
 fn known_row_label_facts(ctx: &InferContext, row: &InferType, label: &str) -> (bool, bool) {
     match row {
+        InferType::RowView(source) => known_row_label_facts(ctx, source, label),
         InferType::Record(fields) => {
             let present = fields.iter().any(|(name, _)| name == label);
             (present, !present)
@@ -2649,9 +2669,10 @@ fn known_row_label_facts(ctx: &InferContext, row: &InferType, label: &str) -> (b
     }
 }
 
-fn infer_row_is_copy(ctx: &InferContext, row: &InferType) -> bool {
+pub(super) fn infer_row_is_copy(ctx: &InferContext, row: &InferType) -> bool {
     let assumptions = ctx.current_aspect_assumptions();
     match row {
+        InferType::RowView(source) => infer_row_is_copy(ctx, source),
         InferType::Record(fields) => fields.iter().all(|(_, ty)| {
             ctx.registry().infer_type_satisfies_aspect(
                 ctx.current_module_path(),
@@ -2763,6 +2784,10 @@ fn row_candidate_failure_message(
         let mut requirements = Vec::new();
         let mut failures = Vec::new();
         for (&receiver_tv, receiver) in receiver_tvars.iter().zip(receiver_args) {
+            let receiver = match receiver {
+                InferType::RowView(source) => source.as_ref(),
+                other => other,
+            };
             let Some(index) = scheme
                 .quantified_vars
                 .iter()

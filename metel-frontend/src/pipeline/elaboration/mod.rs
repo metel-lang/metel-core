@@ -432,6 +432,7 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
         }
         TypedExpr::Cast { expr: inner, .. }
         | TypedExpr::SingletonCoerce { inner, .. }
+        | TypedExpr::RowCoerce { inner, .. }
         | TypedExpr::DynCoerce { inner, .. } => {
             elaborate_expr(inner, cx);
         }
