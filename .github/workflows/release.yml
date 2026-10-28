@@ -254,7 +254,8 @@ jobs:
           open("release-notes.md", "w").write(body + "\n")
           PYEOF
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 

@@ -22,9 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 
@@ -138,7 +137,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 
@@ -161,7 +161,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
 
@@ -179,7 +180,8 @@ jobs:
         with:
           submodules: true
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
 
       - name: build metel
@@ -254,7 +256,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: install pinned Rust toolchain (rust-toolchain.toml)
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
 
       - name: build metel
