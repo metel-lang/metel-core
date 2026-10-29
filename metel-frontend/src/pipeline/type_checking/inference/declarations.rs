@@ -28,7 +28,6 @@ pub(super) fn infer_decl(
 ) -> Result<InferType, MetelError> {
     match decl {
         Decl::Let(ld) => {
-            let env_fvs = ctx.env_free_vars();
             let val_ty = if let (Expr::Array(elems, arr_span), Some(elem_ann)) =
                 (&ld.value, ld.type_ann.as_ref().and_then(dyn_array_elem_ann))
             {
@@ -95,6 +94,9 @@ pub(super) fn infer_decl(
                 let solved = ctx.solve()?;
                 let partial_subst = ctx.default_literal_vars(&solved);
                 let resolved_ty = partial_subst.apply(&val_ty);
+                // Against the environment as solved so far, not as it was before the initializer
+                // was inferred (metel-core#1688).
+                let env_fvs = ctx.env_free_vars_under(|ty| partial_subst.apply(ty));
                 let scheme = generalize(resolved_ty.clone(), &env_fvs);
                 if !scheme.quantified_vars.is_empty() {
                     ctx.bind_poly(&ld.name, scheme);
