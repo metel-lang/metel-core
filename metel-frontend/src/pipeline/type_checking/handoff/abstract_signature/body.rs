@@ -2203,14 +2203,23 @@ impl BodyFreezer<'_, '_> {
             },
         ) = (source, result)
         {
-            use crate::data::types::UseMultiplicity;
+            use crate::data::types::{CallMultiplicity, CallMutation, UseMultiplicity};
+            // `spec.functions.closures.legality-9`: a function value may be used where a less
+            // permissive one is expected -- `many` where `once`, `reading` where `var`, `Copy`
+            // where not `Copy`. Parameters and result are invariant. The widening changes only the
+            // static type, so it is recorded as a view of the value (metel-core#1690).
+            let widens_call = call == expected_call
+                || (*call == CallMultiplicity::Many && *expected_call == CallMultiplicity::Once);
+            let widens_mutation = mutation == expected_mutation
+                || (*mutation == CallMutation::Reading
+                    && *expected_mutation == CallMutation::Mutating);
+            let widens_usage = usage == expected_usage
+                || (*usage == UseMultiplicity::Copy && *expected_usage == UseMultiplicity::Move);
             if parameters == expected_parameters
                 && returned == expected_result
-                && call == expected_call
-                && mutation == expected_mutation
-                && (usage == expected_usage
-                    || (*usage == UseMultiplicity::Copy
-                        && *expected_usage == UseMultiplicity::Move))
+                && widens_call
+                && widens_mutation
+                && widens_usage
             {
                 return Ok(AbstractExpr {
                     ty: result.clone(),

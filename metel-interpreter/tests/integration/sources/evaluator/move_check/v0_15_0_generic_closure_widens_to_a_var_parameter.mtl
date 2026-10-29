@@ -1,0 +1,14 @@
+// metel-core#1690 (RFC 0153 legality-9, legality-18): an unqualified closure literal passed where a
+// `var` function type is expected takes `var` from it. In a generic body this was `I0011` under
+// `--move-check` ("branch/return coercion facts are not yet retained in abstract bodies"), because the
+// abstract body had no way to record a reading value used as a `var` one.
+fun apply(f: var || -> ()) { f(); }
+
+fun run<T: Copy>(x: T) {
+    var v := x;
+    apply(|| { v := x; });
+}
+
+fun main() {
+    run(1);
+}
