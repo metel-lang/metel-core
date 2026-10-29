@@ -1,0 +1,11 @@
+// metel-core#1632: `*borrowed(value)` dereferences a call result. The generic body is
+// still move-checked: the call consumes `value`, so the later use is T0019. Before the fix
+// the body was skipped ("abstract projection base is not a retained place").
+fun borrowed<T>(owned: T) -> &i64 { &1 }
+
+fun effect<T>(value: T) {
+    let copied: i64 := *borrowed(value);
+    let again := value;
+}
+
+fun main() { }

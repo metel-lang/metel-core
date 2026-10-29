@@ -1,0 +1,11 @@
+// metel-core#1632: reading through a dereferenced call result is a copy; with no later
+// use of the moved argument the generic body is accepted.
+fun borrowed<T>(owned: T) -> &i64 { &1 }
+
+fun effect<T>(value: T) -> i64 {
+    *borrowed(value)
+}
+
+fun main() {
+    assert(effect("x") == 1);
+}

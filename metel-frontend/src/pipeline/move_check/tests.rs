@@ -2505,6 +2505,30 @@ fun main() {}
     assert_eq!(report.violations[1].use_span.line, 11);
 }
 
+// metel-core#1632: `*f(x)` dereferences a call result, a temporary reference with no retained
+// place. The body is still checked (not skipped): the call consumes its argument, so a later
+// use of it is a use-after-move, and the read through the temporary is a copy.
+#[test]
+fn abstract_ownership_checks_a_dereferenced_call_result() {
+    let report = move_report_for_source_with(
+        r#"
+fun borrowed<T>(owned: T) -> &i64 { &1 }
+fun consumed<T>(value: T) { let copied: i64 := *borrowed(value); let again := value; }
+fun kept<T>(value: T) { let copied: i64 := *borrowed(1); let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_ids.clear();
+            }
+        },
+    );
+    assert_eq!(report.skipped_generic_bodies_user, 0, "{report:#?}");
+    assert_eq!(report.violations.len(), 1, "{report:#?}");
+    assert_eq!(report.violations[0].binding, "value");
+    assert_eq!(report.violations[0].use_span.line, 3);
+}
+
 #[test]
 fn abstract_ownership_checks_array_views_without_reconstruction() {
     let report = move_report_for_source_with(
