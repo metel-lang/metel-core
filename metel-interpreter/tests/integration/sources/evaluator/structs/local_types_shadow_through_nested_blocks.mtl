@@ -1,0 +1,13 @@
+// metel-core#1615: the innermost declaration wins at each nesting level.
+struct P { x: i64 }
+
+fun main() {
+    struct P { y: i64 }
+    if (true) {
+        struct P { z: i64 }
+        let innermost := P { z = 3 };
+        assert(innermost.z == 3);
+    }
+    let middle := P { y = 2 };
+    assert(middle.y == 2);
+}

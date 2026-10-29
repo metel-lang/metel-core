@@ -3435,8 +3435,26 @@ impl TypeDefinitionRegistry {
     /// `current_module` cannot name. Annotation resolution, `visible_type_kind`,
     /// and projection use it, so an unimported type still surfaces as `T0003`.
     fn resolve_type_key(&self, current_module: &[String], name: &str) -> Option<SymbolId> {
-        self.resolve_type_position_id(current_module, name)
+        self.scoped_local_type_id(name)
+            .or_else(|| self.resolve_type_position_id(current_module, name))
             .or_else(|| self.local_type_decl_ids.get(name).copied())
+    }
+
+    /// The block-local type named `name` that is in scope now, if any. A declaration in an inner
+    /// scope shadows an outer one (`spec.declarations.variables.scoping-and-shadowing.legality-1`),
+    /// including a module-level, imported or `std::core` type, so this is consulted before the
+    /// module-level resolution (metel-core#1615).
+    ///
+    /// Only a type registered in an open lexical scope counts. A placeholder minted by
+    /// [`local_placeholder_id`](Self::local_placeholder_id) lives in the same table but has no
+    /// scope, and must not shadow a real declaration.
+    pub(crate) fn scoped_local_type_id(&self, name: &str) -> Option<SymbolId> {
+        let id = *self.local_type_decl_ids.get(name)?;
+        self.struct_scope_stack
+            .iter()
+            .flatten()
+            .any(|scoped| scoped.id == id)
+            .then_some(id)
     }
 
     /// Like [`resolve_type_key`](Self::resolve_type_key) but, as a last resort,

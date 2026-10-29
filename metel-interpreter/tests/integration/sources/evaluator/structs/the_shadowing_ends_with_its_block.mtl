@@ -1,0 +1,7 @@
+// metel-core#1615: after the inner block closes, the inner type is out of scope again.
+struct P { x: i64 }
+
+fun main() {
+    if (true) { struct P { y: i64 } }
+    let q := P { y = 2 };
+}

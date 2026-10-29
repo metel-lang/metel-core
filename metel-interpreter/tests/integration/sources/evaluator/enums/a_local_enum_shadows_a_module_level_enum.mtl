@@ -1,0 +1,9 @@
+// metel-core#1615: a block-local enum shadows a module-level enum of the same name; its variants resolve.
+enum E { A, B }
+
+fun main() {
+    enum E { X, Y }
+    var s := 0;
+    match (E::Y) { E::X => { s := 1; }, E::Y => { s := 2; }, }
+    assert(s == 2);
+}

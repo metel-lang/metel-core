@@ -1,0 +1,8 @@
+// metel-core#1615: a block-local record shadows a module-level record of the same name.
+record P { x: i64 }
+
+fun main() {
+    record P { y: i64 }
+    let q := P { y = 2 };
+    assert(q.y == 2);
+}

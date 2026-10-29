@@ -1,3 +1,2 @@
 [options]
-skip = "pending: #1615"
 spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1"]
