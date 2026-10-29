@@ -1,0 +1,31 @@
+// metel-core#1688: a closure bound with `let` inside a generic function may return, or be built from,
+// a value whose type is the function's own type parameter. The parameter belongs to the enclosing
+// function, so the closure is not generalized over it; it was, and the first call of the function
+// reported `I0010` ("generic definition `f` and construction disagree").
+fun from_param<T: Copy>(x: T) -> T {
+    let f := || { x };
+    f()
+}
+
+fun from_local<T: Copy>(x: T) -> T {
+    var v := x;
+    let f := || { v };
+    f()
+}
+
+fun from_var_binding<T: Copy>(x: T) -> T {
+    var f := || { x };
+    f()
+}
+
+fun never_called<T: Copy>(x: T) {
+    let f := || { x };
+}
+
+fun main() {
+    assert(from_param(3) == 3);
+    assert(from_param(true));
+    assert(from_local(7) == 7);
+    assert(from_var_binding(9) == 9);
+    never_called(1);
+}

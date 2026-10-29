@@ -8321,6 +8321,24 @@ impl InferContext {
         vars
     }
 
+    /// [`env_free_vars`](Self::env_free_vars) with `apply` (a substitution) applied to each type first.
+    ///
+    /// A variable the solver has since unified into another is free through that other variable.
+    /// Generalizing against the unsubstituted set misses it: in
+    /// `fun f<T>(x: T) { let g := || { x }; }` the closure's result variable is unified with
+    /// `x`'s, but only `x`'s own variable is in the unsubstituted set, so the closure's would be
+    /// quantified although it is the enclosing function's parameter (metel-core#1688).
+    #[must_use]
+    pub fn env_free_vars_under(&self, apply: impl Fn(&InferType) -> InferType) -> HashSet<TypeVar> {
+        let mut vars = HashSet::new();
+        for scope in &self.mono_env {
+            for (ty, _) in scope.values() {
+                collect_free_vars(&apply(ty), &mut vars);
+            }
+        }
+        vars
+    }
+
     /// Record that `lhs` and `rhs` must unify, tagged with its source location.
     pub fn add_constraint(&mut self, lhs: InferType, rhs: InferType, span: Span) {
         self.constraints.push(Constraint::new(lhs, rhs, span));
