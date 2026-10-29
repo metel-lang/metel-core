@@ -77,45 +77,57 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 
 1. **v0.15.0** [now]: The language-surface RFCs drafted 2026-10-24 are settled and, where accepted, integrated.
 2. **Copy/Clone settlement** [next]: The Copy/Clone model is decided, so ownership work has a stable target.
-3. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
-4. **Move check default-on** [next]: The move check runs by default on every program.
-5. **Copy migration** [next]: Hardcoded Copy/Clone rules leave the typechecker and live in std.
-6. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
-7. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
-8. **Native contract** [next]: User libraries declare native functions through a backend-neutral contract.
-9. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
-10. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
-11. **Compiler-ready pipeline** [later]: Frozen, monomorphized instances, a frozen core surface and package design.
-12. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references.
-13. **Storage identity** [later]: Storage identity and brand types are settled.
-14. **Storage contract** [later]: Arrays, slices and List have one documented storage contract.
-15. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
-16. **Godot integration** [later]: Godot embeds Metel through the native contract.
-17. **Allocator foundation** [later]: Allocator-selected handles and placement.
-18. **Runtime value semantics** [later]: The evaluator stops deep-cloning and follows ownership.
-19. **Views and projections** [later]: Views and open projections work in every type position.
-20. **Metel-backed List** [later]: A runtime-sized buffer.
-21. **Tracing GC (experimental)** [later]: Local tracing GC.
-22. **Compiler expansion** [later]: Broad end-to-end code generation.
-23. **Compiler MVP** [later]: Standalone multi-module compilation.
-24. **Standard library redesign** [later]: A usable, separately versioned std API.
-25. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
-26. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
-27. **Metaprogramming and derive** [parallel]: Derive, comptime and attributes designed and built.
-28. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
-29. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
-30. **Concurrency, effects and linear types** [later]: Long-range design settlements.
-31. **Playground and interactive docs** [parallel]: Run Metel in the browser.
-32. **Website content and experience** [parallel]: The website and tutorials are current.
-33. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
-34. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
+3. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) is settled, so exactly-once consumption is available to effects and capabilities.
+4. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
+5. **Move check default-on** [next]: The move check runs by default on every program.
+6. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
+7. **Runtime value semantics** [next]: The evaluator stops deep-cloning and follows ownership.
+8. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
+9. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
+10. **Effects design settlement** [next]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
+11. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
+12. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
+13. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
+14. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
+15. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
+16. **Core surface freeze** [later]: The core surface is frozen after effects validation, with user-declared `native` and the std API not frozen; package design and a conformance corpus exist.
+17. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
+18. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
+19. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references.
+20. **Storage identity** [later]: Storage identity and brand types are settled.
+21. **Storage contract** [later]: Arrays, slices and List have one documented storage contract.
+22. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
+23. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
+24. **Allocator foundation** [later]: Allocator-selected handles and placement.
+25. **Views and projections** [later]: Views and open projections work in every type position.
+26. **Metel-backed List** [later]: A runtime-sized buffer.
+27. **Tracing GC (experimental)** [later]: Local tracing GC.
+28. **Compiler expansion** [later]: Broad end-to-end code generation.
+29. **Compiler MVP** [later]: Standalone multi-module compilation.
+30. **Standard library redesign** [later]: A usable, separately versioned std API.
+31. **Concurrency** [later]: The concurrency model (RFC-0003) is settled.
+32. **Copy migration** [parallel]: Hardcoded Copy/Clone rules leave the typechecker and live in std.
+33. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
+34. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
+35. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
+36. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
+37. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
+38. **Playground and interactive docs** [parallel]: Run Metel in the browser.
+39. **Website content and experience** [parallel]: The website and tutorials are current.
+40. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
+41. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
 
 Dependencies behind this order:
 
-- Move check default-on and Copy migration wait on Copy/Clone settlement (#741).
+- Move check default-on waits on Copy/Clone settlement (#741), which stays on the critical path. Copy migration also waits on it, but is a parallel theme: the settlement is the gate, the migration is not.
+- Comptime design settlement runs alongside Copy/Clone settlement, Drop and Move check, and its implementation follows Move check default-on: RFC-0132 (execution model and comptime-known generic parameters) first, then RFC-0174 (`comptime for`). Copy migration (parallel) consumes it: `[T; N]: Copy` cannot leave the typechecker without RFC-0132 §3 (#263), and the native record `Clone` hook (#1390) waits on RFC-0174. The rest of metaprogramming (type-as-value, `typeinfo` and `emit`, derive, attributes, auto-impl) stays parallel.
+- Linear types follows Copy/Clone settlement. It is design settlement only; implementation follows Drop and partial moves. Linear records (RFC-0091) also waits on Borrow checking (its open question is the type of a borrow taken before a downgrade) and on Narrowed drop receivers.
+- Runtime value semantics (#277) starts once move checking is default-on and coordinates with Drop; it does not wait behind Allocator foundation.
 - Borrow checking (RFC-0122) is before the core-surface freeze, and Lifetimes and regions follow it.
+- Effects design settlement draws on Linear types (exactly-once consumption, one-shot resumption) and Copy/Clone settlement (callable multiplicity). It overlaps the ownership implementation themes; its exit is a set of accepted RFCs, and no effects implementation starts before them.
+- Effect markers and capabilities covers the `native` declarations std already has: each carries checked effect metadata, so a native cannot silently erase an effect. Interop extends that to user-declared natives after the freeze.
+- The core-surface freeze (#1358) waits for Algebraic effects, so the model is validated by a working implementation before it freezes. The freeze covers std's own `native` bindings; user-declared `native` and the std API are not frozen. Interop (#1344, #1355) follows the freeze as an additive surface, and the Godot prototype follows Interop.
 - Allocator foundation needs Borrow checking, Lifetimes and regions, and Storage identity.
-- Native declarations are part of the frozen core surface (#1358), so Native contract and Narrowed drop receivers precede the freeze; the Godot prototype follows it.
 - Parallel themes are off the critical path and can be taken whenever their prerequisites are met.
 
 ## Retired numbering
@@ -153,5 +165,18 @@ milestone is authoritative.
 | Ownership extensions and views | Views and projections, Narrowed drop receivers |
 | Borrow checking, Lifetimes and abstract regions | Borrow checking, Lifetimes and regions |
 | Compiler-ready pipeline | Compiler-ready pipeline, Godot integration |
-| Language expansion | Aspects and generics, Metaprogramming and derive, Records and surface syntax, Concurrency effects and linear types |
+| Language expansion | Aspects and generics, Comptime, Metaprogramming and derive, Records and surface syntax, Concurrency, Linear types, Linear records, Effects design settlement |
 | Website, docs and project | Playground and interactive docs, Website content and experience, Docs and RFC tooling, Engineering hygiene, Standard library additions |
+
+### Regrouping of 2026-10-29
+
+Effects became a main track before the core-surface freeze; linear types moved up behind Copy/Clone settlement. Three themes were split.
+
+| Before | Now |
+|---|---|
+| Concurrency, effects and linear types | Concurrency, Linear types, Linear records, Effects design settlement |
+| Native contract | Interop |
+| Compiler-ready pipeline | Instance preparation, Core surface freeze |
+| Metaprogramming and derive | Comptime, Metaprogramming and derive |
+
+New: Effect markers and capabilities, Algebraic effects. Comptime is a main track (RFC-0132 and RFC-0174 first; #1390 is its first consumer). Runtime value semantics moved up to follow Linear types. Copy/Clone settlement stays on the critical path; Copy migration became a parallel theme.
