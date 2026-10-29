@@ -1,0 +1,5 @@
+// metel-core#1683: `std::core::List::new()` is the core `List`'s static method, written by its full path.
+fun main() {
+    let l: std::core::List<i64> := std::core::List::new();
+    assert(l.len() == 0);
+}

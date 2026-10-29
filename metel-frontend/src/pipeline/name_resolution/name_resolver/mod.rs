@@ -57,6 +57,21 @@ pub struct ModuleScope {
     /// Re-exported names: `(namespace, local_name)` → source binding.
     /// These names are part of this module's public API surface for callers.
     pub re_exports: HashMap<(Namespace, String), ImportBinding>,
+    /// Module-qualified `Type::member` paths the path normalizer rewrote to the two-segment
+    /// form, keyed by the path's span (metel-core#1683). Empty until normalization.
+    pub qualified_paths: HashMap<Span, QualifiedPath>,
+}
+
+/// A path `module::Type::member` written in full, rewritten by the path normalizer to
+/// `Type::member`: which type its module prefix names, and the path as written.
+///
+/// The two-segment form is resolved by the bare type name, which needs the type in scope and
+/// is the current module's own type when it declares one. The qualified path means neither,
+/// so the type's identity travels with the rewritten path.
+#[derive(Debug, Clone)]
+pub struct QualifiedPath {
+    pub type_id: SymbolId,
+    pub original: Vec<String>,
 }
 
 /// The output of the name resolution pass: one scope per loaded module.
@@ -661,6 +676,7 @@ fn resolve_module(
         explicit: HashMap::new(),
         globs: Vec::new(),
         re_exports,
+        qualified_paths: HashMap::new(),
     };
 
     for import in &loaded.program.imports {

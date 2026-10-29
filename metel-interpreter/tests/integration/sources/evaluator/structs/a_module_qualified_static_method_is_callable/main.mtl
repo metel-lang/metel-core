@@ -1,0 +1,16 @@
+// metel-core#1683: `module::Type::member` written in full names a static method of the type its
+// module prefix names: called, with arguments, as a value, and on an enum.
+import lib::Counter;
+import lib::Kind;
+
+fun main() {
+    let fresh := lib::Counter::new();
+    assert(fresh.get() == 0);
+    let five := lib::Counter::with(5);
+    assert(five.get() == 5);
+    let make := lib::Counter::with;
+    assert(make(7).get() == 7);
+    var s := 0;
+    match (lib::Kind::first()) { Kind::A => { s := 1; }, Kind::B => { s := 2; }, }
+    assert(s == 1);
+}

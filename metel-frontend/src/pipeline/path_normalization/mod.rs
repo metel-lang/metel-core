@@ -13,12 +13,15 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 
+use crate::data::ast::Span;
 use crate::data::ast::{
     Block, Decl, Expr, ForInit, FunDecl, ImplBlock, LetDecl, MatchArm, MutDecl, Stmt,
 };
 use crate::data::error::MetelError;
 use crate::identity::symbols::{Namespace, SymbolId};
-use crate::pipeline::name_resolution::name_resolver::{ImportBinding, ModuleScope, ResolvedNames};
+use crate::pipeline::name_resolution::name_resolver::{
+    ImportBinding, ModuleScope, QualifiedPath, ResolvedNames,
+};
 use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -50,6 +53,11 @@ struct PathSymbols<'a> {
     /// `(declaring module, enum name, variant name)` of every unit variant, with whether its enum
     /// is `public` (a path from another module may only name a public enum).
     unit_variants: std::collections::HashMap<(Vec<String>, String, String), bool>,
+    /// `(declaring module, type name)` of every `public` struct, record and enum.
+    public_types: HashSet<(Vec<String>, String)>,
+    /// The `module::Type::member` paths rewritten so far, per module, for the type checker
+    /// (`ModuleScope::qualified_paths`).
+    qualified: std::cell::RefCell<Vec<(Vec<String>, Span, QualifiedPath)>>,
 }
 
 // arch-implements: ["arch.path-normalization.requirement-1"]
@@ -66,7 +74,7 @@ struct PathSymbols<'a> {
 /// (e.g. references an unknown module or name).
 pub fn normalize(
     mut graph: ModuleGraph,
-    names: Rc<ResolvedNames>,
+    mut names: Rc<ResolvedNames>,
 ) -> Result<NormalizedModuleGraph, MetelError> {
     let module_names: HashSet<String> = graph
         .modules
@@ -75,10 +83,19 @@ pub fn normalize(
         .collect();
 
     let mut unit_variants = std::collections::HashMap::new();
+    let mut public_types = HashSet::new();
     for loaded in &graph.modules {
         for decl in &loaded.program.decls {
+            if let Decl::Struct(decl) = decl
+                && matches!(decl.visibility, crate::data::ast::Visibility::Public)
+            {
+                public_types.insert((loaded.module_path.clone(), decl.name.clone()));
+            }
             if let Decl::Enum(decl) = decl {
                 let public = matches!(decl.visibility, crate::data::ast::Visibility::Public);
+                if public {
+                    public_types.insert((loaded.module_path.clone(), decl.name.clone()));
+                }
                 for variant in decl.variants.iter().filter(|v| v.fields.is_empty()) {
                     unit_variants.insert(
                         (
@@ -92,20 +109,32 @@ pub fn normalize(
             }
         }
     }
-    let symbols = PathSymbols {
-        map: &names.symbols,
-        unit_variants,
+    let qualified = {
+        let symbols = PathSymbols {
+            map: &names.symbols,
+            unit_variants,
+            public_types,
+            qualified: std::cell::RefCell::new(Vec::new()),
+        };
+        for loaded in &mut graph.modules {
+            let scope = names.scopes.get(&loaded.module_path);
+            normalize_program_decls(
+                &mut loaded.program.decls,
+                scope,
+                &loaded.module_path,
+                &module_names,
+                &symbols,
+            )?;
+        }
+        symbols.qualified.into_inner()
     };
-
-    for loaded in &mut graph.modules {
-        let scope = names.scopes.get(&loaded.module_path);
-        normalize_program_decls(
-            &mut loaded.program.decls,
-            scope,
-            &loaded.module_path,
-            &module_names,
-            &symbols,
-        )?;
+    if !qualified.is_empty() {
+        let names_mut = Rc::make_mut(&mut names);
+        for (module, span, path) in qualified {
+            if let Some(scope) = names_mut.scopes.get_mut(&module) {
+                scope.qualified_paths.insert(span, path);
+            }
+        }
     }
     Ok(NormalizedModuleGraph { graph, names })
 }
@@ -281,7 +310,7 @@ fn normalize_expr(
             Ok(())
         }
 
-        Expr::Path(segments, _seg_spans, span) => {
+        Expr::Path(segments, seg_spans, span) => {
             if let Some((path, type_id)) =
                 try_normalize_unit_variant_path(segments, current_module, symbols)
             {
@@ -291,6 +320,20 @@ fn normalize_expr(
                     symbol_id: Some(type_id),
                     span: span.clone(),
                 };
+                return Ok(());
+            }
+            if let Some((path, path_spans, type_id)) =
+                try_normalize_static_member_path(segments, seg_spans, current_module, symbols)
+            {
+                symbols.qualified.borrow_mut().push((
+                    current_module.to_vec(),
+                    span.clone(),
+                    QualifiedPath {
+                        type_id,
+                        original: segments.clone(),
+                    },
+                ));
+                *expr = Expr::Path(path, path_spans, span.clone());
                 return Ok(());
             }
             if let Some((resolved, symbol_id)) =
@@ -622,6 +665,44 @@ fn try_normalize_unit_variant_path(
         .map
         .get(&(module.to_vec(), Namespace::Type, enum_name.clone()))?;
     Some((vec![enum_name.clone(), variant.clone()], enum_id))
+}
+
+/// A module-qualified path to a member of a type (`lib::Kind::make`, `std::core::List::new`), as the
+/// two-segment `Type::member` the type checker resolves, plus the type its module prefix names
+/// (metel-core#1683).
+///
+/// The two-segment form is looked up by the bare type name, which needs the type in scope and is
+/// the current module's own type when it declares one; the qualified path means neither. The
+/// returned id travels to the checker in `ModuleScope::qualified_paths`, keyed by the path's span.
+/// A type the current module may not name (not `public`, from another module) is left alone.
+fn try_normalize_static_member_path(
+    segments: &[String],
+    seg_spans: &[Span],
+    current_module: &[String],
+    symbols: &PathSymbols<'_>,
+) -> Option<(Vec<String>, Vec<Span>, SymbolId)> {
+    // `[module.., Type, member]`, with at least one module segment.
+    if segments.len() < 3 {
+        return None;
+    }
+    let (member, rest) = segments.split_last()?;
+    let (type_name, module) = rest.split_last()?;
+    let type_id = *symbols
+        .map
+        .get(&(module.to_vec(), Namespace::Type, type_name.clone()))?;
+    if module != current_module
+        && !symbols
+            .public_types
+            .contains(&(module.to_vec(), type_name.clone()))
+    {
+        return None;
+    }
+    let spans = if seg_spans.len() == segments.len() {
+        seg_spans[segments.len() - 2..].to_vec()
+    } else {
+        Vec::new()
+    };
+    Some((vec![type_name.clone(), member.clone()], spans, type_id))
 }
 
 /// Resolve a struct-literal path by stripping a module prefix, returning the local

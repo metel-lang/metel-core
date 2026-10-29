@@ -1,0 +1,9 @@
+public struct Counter { public n: i64 }
+extend Counter {
+    public fun new() -> Counter { Counter { n = 0 } }
+    public fun with(n: i64) -> Counter { Counter { n = n } }
+    public fun get(&self) -> i64 { self.n }
+}
+
+public enum Kind { A, B }
+extend Kind { public fun first() -> Kind { Kind::A } }

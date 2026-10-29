@@ -2362,6 +2362,21 @@ fn infer_expr_inner(
         Expr::Path(segments, _, span) => {
             // For 2-segment paths, first try TypeName::member (static methods, enum variants).
             if let [type_name, member_name] = segments.as_slice() {
+                // `module::Type::member` written in full: the type is the one the module prefix
+                // names, whether or not it is in scope here (metel-core#1683).
+                if let Some(qualified) = ctx
+                    .registry()
+                    .qualified_path(ctx.current_module_path(), span)
+                    .cloned()
+                {
+                    return infer_qualified_type_member(
+                        &qualified,
+                        type_name,
+                        member_name,
+                        span,
+                        ctx,
+                    );
+                }
                 if let Some(fun_ty) = ctx.get_method_type(type_name, member_name).cloned() {
                     ctx.record_definition_static_path(span, type_name, member_name);
                     return Ok(fun_ty);
@@ -2976,4 +2991,58 @@ fn infer_record_method_call_with_scheme(
         );
     }
     Ok(*ret.clone())
+}
+
+/// `module::Type::member` used as a value, where the path normalizer has already identified the
+/// type its module prefix names (metel-core#1683). Looks the member up by that type's identity.
+fn infer_qualified_type_member(
+    qualified: &crate::pipeline::name_resolution::name_resolver::QualifiedPath,
+    type_name: &str,
+    member_name: &str,
+    span: &crate::data::ast::Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let owner = qualified.type_id;
+    if let Some(fun_ty) = ctx
+        .registry()
+        .method_type_by_id(owner, member_name)
+        .cloned()
+    {
+        ctx.record_definition_static_path(span, type_name, member_name);
+        return Ok(fun_ty);
+    }
+    if let Some(scheme) = ctx
+        .registry()
+        .method_scheme_by_id(owner, member_name)
+        .map(|(scheme, _)| scheme.clone())
+    {
+        ctx.record_definition_static_path(span, type_name, member_name);
+        return Ok(ctx.instantiate(&scheme));
+    }
+    if let Some(info) = ctx.registry().enum_info_by_id(owner)
+        && let Some(variant) = info.variants.iter().find(|v| v.name == member_name)
+    {
+        // A unit variant was rewritten to a variant literal before this point, so this is a
+        // fieldful one, which has no bare-value form (metel-core#1108).
+        let fields = variant
+            .fields
+            .iter()
+            .map(|f| format!("{} = ...", f.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!(
+                "`{type_name}::{member_name}` is a fieldful variant and has no bare-value form \
+                 -- construct it with `{type_name}::{member_name} {{ {fields} }}`, or destructure \
+                 it in a `match`"
+            ),
+            span,
+        ));
+    }
+    Err(MetelError::type_error(
+        TypeErrorCode::T0003,
+        format!("undefined name `{}`", qualified.original.join("::")),
+        span,
+    ))
 }
