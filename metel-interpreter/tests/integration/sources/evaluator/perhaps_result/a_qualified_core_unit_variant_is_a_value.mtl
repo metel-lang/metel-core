@@ -1,0 +1,5 @@
+// metel-core#1680: `std::core::Option::None` is the core `None` as a value, written by its full path.
+fun main() {
+    let none: std::core::Option<i64> := std::core::Option::None;
+    assert(none.is_none());
+}

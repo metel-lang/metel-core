@@ -43,6 +43,15 @@ impl NormalizedModuleGraph {
     }
 }
 
+/// What the rewrite needs to resolve a path: the canonical symbol table, and which enum variants
+/// are unit variants (a variant with no fields is written as a bare path and used as a value).
+struct PathSymbols<'a> {
+    map: &'a crate::identity::symbols::SymbolMap,
+    /// `(declaring module, enum name, variant name)` of every unit variant, with whether its enum
+    /// is `public` (a path from another module may only name a public enum).
+    unit_variants: std::collections::HashMap<(Vec<String>, String, String), bool>,
+}
+
 // arch-implements: ["arch.path-normalization.requirement-1"]
 /// Run the path normalization pass on `graph`, rewriting qualified `Expr::Path`
 /// nodes to `Expr::ResolvedPath` using the scope information in `names`.
@@ -65,6 +74,29 @@ pub fn normalize(
         .filter_map(|m| m.module_path.first().cloned())
         .collect();
 
+    let mut unit_variants = std::collections::HashMap::new();
+    for loaded in &graph.modules {
+        for decl in &loaded.program.decls {
+            if let Decl::Enum(decl) = decl {
+                let public = matches!(decl.visibility, crate::data::ast::Visibility::Public);
+                for variant in decl.variants.iter().filter(|v| v.fields.is_empty()) {
+                    unit_variants.insert(
+                        (
+                            loaded.module_path.clone(),
+                            decl.name.clone(),
+                            variant.name.clone(),
+                        ),
+                        public,
+                    );
+                }
+            }
+        }
+    }
+    let symbols = PathSymbols {
+        map: &names.symbols,
+        unit_variants,
+    };
+
     for loaded in &mut graph.modules {
         let scope = names.scopes.get(&loaded.module_path);
         normalize_program_decls(
@@ -72,7 +104,7 @@ pub fn normalize(
             scope,
             &loaded.module_path,
             &module_names,
-            &names.symbols,
+            &symbols,
         )?;
     }
     Ok(NormalizedModuleGraph { graph, names })
@@ -85,10 +117,7 @@ fn normalize_program_decls(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     for decl in decls {
         normalize_decl(decl, scope, current_module, module_names, symbols)?;
@@ -101,10 +130,7 @@ fn normalize_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     match decl {
         Decl::Let(ld) => {
@@ -131,10 +157,7 @@ fn normalize_fun(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     normalize_block(&mut fun.body, scope, current_module, module_names, symbols)
 }
@@ -144,10 +167,7 @@ fn normalize_impl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     for method in &mut ib.methods {
         normalize_fun(method, scope, current_module, module_names, symbols)?;
@@ -160,10 +180,7 @@ fn normalize_block(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     for decl in &mut block.stmts {
         normalize_decl(decl, scope, current_module, module_names, symbols)?;
@@ -179,10 +196,7 @@ fn normalize_stmt(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     match stmt {
         Stmt::Expr(e) => normalize_expr(e, scope, current_module, module_names, symbols),
@@ -236,10 +250,7 @@ fn normalize_mut_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     normalize_expr(&mut md.value, scope, current_module, module_names, symbols)
 }
@@ -249,10 +260,7 @@ fn normalize_let_decl(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     normalize_expr(&mut ld.value, scope, current_module, module_names, symbols)
 }
@@ -266,10 +274,7 @@ fn normalize_expr(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     match expr {
         Expr::Literal(_, _) | Expr::Ident(_, _) | Expr::ResolvedPath { .. } | Expr::Continue(_) => {
@@ -277,6 +282,17 @@ fn normalize_expr(
         }
 
         Expr::Path(segments, _seg_spans, span) => {
+            if let Some((path, type_id)) =
+                try_normalize_unit_variant_path(segments, current_module, symbols)
+            {
+                *expr = Expr::StructLiteral {
+                    path,
+                    fields: Vec::new(),
+                    symbol_id: Some(type_id),
+                    span: span.clone(),
+                };
+                return Ok(());
+            }
             if let Some((resolved, symbol_id)) =
                 try_resolve_path(segments, scope, current_module, module_names, symbols)
             {
@@ -432,10 +448,7 @@ fn normalize_arm(
     scope: Option<&ModuleScope>,
     current_module: &[String],
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Result<(), MetelError> {
     if let Some(guard) = &mut arm.guard {
         normalize_expr(guard, scope, current_module, module_names, symbols)?;
@@ -447,10 +460,7 @@ fn normalize_arm(
 /// function, `let`, `var`) first, then a type (a unit struct), the order a single shared key gave
 /// before the two namespaces were told apart.
 fn lookup_symbol(
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
     module: &[String],
     name: &str,
 ) -> Option<crate::identity::symbols::SymbolId> {
@@ -458,6 +468,7 @@ fn lookup_symbol(
         .into_iter()
         .find_map(|ns| {
             symbols
+                .map
                 .get(&(module.to_vec(), ns, name.to_string()))
                 .copied()
         })
@@ -506,10 +517,7 @@ fn try_resolve_path(
     // it is looked up here instead (ADR-0054 / metel-core#1052) — a
     // glob-imported name is still a reference to its declaring module's own
     // canonical declaration.
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Option<(String, Option<SymbolId>)> {
     if segments.len() < 2 {
         return None; // single-segment paths are already Ident
@@ -583,6 +591,39 @@ fn try_resolve_path(
     Some((declared_name.clone(), None))
 }
 
+/// A module-qualified path to a unit variant used as a value (`lib::Kind::A`,
+/// `std::core::Option::None`), as the fieldless variant literal `Kind::A {}` stamped with the id of
+/// the enum its module prefix names (metel-core#1680).
+///
+/// The typechecker finds `Kind::A` by the bare type name, which is the module's own enum when it
+/// declares one, and needs `Kind` to be in scope at all; the qualified path means neither. Reading
+/// the enum off the prefix is what the stamped id carries, as for a qualified struct literal
+/// (`try_normalize_struct_path`). A fieldful variant, or an enum the current module may not name,
+/// is left as it was.
+fn try_normalize_unit_variant_path(
+    segments: &[String],
+    current_module: &[String],
+    symbols: &PathSymbols<'_>,
+) -> Option<(Vec<String>, SymbolId)> {
+    // `[module.., Enum, Variant]`, with at least one module segment.
+    if segments.len() < 3 {
+        return None;
+    }
+    let (variant, rest) = segments.split_last()?;
+    let (enum_name, module) = rest.split_last()?;
+    let public =
+        *symbols
+            .unit_variants
+            .get(&(module.to_vec(), enum_name.clone(), variant.clone()))?;
+    if !public && module != current_module {
+        return None;
+    }
+    let enum_id = *symbols
+        .map
+        .get(&(module.to_vec(), Namespace::Type, enum_name.clone()))?;
+    Some((vec![enum_name.clone(), variant.clone()], enum_id))
+}
+
 /// Resolve a struct-literal path by stripping a module prefix, returning the local
 /// `type[+variant]` path and the constructed type's stable `SymbolId` (METEL-185).
 /// For `["std", "core", "Option", "Some"]` returns `(["Option", "Some"], id_of(Option))`.
@@ -591,10 +632,7 @@ fn try_normalize_struct_path(
     path: &[String],
     scope: Option<&ModuleScope>,
     module_names: &HashSet<String>,
-    symbols: &std::collections::HashMap<
-        (Vec<String>, Namespace, String),
-        crate::identity::symbols::SymbolId,
-    >,
+    symbols: &PathSymbols<'_>,
 ) -> Option<(Vec<String>, Option<crate::identity::symbols::SymbolId>)> {
     if path.len() < 2 {
         return None;
@@ -628,6 +666,7 @@ fn try_normalize_struct_path(
     let module = path[..prefix_len].to_vec();
     let type_name = &path[prefix_len];
     let type_id = symbols
+        .map
         .get(&(module, Namespace::Type, type_name.clone()))
         .copied();
     Some((path[prefix_len..].to_vec(), type_id))
