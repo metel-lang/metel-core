@@ -87,15 +87,15 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 10. **Effects design settlement** [next]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
 11. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
 12. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
-13. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
-14. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
-15. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
-16. **Core surface freeze** [later]: The core surface is frozen after effects validation, with user-declared `native` and the std API not frozen; package design and a conformance corpus exist.
-17. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
-18. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
-19. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references.
-20. **Storage identity** [later]: Storage identity and brand types are settled.
-21. **Storage contract** [later]: Arrays, slices and List have one documented storage contract.
+13. **Storage contract** [next]: The roles of `T[N]`, `T[]` and `List<T>` (inline fixed storage, borrowed contiguous view, owning runtime-sized buffer) are settled before the core surface freezes.
+14. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
+15. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
+16. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
+17. **Core surface freeze** [later]: The core surface is frozen after effects validation and the storage contract, with user-declared `native`, the std API and slice validity rules not frozen; package design and a conformance corpus exist.
+18. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
+19. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
+20. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references, including `T[]` slices (RFC-0124 slice half).
+21. **Storage identity** [later]: Storage identity and brand types are settled.
 22. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
 23. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
 24. **Allocator foundation** [later]: Allocator-selected handles and placement.
@@ -127,6 +127,7 @@ Dependencies behind this order:
 - Effects design settlement draws on Linear types (exactly-once consumption, one-shot resumption) and Copy/Clone settlement (callable multiplicity). It overlaps the ownership implementation themes; its exit is a set of accepted RFCs, and no effects implementation starts before them.
 - Effect markers and capabilities covers the `native` declarations std already has: each carries checked effect metadata, so a native cannot silently erase an effect. Interop extends that to user-declared natives after the freeze.
 - The core-surface freeze (#1358) waits for Algebraic effects, so the model is validated by a working implementation before it freezes. The freeze covers std's own `native` bindings; user-declared `native` and the std API are not frozen. Interop (#1344, #1355) follows the freeze as an additive surface, and the Godot prototype follows Interop.
+- Storage contract (#1292, with the `T[]` nominal question #1123) is settled before the freeze: it fixes the roles of `T[N]`, `T[]` and `List<T>` and promises no allocation or interpreter fallback in compiled programs. It coordinates RFC-0053, RFC-0124, RFC-0126 and RFC-0133, and its sized-array half uses Comptime (RFC-0132 §3). The slice half of RFC-0124 (#932) waits on the lifetime-anchor design and moves to Lifetimes and regions, so slice validity rules are not frozen; `List<T>` itself (#276) stays behind Allocator foundation.
 - Allocator foundation needs Borrow checking, Lifetimes and regions, and Storage identity.
 - Parallel themes are off the critical path and can be taken whenever their prerequisites are met.
 
@@ -179,4 +180,4 @@ Effects became a main track before the core-surface freeze; linear types moved u
 | Compiler-ready pipeline | Instance preparation, Core surface freeze |
 | Metaprogramming and derive | Comptime, Metaprogramming and derive |
 
-New: Effect markers and capabilities, Algebraic effects. Comptime is a main track (RFC-0132 and RFC-0174 first; #1390 is its first consumer). Runtime value semantics moved up to follow Linear types. Copy/Clone settlement stays on the critical path; Copy migration became a parallel theme.
+Storage contract moved before the core-surface freeze; its slice half (#932) moves to Lifetimes and regions. New: Effect markers and capabilities, Algebraic effects. Comptime is a main track (RFC-0132 and RFC-0174 first; #1390 is its first consumer). Runtime value semantics moved up to follow Linear types. Copy/Clone settlement stays on the critical path; Copy migration became a parallel theme.
