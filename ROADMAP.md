@@ -131,6 +131,45 @@ Dependencies behind this order:
 - Allocator foundation needs Borrow checking, Lifetimes and regions, and Storage identity.
 - Parallel themes are off the critical path and can be taken whenever their prerequisites are met.
 
+## Unscheduled design work
+
+Draft RFCs with no tracking issue. They are listed here so they are not lost; each gets a tracker in its theme when the RFC is committed to a release (RFC process). The home is a proposal, not a commitment, and a draft that is stale is refused in the draft-RFC cleanup (#1671).
+
+- **Aspects and generics**
+  - RFC-0011: Operator Overloading Aspects
+  - RFC-0062: Ord / Eq Comparison Aspects
+  - RFC-0168: Equality Model and Super-Aspects
+  - RFC-0176: Hash Aspect and Structural Hashing
+  - RFC-0038: impl Aspect in Struct Fields and Existential Types
+  - RFC-0104: Multi-Aspect Extend Blocks with Shared Bodies
+  - RFC-0105: Struct-Embedded Aspect Lists
+  - RFC-0114: Constructor Aspect and Canonical Construction
+  - RFC-0128: Exportable overload sets and shadow-versus-extend semantics
+- **Records and surface syntax**
+  - RFC-0151: Tuples as Numeric-Label Rows
+  - RFC-0170: Literal Types and Discriminated Structural Unions
+  - RFC-0175: Label Polymorphism
+  - RFC-0188: Label syntax
+  - RFC-0033: Field-Level Mutability
+  - RFC-0015: Unwrap Syntax
+  - RFC-0004: main() return type — should main return Result instead of ()?
+  - RFC-0005: Warn on unreachable match arms
+  - RFC-0101: Grammar-Enforced Naming Case Conventions
+- **Interop**
+  - RFC-0027: C FFI
+  - RFC-0026: Unsafe Blocks
+- **Allocator foundation, Lifetimes and regions**
+  - RFC-0074: Shared Pointers — Rc and Arc
+  - RFC-0075: Region Inference — Local AutoRegion
+  - RFC-0145: Static Storage Duration
+- **Storage contract**
+  - RFC-0172: Sized and Unsized Kinds, and a Generalized Unsizing Coercion
+- **Effects design settlement and Linear types (closures)**
+  - RFC-0014: Panic Recovery
+  - RFC-0164: Mutating Closures with a Propagating ? Are Call-Once
+- **No theme yet**
+  - RFC-0017: Language Edition System
+
 ## Retired numbering
 
 The numbers below were used before 2026-10-19. They appear in older issues, RFCs and
