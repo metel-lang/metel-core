@@ -1,0 +1,11 @@
+// metel-core#1680: the full path names the core enum's unit variant even where the module
+// declares its own `Option`, which stays usable beside it.
+enum Option { Maybe, Not }
+
+fun main() {
+    let none: std::core::Option<i64> := std::core::Option::None;
+    assert(none.is_none());
+    var s := 0;
+    match (Option::Not) { Option::Maybe => { s := 1; }, Option::Not => { s := 2; }, }
+    assert(s == 2);
+}

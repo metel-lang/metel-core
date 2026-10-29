@@ -1,0 +1,10 @@
+// metel-core#1680: a module-qualified path to a unit variant is a value, with the enum's own
+// import or only its module reached through a glob.
+import lib::Kind;
+
+fun main() {
+    let k := lib::Kind::B;
+    var s := 0;
+    match (k) { Kind::A => { s := 1; }, Kind::B => { s := 2; }, }
+    assert(s == 2);
+}

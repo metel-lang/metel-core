@@ -1,0 +1,4 @@
+// metel-core#1680: a qualified path that names no unit variant of the enum stays an unresolved name.
+fun main() {
+    let none := std::core::Option::Nothing;
+}
