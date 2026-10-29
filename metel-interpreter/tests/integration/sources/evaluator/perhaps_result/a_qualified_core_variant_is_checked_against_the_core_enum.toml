@@ -1,4 +1,5 @@
 [options]
+error = ["T0003"]
 spec = ["spec.modules.std-core-auto-import.legality-1"]
 
 [expect]
