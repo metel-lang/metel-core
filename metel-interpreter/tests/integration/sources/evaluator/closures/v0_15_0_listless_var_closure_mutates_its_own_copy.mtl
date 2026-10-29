@@ -1,0 +1,10 @@
+// metel-core#1641 (RFC 0153 legality-25): written with `var`, a listless closure
+// that assigns to an implicitly captured `Copy` binding is accepted. It mutates
+// its own captured copy across calls; the outer binding is unchanged.
+fun main() {
+    var count := 0;
+    var bump := var || { count := count + 1; count };
+    assert(bump() == 1);
+    assert(bump() == 2);
+    assert(count == 0);
+}

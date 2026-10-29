@@ -89,7 +89,7 @@ fun test_closure_captures_mut_fun_ptr() {
 // Mutations inside the closure do not affect the outer binding.
 fun test_capture_by_value() {
     var x := 0;
-    let f := || { x += 1; };
+    var f := var || { x += 1; };
     f();
     f();
     f();

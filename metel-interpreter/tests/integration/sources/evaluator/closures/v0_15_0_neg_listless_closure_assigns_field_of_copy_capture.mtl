@@ -1,0 +1,7 @@
+// metel-core#1641 (RFC 0153 legality-25): a field write through an implicitly
+// captured `Copy` record is a write to the capture; the closure needs `var`.
+fun main() {
+    var acc := { n = 0, sum = 0 };
+    let add := |x: i64| { acc.sum := acc.sum + x; }; // missing `var` qualifier
+    add(1);
+}

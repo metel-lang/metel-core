@@ -1,0 +1,10 @@
+// metel-core#1641 (RFC 0153 legality-25): assigning to a binding the closure
+// itself declares is not a write to a capture, so no `var` qualifier is needed.
+fun main() {
+    let total := |xs: [i64]| {
+        var sum := 0;
+        for (x in xs) { sum := sum + x; }
+        sum
+    };
+    assert(total([1, 2, 3]) == 6);
+}

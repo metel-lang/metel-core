@@ -1,7 +1,7 @@
 // Returns a closure that closes over a counter, incrementing on each call.
-fun make_counter(start: i64) -> || -> i64 {
+fun make_counter(start: i64) -> var || -> i64 {
     var n := start;
-    || -> i64 { n += 1; n }
+    var || -> i64 { n += 1; n }
 }
 // Closure that captures two variables from different outer scopes.
 fun make_between(lo: i64, hi: i64) -> |i64| -> boolean {
@@ -10,7 +10,7 @@ fun make_between(lo: i64, hi: i64) -> |i64| -> boolean {
 
 fun main() {
     // Each call to the closure advances the same captured counter.
-    let next := make_counter(0);
+    var next := make_counter(0);
     let r1 := next();
     assert(r1 == 1);
     let r2 := next();

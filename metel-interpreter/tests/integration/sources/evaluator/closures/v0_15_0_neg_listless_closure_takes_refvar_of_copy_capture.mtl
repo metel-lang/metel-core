@@ -1,0 +1,9 @@
+// metel-core#1641 (RFC 0153 legality-25): taking `&var` of an implicitly
+// captured `Copy` binding mutates the capture, so the closure needs `var`.
+fun bump(r: &var i64) { *r := *r + 1; }
+
+fun main() {
+    var count := 0;
+    let f := || { bump(&var count); }; // missing `var` qualifier
+    f();
+}
