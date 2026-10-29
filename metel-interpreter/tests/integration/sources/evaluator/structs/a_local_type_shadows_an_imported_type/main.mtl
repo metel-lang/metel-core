@@ -1,0 +1,13 @@
+// metel-core#1615: a block-local struct and enum shadow imported types of the same names.
+import lib::Foo;
+import lib::Kind;
+
+fun main() {
+    struct Foo { y: i64 }
+    enum Kind { X, Y }
+    let f := Foo { y = 2 };
+    assert(f.y == 2);
+    var s := 0;
+    match (Kind::Y) { Kind::X => { s := 1; }, Kind::Y => { s := 2; }, }
+    assert(s == 2);
+}

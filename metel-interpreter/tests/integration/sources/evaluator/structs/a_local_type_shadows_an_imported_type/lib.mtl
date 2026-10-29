@@ -1,0 +1,2 @@
+public struct Foo { public x: i64 }
+public enum Kind { A, B }

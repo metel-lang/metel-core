@@ -1389,6 +1389,15 @@ pub(super) fn construct_expr(
             symbol_id,
             span,
         } => {
+            // A block-local type in scope shadows the outer type the resolver identified.
+            let literal_type_name = if path.len() == 2 {
+                path.first()
+            } else {
+                path.last()
+            };
+            let symbol_id = &literal_type_name
+                .and_then(|name| ctx.scoped_local_type_id(name))
+                .or(*symbol_id);
             // The enum a bare `Variant { .. }` resolves to comes from the expected type, so its
             // identity is read off that type rather than looked up by the name it spells.
             let mut expected_enum_id: Option<SymbolId> = None;

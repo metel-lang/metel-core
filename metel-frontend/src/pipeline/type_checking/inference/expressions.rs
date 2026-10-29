@@ -2111,9 +2111,16 @@ fn infer_expr_inner(
                     .last()
                     .ok_or_else(|| MetelError::internal("empty path in struct literal"))?
                     .clone();
+                // A block-local type in scope shadows the outer type the resolver identified
+                // (metel-core#1615): the resolver knows only module-level names, so the id it
+                // carries names the shadowed type.
+                let symbol_id = ctx
+                    .registry()
+                    .scoped_local_type_id(&struct_name)
+                    .or(*symbol_id);
                 infer_struct_literal(
                     struct_name,
-                    *symbol_id,
+                    symbol_id,
                     fields,
                     span,
                     ctx,

@@ -1,0 +1,8 @@
+runner = "full_pipeline"
+prelude = "default"
+
+[options]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1"]
+
+[expect]
+status = "success"

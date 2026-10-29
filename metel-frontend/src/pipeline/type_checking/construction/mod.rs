@@ -614,6 +614,16 @@ impl<'a> ConstructCtx<'a> {
         self.written_type_id(type_name)
     }
 
+    /// The block-local type named `name` that is in scope at the construction point, if any.
+    /// The name resolver identifies only module-level declarations, so an id it carries for a
+    /// written name that a local declaration shadows names the shadowed type (metel-core#1615).
+    fn scoped_local_type_id(&self, name: &str) -> Option<SymbolId> {
+        self.local_struct_ids
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
     fn can_be_unqualified_variant(&self, name: &str) -> bool {
         self.registry.has_variant_named(name)
     }
