@@ -895,8 +895,17 @@ impl Checker<'_> {
                 }
                 self.observe_abstract_expr(index, env, state)
             }
+            // `*f(x)`: the operand is a temporary reference with no retained place (a place
+            // rooted at a binding was handled above). The operand is evaluated once, so a
+            // call consumes its arguments; reading through the temporary is a copy, because
+            // moving out of a reference is not allowed (RFC-0185).
+            AbstractExprKind::Dereference(operand) => {
+                if !self.abstract_is_copy(&expr.ty, env)? {
+                    return Err("dereference of a temporary reference is not a copy".to_string());
+                }
+                self.observe_abstract_expr(operand, env, state)
+            }
             AbstractExprKind::Binding(_)
-            | AbstractExprKind::Dereference(_)
             | AbstractExprKind::TupleAccess { .. }
             | AbstractExprKind::FieldAccess { .. } => {
                 Err("abstract projection base is not a retained place".to_string())
