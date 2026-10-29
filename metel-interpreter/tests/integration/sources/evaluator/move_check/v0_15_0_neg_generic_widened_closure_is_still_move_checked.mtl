@@ -1,0 +1,14 @@
+// metel-core#1690 (RFC 0153 legality-9): the widening is a view of the value, so the closure is still
+// analysed: its `[&var n]` capture shares `n`, and the generic `x` is moved by the second `let`.
+fun apply(f: var || -> ()) { f(); }
+
+fun run<T>(x: T) {
+    var n := 0;
+    apply([&var n] var || { n := 1; });
+    let a := x;
+    let b := x; // use of moved value
+}
+
+fun main() {
+    run(1);
+}

@@ -1,0 +1,26 @@
+// metel-core#1690 (RFC 0153 legality-9): a function value may be used where a less permissive one is
+// expected -- `reading` where `var`, `many` where `once` -- and that is recorded in the abstract body
+// of a generic function, not rejected, under `--move-check`.
+fun call_var(f: var || -> ()) { f(); }
+fun call_once(f: once || -> i64) -> i64 { f() }
+
+fun reading_where_var<T: Copy>(x: T) {
+    let g := || { };
+    call_var(g);
+}
+
+fun many_where_once<T: Copy>(x: T) -> i64 {
+    let g := || { 1 };
+    call_once(g)
+}
+
+fun both<T: Copy>(x: T) -> i64 {
+    call_var(|| { });
+    call_once(|| { 2 })
+}
+
+fun main() {
+    reading_where_var(1);
+    assert(many_where_once(1) == 1);
+    assert(both(true) == 2);
+}
