@@ -1,0 +1,11 @@
+// metel-core#1616: `std::core::Option::Some` in an expression names the core variant even
+// where the module declares its own `Option`; the module's own enum stays usable beside it.
+enum Option { Maybe, Not }
+
+fun main() {
+    let core := std::core::Option::Some { value = 1 };
+    assert(core.unwrap_or(0) == 1);
+    var s := 0;
+    match (Option::Maybe) { Option::Maybe => { s := 1; }, Option::Not => { s := 2; }, }
+    assert(s == 1);
+}

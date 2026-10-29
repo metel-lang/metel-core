@@ -1,8 +1,9 @@
-// metel-core#1617 (v0.14.1 integration session): std::core::Result::Ok in an expression names the core variant even where the module declares its own Result.
-
+// metel-core#1616: `std::core::Result::Ok` in an expression names the core variant even where
+// the module declares its own `Result`. The annotation fixes `E`, which the literal alone
+// does not determine (that holds with or without the shadowing declaration).
 enum Result { Good, Bad }
 
 fun main() {
-    let r := std::core::Result::Ok { value = 1 };
+    let r: std::core::Result<i64, String> := std::core::Result::Ok { value = 1 };
     assert(r.unwrap_or(0) == 1);
 }

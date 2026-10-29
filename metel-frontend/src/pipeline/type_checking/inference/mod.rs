@@ -2609,25 +2609,35 @@ pub(crate) fn check_field_visibility(
 fn infer_enum_variant_literal(
     enum_name: &str,
     variant_name: &str,
+    resolved_enum: Option<crate::identity::symbols::SymbolId>,
     fields: &[(String, Expr)],
     span: &Span,
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<InferType, MetelError> {
-    let enum_decl_module = ctx
-        .registry()
-        .enum_declaring_module(ctx.current_module_path(), enum_name)
-        .cloned();
-    let enum_info = ctx
-        .get_enum(enum_name)
-        .ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("unknown enum `{enum_name}`"),
-                span,
-            )
-        })?
-        .clone();
+    // A module-qualified literal (`std::core::Option::Some { .. }`) carries the id of the enum its
+    // prefix names. That enum is the one meant even when the module declares its own enum of the
+    // same name, so it is read by id, not by the bare name (metel-core#1616).
+    let resolved_enum = resolved_enum.filter(|id| ctx.registry().enum_info_by_id(*id).is_some());
+    let enum_decl_module = match resolved_enum {
+        Some(id) => ctx.registry().enum_declaring_module_by_id(id).cloned(),
+        None => ctx
+            .registry()
+            .enum_declaring_module(ctx.current_module_path(), enum_name)
+            .cloned(),
+    };
+    let enum_info = match resolved_enum {
+        Some(id) => ctx.registry().enum_info_by_id(id),
+        None => ctx.get_enum(enum_name),
+    }
+    .ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("unknown enum `{enum_name}`"),
+            span,
+        )
+    })?
+    .clone();
     let variant = enum_info
         .variants
         .iter()
@@ -2646,10 +2656,11 @@ fn infer_enum_variant_literal(
     // can show `T` instead of an anonymous placeholder. `struct_generic_names_for`
     // covers enums too (registered under the enum's own name, same order as
     // `type_params`) — see `registry.rs`'s enum-registration path.
-    let declared_names = ctx
-        .struct_generic_names_for(enum_name)
-        .cloned()
-        .unwrap_or_default();
+    let declared_names = match resolved_enum {
+        Some(id) => ctx.registry().struct_generic_names_by_id(id).cloned(),
+        None => ctx.struct_generic_names_for(enum_name).cloned(),
+    }
+    .unwrap_or_default();
     for (i, &tp) in enum_info.type_params.iter().enumerate() {
         let fresh = ctx.fresh_var();
         if let InferType::Var(fresh_tv) = fresh
@@ -2701,9 +2712,10 @@ fn infer_enum_variant_literal(
         .collect();
     // metel-core#1137: same reasoning as `infer_struct_literal`'s matching fix
     // -- `enum_name` is written right here in this module's own source.
-    let type_id = ctx
-        .registry()
-        .resolve_type_id(ctx.current_module_path(), enum_name);
+    let type_id = resolved_enum.or_else(|| {
+        ctx.registry()
+            .resolve_type_id(ctx.current_module_path(), enum_name)
+    });
     Ok(InferType::Named(
         enum_name.to_string(),
         type_args,
