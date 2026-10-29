@@ -1,0 +1,9 @@
+[options]
+arch_verifies = ["arch.move-check.requirement-3"]
+error = ["T0028"]
+spec = ["spec.functions.closures.legality-25"]
+
+[expect]
+status = "typecheck_error"
+code = "T0028"
+contains = "var"

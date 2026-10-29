@@ -1,0 +1,8 @@
+// metel-core#1641 (RFC 0153 legality-25): a closure with no capture list that
+// assigns to an implicitly captured `Copy` binding is rejected like the listed
+// form -- it would mutate a private copy and leave the outer binding unchanged.
+fun main() {
+    var count := 0;
+    let bump := || { count := count + 1; }; // missing `var` qualifier
+    bump();
+}

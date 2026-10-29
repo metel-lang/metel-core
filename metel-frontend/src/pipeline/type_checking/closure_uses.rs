@@ -149,6 +149,19 @@ fn collect_assign_target_uses(
     }
 }
 
+/// The identifier at the root of a field, tuple or index selector chain (`x`, `x.f`, `x.0`,
+/// `x[i]`), with its span. A dereference ends the chain: the place behind a reference is
+/// not the binding itself.
+fn lvalue_root_ident(expr: &Expr) -> Option<(&String, &Span)> {
+    match expr {
+        Expr::Ident(name, span) => Some((name, span)),
+        Expr::FieldAccess { object, .. }
+        | Expr::TupleAccess { object, .. }
+        | Expr::Index { object, .. } => lvalue_root_ident(object),
+        _ => None,
+    }
+}
+
 /// Walks an unlisted closure body's free-variable uses, alongside
 /// `verify_closure_capture_list`'s existing `bound`/`reads`/`writes` sets:
 /// `spans` records each free name's first reference span, so an implicit
@@ -205,6 +218,17 @@ fn collect_closure_expr_uses(
             }
             if let Some((value, _, _)) = spread {
                 collect_closure_expr_uses(value, bound, reads, writes, spans);
+            }
+        }
+        // `&var x` (or `&var x.f`, `&var x[i]`) takes exclusive access to the binding, which
+        // for a by-value capture is a write to the capture (legality-25).
+        Expr::UnaryOp(crate::data::ast::UnaryOp::RefMut, value, _) => {
+            collect_closure_expr_uses(value, bound, reads, writes, spans);
+            if let Some((name, span)) = lvalue_root_ident(value)
+                && !bound.contains(name)
+            {
+                writes.insert(name.clone());
+                spans.entry(name.clone()).or_insert_with(|| span.clone());
             }
         }
         Expr::RepeatArray(value, _, _)

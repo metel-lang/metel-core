@@ -18,6 +18,61 @@ use super::{
 };
 use crate::identity::symbols::SymbolId;
 
+/// Legality-25, first half: a `[&x]` capture is read-only, so writing it asks for `&var`.
+fn verify_shared_capture_writes(
+    capture_specs: &[crate::data::ast::CaptureSpec],
+    writes: &std::collections::BTreeSet<String>,
+) -> Result<(), MetelError> {
+    for capture in capture_specs {
+        if let crate::data::ast::CaptureSpec::SharedRef { name, span } = capture
+            && writes.contains(name)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0028,
+                format!("`{name}` is captured by shared reference; use `&var {name}`"),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Legality-25, second half, after `once` verification (legality-19): a write to a by-value
+/// capture needs `var` on the closure. With a capture list the by-value captures are the
+/// listed names; without one they are the body's free names that resolve to enclosing locals
+/// (the set the `Copy` check walks).
+fn verify_var_for_capture_writes(
+    capture_specs: &[crate::data::ast::CaptureSpec],
+    call_mutation: crate::data::types::CallMutation,
+    listed: &std::collections::BTreeSet<String>,
+    writes: &std::collections::BTreeSet<String>,
+    use_site: &dyn Fn(&str) -> Span,
+    span: &Span,
+    ctx: &ConstructCtx,
+) -> Result<(), MetelError> {
+    if call_mutation == crate::data::types::CallMutation::Mutating {
+        return Ok(());
+    }
+    for name in writes {
+        let is_by_value_capture = if capture_specs.is_empty() {
+            ctx.has_local_binding(&use_site(name))
+        } else {
+            listed.contains(name)
+        };
+        if is_by_value_capture {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0028,
+                format!(
+                    "closure writes captured `{name}`; write `var` (the closure then mutates \
+                     its own copy), stop mutating it, or share it with `[&var {name}]`"
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 // arch-implements: ["arch.move-check.requirement-3"]
 fn verify_closure_capture_list(
     capture_specs: &[crate::data::ast::CaptureSpec],
@@ -80,17 +135,7 @@ fn verify_closure_capture_list(
         }
     }
 
-    for capture in capture_specs {
-        if let crate::data::ast::CaptureSpec::SharedRef { name, span } = capture
-            && writes.contains(name)
-        {
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0028,
-                format!("`{name}` is captured by shared reference; use `&var {name}`"),
-                span,
-            ));
-        }
-    }
+    verify_shared_capture_writes(capture_specs, &writes)?;
 
     // A tail read of an owned non-Copy capture is returned by value, so it
     // consumes the environment field. RFC-0134 requires that capability to be
@@ -109,17 +154,15 @@ fn verify_closure_capture_list(
                 ));
             }
 
-    if call_mutation != crate::data::types::CallMutation::Mutating {
-        for name in &writes {
-            if listed.contains(name) {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0028,
-                    format!("closure writes captured `{name}`; write `var`"),
-                    span,
-                ));
-            }
-        }
-    }
+    verify_var_for_capture_writes(
+        capture_specs,
+        call_mutation,
+        &listed,
+        &writes,
+        &use_site,
+        span,
+        ctx,
+    )?;
 
     // An implicit (no `[...]` list) closure's free variables are, by the
     // Copy check above, all Copy-typed — materialize the genuinely *local*

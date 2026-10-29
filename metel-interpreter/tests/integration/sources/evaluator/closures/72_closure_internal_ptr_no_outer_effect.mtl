@@ -4,7 +4,7 @@
 fun main() {
     var x := 10;
 
-    let f := || -> () {
+    var f := var || -> () {
         let p: &var i64 := &var x;
         *p := 42;
     };
