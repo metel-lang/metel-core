@@ -77,7 +77,7 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 
 1. **v0.15.0** [now]: The language-surface RFCs drafted 2026-10-24 are settled and, where accepted, integrated.
 2. **Copy/Clone settlement** [next]: The Copy/Clone model is decided, so ownership work has a stable target.
-3. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) is settled, so exactly-once consumption is available to effects and capabilities.
+3. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) and its closure rules (RFC-0194: a closure that captures a linear value is linear) are settled, so exactly-once consumption is available to effects and capabilities.
 4. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
 5. **Move check default-on** [next]: The move check runs by default on every program.
 6. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
@@ -121,7 +121,7 @@ Dependencies behind this order:
 
 - Move check default-on waits on Copy/Clone settlement (#741), which stays on the critical path. Copy migration also waits on it, but is a parallel theme: the settlement is the gate, the migration is not.
 - Comptime design settlement runs alongside Copy/Clone settlement, Drop and Move check, and its implementation follows Move check default-on: RFC-0132 (execution model and comptime-known generic parameters) first, then RFC-0174 (`comptime for`). Copy migration (parallel) consumes it: `[T; N]: Copy` cannot leave the typechecker without RFC-0132 §3 (#263), and the native record `Clone` hook (#1390) waits on RFC-0174. The rest of metaprogramming (type-as-value, `typeinfo` and `emit`, derive, attributes, auto-impl) stays parallel.
-- Linear types follows Copy/Clone settlement. It is design settlement only; implementation follows Drop and partial moves. Linear records (RFC-0091) also waits on Borrow checking (its open question is the type of a borrow taken before a downgrade) and on Narrowed drop receivers.
+- Linear types follows Copy/Clone settlement. It is design settlement only (RFC-0089, then RFC-0194 on linear closures and captures, which needs RFC-0089 and function types satisfying `Linear` via the auto-impl mechanism, #739); implementation follows Drop and partial moves. Linear records (RFC-0091) also waits on Borrow checking (its open question is the type of a borrow taken before a downgrade) and on Narrowed drop receivers.
 - Runtime value semantics (#277) starts once move checking is default-on and coordinates with Drop; it does not wait behind Allocator foundation.
 - Borrow checking (RFC-0122) is before the core-surface freeze, and Lifetimes and regions follow it.
 - Effects design settlement draws on Linear types (exactly-once consumption, one-shot resumption) and Copy/Clone settlement (callable multiplicity). It overlaps the ownership implementation themes; its exit is a set of accepted RFCs, and no effects implementation starts before them.
