@@ -1,2 +1,2 @@
 [options]
-skip = "pending: #1616"
+spec = ["spec.modules.std-core-auto-import.legality-1"]

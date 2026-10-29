@@ -2092,6 +2092,7 @@ fn infer_expr_inner(
                 infer_enum_variant_literal(
                     &path[0],
                     &path[1],
+                    *symbol_id,
                     fields,
                     span,
                     ctx,

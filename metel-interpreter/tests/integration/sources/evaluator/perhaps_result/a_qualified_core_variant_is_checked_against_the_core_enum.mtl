@@ -1,0 +1,7 @@
+// metel-core#1616: the qualified path names the core enum, so a variant the core enum does not
+// have is rejected even though the module's own `Option` has it.
+enum Option { Maybe, Not }
+
+fun main() {
+    let r := std::core::Option::Maybe { value = 1 };
+}
