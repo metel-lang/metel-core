@@ -3440,6 +3440,17 @@ impl TypeDefinitionRegistry {
             .or_else(|| self.local_type_decl_ids.get(name).copied())
     }
 
+    /// The `module::Type::member` path written at `span` in `current_module`, if the path normalizer
+    /// rewrote one to `Type::member` (metel-core#1683): the type its module prefix names.
+    #[must_use]
+    pub fn qualified_path(
+        &self,
+        current_module: &[String],
+        span: &Span,
+    ) -> Option<&crate::pipeline::name_resolution::name_resolver::QualifiedPath> {
+        self.scopes.get(current_module)?.qualified_paths.get(span)
+    }
+
     /// The block-local type named `name` that is in scope now, if any. A declaration in an inner
     /// scope shadows an outer one (`spec.declarations.variables.scoping-and-shadowing.legality-1`),
     /// including a module-level, imported or `std::core` type, so this is consulted before the

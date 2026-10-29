@@ -355,12 +355,27 @@ impl<'a> ConstructCtx<'a> {
 
     /// The scheme of the static member `Type::member` written as `segments`: registered under the
     /// type's identity and the member name, not under the joined spelling.
-    fn type_member_scheme(&self, segments: &[String]) -> Option<&'a (TypeScheme, Vec<TypeVar>)> {
+    fn type_member_scheme(
+        &self,
+        segments: &[String],
+        span: &Span,
+    ) -> Option<&'a (TypeScheme, Vec<TypeVar>)> {
         let [type_name, member] = segments else {
             return None;
         };
+        let owner = self
+            .qualified_type_id(span)
+            .or_else(|| self.written_type_id(type_name))?;
+        self.registry.method_scheme_by_id(owner, member)
+    }
+
+    /// The type a `module::Type::member` path written at `span` names through its module prefix,
+    /// when the path normalizer rewrote one to `Type::member` (metel-core#1683). Read ahead of the
+    /// bare type name, which need not be in scope and may be the current module's own type.
+    fn qualified_type_id(&self, span: &Span) -> Option<SymbolId> {
         self.registry
-            .method_scheme_by_id(self.written_type_id(type_name)?, member)
+            .qualified_path(self.current_module, span)
+            .map(|qualified| qualified.type_id)
     }
 
     /// The identity of the enum a written `name` refers to.
@@ -628,24 +643,17 @@ impl<'a> ConstructCtx<'a> {
         self.registry.has_variant_named(name)
     }
 
-    /// Concrete (non-generic) method type registered for `type_name` in
-    /// `self.method_env` -- the derived, per-construction-pass copy of the
-    /// registry's own `method_env` (metel-core#1124: both are keyed by the
-    /// target's `SymbolId`). Resolved the same broad, `current_module`-first
-    /// way as the registry's own `method_type`/`method_scheme_for`
-    /// (metel-core#1125's `resolve_type_id_broad`) -- needed because a
-    /// reconstructed generic body's `current_module` is its own declaring
-    /// module, which need not be able to name a substituted type argument
-    /// that came from the call site instead (see `resolve_type_id_broad`'s
-    /// doc).
-    fn concrete_method(&self, type_name: &str, method_name: &str) -> Option<&Type> {
-        self.concrete_method_with_id(type_name, None, method_name)
-    }
-
-    /// Like [`concrete_method`](Self::concrete_method), but takes the
-    /// receiver type's own carried identity (metel-core#1129) when the
-    /// caller has one -- e.g. from a `Type::Named`'s own third field --
-    /// instead of always re-deriving it from the bare name.
+    /// Concrete (non-generic) method type registered for a type in `self.method_env` -- the
+    /// derived, per-construction-pass copy of the registry's own `method_env` (metel-core#1124:
+    /// both are keyed by the target's `SymbolId`).
+    ///
+    /// Takes the receiver type's own carried identity (metel-core#1129) when the caller has one
+    /// -- e.g. from a `Type::Named`'s own third field, or the type a `module::Type::member` path
+    /// names (metel-core#1683) -- instead of always re-deriving it from the bare name. That
+    /// fallback is resolved the broad, `current_module`-first way as the registry's own
+    /// `method_type`/`method_scheme_for` (metel-core#1125's `resolve_type_id_broad`): a
+    /// reconstructed generic body's `current_module` is its own declaring module, which need not
+    /// be able to name a substituted type argument that came from the call site.
     fn concrete_method_with_id(
         &self,
         type_name: &str,

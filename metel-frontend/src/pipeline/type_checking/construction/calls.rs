@@ -210,9 +210,11 @@ pub(super) fn construct_call(
         }
         // Qualified static constructors like `List::new` / `List::from`: the scheme registered
         // under the type's identity and the member name.
-        Expr::Path(segments, _, path_span) if ctx.type_member_scheme(segments).is_some() => {
+        Expr::Path(segments, _, path_span)
+            if ctx.type_member_scheme(segments, path_span).is_some() =>
+        {
             let joined = segments.join("::");
-            let (scheme, _) = ctx.type_member_scheme(segments).unwrap();
+            let (scheme, _) = ctx.type_member_scheme(segments, path_span).unwrap();
             let (concrete, var_map) = match &explicit_tys {
                 Some(tys) => instantiate_scheme_with_turbofish(
                     scheme,
@@ -282,7 +284,9 @@ pub(super) fn construct_call(
             // (`Type::member`), matching `expressions.rs`'s own boundary —
             // `None` for anything module-qualified, never guessed.
             let type_id = match segments.as_slice() {
-                [type_name, _] => ctx.type_symbol_id(type_name),
+                [type_name, _] => ctx
+                    .qualified_type_id(path_span)
+                    .or_else(|| ctx.type_symbol_id(type_name)),
                 _ => None,
             };
             let typed = TypedExpr::Path {

@@ -1,0 +1,11 @@
+// metel-core#1683: the full path names the core type's static method even where the module
+// declares its own `List`, whose own `List::new` stays usable beside it.
+struct List { x: i64 }
+extend List { fun new() -> List { List { x = 1 } } }
+
+fun main() {
+    let own := List::new();
+    assert(own.x == 1);
+    let core: std::core::List<i64> := std::core::List::new();
+    assert(core.len() == 0);
+}

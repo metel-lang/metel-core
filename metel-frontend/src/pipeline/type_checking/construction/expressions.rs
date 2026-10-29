@@ -1889,8 +1889,11 @@ pub(super) fn construct_expr(
         Expr::Path(segments, _, span) => {
             // For 2-segment paths, try method_env first (static methods, enum variant constructors).
             if let [type_name, member_name] = segments.as_slice() {
+                // A `module::Type::member` path written in full names the type through its module
+                // prefix (metel-core#1683), ahead of the bare type name.
+                let qualified = ctx.qualified_type_id(span);
                 if let Some(ty) = ctx
-                    .concrete_method(type_name.as_str(), member_name.as_str())
+                    .concrete_method_with_id(type_name.as_str(), qualified, member_name.as_str())
                     .cloned()
                 {
                     // metel-core#1093: a static-method reference carries the
@@ -1898,14 +1901,16 @@ pub(super) fn construct_expr(
                     // have none, same as #1101's array-impl methods).
                     return Ok(TypedExpr::Path {
                         segments: segments.clone(),
-                        type_id: ctx.type_symbol_id(type_name),
+                        type_id: qualified.or_else(|| ctx.type_symbol_id(type_name)),
                         variant_id: None,
                         ty,
                         span: span.clone(),
                     });
                 }
                 // Also check enum variants via enum_env.
-                let written_enum = ctx.written_enum_id(type_name);
+                let written_enum = qualified
+                    .filter(|id| ctx.registry.enum_info_by_id(*id).is_some())
+                    .or_else(|| ctx.written_enum_id(type_name));
                 if let Some(info) = written_enum.and_then(|id| ctx.registry.enum_info_by_id(id))
                     && let Some(variant) = info.variants.iter().find(|v| &v.name == member_name)
                 {

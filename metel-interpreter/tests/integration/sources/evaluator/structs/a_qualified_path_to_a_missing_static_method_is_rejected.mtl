@@ -1,0 +1,5 @@
+// metel-core#1683: a qualified path naming no member of the type stays an unresolved name,
+// reported with the path as written.
+fun main() {
+    let l: std::core::List<i64> := std::core::List::nope();
+}
