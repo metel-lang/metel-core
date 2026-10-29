@@ -1715,7 +1715,7 @@ fn infer_expr_inner(
                         ));
                     }
                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
-                        let _ = ctx.lookup_for_write(name, recv_span)?;
+                        let _ = ctx.lookup_for_receiver_write(name, recv_span)?;
                     }
                 }
 
@@ -1838,7 +1838,7 @@ fn infer_expr_inner(
                         ));
                     }
                     if let Expr::Ident(name, recv_span) = receiver.as_ref() {
-                        let _ = ctx.lookup_for_write(name, recv_span)?;
+                        let _ = ctx.lookup_for_receiver_write(name, recv_span)?;
                     }
                 }
 
@@ -1975,7 +1975,7 @@ fn infer_expr_inner(
                                 ));
                             }
                             if let Expr::Ident(name, recv_span) = receiver.as_ref() {
-                                let _ = ctx.lookup_for_write(name, recv_span)?;
+                                let _ = ctx.lookup_for_receiver_write(name, recv_span)?;
                             }
                         }
 
@@ -2498,7 +2498,15 @@ fn infer_expr_inner(
             }
             let saved_ret = ctx.push_return_type(ret_ty.clone());
             let saved_loop_depth = ctx.push_loop_depth_reset();
+            ctx.enter_closure_writes(
+                span.clone(),
+                captures
+                    .iter()
+                    .map(|capture| super::super::closure_uses::capture_name(capture).to_string())
+                    .collect(),
+            );
             let body_ty = infer_block(body, ctx, fun_generalizations)?;
+            ctx.exit_closure_writes();
             ctx.pop_loop_depth(saved_loop_depth);
             constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
@@ -2934,7 +2942,7 @@ fn infer_record_method_call_with_scheme(
             ));
         }
         if let Expr::Ident(name, recv_span) = receiver {
-            let _ = ctx.lookup_for_write(name, recv_span)?;
+            let _ = ctx.lookup_for_receiver_write(name, recv_span)?;
         }
     }
     let InferType::Fun(params, ret, ..) = &method_ty else {

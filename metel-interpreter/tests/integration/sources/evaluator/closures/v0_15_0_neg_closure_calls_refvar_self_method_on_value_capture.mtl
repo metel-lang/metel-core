@@ -1,0 +1,14 @@
+// metel-core#1676 (RFC 0153 legality-25): calling a `&var self` method on a by-value capture
+// mutates the capture, so the closure needs `var` (listed capture).
+struct S { n: i64 }
+extend S: Copy;
+extend S {
+    fun inc(&var self) { self.n := self.n + 1; }
+    fun get(&self) -> i64 { self.n }
+}
+
+fun main() {
+    var s := S { n = 0 };
+    let f := [s] || { s.inc(); }; // missing `var` qualifier
+    f();
+}

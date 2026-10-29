@@ -1,0 +1,22 @@
+// metel-core#1676 (RFC 0153 legality-25): written with `var`, a closure may call a
+// `&var self` method on a by-value capture, listed or not. It mutates its own copy
+// across calls; the outer binding is unchanged.
+struct S { n: i64 }
+extend S: Copy;
+extend S {
+    fun inc(&var self) { self.n := self.n + 1; }
+    fun get(&self) -> i64 { self.n }
+}
+
+fun main() {
+    var a := S { n = 0 };
+    var listed := [a] var || { a.inc(); a.get() };
+    assert(listed() == 1);
+    assert(listed() == 2);
+    assert(a.n == 0);
+
+    var b := S { n = 10 };
+    var implicit := var || { b.inc(); b.get() };
+    assert(implicit() == 11);
+    assert(b.n == 10);
+}

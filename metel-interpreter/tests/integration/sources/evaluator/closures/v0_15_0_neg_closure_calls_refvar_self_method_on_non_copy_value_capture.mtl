@@ -1,0 +1,7 @@
+// metel-core#1676 (RFC 0153 legality-25): a non-`Copy` by-value capture written through a
+// `&var self` method (`List::push`) also needs `var`.
+fun main() {
+    var xs: List<i64> := List::new();
+    let f := [xs] || { xs.push(1); }; // missing `var` qualifier
+    f();
+}

@@ -6772,6 +6772,13 @@ pub struct InferContext {
     /// Solved type of each closure parameter written without an annotation, keyed by the
     /// parameter's span (metel-core#1624).
     closure_param_types: HashMap<Span, InferType>,
+    /// Captured names a closure writes through a `&var self` method call on the receiver binding,
+    /// keyed by the closure's span (metel-core#1676). Construction joins them with the writes it
+    /// finds syntactically, so legality-25's `var` check sees every form.
+    closure_capture_writes: HashMap<Span, std::collections::BTreeSet<String>>,
+    /// The closures whose bodies are being inferred, innermost last: the closure's span, the index
+    /// of its own scope in `mono_env`, and the names its capture list rebinds in that scope.
+    closure_write_frames: Vec<(Span, usize, HashSet<String>)>,
     /// Transient provenance joined at handoff; durable abstract operations contain
     /// resolved types and binding identities, never this span-keyed solver table.
     definition_expression_types: HashMap<Span, InferType>,
@@ -6890,6 +6897,8 @@ impl InferContext {
             opaque_return_vars: HashSet::new(),
             closure_return_types: HashMap::new(),
             closure_param_types: HashMap::new(),
+            closure_capture_writes: HashMap::new(),
+            closure_write_frames: Vec::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
@@ -8443,6 +8452,46 @@ impl InferContext {
         self.closure_param_types.insert(span, ty);
     }
 
+    /// Start inferring the body of the closure at `span`, whose capture list rebinds
+    /// `listed_captures` in the scope just pushed for it.
+    pub fn enter_closure_writes(&mut self, span: Span, listed_captures: HashSet<String>) {
+        let scope = self.mono_env.len() - 1;
+        self.closure_write_frames
+            .push((span, scope, listed_captures));
+    }
+
+    pub fn exit_closure_writes(&mut self) {
+        self.closure_write_frames.pop();
+    }
+
+    /// `lookup_for_write` for the receiver of a `&var self` method call, which also records the
+    /// call as a write to the binding for every enclosing closure that captures it (metel-core#1676).
+    ///
+    /// # Errors
+    /// As `lookup_for_write`: the name is undeclared, or its binding is immutable.
+    pub fn lookup_for_receiver_write(
+        &mut self,
+        name: &str,
+        span: &Span,
+    ) -> Result<InferType, MetelError> {
+        let ty = self.lookup_for_write(name, span)?;
+        let found_at = self
+            .mono_env
+            .iter()
+            .rposition(|scope| scope.contains_key(name));
+        if let Some(found_at) = found_at {
+            for (closure, scope, listed) in &self.closure_write_frames {
+                if found_at < *scope || (found_at == *scope && listed.contains(name)) {
+                    self.closure_capture_writes
+                        .entry(closure.clone())
+                        .or_default()
+                        .insert(name.to_string());
+                }
+            }
+        }
+        Ok(ty)
+    }
+
     pub(crate) fn record_definition_expression_type(&mut self, span: Span, ty: InferType) {
         self.definition_expression_types.insert(span, ty);
     }
@@ -8680,6 +8729,11 @@ impl InferContext {
     #[must_use]
     pub fn closure_param_types(&self) -> &HashMap<Span, InferType> {
         &self.closure_param_types
+    }
+
+    #[must_use]
+    pub fn closure_capture_writes(&self) -> &HashMap<Span, std::collections::BTreeSet<String>> {
+        &self.closure_capture_writes
     }
 
     #[must_use]

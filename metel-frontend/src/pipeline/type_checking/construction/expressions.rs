@@ -90,6 +90,11 @@ fn verify_closure_capture_list(
     let mut writes = std::collections::BTreeSet::new();
     let mut use_spans = std::collections::HashMap::new();
     collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes, &mut use_spans);
+    // A `&var self` method call writes its receiver, which only inference can tell from a read
+    // (it depends on the method the receiver's type resolves to); legality-25 counts it too.
+    if let Some(method_writes) = ctx.resolved_facts.closure_capture_writes(span) {
+        writes.extend(method_writes.iter().cloned());
+    }
     let used: std::collections::BTreeSet<_> = reads.union(&writes).cloned().collect();
     let listed: std::collections::BTreeSet<_> = capture_specs
         .iter()
