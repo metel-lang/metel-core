@@ -41,6 +41,8 @@ pub(super) struct ResolvedInferenceFacts {
     definition_snapshots: HashMap<Span, Box<Self>>,
     closure_return_types: HashMap<Span, Type>,
     closure_param_types: HashMap<Span, Type>,
+    /// Captured names each closure writes through a `&var self` call (metel-core#1676).
+    closure_capture_writes: HashMap<Span, std::collections::BTreeSet<String>>,
     /// Solved definition types awaiting binder-local freezing. This table is a
     /// temporary join, not exposed to analyses or stored in the durable artifact.
     definition_expression_types: HashMap<Span, InferType>,
@@ -72,6 +74,7 @@ impl ResolvedInferenceFacts {
             definition_snapshots: HashMap::new(),
             closure_return_types: HashMap::new(),
             closure_param_types: HashMap::new(),
+            closure_capture_writes: HashMap::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
@@ -119,6 +122,7 @@ impl ResolvedInferenceFacts {
             definition_snapshots: HashMap::new(),
             closure_return_types,
             closure_param_types,
+            closure_capture_writes: ctx.closure_capture_writes().clone(),
             definition_nominal_fields: ctx.definition_nominal_fields().clone(),
             definition_method_facts: ctx
                 .definition_method_facts()
@@ -268,6 +272,14 @@ impl ResolvedInferenceFacts {
                 (span.clone(), resolved)
             })
             .collect()
+    }
+
+    /// The captured names the closure at `span` writes through a `&var self` call.
+    pub(super) fn closure_capture_writes(
+        &self,
+        span: &Span,
+    ) -> Option<&std::collections::BTreeSet<String>> {
+        self.closure_capture_writes.get(span)
     }
 
     pub(super) fn closure_param_type(&self, span: &Span) -> Option<&Type> {
