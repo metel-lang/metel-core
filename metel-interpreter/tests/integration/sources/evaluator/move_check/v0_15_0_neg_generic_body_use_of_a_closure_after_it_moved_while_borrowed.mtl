@@ -1,0 +1,11 @@
+// metel-core#1696: the borrowed closure is analysed, so using it after it moved is T0019 in a generic body as in a
+// non-generic one. A closure that owns a non-`Copy` capture is not `Copy`, so `let h := g;` moves it.
+fun run<T>(x: T) {
+    let g := [x] || { };
+    let r := &g;
+    r();
+    let h := g;
+    let again := &g;
+}
+
+fun main() { run(1); }

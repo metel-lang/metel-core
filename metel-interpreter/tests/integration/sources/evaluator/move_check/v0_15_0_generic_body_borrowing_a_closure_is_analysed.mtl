@@ -1,0 +1,28 @@
+// metel-core#1696: a generic body may take a reference to a closure value. The abstract analysis refused it
+// ("borrowed closure ownership contracts are not yet retained", I0011); it now analyses the borrow like the
+// concrete check does.
+fun shared<T: Copy>(x: T) {
+    let g := || { };
+    let r := &g;
+    r();
+    let copied := g;
+}
+
+fun exclusive<T: Copy>(x: T) {
+    var n := 0;
+    var g := [&var n] var || { n := 1; };
+    let r := &var g;
+    r();
+}
+
+fun owned_capture<T>(x: T) {
+    let g := [x] || { };
+    let r := &g;
+    r();
+}
+
+fun main() {
+    shared(1);
+    exclusive(2);
+    owned_capture(3);
+}
