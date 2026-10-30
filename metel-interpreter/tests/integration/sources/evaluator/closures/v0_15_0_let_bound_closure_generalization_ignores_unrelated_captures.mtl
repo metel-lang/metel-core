@@ -1,12 +1,11 @@
-// metel-core#1688: generalizing a `let`-bound closure against the solved environment must not make
-// it less polymorphic: `id` does not depend on `base`, so it is still used at two types, while
-// `plus` captures `base`. (A closure like `id` inside a *generic* function is a separate move-check
-// gap, `--move-check` I0011: "abstract signature contains an unquantified variable", metel-core#1691.)
+// metel-core#1688, RFC-0196: a `let`-bound closure has one type, fixed by its uses, whether or not
+// another closure in the same scope captures a local. `id` does not depend on `base`; `plus` captures it.
+// (Before RFC-0196 `id` was generalized and could be used at two types; metel-core#1691's move-check
+// gap came from that and no longer exists.)
 fun main() {
     let base := 10;
     let id := |y| { y };
     let plus := |n: i64| { n + base };
     assert(id(1) == 1);
-    assert(id(true));
     assert(plus(5) == 15);
 }

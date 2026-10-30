@@ -146,8 +146,9 @@ fun table_get(table: [Pair<String, i64>], key: String) -> Option<i64> {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 fun main() {
-    // ── Let-polymorphism: id used at i64, boolean, String ─────────────────────────
-    let id := |x| { x };
+    // ── Polymorphism: id used at i64, boolean, String ─────────────────────────────
+    // (a closure has one type, RFC-0196, so the polymorphic helper is a generic `fun`)
+    fun id<T>(x: T) -> T { x }
     assert(id(42) == 42);
     assert(id(true));
     assert(id("hello") == "hello");

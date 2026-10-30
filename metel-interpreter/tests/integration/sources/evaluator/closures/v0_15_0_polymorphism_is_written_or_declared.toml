@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.closures.legality-26", "spec.functions.closures.legality-27"]

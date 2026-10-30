@@ -1,15 +1,15 @@
-// Let-polymorphic closures are analysed from retained abstract bodies: a `Copy`-free
-// use and a function alias both pass (#273).
-let pair_up := |a, b| { (b, a) };
-let identity := |x| { x };
-
+// A `let`-bound closure has one type, fixed by its uses (RFC-0196); a function alias stays
+// polymorphic because the polymorphism is declared on the function. Both are analysed (#273).
 fun twice<T>(value: T) -> T { value }
 
 let alias := twice;
 
 fun main() {
+    let pair_up := |a, b| { (b, a) };
+    let identity := |x| { x };
     let swapped := pair_up(1, "one");
     assert(swapped.0 == "one");
     assert(identity(7) == 7);
     assert(alias(3) == 3);
+    assert(alias("s") == "s");
 }

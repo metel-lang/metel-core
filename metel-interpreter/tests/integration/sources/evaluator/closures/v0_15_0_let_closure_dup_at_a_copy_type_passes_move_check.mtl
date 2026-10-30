@@ -1,0 +1,8 @@
+// metel-core#1718 (RFC-0196): `|x| (x, x)` used at `i64` is a closure over a `Copy` type, so it passes the move check;
+// before RFC-0196 the generalized parameter was an unbounded type parameter and `--move-check` rejected it.
+fun main() {
+    let dup := |x| { (x, x) };
+    let p := dup(1);
+    assert(p.0 == 1);
+    assert(p.1 == 1);
+}

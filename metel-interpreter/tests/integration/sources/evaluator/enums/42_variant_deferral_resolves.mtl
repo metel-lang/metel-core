@@ -26,9 +26,9 @@ fun main() {
 
     // An empty array literal is deferred too, and is *genuinely* polymorphic -- the
     // #285 check is scoped to bare variants precisely so this keeps working.
-    let mk := || { [] };
-    let ints: [i64] := mk();
-    let strs: [String] := mk();
+    // (A closure has one type, RFC-0196, so the empty literal is shown directly rather than through a closure.)
+    let ints: [i64] := [];
+    let strs: [String] := [];
     assert(ints.len() == 0);
     assert(strs.len() == 0);
 }

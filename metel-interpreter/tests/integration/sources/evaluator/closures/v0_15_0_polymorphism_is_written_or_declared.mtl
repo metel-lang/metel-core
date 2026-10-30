@@ -1,0 +1,26 @@
+// metel-core#1718 (RFC-0196 closures.legality-26): polymorphism is written or declared. A reference to a generic
+// function and a closure with a written open-record parameter stay polymorphic; a top-level closure is fine when its
+// own initializer determines it; an unannotated closure is used at one type.
+fun identity<T>(x: T) -> T { x }
+
+let annotated := |x: i64| { x + 1 };
+let by_literal := |x| { x + 1 };
+
+fun main() {
+    let f := identity;
+    assert(f(1) == 1);
+    assert(f(true));
+    assert(f("s") == "s");
+
+    let get := |p: { x: i64, .. }| { p.x };
+    assert(get({ x = 1, y = 2 }) == 1);
+    assert(get({ x = 5 }) == 5);
+    assert(get({ x = 7, name = "n".to_string() }) == 7);
+
+    assert(annotated(1) == 2);
+    assert(by_literal(1) == 2);
+
+    let id := |x| { x };
+    assert(id(3) == 3);
+    assert(id(id(4)) == 4);
+}

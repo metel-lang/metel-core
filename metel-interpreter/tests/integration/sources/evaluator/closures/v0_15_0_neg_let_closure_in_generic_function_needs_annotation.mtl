@@ -1,0 +1,8 @@
+// metel-core#1718 (RFC-0196): inside a generic function a `let`-bound closure parameter is written until generic
+// bodies keep their inferred types (metel-core#1704); the error is at the definition, not `I0010` at the first call.
+fun run<T: Copy>(x: T) -> T {
+    let id := |y| { y };
+    id(x)
+}
+
+fun main() { assert(run(5) == 5); }

@@ -5329,12 +5329,13 @@ fn analyzable_generic_bodies_pass_the_completeness_guard() {
 // arch-verifies: ["arch.move-check.requirement-4", "arch.move-check.requirement-5", "arch.move-check.requirement-10"]
 #[test]
 fn let_polymorphic_closures_are_analyzed_from_retained_bodies() {
-    // Clearing the scheme environment makes reconstruction impossible, so a checked
-    // body here can only have come from the retained abstract definition.
+    // RFC-0196: the only `let`-bound closure that stays polymorphic is one with a written open-record
+    // parameter (its `..` is the user's own row). Clearing the scheme environment makes
+    // reconstruction impossible, so a checked body here can only have come from the retained
+    // abstract definition.
     let report = move_report_for_source_with(
         r#"
-let pair_up := |a, b| { (b, a) };
-let dup := |v| { let first := v; let second := v; first };
+let take_twice := |p: { x: String, .. }| { let first := p; let second := p; first.x };
 fun main() {}
 "#,
         |graph| {
@@ -5345,13 +5346,13 @@ fun main() {}
     );
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        2,
+        1,
         "{report:#?}"
     );
     assert!(report.abstract_body_fallbacks.is_empty(), "{report:#?}");
     assert!(report.unchecked_generic_bodies.is_empty(), "{report:#?}");
     assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert_eq!(report.violations[0].binding, "v", "{report:#?}");
+    assert_eq!(report.violations[0].binding, "p", "{report:#?}");
 }
 
 // metel-core#1553: two block-local records in one module that share a name and the same field

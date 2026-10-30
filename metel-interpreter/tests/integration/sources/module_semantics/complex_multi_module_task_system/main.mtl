@@ -178,8 +178,9 @@ fun main() {
     let big := filter_array(doubled, |x: &i64| -> boolean { *x > 5 }, clone_i64);
     assert(big.len() == 3);
 
-    // 21. Let-polymorphism: identity closure used at two different types
-    let id := |x| { x };
+    // 21. Polymorphism: identity used at two different types (a closure has one type, RFC-0196,
+    // so the polymorphic helper is a generic `fun`)
+    fun id<T>(x: T) -> T { x }
     let id_task := unwrap_task(validate_task("Identity task", Priority::High, Status::Open, 5));
     assert(id(id_task).effort == 5);
     assert(id(42) == 42);

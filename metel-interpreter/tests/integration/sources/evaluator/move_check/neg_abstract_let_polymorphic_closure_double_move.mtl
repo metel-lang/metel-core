@@ -1,12 +1,11 @@
-// A let-polymorphic closure is checked from its retained definition-time body, so a
-// double move of its unannotated parameter is rejected even though no call fixes a type
-// that would make it `Copy` (#273).
-let dup := |v| {
-    let first := v;
-    let second := v;
-    first
-};
-
+// A `let`-bound closure is checked from its definition-time body, so a double move of its
+// unannotated parameter is rejected (#273). The parameter is a `String`, fixed by the call (RFC-0196:
+// a closure has one type, so an `i64` call would make it `Copy`).
 fun main() {
-    let kept := dup(1);
+    let dup := |v| {
+        let first := v;
+        let second := v;
+        first
+    };
+    let kept := dup("a".to_string());
 }

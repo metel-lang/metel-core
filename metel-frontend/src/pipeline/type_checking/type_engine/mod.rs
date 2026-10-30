@@ -6733,6 +6733,10 @@ pub struct InferContext {
     /// Functions with no return type, keyed by the span of their tail, with the closure rewrite to
     /// offer (RFC-0193).
     omitted_returns: HashMap<(String, usize, usize), (String, Option<String>)>,
+    /// `let`-bound closures that stayed monomorphic (RFC-0196), by name.
+    monomorphic_closures: HashMap<String, bool>,
+    /// Arguments of calls to those closures, keyed by span, with the closure's name.
+    monomorphic_closure_arguments: HashMap<(String, usize, usize), (String, bool)>,
     constraints: Vec<Constraint>,
     current_return_type: Option<InferType>,
     current_break_type: Option<InferType>,
@@ -6926,6 +6930,8 @@ impl InferContext {
             enclosing_fun_names: Vec::new(),
             closure_rewrite_candidates: HashSet::new(),
             omitted_returns: HashMap::new(),
+            monomorphic_closures: HashMap::new(),
+            monomorphic_closure_arguments: HashMap::new(),
             constraints: Vec::new(),
             current_return_type: None,
             current_break_type: None,
@@ -8307,9 +8313,52 @@ impl InferContext {
             .collect()
     }
 
+    /// Whether a generic function (or an `extend` with type parameters) is being inferred.
+    #[must_use]
+    pub fn in_generic_body(&self) -> bool {
+        !self.current_type_params.is_empty()
+    }
+
+    /// Whether the context is at module level, outside any function body (RFC-0196).
+    #[must_use]
+    pub fn at_module_level(&self) -> bool {
+        self.mono_env.len() <= 1
+    }
+
     /// Record which private top-level functions may be offered the closure rewrite (RFC-0193).
     pub fn set_closure_rewrite_candidates(&mut self, names: HashSet<String>) {
         self.closure_rewrite_candidates = names;
+    }
+
+    /// Remember a `let`-bound closure that stayed monomorphic (RFC-0196), and whether it captures
+    /// nothing (so a generic `fun` is a drop-in replacement).
+    pub fn remember_monomorphic_closure(&mut self, name: &str, captures_nothing: bool) {
+        self.monomorphic_closures
+            .insert(name.to_string(), captures_nothing);
+    }
+
+    /// Forget a name that a later binding replaced.
+    pub fn forget_monomorphic_closure(&mut self, name: &str) {
+        self.monomorphic_closures.remove(name);
+    }
+
+    /// Whether `name` is a `let`-bound closure that stayed monomorphic.
+    #[must_use]
+    pub fn is_monomorphic_closure(&self, name: &str) -> bool {
+        self.monomorphic_closures.contains_key(name)
+    }
+
+    /// Remember an argument of a call to the monomorphic closure `name`.
+    pub fn note_monomorphic_closure_argument(&mut self, span: &Span, name: &str) {
+        let captures_nothing = self
+            .monomorphic_closures
+            .get(name)
+            .copied()
+            .unwrap_or(false);
+        self.monomorphic_closure_arguments.insert(
+            (span.filename.clone(), span.start, span.end),
+            (name.to_string(), captures_nothing),
+        );
     }
 
     /// Remember a function with no return type, keyed by the span its tail is checked at.
@@ -8325,6 +8374,7 @@ impl InferContext {
     /// written type and, where the rewrite keeps the program's meaning, the closure.
     #[must_use]
     pub fn rewrite_omitted_return(&self, error: MetelError) -> MetelError {
+        let error = self.rewrite_monomorphic_closure_use(error);
         let MetelError::TypeError {
             code: crate::data::error::TypeErrorCode::T0001,
             message,
@@ -8377,14 +8427,47 @@ impl InferContext {
         }
     }
 
-    /// Solve the pending constraints; a `()` mismatch at the tail of a function with no return type
-    /// is reported as such (RFC-0193).
-    ///
-    /// # Errors
-    /// The first unsatisfiable constraint.
-    pub fn solve_reporting_omitted_returns(&mut self) -> Result<Rc<Substitution>, MetelError> {
-        self.solve()
-            .map_err(|error| self.rewrite_omitted_return(error))
+    /// RFC-0196: a mismatch at an argument of a call to a monomorphic `let`-bound closure says that the
+    /// closure has one type, fixed by its first use, and that a generic `fun` is what is used at several.
+    fn rewrite_monomorphic_closure_use(&self, error: MetelError) -> MetelError {
+        let MetelError::TypeError {
+            code: crate::data::error::TypeErrorCode::T0001,
+            message,
+            start,
+            end,
+            filename,
+            line,
+            col,
+        } = &error
+        else {
+            return error;
+        };
+        let Some((name, captures_nothing)) =
+            self.monomorphic_closure_arguments
+                .get(&(filename.clone(), *start, *end))
+        else {
+            return error;
+        };
+        let Some(types) = message.strip_prefix("cannot unify ") else {
+            return error;
+        };
+        MetelError::TypeError {
+            code: crate::data::error::TypeErrorCode::T0001,
+            message: if *captures_nothing {
+                format!(
+                    "`{name}` has one type, fixed by its first use, so it cannot also be used here: cannot unify {types}\n       help: to use it at several types, write a generic function (`fun {name}<T>(..) -> .. {{ .. }}`)"
+                )
+            } else {
+                format!(
+                    "`{name}` has one type, fixed by its first use, so it cannot also be used here: cannot unify {types}"
+                )
+            },
+            start: *start,
+            end: *end,
+            filename: filename.clone(),
+            line: *line,
+            col: *col,
+        }
     }
 
     /// Whether the closure rewrite may be suggested for the named top-level function.
@@ -8575,7 +8658,18 @@ impl InferContext {
     ///
     /// # Errors
     /// Returns an error if any accumulated constraint fails to unify.
+    /// Solve the pending constraints. A mismatch the checker can say more about (a function with no
+    /// return type, RFC-0193; a monomorphic closure used at a second type, RFC-0196) is reworded here, so
+    /// every solve site reports it the same way.
+    ///
+    /// # Errors
+    /// The first unsatisfiable constraint.
     pub fn solve(&mut self) -> Result<Rc<Substitution>, MetelError> {
+        self.solve_constraints()
+            .map_err(|error| self.rewrite_omitted_return(error))
+    }
+
+    fn solve_constraints(&mut self) -> Result<Rc<Substitution>, MetelError> {
         let started = Instant::now();
         self.solve_stats.solve_calls += 1;
 

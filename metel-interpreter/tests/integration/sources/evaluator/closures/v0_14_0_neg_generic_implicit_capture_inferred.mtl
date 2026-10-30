@@ -1,9 +1,8 @@
-// RFC-0050 legality-6: a closure with no capture list may capture only `Copy`
-// locals. `a` is an unannotated (inferred) parameter, so it has no `Copy` grant
-// at the definition; whether some later call would pass a `Copy` type is not
-// consulted (#273).
-let swap_vals := |a| { |b| { (b, a) } };
-
+// RFC-0050 legality-6: a closure with no capture list may capture only `Copy` locals. `a` is an
+// unannotated parameter whose type the call fixes (RFC-0196: a closure has one type); here it is a
+// `String`, which is not `Copy`, so the inner closure needs a capture list. (With an `i64` argument the
+// capture is `Copy` and legal.)
 fun main() {
-    let pair := swap_vals(1)(2);
+    let swap_vals := |a| { |b| { (b, a) } };
+    let pair := swap_vals("a".to_string())(2);
 }
