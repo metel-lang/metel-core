@@ -1,7 +1,8 @@
 // An inferred closure parameter used as an operator operand is still analysed
 // at definition time: the operator only observes it, so the later moves are
 // what the checker must see (#273). A named function writes its parameter types
-// (RFC-0193), so the inferred operand is a closure parameter here.
+// (RFC-0193), so the inferred operand is a closure parameter here; the call fixes it
+// as a `String` (RFC-0196: a closure has one type), which is not `Copy`.
 fun main() {
     let twice_move := |v| {
         let sum := v + v;
@@ -9,5 +10,5 @@ fun main() {
         let b := v;
         sum
     };
-    assert(twice_move(1) == 2);
+    twice_move("a".to_string());
 }

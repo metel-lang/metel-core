@@ -87,19 +87,36 @@ pub(super) fn infer_decl(
             // own, under `alias`'s name.
             let is_generic_fn_ref = matches!(&ld.value, Expr::Ident(name, _)
                 if ctx.poly_scheme(name).is_some_and(|s| !s.quantified_vars.is_empty()));
-            // Let-polymorphism: generalize unannotated closure-valued let bindings
-            // (and, per the above, bare references to an existing generic function).
-            // If the resolved type still has free variables, they are quantified into a
-            // polymorphic scheme so each call site gets a fresh instantiation.
-            if (matches!(&ld.value, Expr::Closure { .. }) || is_generic_fn_ref)
-                && ld.type_ann.is_none()
-            {
+            // RFC-0196: inference never invents polymorphism. A `let`-bound closure has one type,
+            // fixed by its uses. Generalization at a `let` is kept for exactly two forms whose
+            // polymorphism is written or declared: a bare reference to an already-generic function
+            // (above), and a closure with a written open-record parameter, whose `..` is the user's
+            // own row variable. If the resolved type still has free variables they are quantified
+            // into a polymorphic scheme so each call site gets a fresh instantiation.
+            let writes_open_row = match &ld.value {
+                Expr::Closure { params, .. } => params
+                    .iter()
+                    .any(|p| p.type_ann.as_ref().is_some_and(names_open_row)),
+                _ => false,
+            };
+            if (writes_open_row || is_generic_fn_ref) && ld.type_ann.is_none() {
                 let solved = ctx.solve()?;
                 let partial_subst = ctx.default_literal_vars(&solved);
                 let resolved_ty = partial_subst.apply(&val_ty);
                 // Against the environment as solved so far, not as it was before the initializer
                 // was inferred (metel-core#1688).
-                let env_fvs = ctx.env_free_vars_under(|ty| partial_subst.apply(ty));
+                let mut env_fvs = ctx.env_free_vars_under(|ty| partial_subst.apply(ty));
+                // Only the variables the annotation introduced are quantified: the types of the
+                // closure's other parameters were inferred, so they stay one type.
+                if let (Expr::Closure { params, .. }, InferType::Fun(param_tys, ..)) =
+                    (&ld.value, &resolved_ty)
+                {
+                    for (param, ty) in params.iter().zip(param_tys) {
+                        if !param.type_ann.as_ref().is_some_and(names_open_row) {
+                            env_fvs.extend(free_vars(ty));
+                        }
+                    }
+                }
                 let scheme = generalize(resolved_ty.clone(), &env_fvs);
                 if !scheme.quantified_vars.is_empty() {
                     ctx.bind_poly(&ld.name, scheme);
@@ -121,6 +138,71 @@ pub(super) fn infer_decl(
                     });
                     return Ok(InferType::unit());
                 }
+            }
+            // RFC-0196: a `let`-bound closure is no longer generalized, so inside a generic function its
+            // parameter types come from Pass 1 facts that reconstruction of a generic body does not
+            // keep yet (LIMIT-EVALUATION-001, metel-core#1704). Say so at the definition rather than
+            // as an internal error when the function is first instantiated.
+            if ld.type_ann.is_none()
+                && ctx.in_generic_body()
+                && let Expr::Closure { params, .. } = &ld.value
+                && let Some(param) = params.iter().find(|p| p.type_ann.is_none())
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    format!(
+                        "closure parameter `{}` of `{}` has no written type; inside a generic function a closure parameter must be annotated until generic bodies keep their inferred types (metel-core#1704)",
+                        param.name, ld.name
+                    ),
+                    &param.span,
+                ));
+            }
+            // RFC-0196: a closure bound by a top-level `let` is determined by its own initializer.
+            // Otherwise its type would come from whichever function the checker reaches first, a
+            // signature read off other declarations.
+            if ld.type_ann.is_none()
+                && ctx.at_module_level()
+                && matches!(&ld.value, Expr::Closure { .. })
+            {
+                let solved = ctx.solve()?;
+                let partial_subst = ctx.default_literal_vars(&solved);
+                if !free_vars(&partial_subst.apply(&val_ty)).is_empty() {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0002,
+                        format!(
+                            "the type of `{}` is not determined by its initializer; annotate its parameters",
+                            ld.name
+                        ),
+                        &ld.span,
+                    ));
+                }
+            }
+            // RFC-0196: remember a `let`-bound closure that stayed monomorphic, for the diagnostic that
+            // names it when it is used at a second type.
+            ctx.forget_monomorphic_closure(&ld.name);
+            if ld.type_ann.is_none()
+                && let Expr::Closure {
+                    captures,
+                    params,
+                    body,
+                    ..
+                } = &ld.value
+            {
+                let mut bound: std::collections::BTreeSet<String> =
+                    params.iter().map(|p| p.name.clone()).collect();
+                let mut reads = std::collections::BTreeSet::new();
+                let mut writes = std::collections::BTreeSet::new();
+                let mut spans = HashMap::new();
+                super::super::closure_uses::collect_closure_body_uses(
+                    body,
+                    &mut bound,
+                    &mut reads,
+                    &mut writes,
+                    &mut spans,
+                );
+                let captures_nothing = captures.is_empty()
+                    && !reads.union(&writes).any(|name| ctx.has_local_binding(name));
+                ctx.remember_monomorphic_closure(&ld.name, captures_nothing);
             }
             ctx.bind_mono(&ld.name, bound_ty, false);
             Ok(InferType::unit())
@@ -820,6 +902,23 @@ fn reject_enclosing_names(fun: &FunDecl, ctx: &InferContext) -> Result<(), Metel
     Ok(())
 }
 
+/// Whether a written type names an open row (`{ x: T, .. }` or an anonymous `Builder<..>`): the one
+/// annotation that lets a closure stay polymorphic (RFC-0196).
+fn names_open_row(te: &TypeExpr) -> bool {
+    match te {
+        TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. } | TypeExpr::RowArg(_) => {
+            true
+        }
+        TypeExpr::Named(_, args) => args.iter().any(names_open_row),
+        TypeExpr::Tuple(items) => items.iter().any(names_open_row),
+        TypeExpr::Array(inner)
+        | TypeExpr::SizedArray(inner, _)
+        | TypeExpr::Reference(inner)
+        | TypeExpr::MutReference(inner) => names_open_row(inner),
+        _ => false,
+    }
+}
+
 /// RFC-0193: a named declaration writes the type of every parameter (a receiver excepted).
 fn unannotated_parameter(owner: &str, param: &crate::data::ast::Param) -> MetelError {
     let name = &param.name;
@@ -1227,7 +1326,7 @@ pub(super) fn infer_fun_decl(
     // Inline solve-and-generalize: future call sites look up this function via the
     // poly_env and get a fresh instantiation per call, avoiding constraint conflicts
     // when the same polymorphic function is called at different types.
-    let solved = ctx.solve_reporting_omitted_returns()?;
+    let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let mut row_view_consumes: HashSet<TypeVar> = ctx
@@ -2287,7 +2386,7 @@ pub(super) fn infer_impl_method(
     let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
 
-    let solved = ctx.solve_reporting_omitted_returns()?;
+    let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let mut method_row_view_consumes: HashSet<TypeVar> = ctx
@@ -2952,7 +3051,7 @@ pub(super) fn infer_default_aspect_method(
     ctx.leave_enclosing_fun();
     ctx.pop_scope();
 
-    let solved = ctx.solve_reporting_omitted_returns()?;
+    let solved = ctx.solve()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);

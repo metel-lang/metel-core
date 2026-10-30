@@ -1547,7 +1547,7 @@ fn check_impl_with_report(
     let solve_after_inference = ctx.solve_stats();
 
     let started = Instant::now();
-    let solved = ctx.solve_reporting_omitted_returns()?;
+    let solved = ctx.solve()?;
     let final_solve_ns = elapsed_ns(started);
     // One-time, whole-program call (unlike the per-function ones this type
     // exists to speed up) -- downstream needs a real `&Substitution`, and

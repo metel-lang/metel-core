@@ -1,0 +1,11 @@
+// metel-core#1718 (RFC-0196, metel-core#1691): the repro of the move-check gap no longer exists. A `let`-bound
+// closure in a generic function has one type; with its parameter written it is analysed like any other body.
+fun run<T: Copy>(x: T) -> T {
+    let id := |y: T| { y };
+    id(x)
+}
+
+fun main() {
+    assert(run(5) == 5);
+    assert(run(true));
+}

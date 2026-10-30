@@ -499,14 +499,15 @@ fun main() {
     );
     assert(perhaps_or(first_long_again, "") == "banana");
 
-    // ── Let-polymorphism: identity at multiple types ──────────────────────────
-    let id := |x| { x };
+    // ── Polymorphism: identity at multiple types ──────────────────────────────
+    // (a closure has one type, RFC-0196, so the polymorphic helpers are generic `fun`s)
+    fun id<T>(x: T) -> T { x }
     assert(id(42) == 42);
     assert(id(true));
     assert(id("hi") == "hi");
 
     // const (ignores argument)
-    let konst := |x| { 99 };
+    fun konst<T>(x: T) -> i64 { 99 }
     assert(konst(0) == 99);
     assert(konst(true) == 99);
     assert(konst("anything") == 99);

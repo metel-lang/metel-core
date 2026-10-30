@@ -655,6 +655,16 @@ fn infer_expr_inner(
             args,
             span,
         } => {
+            // RFC-0196: remember the arguments of a call to a monomorphic `let`-bound closure, so a
+            // mismatch there reads "`id` has one type" instead of a bare `cannot unify`.
+            if let Expr::Ident(name, _) = callee.as_ref()
+                && ctx.is_monomorphic_closure(name)
+            {
+                ctx.note_monomorphic_closure_argument(span, name);
+                for arg in args {
+                    ctx.note_monomorphic_closure_argument(arg.span(), name);
+                }
+            }
             // Overloaded free-function call (METEL-180): infer argument types,
             // select the exact-match candidate, and yield its return type. The
             // selected definition's SymbolId is stamped in the construction pass.

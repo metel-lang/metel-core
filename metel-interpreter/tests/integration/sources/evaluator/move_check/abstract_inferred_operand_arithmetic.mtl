@@ -1,10 +1,12 @@
 // Arithmetic and ordering on inferred closure parameters keep their operation in the
 // abstract body without sampling a concrete operand type (#273). A named function writes
-// its parameter types (RFC-0193), so the inferred operand is a closure parameter here.
+// its parameter types (RFC-0193), and a closure has one type (RFC-0196), so each operand
+// type gets its own closure here.
 fun main() {
-    let double := |value| { value + value };
+    let double_int := |value| { value + value };
+    let double_str := |value| { value + value };
     let larger := |a, b| { if (a < b) { b } else { a } };
-    assert(double(21) == 42);
-    assert(double("ab") == "abab");
+    assert(double_int(21) == 42);
+    assert(double_str("ab") == "abab");
     assert(larger(3, 9) == 9);
 }

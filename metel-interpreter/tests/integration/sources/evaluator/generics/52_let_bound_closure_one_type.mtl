@@ -1,0 +1,28 @@
+// A `let`-bound closure without annotations has one type, fixed by its uses (RFC-0196). The
+// polymorphic helper is a generic `fun`.
+fun id<T>(x: T) -> T { x }
+
+fun main() {
+    // the closure is used at one type
+    let twice := |x| { x + x };
+    assert(twice(21) == 42);
+    assert(twice(twice(2)) == 8);
+
+    // a generic function is used at i64, boolean, String
+    assert(id(42) == 42);
+    assert(id(true));
+    assert(id("hello") == "hello");
+    assert(id(10) + id(20) == 30);
+    assert(id(id(99)) == 99);
+
+    // two independent closures, each with its own type
+    let swap_ints := |a, b| { (b, a) };
+    let swap_mixed := |a, b| { (b, a) };
+    assert(swap_ints(1, 2).0 == 2);
+    assert(swap_mixed(1, true).0);
+
+    let double := |n: i64| -> i64 { n * 2 };
+    let negate := |b: boolean| -> boolean { !b };
+    assert(double(5) == 10);
+    assert(negate(false));
+}

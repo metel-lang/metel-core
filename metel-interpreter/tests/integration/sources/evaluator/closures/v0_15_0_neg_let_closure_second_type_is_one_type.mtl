@@ -1,0 +1,7 @@
+// metel-core#1718 (RFC-0196 closures.legality-26): an unannotated `let`-bound closure has one type, fixed by
+// its first use; using it at a second type is a mismatch that says so.
+fun main() {
+    let id := |x| { x };
+    assert(id(42) == 42);
+    assert(id(true));
+}

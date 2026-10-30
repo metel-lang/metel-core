@@ -1,6 +1,9 @@
+// A closure body is move-checked at its definition. (A closure has one type, RFC-0196: the parameter
+// here is a `String`, fixed by the call, and it is moved twice.)
 fun main() {
     let duplicate := |value| {
         let moved := value;
         value
     };
+    duplicate("a".to_string());
 }

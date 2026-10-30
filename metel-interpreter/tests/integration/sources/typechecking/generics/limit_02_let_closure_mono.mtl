@@ -1,10 +1,8 @@
-// Positive: let-bound closures without type annotations are generalized into type schemes.
-//
-// Top-level `fun` declarations are generalized (∀α. (α) -> α); unannotated
-// `let`-bound closures now receive the same treatment.  Each call site gets a
-// fresh instantiation so the same binding can be used at multiple types.
+// Negative: a `let`-bound closure without annotations has one type, fixed by its first use
+// (RFC-0196). Top-level and nested `fun`s with a type-parameter list are the polymorphic form.
 
-let identity := |x| { x };
-
-let a := identity(42);
-let b := identity(true);
+fun main() {
+    let identity := |x| { x };
+    let a := identity(42);
+    let b := identity(true); // ERROR[T0001]
+}

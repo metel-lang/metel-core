@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+spec = ["spec.functions.closures.legality-26"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "has one type"

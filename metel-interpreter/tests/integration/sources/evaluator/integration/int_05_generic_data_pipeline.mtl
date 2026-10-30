@@ -351,8 +351,9 @@ fun main() {
     ];
     assert(!all(students_all, |s: &Student| -> boolean { student_passing_2(s) }));
 
-    // ── Let-polymorphism: identity at Record<String,i64> and Student ──────────
-    let id := |x| { x };
+    // ── Polymorphism: identity at Record<String,i64> and Student ──────────────
+    // (a closure has one type, RFC-0196, so the polymorphic helper is a generic `fun`)
+    fun id<T>(x: T) -> T { x }
     let same_r := id(r1);
     assert(same_r.value == 75);
 

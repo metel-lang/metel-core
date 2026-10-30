@@ -1,0 +1,5 @@
+// metel-core#1718 (RFC-0196 closures.legality-27): a closure bound by a top-level `let` is determined by its own
+// initializer; otherwise its type would come from whichever function the checker reaches first.
+let id := |x| { x };
+
+fun main() { assert(id(1) == 1); }
