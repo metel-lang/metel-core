@@ -1,0 +1,11 @@
+// metel-core#1684 (RFC 0153, legality-18 and 25): a closure literal takes `var` only from a `var`
+// parameter. Passed to a plain one it must not write a capture, and that is reported where the
+// generic function is written, though it is never called.
+fun apply(f: || -> ()) { f(); }
+
+fun run<T: Copy>(x: T) {
+    var v := x;
+    apply(|| { v := x; }); // the parameter is not `var`
+}
+
+fun main() { }

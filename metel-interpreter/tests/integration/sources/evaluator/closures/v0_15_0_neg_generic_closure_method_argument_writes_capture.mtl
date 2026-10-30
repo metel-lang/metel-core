@@ -1,0 +1,15 @@
+// metel-core#1684 (RFC 0153, legality-25): the same for an argument to a method.
+struct S {
+    n: i64,
+}
+
+extend S {
+    fun each(&self, f: || -> ()) { f(); }
+}
+
+fun run<T: Copy>(s: S, x: T) {
+    var v := x;
+    s.each(|| { v := x; }); // the parameter is not `var`
+}
+
+fun main() { }
