@@ -1,0 +1,6 @@
+// metel-core#1714: an enclosing function parameter is a local too.
+fun scale(factor: i64, x: i64) -> i64 {
+    fun apply(v: i64) -> i64 { v * factor } // `factor` is a parameter of `scale`
+    apply(x)
+}
+fun main() { scale(2, 3); }

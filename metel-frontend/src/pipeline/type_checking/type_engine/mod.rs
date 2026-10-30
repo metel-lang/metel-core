@@ -6723,6 +6723,11 @@ pub struct InferContext {
     var_gen: TypeVarGenerator,
     mono_env: Vec<HashMap<String, (InferType, bool)>>,
     poly_env: Vec<HashMap<String, TypeScheme>>,
+    /// Per scope level, the names bound there by a hoisted local `fun`: items, not locals
+    /// of the enclosing function (RFC-0195). Kept in step with `mono_env`/`poly_env`.
+    local_fun_items: Vec<HashSet<String>>,
+    /// The enclosing function bodies being inferred, innermost last, for diagnostics.
+    enclosing_fun_names: Vec<String>,
     constraints: Vec<Constraint>,
     current_return_type: Option<InferType>,
     current_break_type: Option<InferType>,
@@ -6912,6 +6917,8 @@ impl InferContext {
             var_gen: type_var_gen,
             mono_env: vec![HashMap::new()], // root scope pre-pushed
             poly_env: vec![HashMap::new()], // root scope pre-pushed
+            local_fun_items: vec![HashSet::new()],
+            enclosing_fun_names: Vec::new(),
             constraints: Vec::new(),
             current_return_type: None,
             current_break_type: None,
@@ -7853,6 +7860,7 @@ impl InferContext {
     pub fn push_scope(&mut self) {
         self.mono_env.push(HashMap::new());
         self.poly_env.push(HashMap::new());
+        self.local_fun_items.push(HashSet::new());
         self.flow.push_scope();
     }
 
@@ -7865,6 +7873,7 @@ impl InferContext {
         self.mono_env.pop();
         assert!(self.poly_env.len() > 1, "pop_scope called at root scope");
         self.poly_env.pop();
+        self.local_fun_items.pop();
         // A partial move of an *outer* binding made in this scope survives the
         // pop (it is not in the scope's shadow list); an `if` / `match` join
         // reads it. Bindings introduced here leave move tracking.
@@ -8230,6 +8239,65 @@ impl InferContext {
     pub fn has_binding(&self, name: &str) -> bool {
         self.poly_env.iter().any(|sc| sc.contains_key(name))
             || self.mono_env.iter().any(|sc| sc.contains_key(name))
+    }
+
+    /// Record that `name`, bound in the current scope, is a hoisted local `fun`: an item, not a
+    /// local value of the enclosing function (RFC-0195).
+    pub fn mark_local_fun_item(&mut self, name: &str) {
+        if let Some(items) = self.local_fun_items.last_mut() {
+            items.insert(name.to_string());
+        }
+    }
+
+    /// Whether `name` resolves, from the current scope, to a local *value* of an enclosing
+    /// function: a parameter, a `let`/`var`, `self`, or a closure's capture. Module-level
+    /// bindings and hoisted local functions are items and answer `false` (RFC-0195).
+    #[must_use]
+    pub fn is_enclosing_local_value(&self, name: &str) -> bool {
+        let depth = self.poly_env.len().max(self.mono_env.len());
+        for level in (1..depth).rev() {
+            let bound = self
+                .poly_env
+                .get(level)
+                .is_some_and(|s| s.contains_key(name))
+                || self
+                    .mono_env
+                    .get(level)
+                    .is_some_and(|s| s.contains_key(name));
+            if bound {
+                return !self
+                    .local_fun_items
+                    .get(level)
+                    .is_some_and(|items| items.contains(name));
+            }
+        }
+        false
+    }
+
+    /// Enter the body of the named function, for diagnostics that name the enclosing function.
+    pub fn enter_enclosing_fun(&mut self, name: &str) {
+        self.enclosing_fun_names.push(name.to_string());
+    }
+
+    /// Leave the function entered with [`InferContext::enter_enclosing_fun`].
+    pub fn leave_enclosing_fun(&mut self) {
+        self.enclosing_fun_names.pop();
+    }
+
+    /// The innermost enclosing function being inferred, if any.
+    #[must_use]
+    pub fn enclosing_fun_name(&self) -> Option<&str> {
+        self.enclosing_fun_names.last().map(String::as_str)
+    }
+
+    /// The type parameters of the function body being inferred (RFC-0195: a local `fun` does
+    /// not see these).
+    #[must_use]
+    pub fn enclosing_type_param_names(&self) -> HashSet<&str> {
+        self.current_type_params
+            .keys()
+            .map(String::as_str)
+            .collect()
     }
 
     #[must_use]
