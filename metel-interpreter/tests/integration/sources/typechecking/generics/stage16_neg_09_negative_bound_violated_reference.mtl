@@ -5,7 +5,7 @@
 
 fun need_non_copy<T: !Copy>(x: T) -> i64 { 0 }
 
-fun bad() {
+fun bad() -> i64 {
     let value := 1;
     need_non_copy(&value) // ERROR[T0012]
 }

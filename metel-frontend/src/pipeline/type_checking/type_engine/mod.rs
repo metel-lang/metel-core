@@ -6728,6 +6728,11 @@ pub struct InferContext {
     local_fun_items: Vec<HashSet<String>>,
     /// The enclosing function bodies being inferred, innermost last, for diagnostics.
     enclosing_fun_names: Vec<String>,
+    /// Private top-level functions for which RFC-0193's closure rewrite is safe to suggest.
+    closure_rewrite_candidates: HashSet<String>,
+    /// Functions with no return type, keyed by the span of their tail, with the closure rewrite to
+    /// offer (RFC-0193).
+    omitted_returns: HashMap<(String, usize, usize), (String, Option<String>)>,
     constraints: Vec<Constraint>,
     current_return_type: Option<InferType>,
     current_break_type: Option<InferType>,
@@ -6919,6 +6924,8 @@ impl InferContext {
             poly_env: vec![HashMap::new()], // root scope pre-pushed
             local_fun_items: vec![HashSet::new()],
             enclosing_fun_names: Vec::new(),
+            closure_rewrite_candidates: HashSet::new(),
+            omitted_returns: HashMap::new(),
             constraints: Vec::new(),
             current_return_type: None,
             current_break_type: None,
@@ -8298,6 +8305,92 @@ impl InferContext {
             .keys()
             .map(String::as_str)
             .collect()
+    }
+
+    /// Record which private top-level functions may be offered the closure rewrite (RFC-0193).
+    pub fn set_closure_rewrite_candidates(&mut self, names: HashSet<String>) {
+        self.closure_rewrite_candidates = names;
+    }
+
+    /// Remember a function with no return type, keyed by the span its tail is checked at.
+    pub fn note_omitted_return(&mut self, span: &Span, name: &str, closure_help: Option<String>) {
+        self.omitted_returns.insert(
+            (span.filename.clone(), span.start, span.end),
+            (name.to_string(), closure_help),
+        );
+    }
+
+    /// RFC-0193: a function with no return type returns `()`. A `T0001` of the form `cannot unify X
+    /// with ()` at the tail of such a function says so, instead of the bare mismatch, and offers the
+    /// written type and, where the rewrite keeps the program's meaning, the closure.
+    #[must_use]
+    pub fn rewrite_omitted_return(&self, error: MetelError) -> MetelError {
+        let MetelError::TypeError {
+            code: crate::data::error::TypeErrorCode::T0001,
+            message,
+            start,
+            end,
+            filename,
+            line,
+            col,
+        } = &error
+        else {
+            return error;
+        };
+        let Some((name, closure_help)) =
+            self.omitted_returns.get(&(filename.clone(), *start, *end))
+        else {
+            return error;
+        };
+        let Some(found) = message.strip_prefix("cannot unify ").and_then(|rest| {
+            rest.strip_suffix(" with ()")
+                .or_else(|| rest.strip_suffix(" with `()`"))
+        }) else {
+            return error;
+        };
+        let shown = if found.contains("literal") {
+            found.to_string()
+        } else {
+            format!("`{found}`")
+        };
+        let mut lines = vec![format!(
+            "`{name}` has no return type, so it returns `()`, but its body evaluates to {shown}"
+        )];
+        let determined = !found.contains("literal") && !found.contains('?');
+        if determined {
+            lines.push(format!("help: write `-> {found}`"));
+            if let Some(closure) = closure_help {
+                lines.push(format!(
+                    "help: or, if it is only used here, bind a closure, which infers its types:\n               {closure}"
+                ));
+            }
+        }
+        let text = lines.join("\n       ");
+        MetelError::TypeError {
+            code: crate::data::error::TypeErrorCode::T0001,
+            message: text,
+            start: *start,
+            end: *end,
+            filename: filename.clone(),
+            line: *line,
+            col: *col,
+        }
+    }
+
+    /// Solve the pending constraints; a `()` mismatch at the tail of a function with no return type
+    /// is reported as such (RFC-0193).
+    ///
+    /// # Errors
+    /// The first unsatisfiable constraint.
+    pub fn solve_reporting_omitted_returns(&mut self) -> Result<Rc<Substitution>, MetelError> {
+        self.solve()
+            .map_err(|error| self.rewrite_omitted_return(error))
+    }
+
+    /// Whether the closure rewrite may be suggested for the named top-level function.
+    #[must_use]
+    pub fn is_closure_rewrite_candidate(&self, name: &str) -> bool {
+        self.closure_rewrite_candidates.contains(name)
     }
 
     #[must_use]

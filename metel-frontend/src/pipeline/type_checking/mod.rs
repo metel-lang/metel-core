@@ -27,6 +27,7 @@ mod overload;
 mod projections;
 pub use overload::core_native_symbol;
 mod registry;
+mod signature_advice;
 
 #[derive(Clone, Copy, Default)]
 pub struct GenericBodyOptions<'a> {
@@ -1516,6 +1517,7 @@ fn check_impl_with_report(
     );
     ctx.set_definition_snapshot_sites(snapshot_sites);
     ctx.seed_glob_conflicts(deferred_conflicts);
+    ctx.set_closure_rewrite_candidates(signature_advice::closure_rewrite_candidates(program));
 
     // Pre-pass: register built-in value bindings, build the overload table, and
     // hoist function names. The overload table must be installed before hoisting
@@ -1545,7 +1547,7 @@ fn check_impl_with_report(
     let solve_after_inference = ctx.solve_stats();
 
     let started = Instant::now();
-    let solved = ctx.solve()?;
+    let solved = ctx.solve_reporting_omitted_returns()?;
     let final_solve_ns = elapsed_ns(started);
     // One-time, whole-program call (unlike the per-function ones this type
     // exists to speed up) -- downstream needs a real `&Substitution`, and

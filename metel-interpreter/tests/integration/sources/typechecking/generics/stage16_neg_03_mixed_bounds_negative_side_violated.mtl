@@ -28,6 +28,6 @@ fun mixed<T: Display + !Drop>(x: T) -> String {
     x.display()
 }
 
-fun bad(b: Bad) {
+fun bad(b: Bad) -> String {
     mixed(b) // ERROR[T0012]
 }

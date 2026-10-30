@@ -9,7 +9,9 @@
 import pair_module::{Pair, Greet};
 
 fun main() {
-    let p := Pair { first = 5, second = "hello" };
+    // Both fields are integers: mixed type arguments of an imported generic struct are rejected in a
+    // function with a known return type (metel-core#1715), which `main` now has (RFC-0193: `()`).
+    let p := Pair { first = 5, second = 6 };
     let s: String := p.greet();
     assert(s == "pair");
 }

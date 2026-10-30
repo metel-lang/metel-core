@@ -1,4 +1,4 @@
-fun get_closures() {
+fun get_closures() -> (|| -> (), || -> (), || -> i64) {
     var shared := 0;
     var ptr := &var shared;
     let first_ptr: &&var i64 := &ptr;

@@ -46,7 +46,16 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
         MetelError::ParseError {
             code: ParseErrorCode::P0001,
             message: removed_field_wise_keyword(source, start).map_or_else(
-                || e.variant.to_string(),
+                || {
+                    public_binding_keyword(source, start).map_or_else(
+                        || e.variant.to_string(),
+                        |keyword| {
+                            format!(
+                                "`public` is not valid on `{keyword}`: top-level bindings are private; to export a function, write `public fun` with its parameter and return types"
+                            )
+                        },
+                    )
+                },
                 |keyword| format!("`{keyword}` was removed; write `where ..R: A`"),
             ),
             start,
@@ -59,6 +68,27 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
     })?;
 
     parse_program(&mut pairs, filename)
+}
+
+/// RFC-0193 §3: `public` is valid on `struct`, `enum`, `fun` and `aspect` only. At the grammar's
+/// error site, `public let` / `public var` is named for what it is, with the fix, instead of the
+/// bare list of tokens the grammar expected.
+fn public_binding_keyword(source: &str, offset: usize) -> Option<&'static str> {
+    let before = source.get(..offset)?.trim_end();
+    let word_start = before.rfind(|ch: char| !(ch.is_alphanumeric() || ch == '_'));
+    let word = &before[word_start.map_or(0, |i| i + 1)..];
+    if word != "public" {
+        return None;
+    }
+    let rest = source.get(offset..)?;
+    for keyword in ["let", "var"] {
+        if let Some(after) = rest.strip_prefix(keyword)
+            && !after.starts_with(|ch: char| ch.is_alphanumeric() || ch == '_')
+        {
+            return Some(keyword);
+        }
+    }
+    None
 }
 
 /// Classify the two removed bound spellings only at the grammar's error site.

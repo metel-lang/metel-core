@@ -1,0 +1,4 @@
+// metel-core#1713 (RFC-0193): a private function with no return type returns `()`; the help names the
+// written type and the closure that infers it.
+fun triple(x: i64) { x * 3 }
+fun main() { assert(triple(2) == 6); }

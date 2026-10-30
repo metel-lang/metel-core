@@ -1,0 +1,4 @@
+// metel-core#1713: a method writes its parameter types too (the receiver is exempt).
+struct Box { v: i64 }
+extend Box { fun add(&self, n) -> i64 { self.v + n } }
+fun main() { let b := Box { v = 1 }; assert(b.add(1) == 2); }

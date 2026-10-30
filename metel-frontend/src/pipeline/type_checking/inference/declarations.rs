@@ -820,6 +820,18 @@ fn reject_enclosing_names(fun: &FunDecl, ctx: &InferContext) -> Result<(), Metel
     Ok(())
 }
 
+/// RFC-0193: a named declaration writes the type of every parameter (a receiver excepted).
+fn unannotated_parameter(owner: &str, param: &crate::data::ast::Param) -> MetelError {
+    let name = &param.name;
+    MetelError::type_error(
+        TypeErrorCode::T0010,
+        format!(
+            "parameter `{name}` of `{owner}` has no type; write `{name}: <Type>`, or, if it is used at several types, make `{owner}` generic (`fun {owner}<T>({name}: T)`)"
+        ),
+        &param.span,
+    )
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -1060,7 +1072,7 @@ pub(super) fn infer_fun_decl(
                 // free variable of the signature (metel-core#1310)
                 te_to_infer(ann, ctx).map(|ty| freshen_anonymous_row_args(&ty, ctx))
             } else {
-                Ok(ctx.fresh_var())
+                Err(unannotated_parameter(&fun.name, p))
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -1116,7 +1128,8 @@ pub(super) fn infer_fun_decl(
             te_to_infer(ann, ctx).map(|ty| freshen_anonymous_row_args(&ty, ctx))?
         }
     } else {
-        ctx.fresh_var()
+        // RFC-0193: an absent return type means `()`; the body is checked against it.
+        InferType::unit()
     };
 
     let env_fvs = ctx.env_free_vars();
@@ -1168,7 +1181,21 @@ pub(super) fn infer_fun_decl(
         .tail
         .as_ref()
         .map_or_else(|| fun.body.span.clone(), |tail| tail.span().clone());
-    constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), return_span);
+    if fun.return_type.is_none() && fun.native.is_none() {
+        // RFC-0193: remember the function so a `()` mismatch at its tail reads "no return type".
+        let closure_help = ctx.is_closure_rewrite_candidate(&fun.name).then(|| {
+            let params = fun
+                .params
+                .iter()
+                .zip(&param_types)
+                .map(|(p, ty)| format!("{}: {ty}", p.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("let {} := |{params}| {{ ... }};", fun.name)
+        });
+        ctx.note_omitted_return(&return_span, &fun.name, closure_help);
+    }
+    constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), return_span.clone());
 
     ctx.pop_return_type(saved_ret);
     ctx.restore_row_field_vars(saved_row_field_vars);
@@ -1200,7 +1227,7 @@ pub(super) fn infer_fun_decl(
     // Inline solve-and-generalize: future call sites look up this function via the
     // poly_env and get a fresh instantiation per call, avoiding constraint conflicts
     // when the same polymorphic function is called at different types.
-    let solved = ctx.solve()?;
+    let solved = ctx.solve_reporting_omitted_returns()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let mut row_view_consumes: HashSet<TypeVar> = ctx
@@ -2078,7 +2105,7 @@ pub(super) fn infer_impl_method(
                     freshen_anonymous_row_args_with_vars(&ty, ctx, &mut anonymous_row_vars)
                 })
             } else {
-                Ok(ctx.fresh_var())
+                Err(unannotated_parameter(&method.name, p))
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -2241,6 +2268,9 @@ pub(super) fn infer_impl_method(
             .tail
             .as_ref()
             .map_or_else(|| method.body.span.clone(), |tail| tail.span().clone());
+        if method.return_type.is_none() && method.native.is_none() {
+            ctx.note_omitted_return(&return_span, &method.name, None);
+        }
         constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), return_span);
         ctx.pop_return_type(saved_ret);
         ctx.restore_row_field_vars(saved_row_field_vars);
@@ -2257,7 +2287,7 @@ pub(super) fn infer_impl_method(
     let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
 
-    let solved = ctx.solve()?;
+    let solved = ctx.solve_reporting_omitted_returns()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let propagated_row_remainders = ctx.take_row_remainder_facts_since(row_remainder_checkpoint);
     let mut method_row_view_consumes: HashSet<TypeVar> = ctx
@@ -2887,14 +2917,14 @@ pub(super) fn infer_default_aspect_method(
         .iter()
         .map(|p| {
             if p.name == "self" {
-                self_ty.clone()
+                Ok(self_ty.clone())
             } else if let Some(ann) = &p.type_ann {
-                te_to_infer(ann, ctx)
+                Ok(te_to_infer(ann, ctx))
             } else {
-                ctx.fresh_var()
+                Err(unannotated_parameter(&method.name, p))
             }
         })
-        .collect();
+        .collect::<Result<Vec<_>, MetelError>>()?;
     let ret_ty = method
         .return_type
         .as_ref()
@@ -2922,7 +2952,7 @@ pub(super) fn infer_default_aspect_method(
     ctx.leave_enclosing_fun();
     ctx.pop_scope();
 
-    let solved = ctx.solve()?;
+    let solved = ctx.solve_reporting_omitted_returns()?;
     let partial_subst = ctx.default_literal_vars(&solved);
     let fun_ty = InferType::fun(param_types, ret_ty);
     let resolved_fun_ty = partial_subst.apply(&fun_ty);

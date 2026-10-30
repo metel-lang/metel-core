@@ -1,4 +1,5 @@
-// Limitation: rank-1 polymorphism — function parameters are monotypes.
+// Limitation: rank-1 polymorphism — function parameters are monotypes. (A named function writes its
+// parameter types, RFC-0193, so `f` is generic here: its `T` is fixed by the first call.)
 //
 // The HM algorithm infers types at rank 1: ∀ quantifiers appear only at the
 // outermost level. A function argument `f` cannot itself be polymorphic within
@@ -7,7 +8,7 @@
 //
 // See: typechecker.md § "Rank-1 Limitation"
 
-fun apply_both(f, x: i64, y: boolean) {
+fun apply_both<T>(f: |T| -> T, x: i64, y: boolean) {
     let a := f(x);
     let b := f(y);  // ERROR[T0001]
 }

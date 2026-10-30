@@ -13,6 +13,6 @@ fun move_out<T>(x: T) -> T where T: !Drop {
     return x;
 }
 
-fun run(c: Clean) {
+fun run(c: Clean) -> Clean {
     move_out(c)
 }

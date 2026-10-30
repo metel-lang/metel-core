@@ -15,6 +15,6 @@ fun move_out<T: !Drop>(x: T) -> T {
     return x;
 }
 
-fun bad(r: Resource) {
+fun bad(r: Resource) -> Resource {
     move_out(r) // ERROR[T0012]
 }

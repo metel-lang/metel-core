@@ -1,0 +1,6 @@
+[options]
+spec = ["spec.modules.visibility.legality-10"]
+
+[expect]
+status = "parse_error"
+contains = "top-level bindings are private"

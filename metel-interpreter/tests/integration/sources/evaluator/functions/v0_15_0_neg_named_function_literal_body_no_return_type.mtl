@@ -1,0 +1,3 @@
+// metel-core#1713: the same message when the body is an unresolved literal.
+fun one() { 1 }
+fun main() { assert(one() == 1); }

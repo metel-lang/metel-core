@@ -1,4 +1,4 @@
-fun maybe_head<T: Copy>(items: [T]) {
+fun maybe_head<T: Copy>(items: [T]) -> Option<T> {
     if (items.len() == 0) {
         return None : Option<T>;
     }

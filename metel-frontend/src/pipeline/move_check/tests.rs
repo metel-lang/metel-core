@@ -2481,7 +2481,7 @@ fun mutable_read<T>(unused: T, value: &var i64) { let first: i64 := *value; let 
 fun borrowed<T>(owned: T) -> &i64 { &1 }
 fun effect<T>(value: T) { let held := borrowed(value); let copied: i64 := *held; let again := value; }
 fun tail_ascribed<T>(unused: T, value: &i64) -> i64 { (*value: i64) }
-fun nested<T>(unused: T, value: &i64) {
+fun nested<T>(unused: T, value: &i64) -> i64 {
     let callback := [value] once || -> i64 { *value };
     callback()
 }

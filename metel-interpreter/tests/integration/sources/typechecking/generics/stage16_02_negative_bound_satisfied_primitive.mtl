@@ -9,6 +9,6 @@ fun move_out<T: !Drop>(x: T) -> T {
     return x;
 }
 
-fun run() {
+fun run() -> i64 {
     move_out(5)
 }

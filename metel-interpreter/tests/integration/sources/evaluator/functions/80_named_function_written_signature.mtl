@@ -1,0 +1,8 @@
+// RFC-0193: a named function writes its parameter types; its return type is written or `()`.
+fun double(value: i64) -> i64 {
+    value + value
+}
+
+fun main() {
+    assert(double(21) == 42);
+}

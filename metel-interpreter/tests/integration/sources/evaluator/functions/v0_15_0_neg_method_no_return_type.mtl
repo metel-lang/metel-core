@@ -1,0 +1,4 @@
+// metel-core#1713: a method follows the same rule as a free function.
+struct Box { v: i64 }
+extend Box { fun get(&self) { self.v } }
+fun main() { let b := Box { v = 1 }; assert(b.get() == 1); }
