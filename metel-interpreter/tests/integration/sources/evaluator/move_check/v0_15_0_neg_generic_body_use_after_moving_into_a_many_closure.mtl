@@ -1,0 +1,8 @@
+// metel-core#1693: the closure is analysed, so a use of the value after it moved into the closure is T0019, as in a
+// non-generic body.
+fun run<T>(x: T) {
+    let f := [x] || { };
+    let y := x;
+}
+
+fun main() { run(1); }

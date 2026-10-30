@@ -760,12 +760,6 @@ impl Checker<'_> {
                     | AbstractCaptureMode::Clone
                     | AbstractCaptureMode::ImplicitCopy
             );
-            if owned
-                && closure.call == CallMultiplicity::Many
-                && !self.abstract_is_copy(&capture.ty, env)?
-            {
-                return Err("many-call closure capture legality is not yet retained".to_string());
-            }
             let value = AbstractExpr {
                 ty: capture.ty.clone(),
                 kind: AbstractExprKind::Binding(capture.binding),

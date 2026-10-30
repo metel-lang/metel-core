@@ -1,0 +1,29 @@
+// metel-core#1693: a generic body may build a `many` closure that owns a non-`Copy` capture. The abstract
+// analysis refused it ("many-call closure capture legality is not yet retained", I0011); it now analyses the
+// closure like the concrete check does.
+fun apply_once(f: once || -> ()) { f(); }
+
+fun unused<T>(x: T) {
+    let f := [x] || { };
+}
+
+fun read_only<T>(x: T) {
+    let f := [x] || { let n := 1; };
+    f();
+}
+
+fun under_once<T>(x: T) {
+    apply_once([x] || { let y := x; });
+}
+
+fun copy_capture<T: Copy>(x: T) {
+    let f := [x] || { let y := x; let z := x; };
+    f();
+}
+
+fun main() {
+    unused(1);
+    read_only("a".to_string());
+    under_once(2);
+    copy_capture(3);
+}
