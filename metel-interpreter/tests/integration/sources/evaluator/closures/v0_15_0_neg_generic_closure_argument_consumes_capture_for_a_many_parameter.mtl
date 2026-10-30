@@ -1,0 +1,9 @@
+// metel-core#1684 (RFC 0134, legality-8): a closure literal takes `once` only from a `once`
+// parameter. Passed to a plain one it must not return a non-Copy capture by value.
+fun take<R>(f: || -> R) -> R { f() }
+
+fun run<T>(x: T) -> T {
+    take([x] || { x }) // the parameter is not `once`
+}
+
+fun main() { }

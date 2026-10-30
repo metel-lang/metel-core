@@ -1702,6 +1702,16 @@ fn check_deferred_closure_checks(
     current_module: &[String],
 ) -> Result<(), MetelError> {
     for check in ctx.deferred_closure_checks() {
+        // A closure passed where a function type is expected takes `once` and `var` from it, so the
+        // checks below apply to the closure as written only where that type does not supply them.
+        let (expected_once, expected_var) = match check.expected.as_ref().map(|ty| subst.apply(ty))
+        {
+            Some(InferType::Fun(_, _, call, _, mutation)) => (
+                call == crate::data::types::CallMultiplicity::Once,
+                mutation == crate::data::types::CallMutation::Mutating,
+            ),
+            _ => (false, false),
+        };
         let classified_first = ctx
             .implicit_capture_obligations()
             .iter()
@@ -1719,7 +1729,7 @@ fn check_deferred_closure_checks(
         if classified_first {
             continue;
         }
-        if let Some(obligation) = &check.once {
+        if let Some(obligation) = check.once.as_ref().filter(|_| !expected_once) {
             let resolved = subst.apply(&obligation.ty);
             let assumptions = rekeyed_assumptions(&obligation.assumptions, subst);
             if !type_engine::free_vars(&resolved).is_empty()
@@ -1732,7 +1742,12 @@ fn check_deferred_closure_checks(
                 ));
             }
         }
-        if let Some(violation) = &check.write {
+        // A write to a `[&x]` capture asks for `&var` whatever the closure is passed to.
+        if let Some(violation) = check
+            .write
+            .as_ref()
+            .filter(|violation| violation.shared_ref || !expected_var)
+        {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0028,
                 violation.message(),

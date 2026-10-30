@@ -6680,6 +6680,9 @@ pub(crate) struct DeferredClosureCheck {
     pub once: Option<ImplicitCaptureCopyObligation>,
     /// A write to a capture without `var`: `T0028`.
     pub write: Option<super::closure_uses::CaptureWriteViolation>,
+    /// The parameter type the closure is passed to, when it is a call argument. A function type
+    /// there gives the closure its `once` and `var` (legality-18).
+    pub expected: Option<InferType>,
 }
 
 #[derive(Debug, Clone)]
@@ -6805,6 +6808,9 @@ pub struct InferContext {
     /// A by-value capture each closure returns as its tail without `once`, keyed by the closure's
     /// span: whether that consumes the environment depends on the capture's type (metel-core#1684).
     closure_once_obligations: HashMap<Span, ImplicitCaptureCopyObligation>,
+    /// The parameter type each closure literal passed as a call argument is checked against,
+    /// keyed by the closure's span. Solved at the end, it may supply `once` or `var` to the literal.
+    closure_expected_types: HashMap<Span, InferType>,
     /// The checks owed by closures bound with no annotation, in source order, reported after the
     /// capture-classification checks so legality-19's stage order holds.
     deferred_closure_checks: Vec<DeferredClosureCheck>,
@@ -6932,6 +6938,7 @@ impl InferContext {
             closure_capture_writes: HashMap::new(),
             closure_write_violations: HashMap::new(),
             closure_once_obligations: HashMap::new(),
+            closure_expected_types: HashMap::new(),
             deferred_closure_checks: Vec::new(),
             closure_write_frames: Vec::new(),
             definition_expression_types: HashMap::new(),
@@ -8550,13 +8557,20 @@ impl InferContext {
     pub(super) fn defer_closure_checks(&mut self, span: &Span) {
         let once = self.closure_once_obligations.remove(span);
         let write = self.closure_write_violations.remove(span);
+        let expected = self.closure_expected_types.remove(span);
         if once.is_some() || write.is_some() {
             self.deferred_closure_checks.push(DeferredClosureCheck {
                 span: span.clone(),
                 once,
                 write,
+                expected,
             });
         }
+    }
+
+    /// Note that the closure literal at `span` is passed where `expected` is the parameter type.
+    pub(super) fn record_closure_expected_type(&mut self, span: Span, expected: InferType) {
+        self.closure_expected_types.insert(span, expected);
     }
 
     pub(super) fn deferred_closure_checks(&self) -> &[DeferredClosureCheck] {

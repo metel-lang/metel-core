@@ -842,6 +842,7 @@ fn infer_expr_inner(
                     )?;
                     ctx.add_expected_constraint(arg_ty.clone(), param_ty.clone(), span.clone());
                 }
+                note_closure_arguments(args, &params, ctx);
                 return Ok(*ret);
             }
 
@@ -904,6 +905,7 @@ fn infer_expr_inner(
                 for (arg_ty, param) in arg_tys.iter().zip(params.iter()) {
                     ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
                 }
+                note_closure_arguments(args, params, ctx);
                 return Ok(*ret.clone());
             }
             let ret_var = ctx.fresh_var();
@@ -1402,6 +1404,7 @@ fn infer_expr_inner(
                     for (arg_ty, param) in arg_tys.iter().zip(params.iter().skip(1)) {
                         ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
                     }
+                    note_closure_arguments(args, params.get(1..).unwrap_or_default(), ctx);
                     if let Some(receiver) = ctx.get_array_method_receiver_kind(method).cloned() {
                         ctx.record_definition_method_fact(
                             span.clone(),
@@ -1760,6 +1763,9 @@ fn infer_expr_inner(
                         },
                     );
                 }
+                if let InferType::Fun(method_params, ..) = &method_ty {
+                    note_closure_arguments(args, method_params.get(1..).unwrap_or_default(), ctx);
+                }
                 let expected = InferType::fun(
                     std::iter::once(receiver_ty_for_method)
                         .chain(arg_tys)
@@ -1834,9 +1840,11 @@ fn infer_expr_inner(
                         span,
                     ));
                 }
-                for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
+                for ((arg, arg_ty), param) in args.iter().zip(&arg_tys).zip(declared_params.iter())
+                {
                     if let Some(ann) = &param.type_ann {
                         let param_ty = signature_type_expr_to_infer(ann, &env);
+                        note_closure_argument(arg, &param_ty, ctx);
                         ctx.add_expected_constraint(arg_ty.clone(), param_ty, span.clone());
                     }
                 }
@@ -1967,9 +1975,12 @@ fn infer_expr_inner(
                             .map(|a| infer_expr(a, ctx, fun_generalizations))
                             .collect::<Result<_, _>>()?;
 
-                        for (arg_ty, param) in arg_tys.iter().zip(declared_params.iter()) {
+                        for ((arg, arg_ty), param) in
+                            args.iter().zip(&arg_tys).zip(declared_params.iter())
+                        {
                             if let Some(ann) = &param.type_ann {
                                 let param_ty = signature_type_expr_to_infer(ann, &signature_env);
+                                note_closure_argument(arg, &param_ty, ctx);
                                 ctx.add_expected_constraint(arg_ty.clone(), param_ty, span.clone());
                             }
                         }
@@ -3172,4 +3183,20 @@ fn callee_chain_root_is_shared_reference(
         Some(ty) => matches!(ctx.solve()?.apply(&ty), InferType::Reference(_)),
         None => false,
     })
+}
+
+/// A closure literal passed as a call argument is checked against the parameter type, which may be
+/// a function type that gives it `once` or `var` (legality-18). Note that type for each such
+/// argument and queue the closure's checks, to be judged once the type is solved (metel-core#1684).
+fn note_closure_arguments(args: &[Expr], params: &[InferType], ctx: &mut InferContext) {
+    for (arg, param) in args.iter().zip(params) {
+        note_closure_argument(arg, param, ctx);
+    }
+}
+
+fn note_closure_argument(arg: &Expr, param: &InferType, ctx: &mut InferContext) {
+    if let Expr::Closure { span, .. } = arg {
+        ctx.record_closure_expected_type(span.clone(), param.clone());
+        ctx.defer_closure_checks(span);
+    }
 }
