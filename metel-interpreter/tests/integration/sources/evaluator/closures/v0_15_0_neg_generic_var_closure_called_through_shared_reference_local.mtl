@@ -1,0 +1,8 @@
+// metel-core#1684 (RFC 0153, legality-10): the same through a local `&` to a `var` closure.
+fun run<T: Copy>(x: T) {
+    var g := var || { };
+    let r := &g;
+    r(); // error: `var` closure called through a shared reference
+}
+
+fun main() { }

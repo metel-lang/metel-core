@@ -1,0 +1,16 @@
+// metel-core#1684 (RFC 0134, legality-8): a `Copy` capture returned by value needs no `once`, and a
+// capture of any type may be returned from a closure written `once`.
+fun copy_capture<T: Copy>(x: T) -> T {
+    let f := [x] || { x };
+    f()
+}
+
+fun once_capture<T>(x: T) -> T {
+    let f := [x] once || { x };
+    f()
+}
+
+fun main() {
+    assert(copy_capture(3) == 3);
+    assert(once_capture(4) == 4);
+}

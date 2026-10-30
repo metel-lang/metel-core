@@ -458,7 +458,7 @@ pub(super) fn construct_call(
             {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0029,
-                    "cannot call a `var` closure through a shared reference",
+                    super::super::closure_uses::VAR_CALL_THROUGH_SHARED_REFERENCE,
                     span,
                 ));
             }

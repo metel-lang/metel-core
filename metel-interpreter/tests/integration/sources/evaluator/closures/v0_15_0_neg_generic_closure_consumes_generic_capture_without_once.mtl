@@ -1,0 +1,8 @@
+// metel-core#1684 (RFC 0134, legality-8): returning a by-value capture of a generic type that is not
+// `Copy` consumes the closure's environment, which needs `once`. Reported where the generic
+// function is written, though it is never called.
+fun run<T>(x: T) {
+    let f := [x] || { x }; // missing `once` qualifier
+}
+
+fun main() { }
