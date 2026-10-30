@@ -1009,11 +1009,6 @@ impl BodyFreezer<'_, '_> {
             },
             Expr::UnaryOp(UnaryOp::Ref | UnaryOp::RefMut, value, _) => {
                 let value = self.expression(value)?;
-                if matches!(value.ty, AbstractType::Closure { .. }) {
-                    return Err(
-                        "borrowed closure ownership contracts are not yet retained".to_string()
-                    );
-                }
                 AbstractExprKind::Borrow {
                     temporary: value.place().is_none(),
                     value: Box::new(value),
