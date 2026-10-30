@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.modules.std-core-auto-import.legality-1"]
+spec = ["spec.modules.std-core-auto-import.legality-1", "spec.modules.paths.legality-2"]

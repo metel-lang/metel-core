@@ -1,6 +1,6 @@
 [options]
 error = ["T0003"]
-spec = ["spec.modules.std-core-auto-import.legality-1"]
+spec = ["spec.modules.std-core-auto-import.legality-1", "spec.modules.paths.legality-2"]
 
 [expect]
 status = "typecheck_error"
