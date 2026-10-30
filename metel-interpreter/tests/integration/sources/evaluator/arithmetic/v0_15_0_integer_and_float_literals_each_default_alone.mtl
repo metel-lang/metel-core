@@ -1,0 +1,9 @@
+// metel-core#1719: separate integer and float literal bindings still default independently.
+fun main() {
+    let k := 10;
+    let f := 1.5;
+    let a := k + 1;
+    let b := f + 2.5;
+    assert(a == 11);
+    assert(b == 4.0);
+}

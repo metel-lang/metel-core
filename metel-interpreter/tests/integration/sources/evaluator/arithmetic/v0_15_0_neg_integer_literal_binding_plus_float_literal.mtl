@@ -1,0 +1,6 @@
+// metel-core#1719: an unannotated integer literal binding and a float literal unify as numeric literal
+// variables, so the program used to type-check and fail at runtime with I0001.
+fun main() {
+    let k := 10;
+    let y := k + 1.5;
+}
