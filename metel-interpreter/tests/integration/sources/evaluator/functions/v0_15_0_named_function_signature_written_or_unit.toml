@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.named-function-declarations.legality-2", "spec.functions.named-function-declarations.dynamics-1"]

@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+spec = ["spec.functions.named-function-declarations.legality-2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "has no return type"

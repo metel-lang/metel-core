@@ -1,0 +1,3 @@
+// metel-core#1713: a private function writes its parameter types, as a `public` one does.
+fun identity(x) { x }
+fun main() { assert(identity(1) == 1); }

@@ -1,14 +1,9 @@
-// Arithmetic and ordering on inferred parameters keep their operation in the
-// abstract body without sampling a concrete operand type (#273).
-fun double(value) {
-    value + value
-}
-
-fun larger(a, b) {
-    if (a < b) { b } else { a }
-}
-
+// Arithmetic and ordering on inferred closure parameters keep their operation in the
+// abstract body without sampling a concrete operand type (#273). A named function writes
+// its parameter types (RFC-0193), so the inferred operand is a closure parameter here.
 fun main() {
+    let double := |value| { value + value };
+    let larger := |a, b| { if (a < b) { b } else { a } };
     assert(double(21) == 42);
     assert(double("ab") == "abab");
     assert(larger(3, 9) == 9);

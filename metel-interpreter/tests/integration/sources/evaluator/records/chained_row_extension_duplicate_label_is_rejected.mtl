@@ -2,7 +2,7 @@
 // time is still rejected by the `!{ host }` bound, with or without a wrapper in between.
 record Req<record R> { data: { ..R } }
 
-fun add_host<record R: !{ host }>(r: Req<..R>, h: String) {
+fun add_host<record R: !{ host }>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
     Req { data = { host = h, ..r.data } }
 }
 

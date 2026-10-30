@@ -3,15 +3,15 @@
 // outer layer, so `host` was reported missing.
 record Req<record R> { data: { ..R } }
 
-fun add_host<record R: !{ host }>(r: Req<..R>, h: String) {
+fun add_host<record R: !{ host }>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
     Req { data = { host = h, ..r.data } }
 }
 
-fun add_port<record R: !{ port }>(r: Req<..R>, p: i64) {
+fun add_port<record R: !{ port }>(r: Req<..R>, p: i64) -> Req<..{ port: i64, ..R }> {
     Req { data = { port = p, ..r.data } }
 }
 
-fun add_tls<record R: !{ tls }>(r: Req<..R>, t: i64) {
+fun add_tls<record R: !{ tls }>(r: Req<..R>, t: i64) -> Req<..{ tls: i64, ..R }> {
     Req { data = { tls = t, ..r.data } }
 }
 

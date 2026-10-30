@@ -1,0 +1,3 @@
+// metel-core#1713 (RFC-0193 section 3): `public` is not valid on a top-level `let`; the message names the fix.
+public let f := |x: i64| x;
+fun main() { }

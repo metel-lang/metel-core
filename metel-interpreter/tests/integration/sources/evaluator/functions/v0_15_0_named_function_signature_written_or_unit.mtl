@@ -1,0 +1,19 @@
+// metel-core#1713 (RFC-0193 legality-2, dynamics-1): a named declaration writes its parameter types and
+// its return type, or returns `()`. The closure the diagnostic suggests is capture-free and `Copy`, so it
+// can be passed by value to several calls.
+struct Box { v: i64 }
+extend Box {
+    fun get(&self) -> i64 { self.v }
+    fun touch(&self) { }
+}
+fun log_all(items: [i64]) { }
+fun double(x: i64) -> i64 { x * 2 }
+let triple := |x: i64| { x * 3 };
+fun apply(f: |i64| -> i64, x: i64) -> i64 { f(x) }
+fun main() {
+    let b := Box { v = 4 };
+    b.touch();
+    log_all([double(1), b.get()]);
+    assert(apply(triple, 1) + apply(triple, 2) == 9);
+    assert(triple(3) == 9);
+}

@@ -1,20 +1,20 @@
-// Test: let-polymorphism — unannotated function parameters
+// Test: let-polymorphism of a generic function
 //
-// When a function has no type annotation on its parameter, the typechecker
-// assigns a fresh type variable and generalizes it into a TypeScheme.
-// Each call site gets a fresh instantiation, so the same function can be
-// used at different types independently.
+// `identity` declares its type parameter, so it is generalized into a TypeScheme
+// (RFC-0193: a named function writes its signature, it does not infer one).
+// Each call site gets a fresh instantiation, so the same function can be used at
+// different types independently.
 //
-// identity has inferred type: ∀?t0. (?t0) -> ?t0
+// identity has type: forall T. (T) -> T
 //
 // At each call site:
-//   a = identity(42)    — instantiates to (i64) -> i64,  a : i64
-//   b = identity(true)  — instantiates to (boolean) -> boolean, b : boolean
-//   c = identity("hi")  — instantiates to (String) -> String, c : String
+//   a = identity(42)    -- instantiates to (i64) -> i64,  a : i64
+//   b = identity(true)  -- instantiates to (boolean) -> boolean, b : boolean
+//   c = identity("hi")  -- instantiates to (String) -> String, c : String
 //
-// The two calls do NOT interfere — they bind different fresh type variables.
+// The two calls do NOT interfere -- they bind different fresh type variables.
 
-fun identity(x) {
+fun identity<T>(x: T) -> T {
     x
 }
 

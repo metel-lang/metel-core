@@ -21,6 +21,6 @@ fun needs_no_drop<T: !Drop>(x: T) -> T {
     return x;
 }
 
-fun bad(d: OnlyDrop) {
+fun bad(d: OnlyDrop) -> OnlyDrop {
     needs_no_drop(d) // ERROR[T0012]
 }

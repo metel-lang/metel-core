@@ -13,6 +13,9 @@
 
 struct Point { x: i64, y: i64 }
 
-fun get_x(p) {
-    p.x  // ERROR[T0002]
+// A named function writes its parameter types (RFC-0193), so the unannotated parameter is a closure's.
+fun main() {
+    let get_x := |p| {
+        p.x  // ERROR[T0002]
+    };
 }

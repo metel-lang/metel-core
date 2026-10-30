@@ -4,6 +4,6 @@
 
 fun need_non_copy<T: !Copy>(x: T) -> i64 { 0 }
 
-fun bad() {
+fun bad() -> i64 {
     need_non_copy([1, 2]) // ERROR[T0012]
 }

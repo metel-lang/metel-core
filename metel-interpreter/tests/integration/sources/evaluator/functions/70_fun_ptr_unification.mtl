@@ -32,7 +32,7 @@ fun test_explicit_annotated_param() {
 }
 
 // Test C: closures from tuple access — verify they are () -> (), not &() -> ()
-fun get_pair() {
+fun get_pair() -> (|| -> (), || -> (), i64) {
     var x := 0;
     let ptr := &var x;
     let ptr1: &&var i64 := &ptr;
@@ -51,7 +51,7 @@ fun test_tuple_closure_type() {
 }
 
 // Test D: nested tuple — mirrors get_closure_sets pattern
-fun get_closures(ptr: &var i64) {
+fun get_closures(ptr: &var i64) -> (|| -> (), || -> ()) {
     let ptr1: &&var i64 := &ptr;
     let ptr2: &&var i64 := &ptr;
     let a := || { **ptr1 += 1; };
@@ -74,7 +74,7 @@ fun test_nested_tuple_into_array() {
 }
 
 // Test E: double-nested tuple access (mirrors 69_nice_closure_abuse pattern)
-fun get_closures2(ptr: &var i64) {
+fun get_closures2(ptr: &var i64) -> (|| -> (), || -> (), || -> i64) {
     let ptr1: &&var i64 := &ptr;
     let ptr2: &&var i64 := &ptr;
     let ptr3: &&var i64 := &ptr;
@@ -84,7 +84,7 @@ fun get_closures2(ptr: &var i64) {
     (a, b, read)
 }
 
-fun get_closure_sets2(ptr: &var i64) {
+fun get_closure_sets2(ptr: &var i64) -> ((|| -> (), || -> (), || -> i64), (|| -> (), || -> (), || -> i64)) {
     let first := get_closures2(ptr);
     let second := get_closures2(ptr);
     (first, second)
@@ -106,7 +106,7 @@ fun test_double_nested_tuple() {
 }
 
 // Test F: exact mirror of test 69 (using `return` syntax and extra unused binding)
-fun get_closures_f(ptr: &var i64) {
+fun get_closures_f(ptr: &var i64) -> (|| -> (), || -> (), || -> i64) {
     let first_ptr: &&var i64 := &ptr;
     let second_ptr: &&var i64 := &ptr;
     let third_ptr: &&var i64 := &ptr;
@@ -116,7 +116,7 @@ fun get_closures_f(ptr: &var i64) {
     return (first_closure, second_closure, third_closure);
 }
 
-fun get_closure_sets_f(ptr: &var i64) {
+fun get_closure_sets_f(ptr: &var i64) -> ((|| -> (), || -> (), || -> i64), (|| -> (), || -> (), || -> i64)) {
     var shared_value := 0;
     let first_closure_set := get_closures_f(ptr);
     let second_closure_set := get_closures_f(ptr);

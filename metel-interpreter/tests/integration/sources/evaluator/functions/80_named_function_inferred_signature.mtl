@@ -1,7 +1,0 @@
-fun double(value) {
-    value + value
-}
-
-fun main() {
-    assert(double(21) == 42);
-}

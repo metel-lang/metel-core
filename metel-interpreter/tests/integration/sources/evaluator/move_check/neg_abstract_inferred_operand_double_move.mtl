@@ -1,13 +1,13 @@
-// An inferred-signature parameter used as an operator operand is still analysed
+// An inferred closure parameter used as an operator operand is still analysed
 // at definition time: the operator only observes it, so the later moves are
-// what the checker must see (#273).
-fun twice_move(v) {
-    let sum := v + v;
-    let a := v;
-    let b := v;
-    sum
-}
-
+// what the checker must see (#273). A named function writes its parameter types
+// (RFC-0193), so the inferred operand is a closure parameter here.
 fun main() {
+    let twice_move := |v| {
+        let sum := v + v;
+        let a := v;
+        let b := v;
+        sum
+    };
     assert(twice_move(1) == 2);
 }
