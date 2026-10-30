@@ -1,0 +1,7 @@
+// metel-core#1715: the type arguments of an imported generic struct stay independent, so a wrong one is
+// still reported against the annotation.
+import lib::Pair;
+
+fun main() {
+    let p: Pair<i64, String> := Pair { first = 5, second = 6 };
+}

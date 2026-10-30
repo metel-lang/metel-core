@@ -8337,6 +8337,12 @@ impl InferContext {
             .collect()
     }
 
+    /// Reserve the variable generator past `var`, so a fresh variable cannot collide with an imported
+    /// declaration's variables (metel-core#1715).
+    pub fn reserve_vars_past(&mut self, var: TypeVar) {
+        self.var_gen.reserve_past(var);
+    }
+
     /// Whether a generic function (or an `extend` with type parameters) is being inferred.
     #[must_use]
     pub fn in_generic_body(&self) -> bool {
