@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.functions.closures.dynamics-5"]
+
+[expect]
+status = "success"
