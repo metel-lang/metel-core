@@ -1,0 +1,11 @@
+// metel-core#1684 (RFC 0153, legality-10): a `var` closure stored in a field is not called through a
+// shared `&` reference. Reported where the generic function is written.
+struct Cell {
+    go: var || -> i64,
+}
+
+fun peek<T: Copy>(c: &Cell, x: T) -> i64 {
+    (c.go)() // error: `var` closure called through a shared reference
+}
+
+fun main() { }

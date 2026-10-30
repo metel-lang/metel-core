@@ -848,7 +848,30 @@ fn infer_expr_inner(
             let callee_ty = infer_expr(callee, ctx, fun_generalizations)?;
             ctx.stamp_row_remainders(span);
             // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
-            let callee_ty = match ctx.solve()?.apply(&callee_ty) {
+            let solved_callee = ctx.solve()?.apply(&callee_ty);
+            // Legality-10: a `var` closure is not called through a shared reference, whether the
+            // callee is itself a `&` to one or sits in a field, element or index reached through a
+            // `&` binding. Construction reports the same, but a generic body is not constructed
+            // until it is instantiated (metel-core#1684); this sees the shapes whose root is a
+            // binding of reference type.
+            let peeled = match &solved_callee {
+                InferType::Reference(inner) | InferType::MutReference(inner) => inner.as_ref(),
+                other => other,
+            };
+            if matches!(
+                peeled,
+                InferType::Fun(.., crate::data::types::CallMutation::Mutating)
+            ) && (matches!(solved_callee, InferType::Reference(_))
+                || callee_chain_root_is_shared_reference(callee, ctx)?)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0029,
+                    super::super::closure_uses::VAR_CALL_THROUGH_SHARED_REFERENCE,
+                    span,
+                ));
+            }
+            // Auto-deref: &(() -> T) and &mut (() -> T) are callable directly.
+            let callee_ty = match solved_callee {
                 InferType::Reference(inner) | InferType::MutReference(inner)
                     if matches!(*inner, InferType::Fun(..)) =>
                 {
@@ -2527,6 +2550,17 @@ fn infer_expr_inner(
             {
                 ctx.record_closure_write_violation(span.clone(), violation);
             }
+            // A listed by-value capture returned as the tail consumes the environment when its type
+            // is not `Copy`; that needs `once` (legality-8).
+            if *call_multiplicity != crate::data::types::CallMultiplicity::Once
+                && let Some(Expr::Ident(tail, _)) = body.tail.as_deref()
+                && captures.iter().any(|capture| {
+                    matches!(capture, crate::data::ast::CaptureSpec::Owned { name, .. } if name == tail)
+                })
+                && let Some(ty) = ctx.lookup(tail)
+            {
+                ctx.record_closure_once_obligation(span.clone(), tail.clone(), ty);
+            }
             ctx.pop_loop_depth(saved_loop_depth);
             constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
@@ -3111,4 +3145,31 @@ fn closure_capture_write_violation(
             name,
             shared_ref: false,
         })
+}
+
+/// Whether a callee written as a field, element or index chain (`c.go`, `t.0`, `a[i]`) is rooted
+/// at a binding whose type is a shared `&` reference.
+fn callee_chain_root_is_shared_reference(
+    callee: &Expr,
+    ctx: &mut InferContext,
+) -> Result<bool, MetelError> {
+    let mut object = match callee {
+        Expr::FieldAccess { object, .. }
+        | Expr::TupleAccess { object, .. }
+        | Expr::Index { object, .. } => object.as_ref(),
+        _ => return Ok(false),
+    };
+    while let Expr::FieldAccess { object: inner, .. }
+    | Expr::TupleAccess { object: inner, .. }
+    | Expr::Index { object: inner, .. } = object
+    {
+        object = inner.as_ref();
+    }
+    let Expr::Ident(name, _) = object else {
+        return Ok(false);
+    };
+    Ok(match ctx.lookup(name) {
+        Some(ty) => matches!(ctx.solve()?.apply(&ty), InferType::Reference(_)),
+        None => false,
+    })
 }

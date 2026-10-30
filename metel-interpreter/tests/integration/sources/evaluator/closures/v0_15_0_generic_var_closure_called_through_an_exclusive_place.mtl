@@ -1,0 +1,24 @@
+// metel-core#1684 (RFC 0153, legality-10): a `var` closure is called through an owned binding or an
+// exclusive `&var`. (Borrowing a closure with `&` inside a generic body is a separate move-check gap,
+// `--move-check` I0011 "borrowed closure ownership contracts are not yet retained", metel-core#1696.)
+struct Cell {
+    go: var || -> i64,
+}
+
+fun through_exclusive<T: Copy>(c: &var Cell, x: T) -> i64 {
+    (c.go)()
+}
+
+fun through_owned<T: Copy>(c: Cell, x: T) -> i64 {
+    var d := c;
+    (d.go)()
+}
+
+fun main() {
+    let n := 0;
+    var a := Cell { go = [n] var || { n := n + 1; n } };
+    assert(through_exclusive(&var a, 1) == 1);
+    let m := 10;
+    let b := Cell { go = [m] var || { m := m + 1; m } };
+    assert(through_owned(b, 1) == 11);
+}

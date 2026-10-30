@@ -1557,7 +1557,7 @@ fn check_impl_with_report(
     // body of a closure that is never called.
     check_unresolved_variant_deferrals(&ctx, &subst)?;
     check_implicit_capture_copy_obligations(&ctx, &subst, current_module_path)?;
-    check_deferred_closure_write_violations(&ctx, &subst, current_module_path)?;
+    check_deferred_closure_checks(&ctx, &subst, current_module_path)?;
     let solve_stats = ctx.solve_stats();
     let solve_ns = solve_after_inference.solve_ns + final_solve_ns;
     let inference_ns = infer_total_ns.saturating_sub(solve_after_inference.solve_ns);
@@ -1641,6 +1641,24 @@ fn capture_has_copy_grant(
     }
 }
 
+/// Aspect assumptions were keyed before later unification; re-key them on the solution so a grant
+/// on a type parameter still applies to its aliases.
+fn rekeyed_assumptions(
+    assumptions: &type_engine::AspectAssumptions,
+    subst: &Substitution,
+) -> type_engine::AspectAssumptions {
+    let mut rekeyed = type_engine::AspectAssumptions::new();
+    for (var, aspects) in assumptions {
+        if let InferType::Var(solved) = subst.apply(&InferType::Var(*var)) {
+            rekeyed
+                .entry(solved)
+                .or_default()
+                .extend(aspects.iter().cloned());
+        }
+    }
+    rekeyed
+}
+
 /// A closure with no capture list may capture only `Copy` locals (spec
 /// legality-6), and whether a type parameter is `Copy` is decided from the bounds in
 /// scope at the definition, never per instantiation. A capture whose type is still
@@ -1658,17 +1676,7 @@ fn check_implicit_capture_copy_obligations(
         if type_engine::free_vars(&resolved).is_empty() {
             continue;
         }
-        // Assumptions were keyed before later unification; re-key them on the
-        // solution so a grant on a parameter still applies to its aliases.
-        let mut assumptions = type_engine::AspectAssumptions::new();
-        for (var, aspects) in &obligation.assumptions {
-            if let InferType::Var(solved) = subst.apply(&InferType::Var(*var)) {
-                assumptions
-                    .entry(solved)
-                    .or_default()
-                    .extend(aspects.iter().cloned());
-            }
-        }
+        let assumptions = rekeyed_assumptions(&obligation.assumptions, subst);
         if !capture_has_copy_grant(ctx, &resolved, current_module, &assumptions) {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0026,
@@ -1683,19 +1691,21 @@ fn check_implicit_capture_copy_obligations(
     Ok(())
 }
 
-/// Legality-25 for closures bound with no annotation, reported after capture classification
-/// (legality-19): a closure that captures a concrete non-`Copy` local with no capture list is
-/// `T0026` first, and construction, which sees the final type, reports it (metel-core#1684).
-fn check_deferred_closure_write_violations(
+/// Legality-8 and legality-25 for closures bound with no annotation, which have no expected function
+/// type to take `once` or `var` from (metel-core#1684). They come after capture classification
+/// (legality-19): a closure that captures a concrete non-`Copy` local with no capture list is `T0026`
+/// first, and construction, which sees the final type, reports it. Within a closure the `once` check
+/// precedes the `var` check, and a capture whose type is concrete is judged by construction too.
+fn check_deferred_closure_checks(
     ctx: &InferContext,
     subst: &Substitution,
     current_module: &[String],
 ) -> Result<(), MetelError> {
-    for (closure_span, violation) in ctx.deferred_closure_write_violations() {
+    for check in ctx.deferred_closure_checks() {
         let classified_first = ctx
             .implicit_capture_obligations()
             .iter()
-            .filter(|obligation| &obligation.closure_span == closure_span)
+            .filter(|obligation| obligation.closure_span == check.span)
             .any(|obligation| {
                 let resolved = subst.apply(&obligation.ty);
                 type_engine::free_vars(&resolved).is_empty()
@@ -1709,11 +1719,26 @@ fn check_deferred_closure_write_violations(
         if classified_first {
             continue;
         }
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0028,
-            violation.message(),
-            closure_span,
-        ));
+        if let Some(obligation) = &check.once {
+            let resolved = subst.apply(&obligation.ty);
+            let assumptions = rekeyed_assumptions(&obligation.assumptions, subst);
+            if !type_engine::free_vars(&resolved).is_empty()
+                && !capture_has_copy_grant(ctx, &resolved, current_module, &assumptions)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0027,
+                    closure_uses::once_required_message(&obligation.name),
+                    &check.span,
+                ));
+            }
+        }
+        if let Some(violation) = &check.write {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0028,
+                violation.message(),
+                &check.span,
+            ));
+        }
     }
     Ok(())
 }

@@ -412,3 +412,13 @@ impl CaptureWriteViolation {
         }
     }
 }
+
+/// Legality-8: a closure that returns a by-value capture by value consumes its environment, which
+/// the closure must say with `once`.
+pub(super) fn once_required_message(name: &str) -> String {
+    format!("closure consumes captured `{name}`; write `once`")
+}
+
+/// Legality-10: a `var` closure is called through an exclusive place, never through a shared `&`.
+pub(super) const VAR_CALL_THROUGH_SHARED_REFERENCE: &str =
+    "cannot call a `var` closure through a shared reference";

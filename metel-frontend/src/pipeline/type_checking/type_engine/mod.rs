@@ -6671,6 +6671,17 @@ pub(crate) struct ImplicitCaptureCopyObligation {
     pub assumptions: AspectAssumptions,
 }
 
+/// The legality-8 and legality-25 checks owed by a closure bound with no annotation, which has no
+/// expected function type to take `once` or `var` from (metel-core#1684).
+#[derive(Debug, Clone)]
+pub(crate) struct DeferredClosureCheck {
+    pub span: Span,
+    /// A capture returned as the tail without `once`: `T0027` if its type is not `Copy`.
+    pub once: Option<ImplicitCaptureCopyObligation>,
+    /// A write to a capture without `var`: `T0028`.
+    pub write: Option<super::closure_uses::CaptureWriteViolation>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct DefinitionImplicitCapture {
     pub name: String,
@@ -6791,9 +6802,12 @@ pub struct InferContext {
     /// span (metel-core#1684). A closure in a position with an expected function type may take
     /// `var` from it, so only the binding that infers the closure with no expected type reports it.
     closure_write_violations: HashMap<Span, super::closure_uses::CaptureWriteViolation>,
-    /// The violations of closures bound with no annotation, in source order, reported after the
+    /// A by-value capture each closure returns as its tail without `once`, keyed by the closure's
+    /// span: whether that consumes the environment depends on the capture's type (metel-core#1684).
+    closure_once_obligations: HashMap<Span, ImplicitCaptureCopyObligation>,
+    /// The checks owed by closures bound with no annotation, in source order, reported after the
     /// capture-classification checks so legality-19's stage order holds.
-    deferred_closure_write_violations: Vec<(Span, super::closure_uses::CaptureWriteViolation)>,
+    deferred_closure_checks: Vec<DeferredClosureCheck>,
     /// The closures whose bodies are being inferred, innermost last: the closure's span, the index
     /// of its own scope in `mono_env`, and the names its capture list rebinds in that scope.
     closure_write_frames: Vec<(Span, usize, HashSet<String>)>,
@@ -6917,7 +6931,8 @@ impl InferContext {
             closure_param_types: HashMap::new(),
             closure_capture_writes: HashMap::new(),
             closure_write_violations: HashMap::new(),
-            deferred_closure_write_violations: Vec::new(),
+            closure_once_obligations: HashMap::new(),
+            deferred_closure_checks: Vec::new(),
             closure_write_frames: Vec::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
@@ -8510,19 +8525,42 @@ impl InferContext {
         self.closure_write_violations.insert(span, violation);
     }
 
-    /// Queue the legality-25 violation recorded for the closure at `span`, if any, to be reported
-    /// once the capture-classification checks have passed.
-    pub(super) fn defer_closure_write_violation(&mut self, span: &Span) {
-        if let Some(violation) = self.closure_write_violations.remove(span) {
-            self.deferred_closure_write_violations
-                .push((span.clone(), violation));
+    /// Record that the closure at `span` returns the by-value capture `name` as its tail without
+    /// `once`. It consumes its environment if the capture's type `ty` is not `Copy`.
+    pub(super) fn record_closure_once_obligation(
+        &mut self,
+        span: Span,
+        name: String,
+        ty: InferType,
+    ) {
+        let assumptions = self.current_aspect_assumptions();
+        self.closure_once_obligations.insert(
+            span.clone(),
+            ImplicitCaptureCopyObligation {
+                closure_span: span,
+                name,
+                ty,
+                assumptions,
+            },
+        );
+    }
+
+    /// Queue the checks recorded for the closure at `span`, if any, to be made once the
+    /// capture-classification checks have passed.
+    pub(super) fn defer_closure_checks(&mut self, span: &Span) {
+        let once = self.closure_once_obligations.remove(span);
+        let write = self.closure_write_violations.remove(span);
+        if once.is_some() || write.is_some() {
+            self.deferred_closure_checks.push(DeferredClosureCheck {
+                span: span.clone(),
+                once,
+                write,
+            });
         }
     }
 
-    pub(super) fn deferred_closure_write_violations(
-        &self,
-    ) -> &[(Span, super::closure_uses::CaptureWriteViolation)] {
-        &self.deferred_closure_write_violations
+    pub(super) fn deferred_closure_checks(&self) -> &[DeferredClosureCheck] {
+        &self.deferred_closure_checks
     }
 
     /// `lookup_for_write` for the receiver of a `&var self` method call, which also records the

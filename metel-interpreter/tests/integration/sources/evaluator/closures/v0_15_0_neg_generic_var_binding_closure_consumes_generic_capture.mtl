@@ -1,0 +1,6 @@
+// metel-core#1684 (RFC 0134, legality-8): the same for a closure bound with `var`.
+fun run<T>(x: T) {
+    var f := [x] || { x }; // missing `once` qualifier
+}
+
+fun main() { }

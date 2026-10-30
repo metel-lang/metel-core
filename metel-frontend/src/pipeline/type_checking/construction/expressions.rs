@@ -151,7 +151,7 @@ fn verify_closure_capture_list(
             }) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0027,
-                    format!("closure consumes captured `{name}`; write `once`"),
+                    super::super::closure_uses::once_required_message(name),
                     span,
                 ));
             }
