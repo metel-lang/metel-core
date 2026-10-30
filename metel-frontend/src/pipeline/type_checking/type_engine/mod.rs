@@ -1963,6 +1963,30 @@ fn validate_literal_bindings(
     span: &Span,
     known_names: &HashMap<TypeVar, String>,
 ) -> Result<(), MetelError> {
+    // An integer literal and a float literal that were unified with each other (`let k := 10; k + 1.5`)
+    // share one free variable and neither is a concrete mismatch yet; they can never both default.
+    let mut integer_classes: HashSet<TypeVar> = HashSet::new();
+    for &var in integer_literal_vars {
+        if let InferType::Var(representative) = subst.apply(&InferType::Var(var)) {
+            integer_classes.insert(representative);
+        }
+    }
+    for &var in float_literal_vars {
+        if let InferType::Var(representative) = subst.apply(&InferType::Var(var))
+            && integer_classes.contains(&representative)
+        {
+            return Err(MetelError::type_error(
+                crate::data::error::TypeErrorCode::T0001,
+                match operator {
+                    Some(op) => format!(
+                        "cannot apply `{op}` to an integer literal and a float literal: cannot unify an integer literal with a float literal"
+                    ),
+                    None => "cannot unify an integer literal with a float literal".to_string(),
+                },
+                span,
+            ));
+        }
+    }
     for &var in integer_literal_vars {
         match subst.apply(&InferType::Var(var)) {
             InferType::Concrete(t) if is_integer_type(&t) => {}

@@ -1,0 +1,6 @@
+// metel-core#1719: the same mismatch through a closure that adds a captured integer literal binding.
+fun main() {
+    let k := 10;
+    let add := |x| { x + k };
+    let a := add(1.5);
+}
