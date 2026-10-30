@@ -6787,6 +6787,13 @@ pub struct InferContext {
     /// keyed by the closure's span (metel-core#1676). Construction joins them with the writes it
     /// finds syntactically, so legality-25's `var` check sees every form.
     closure_capture_writes: HashMap<Span, std::collections::BTreeSet<String>>,
+    /// The first write to a capture that legality-25 rejects in each closure, keyed by the closure's
+    /// span (metel-core#1684). A closure in a position with an expected function type may take
+    /// `var` from it, so only the binding that infers the closure with no expected type reports it.
+    closure_write_violations: HashMap<Span, super::closure_uses::CaptureWriteViolation>,
+    /// The violations of closures bound with no annotation, in source order, reported after the
+    /// capture-classification checks so legality-19's stage order holds.
+    deferred_closure_write_violations: Vec<(Span, super::closure_uses::CaptureWriteViolation)>,
     /// The closures whose bodies are being inferred, innermost last: the closure's span, the index
     /// of its own scope in `mono_env`, and the names its capture list rebinds in that scope.
     closure_write_frames: Vec<(Span, usize, HashSet<String>)>,
@@ -6909,6 +6916,8 @@ impl InferContext {
             closure_return_types: HashMap::new(),
             closure_param_types: HashMap::new(),
             closure_capture_writes: HashMap::new(),
+            closure_write_violations: HashMap::new(),
+            deferred_closure_write_violations: Vec::new(),
             closure_write_frames: Vec::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
@@ -8491,6 +8500,29 @@ impl InferContext {
 
     pub fn exit_closure_writes(&mut self) {
         self.closure_write_frames.pop();
+    }
+
+    pub(super) fn record_closure_write_violation(
+        &mut self,
+        span: Span,
+        violation: super::closure_uses::CaptureWriteViolation,
+    ) {
+        self.closure_write_violations.insert(span, violation);
+    }
+
+    /// Queue the legality-25 violation recorded for the closure at `span`, if any, to be reported
+    /// once the capture-classification checks have passed.
+    pub(super) fn defer_closure_write_violation(&mut self, span: &Span) {
+        if let Some(violation) = self.closure_write_violations.remove(span) {
+            self.deferred_closure_write_violations
+                .push((span.clone(), violation));
+        }
+    }
+
+    pub(super) fn deferred_closure_write_violations(
+        &self,
+    ) -> &[(Span, super::closure_uses::CaptureWriteViolation)] {
+        &self.deferred_closure_write_violations
     }
 
     /// `lookup_for_write` for the receiver of a `&var self` method call, which also records the

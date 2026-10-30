@@ -1,0 +1,13 @@
+// metel-core#1684 (RFC 0153 legality-25): a `&var self` call on a capture whose type is a generic
+// parameter, the form #1676 could not reach (reconstruction runs without inference facts).
+aspect Bump { fun bump(&var self); }
+struct C { n: i64 }
+extend C: Copy;
+extend C: Bump { fun bump(&var self) { self.n := self.n + 1; } }
+
+fun run<T: Bump + Copy>(x: T) {
+    var v := x;
+    let f := || { v.bump(); }; // missing `var` qualifier
+}
+
+fun main() { }

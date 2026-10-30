@@ -381,3 +381,34 @@ pub(super) fn capture_span(capture: &crate::data::ast::CaptureSpec) -> &Span {
         | crate::data::ast::CaptureSpec::Clone { span, .. } => span,
     }
 }
+
+/// Legality-25: a write to a `[&x]` capture asks for `&var`.
+pub(super) fn shared_ref_write_message(name: &str) -> String {
+    format!("`{name}` is captured by shared reference; use `&var {name}`")
+}
+
+/// Legality-25: a write to a by-value capture asks for `var` on the closure.
+pub(super) fn var_required_message(name: &str) -> String {
+    format!(
+        "closure writes captured `{name}`; write `var` (the closure then mutates \
+         its own copy), stop mutating it, or share it with `[&var {name}]`"
+    )
+}
+
+/// A write to a capture that legality-25 rejects, found while inferring the closure.
+#[derive(Debug, Clone)]
+pub struct CaptureWriteViolation {
+    pub name: String,
+    /// A write to a `[&x]` capture (`&var` is needed) rather than to a by-value one (`var` is).
+    pub shared_ref: bool,
+}
+
+impl CaptureWriteViolation {
+    pub(super) fn message(&self) -> String {
+        if self.shared_ref {
+            shared_ref_write_message(&self.name)
+        } else {
+            var_required_message(&self.name)
+        }
+    }
+}
