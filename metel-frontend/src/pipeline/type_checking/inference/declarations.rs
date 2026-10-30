@@ -36,6 +36,9 @@ pub(super) fn infer_decl(
             } else {
                 infer_expr(&ld.value, ctx, fun_generalizations)?
             };
+            if ld.type_ann.is_none() {
+                defer_closure_write_violation(&ld.value, ctx);
+            }
             // RFC-0137 slice 2: a `let n := h.name;` initializer partially moves a
             // struct field, narrowing `h` for the rest of the block.
             ctx.note_consumed_infer(&ld.value);
@@ -137,6 +140,9 @@ pub(super) fn infer_decl(
             } else {
                 infer_expr(&md.value, ctx, fun_generalizations)?
             };
+            if md.type_ann.is_none() {
+                defer_closure_write_violation(&md.value, ctx);
+            }
             ctx.note_consumed_infer(&md.value);
             let bound_ty = if let Some(ann) = &md.type_ann {
                 let declared = ann_to_infer(ann, ctx);
@@ -2916,4 +2922,14 @@ fn param_names_no_fields(ann: Option<&TypeExpr>) -> bool {
         ann,
         Some(TypeExpr::OpenRecordProjection { fields, .. }) if fields.is_empty()
     )
+}
+
+/// A closure bound with no annotation has no expected function type to take `var` from, so a
+/// write to a capture that legality-25 rejects is final (metel-core#1684). It is reported after
+/// the capture-classification checks, in the order legality-19 fixes. A closure passed where a
+/// function type is expected is judged by construction, which knows that type.
+fn defer_closure_write_violation(value: &Expr, ctx: &mut InferContext) {
+    if let Expr::Closure { span, .. } = value {
+        ctx.defer_closure_write_violation(span);
+    }
 }

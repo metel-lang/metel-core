@@ -29,7 +29,7 @@ fn verify_shared_capture_writes(
         {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0028,
-                format!("`{name}` is captured by shared reference; use `&var {name}`"),
+                super::super::closure_uses::shared_ref_write_message(name),
                 span,
             ));
         }
@@ -62,10 +62,7 @@ fn verify_var_for_capture_writes(
         if is_by_value_capture {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0028,
-                format!(
-                    "closure writes captured `{name}`; write `var` (the closure then mutates \
-                     its own copy), stop mutating it, or share it with `[&var {name}]`"
-                ),
+                super::super::closure_uses::var_required_message(name),
                 span,
             ));
         }

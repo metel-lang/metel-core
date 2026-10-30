@@ -1,0 +1,12 @@
+// metel-core#1684 (RFC 0153 legality-25): a closure literal passed where a `var` function type is
+// expected takes `var` from it. The write check at a binding must not reach a closure that has an
+// expected type to take `var` from. (In a generic body this shape is `I0011` under `--move-check`:
+// branch and return coercion facts are not yet retained in abstract bodies, metel-core#1690.)
+fun apply(f: var || -> ()) { }
+
+fun run(x: i64) {
+    var v := x;
+    apply(|| { v := x; });
+}
+
+fun main() { run(1); }

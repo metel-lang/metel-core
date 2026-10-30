@@ -2522,6 +2522,11 @@ fn infer_expr_inner(
             );
             let body_ty = infer_block(body, ctx, fun_generalizations)?;
             ctx.exit_closure_writes();
+            if let Some(violation) =
+                closure_capture_write_violation(captures, params, body, *call_mutation, span, ctx)
+            {
+                ctx.record_closure_write_violation(span.clone(), violation);
+            }
             ctx.pop_loop_depth(saved_loop_depth);
             constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());
             ctx.pop_return_type(saved_ret);
@@ -3045,4 +3050,65 @@ fn infer_qualified_type_member(
         format!("undefined name `{}`", qualified.original.join("::")),
         span,
     ))
+}
+
+/// The first write to a capture that legality-25 rejects in the closure at `span`: a write to a
+/// `[&x]` capture, or a write to a by-value capture (listed, or a free name that is an enclosing
+/// local when there is no list) in a closure not written `var`. A `&var self` call counts as a
+/// write (metel-core#1676). Construction reports the same violations; this finds them while the
+/// definition is inferred, which is the only time a generic body is checked (metel-core#1684).
+fn closure_capture_write_violation(
+    captures: &[crate::data::ast::CaptureSpec],
+    params: &[Param],
+    body: &crate::data::ast::Block,
+    call_mutation: crate::data::types::CallMutation,
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Option<super::super::closure_uses::CaptureWriteViolation> {
+    use super::super::closure_uses::{
+        CaptureWriteViolation, capture_name, collect_closure_body_uses,
+    };
+    let mut bound = params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect();
+    let mut reads = std::collections::BTreeSet::new();
+    let mut writes = std::collections::BTreeSet::new();
+    let mut spans = HashMap::new();
+    collect_closure_body_uses(body, &mut bound, &mut reads, &mut writes, &mut spans);
+    if let Some(method_writes) = ctx.closure_capture_writes().get(span) {
+        writes.extend(method_writes.iter().cloned());
+    }
+    for capture in captures {
+        if let crate::data::ast::CaptureSpec::SharedRef { name, .. } = capture
+            && writes.contains(name)
+        {
+            return Some(CaptureWriteViolation {
+                name: name.clone(),
+                shared_ref: true,
+            });
+        }
+    }
+    if call_mutation == crate::data::types::CallMutation::Mutating {
+        return None;
+    }
+    // A `[&var x]` capture is judged by construction, which words its own diagnostic.
+    let listed: std::collections::BTreeSet<&str> = captures
+        .iter()
+        .filter(|capture| !matches!(capture, crate::data::ast::CaptureSpec::MutRef { .. }))
+        .map(capture_name)
+        .collect();
+    writes
+        .into_iter()
+        .find(|name| {
+            if captures.is_empty() {
+                ctx.has_local_binding(name)
+            } else {
+                listed.contains(name.as_str())
+            }
+        })
+        .map(|name| CaptureWriteViolation {
+            name,
+            shared_ref: false,
+        })
 }

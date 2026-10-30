@@ -1557,6 +1557,7 @@ fn check_impl_with_report(
     // body of a closure that is never called.
     check_unresolved_variant_deferrals(&ctx, &subst)?;
     check_implicit_capture_copy_obligations(&ctx, &subst, current_module_path)?;
+    check_deferred_closure_write_violations(&ctx, &subst, current_module_path)?;
     let solve_stats = ctx.solve_stats();
     let solve_ns = solve_after_inference.solve_ns + final_solve_ns;
     let inference_ns = infer_total_ns.saturating_sub(solve_after_inference.solve_ns);
@@ -1678,6 +1679,41 @@ fn check_implicit_capture_copy_obligations(
                 &obligation.closure_span,
             ));
         }
+    }
+    Ok(())
+}
+
+/// Legality-25 for closures bound with no annotation, reported after capture classification
+/// (legality-19): a closure that captures a concrete non-`Copy` local with no capture list is
+/// `T0026` first, and construction, which sees the final type, reports it (metel-core#1684).
+fn check_deferred_closure_write_violations(
+    ctx: &InferContext,
+    subst: &Substitution,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for (closure_span, violation) in ctx.deferred_closure_write_violations() {
+        let classified_first = ctx
+            .implicit_capture_obligations()
+            .iter()
+            .filter(|obligation| &obligation.closure_span == closure_span)
+            .any(|obligation| {
+                let resolved = subst.apply(&obligation.ty);
+                type_engine::free_vars(&resolved).is_empty()
+                    && !capture_has_copy_grant(
+                        ctx,
+                        &resolved,
+                        current_module,
+                        &type_engine::AspectAssumptions::new(),
+                    )
+            });
+        if classified_first {
+            continue;
+        }
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0028,
+            violation.message(),
+            closure_span,
+        ));
     }
     Ok(())
 }

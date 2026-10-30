@@ -1,0 +1,7 @@
+// metel-core#1684 (RFC 0153 legality-25): a listed by-value capture written in a generic body.
+fun run<T: Copy>(x: T) {
+    var v := x;
+    let f := [v, x] || { v := x; }; // missing `var` qualifier
+}
+
+fun main() { }
