@@ -839,6 +839,9 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
             if ctx.is_overloaded(&fun.name) {
                 continue;
             }
+            // RFC-0195: a hoisted local `fun` is an item, not a local value of the enclosing
+            // function, so a nested function may still name it.
+            ctx.mark_local_fun_item(&fun.name);
             // Native functions have a concrete annotated signature and no body;
             // bind it eagerly so forward references resolve. Errors here surface
             // again (deterministically) in infer_fun_decl.

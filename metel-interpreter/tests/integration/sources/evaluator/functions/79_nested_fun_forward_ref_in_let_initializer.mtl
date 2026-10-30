@@ -20,11 +20,12 @@ fun call_as_bare_statement_no_let_var() -> i64 {
     h()
 }
 
-// Same shape with a var present -- the new fallback path, via a bare statement.
+// Same shape with a var present -- the new fallback path, via a bare statement. A local `fun`
+// does not capture (RFC-0195), so the variable is passed as a `&var` parameter.
 fun call_as_bare_statement_with_var() -> i64 {
     var hit := 0;
-    i();
-    fun i() { hit := 11; }
+    i(&var hit);
+    fun i(h: &var i64) { *h := 11; }
     hit
 }
 

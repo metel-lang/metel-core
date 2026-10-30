@@ -1,0 +1,6 @@
+// metel-core#1708 / #1714: the generic form is the same error as the non-generic one, not `I0010`.
+fun main() {
+    var n := 0;
+    fun bump<T>(x: T) -> T { n += 1; x } // `n` is a local of `main`
+    bump(1);
+}

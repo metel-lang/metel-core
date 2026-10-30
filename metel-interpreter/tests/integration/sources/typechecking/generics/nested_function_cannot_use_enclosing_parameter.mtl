@@ -1,0 +1,8 @@
+// Negative (RFC-0195, amending RFC-0173 D1): a nested function does not see an enclosing
+// parameter. A closure does, as an opaque value (`rigid_closure_captures_enclosing_parameter`).
+fun pick<T>(value: T) -> i64 {
+    fun read<U>(_unused: U) -> i64 { value } // ERROR[T0003]
+    read(())
+}
+
+fun main() { pick(1); }

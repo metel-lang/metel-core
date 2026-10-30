@@ -1,0 +1,6 @@
+// metel-core#1714: a local `fun` does not see the enclosing function's type parameters.
+fun outer<T: Copy>(x: T) -> T {
+    fun inner(y: T) -> T { y } // declare `<T>` on `inner`
+    inner(x)
+}
+fun main() { outer(3); }

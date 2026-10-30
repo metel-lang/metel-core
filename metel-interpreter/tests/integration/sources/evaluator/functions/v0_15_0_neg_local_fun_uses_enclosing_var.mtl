@@ -1,0 +1,6 @@
+// metel-core#1714 (RFC-0195 local-functions.legality-1): a local `fun` is an item and does not capture.
+fun main() {
+    var n := 0;
+    fun bump() { n += 1; } // `n` is a local of `main`
+    bump();
+}

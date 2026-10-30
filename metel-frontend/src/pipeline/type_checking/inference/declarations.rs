@@ -754,6 +754,72 @@ fn collect_row_view_consumes(actual: &InferType, expected: &InferType, out: &mut
     }
 }
 
+/// RFC-0195: a `fun` declared inside another function is an item, not a value with an
+/// environment. Its body does not see the locals of the enclosing function (parameters,
+/// `let`/`var` bindings, `self`, a closure's captures) and its signature does not see the
+/// enclosing function's type parameters. Naming one is `T0003`; the closure is the fix.
+fn reject_enclosing_names(fun: &FunDecl, ctx: &InferContext) -> Result<(), MetelError> {
+    let own_generics: HashSet<&str> = fun.generics.iter().map(|g| g.name.as_str()).collect();
+    let mut outer = ctx.enclosing_type_param_names();
+    outer.retain(|name| !own_generics.contains(name));
+    let enclosing = ctx.enclosing_fun_name().unwrap_or("the enclosing function");
+    let mut names: Vec<&str> = outer.iter().copied().collect();
+    names.sort_unstable();
+    for name in names {
+        let single = HashSet::from([name]);
+        let in_signature = fun
+            .params
+            .iter()
+            .filter_map(|p| p.type_ann.as_ref())
+            .chain(fun.return_type.as_ref())
+            .any(|te| super::mentions_type_param(te, &single));
+        if in_signature {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "`{name}` is a type parameter of `{enclosing}`; declare `<{name}>` on `{}`",
+                    fun.name
+                ),
+                &fun.span,
+            ));
+        }
+    }
+    if fun.native.is_some() {
+        return Ok(());
+    }
+    let mut bound: std::collections::BTreeSet<String> =
+        fun.params.iter().map(|p| p.name.clone()).collect();
+    let mut reads = std::collections::BTreeSet::new();
+    let mut writes = std::collections::BTreeSet::new();
+    let mut spans = HashMap::new();
+    super::super::closure_uses::collect_closure_body_uses(
+        &fun.body,
+        &mut bound,
+        &mut reads,
+        &mut writes,
+        &mut spans,
+    );
+    for name in reads.union(&writes) {
+        if ctx.is_enclosing_local_value(name) {
+            let span = spans.get(name).unwrap_or(&fun.span);
+            let capture = if writes.contains(name) {
+                format!("[&var {name}] var")
+            } else {
+                format!("[{name}]")
+            };
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0003,
+                format!(
+                    "`{}` is a function and cannot use `{name}`, a local of `{enclosing}`; bind a closure that captures it (`let {} := {capture} || {{ ... }};`) or pass `{name}` as a parameter",
+                    fun.name, fun.name
+                ),
+                span,
+            ));
+        }
+    }
+    Ok(())
+}
+
 // Exhaustive match over every AST/type-system variant; splitting it up would
 // scatter one coherent dispatch table across many small functions with no
 // real gain in clarity.
@@ -764,6 +830,7 @@ pub(super) fn infer_fun_decl(
     ctx: &mut InferContext,
     fun_generalizations: &mut Vec<FunGeneralization>,
 ) -> Result<(), MetelError> {
+    reject_enclosing_names(fun, ctx)?;
     // Native functions have no Metel body to infer. Validate and record their
     // annotated signature for the construction pass; dispatch is by NativeKey.
     if fun.native.is_some() {
@@ -1055,6 +1122,7 @@ pub(super) fn infer_fun_decl(
     let env_fvs = ctx.env_free_vars();
 
     ctx.push_scope();
+    ctx.enter_enclosing_fun(&fun.name);
     let saved_flow = ctx.flow_enter_body();
     for (param, pt) in fun.params.iter().zip(param_types.iter()) {
         ctx.bind_mono(&param.name, pt.clone(), false);
@@ -1115,6 +1183,7 @@ pub(super) fn infer_fun_decl(
     let body_assoc_log = ctx.take_recorded_assoc_projections();
     ctx.restore_assoc_projections(saved_assoc_memo, saved_assoc_log);
     ctx.flow_exit_body(saved_flow);
+    ctx.leave_enclosing_fun();
     ctx.pop_scope();
 
     let fun_ty = InferType::fun(param_types, ret_ty);
@@ -2135,6 +2204,7 @@ pub(super) fn infer_impl_method(
     let method_row_view_checkpoint = ctx.row_view_consume_checkpoint();
     if method.native.is_none() {
         ctx.push_scope();
+        ctx.enter_enclosing_fun(&method.name);
         let saved_flow = ctx.flow_enter_body();
         for (p, pt) in method.params.iter().zip(param_types.iter()) {
             let is_mutable =
@@ -2181,6 +2251,7 @@ pub(super) fn infer_impl_method(
         ctx.swap_type_params(saved_type_params);
         ctx.restore_aspect_type_arguments(saved_aspect_arguments);
         ctx.flow_exit_body(saved_flow);
+        ctx.leave_enclosing_fun();
         ctx.pop_scope();
     }
     let body_assoc_log = ctx.take_recorded_assoc_projections();
@@ -2834,6 +2905,7 @@ pub(super) fn infer_default_aspect_method(
         .ok_or_else(|| MetelError::internal("missing aspect default body"))?;
 
     ctx.push_scope();
+    ctx.enter_enclosing_fun(&method.name);
     let saved_flow = ctx.flow_enter_body();
     for (p, pt) in method.params.iter().zip(param_types.iter()) {
         let is_mutable =
@@ -2847,6 +2919,7 @@ pub(super) fn infer_default_aspect_method(
     ctx.pop_return_type(saved_ret);
     ctx.swap_type_params(saved_type_params);
     ctx.flow_exit_body(saved_flow);
+    ctx.leave_enclosing_fun();
     ctx.pop_scope();
 
     let solved = ctx.solve()?;
