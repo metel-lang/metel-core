@@ -1776,6 +1776,24 @@ fn infer_expr_inner(
                 if let InferType::Fun(method_params, ..) = &method_ty {
                     note_closure_arguments(args, method_params.get(1..).unwrap_or_default(), ctx);
                 }
+                // Each argument is judged against its parameter with the coercing expected-type
+                // constraint, as for a function call and an array method, so an unqualified closure
+                // takes `once` / `var` from a function-typed parameter (metel-core#1699). Unifying
+                // the whole method type would require the written qualifiers to match exactly.
+                if let InferType::Fun(method_params, method_ret, ..) = &method_ty
+                    && method_params.len().saturating_sub(1) == arg_tys.len()
+                {
+                    ctx.add_constraint(
+                        method_params[0].clone(),
+                        receiver_ty_for_method,
+                        span.clone(),
+                    );
+                    for (arg_ty, param) in arg_tys.iter().zip(method_params.iter().skip(1)) {
+                        ctx.add_expected_constraint(arg_ty.clone(), param.clone(), span.clone());
+                    }
+                    ctx.add_constraint(ret_var.clone(), method_ret.as_ref().clone(), span.clone());
+                    return Ok(ret_var);
+                }
                 let expected = InferType::fun(
                     std::iter::once(receiver_ty_for_method)
                         .chain(arg_tys)

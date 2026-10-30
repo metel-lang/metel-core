@@ -1,0 +1,22 @@
+// metel-core#1699 (closures.legality-18): an unqualified closure literal in a typed position takes its `once` / `var`
+// from the expected type. That held for a function argument but not for a method argument, which was judged by
+// unifying the whole method type and required the written qualifiers to match.
+struct S { n: i64 }
+
+extend S {
+    fun each_var(&self, f: var || -> ()) { f(); }
+    fun once_run(&self, f: once || -> ()) { f(); }
+    fun each_read(&self, f: || -> ()) { f(); }
+}
+
+fun main() {
+    var v := 0;
+    let s := S { n = 0 };
+    s.each_var([&var v] || { v := 2; });
+    assert(v == 2);
+
+    let text := "owned".to_string();
+    s.once_run([text] || { let moved := text; });
+
+    s.each_read(|| { });
+}
