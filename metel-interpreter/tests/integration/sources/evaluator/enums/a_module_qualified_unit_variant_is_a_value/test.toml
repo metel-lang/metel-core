@@ -2,7 +2,7 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
-spec = ["spec.modules.paths.legality-1"]
+spec = ["spec.modules.paths.legality-1", "spec.modules.paths.legality-2"]
 
 [expect]
 status = "success"

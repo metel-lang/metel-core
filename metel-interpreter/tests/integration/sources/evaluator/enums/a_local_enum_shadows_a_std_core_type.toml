@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1"]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1", "spec.modules.std-core-auto-import.legality-2"]
