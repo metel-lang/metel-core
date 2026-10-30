@@ -2745,6 +2745,46 @@ fn check_all_fields_present(
     }
 }
 
+/// Substitute a struct's declared type parameters in `ty` by `args` in one step. Going through
+/// variables that nothing else uses keeps a declared variable and an argument that share a number
+/// from chaining into each other (metel-core#1715).
+fn substitute_declared_parameters(
+    ctx: &mut InferContext,
+    params: &[TypeVar],
+    ty: &InferType,
+    args: &[InferType],
+) -> InferType {
+    reserve_past_declared(ctx, params, std::iter::once(ty).chain(args.iter()));
+    let temporaries: Vec<InferType> = params.iter().map(|_| ctx.fresh_var()).collect();
+    let mut to_temporary = Substitution::new();
+    let mut to_argument = Substitution::new();
+    for ((&param, temporary), arg) in params.iter().zip(&temporaries).zip(args) {
+        to_temporary.bind(param, temporary.clone());
+        if let InferType::Var(temp) = temporary {
+            to_argument.bind(*temp, arg.clone());
+        }
+    }
+    to_argument.apply(&to_temporary.apply(ty))
+}
+
+/// Reserve the context's variable generator past the declared type parameters and the variables
+/// of the types that mention them, so fresh variables minted next cannot reuse one of them.
+fn reserve_past_declared<'a>(
+    ctx: &mut InferContext,
+    params: &[TypeVar],
+    types: impl Iterator<Item = &'a InferType>,
+) {
+    let highest = params
+        .iter()
+        .copied()
+        .chain(types.flat_map(free_vars))
+        .map(|var| var.0)
+        .max();
+    if let Some(highest) = highest {
+        ctx.reserve_vars_past(TypeVar(highest));
+    }
+}
+
 fn infer_struct_literal(
     struct_name: String,
     symbol_id: Option<crate::identity::symbols::SymbolId>,
@@ -2786,6 +2826,11 @@ fn infer_struct_literal(
     let type_params = ctx.get_struct_type_params(&struct_name).cloned();
     let mut remap: HashMap<TypeVar, InferType> = HashMap::new();
     if let Some(ref params) = type_params {
+        // The declared variables of a struct imported from another module come from that module's
+        // generator and can sit in this module's range. A fresh variable numbered like another
+        // parameter would make the remap below a chain (`A -> v19`, `B -> v20` read as `A -> v20`),
+        // so reserve past every declared variable first (metel-core#1715).
+        reserve_past_declared(ctx, params, expected_fields.iter().map(|field| &field.ty));
         // #266: tag each fresh var with the declared generic parameter it
         // stands in for (e.g. `Pair<A, B>`'s `A`), so a diagnostic mentioning
         // this value's type can show `A` instead of an anonymous placeholder.
@@ -3038,11 +3083,12 @@ fn infer_field_assign_type(
     ctx.record_definition_nominal_field(target_span.clone(), field_entry.id);
     let raw_ty = field_entry.ty.clone();
     if let Some(type_params) = resolved_type_params {
-        let mut remap = Substitution::new();
-        for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
-            remap.bind(tp, arg.clone());
-        }
-        Ok(remap.apply(&raw_ty))
+        Ok(substitute_declared_parameters(
+            ctx,
+            &type_params,
+            &raw_ty,
+            &type_args,
+        ))
     } else {
         Ok(raw_ty)
     }

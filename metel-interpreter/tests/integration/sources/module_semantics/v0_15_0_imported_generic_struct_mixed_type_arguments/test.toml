@@ -1,0 +1,8 @@
+runner = "full_pipeline"
+prelude = "default"
+
+[options]
+spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1"]
+
+[expect]
+status = "success"
