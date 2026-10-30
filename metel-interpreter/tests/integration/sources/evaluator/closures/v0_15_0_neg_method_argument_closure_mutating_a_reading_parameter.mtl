@@ -1,0 +1,10 @@
+// metel-core#1699: a method argument is judged like a function argument, so a closure that writes a capture is
+// still rejected where the parameter is a reading function type (T0028), and is not given `var` by it.
+struct S { n: i64 }
+extend S { fun each_read(&self, f: || -> ()) { f(); } }
+
+fun main() {
+    var v := 0;
+    let s := S { n = 0 };
+    s.each_read(|| { v := 1; });
+}
