@@ -84,9 +84,9 @@ fn render_type(t: &TypeExpr) -> String {
         // same AST node (grammar.pest's own never_type comment says so) --
         // the doc always spells it `!`, so that's what's rendered here
         // regardless of which the source used.
-        TypeExpr::Named(name, args) if name == "Never" && args.is_empty() => "!".to_string(),
-        TypeExpr::Named(name, args) if args.is_empty() => name.clone(),
-        TypeExpr::Named(name, args) => {
+        TypeExpr::Named(name, args, _) if name == "Never" && args.is_empty() => "!".to_string(),
+        TypeExpr::Named(name, args, _) if args.is_empty() => name.clone(),
+        TypeExpr::Named(name, args, _) => {
             format!(
                 "{name}<{}>",
                 args.iter().map(render_type).collect::<Vec<_>>().join(", ")
@@ -228,7 +228,7 @@ fn extend_methods(decls: &[Decl], type_name: &str, aspect_name: Option<&str>) ->
         .iter()
         .filter_map(|d| match d {
             Decl::Impl(ImplBlock {
-                target_type: TypeExpr::Named(name, _),
+                target_type: TypeExpr::Named(name, _, _),
                 aspect_name: a,
                 methods,
                 ..

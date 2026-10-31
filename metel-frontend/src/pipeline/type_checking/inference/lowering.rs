@@ -80,13 +80,14 @@ fn lower_impl_aspect_param_type(
                     span: span.clone(),
                 }],
             });
-            TypeExpr::Named(anon_name, vec![])
+            TypeExpr::Named(anon_name, vec![], span.clone().into())
         }
-        TypeExpr::Named(name, args) => TypeExpr::Named(
+        TypeExpr::Named(name, args, span) => TypeExpr::Named(
             name.clone(),
             args.iter()
                 .map(|arg| lower_impl_aspect_param_type(arg, counter, extra_generics))
                 .collect(),
+            span.clone(),
         ),
         TypeExpr::Tuple(items) => TypeExpr::Tuple(
             items
@@ -336,7 +337,7 @@ fn expand_impl_defaults(
     // A record target (RFC-0121 §3) has no nominal type to pre-register a
     // default against either, so it takes the same expansion.
     let generic_target = !ib.generics.is_empty()
-        || matches!(&ib.target_type, TypeExpr::Named(_, args) if !args.is_empty())
+        || matches!(&ib.target_type, TypeExpr::Named(_, args, _) if !args.is_empty())
         || matches!(
             &ib.target_type,
             TypeExpr::Record(_) | TypeExpr::OpenRecord(..)
@@ -934,19 +935,21 @@ fn lower_projections_in_type(
 ) -> TypeExpr {
     let go = |t: &TypeExpr| lower_projections_in_type(t, generics, fallback_span);
     match te {
-        TypeExpr::Named(name, args) if args.is_empty() => {
+        TypeExpr::Named(name, args, name_span) if args.is_empty() => {
             if let Some((base, assoc)) = name.split_once("::")
                 && generics.contains(base)
             {
                 return TypeExpr::Projection {
-                    base: Box::new(TypeExpr::Named(base.to_string(), vec![])),
+                    base: Box::new(TypeExpr::Named(base.to_string(), vec![], name_span.clone())),
                     assoc_name: assoc.to_string(),
                     span: fallback_span.clone(),
                 };
             }
             te.clone()
         }
-        TypeExpr::Named(name, args) => TypeExpr::Named(name.clone(), args.iter().map(go).collect()),
+        TypeExpr::Named(name, args, span) => {
+            TypeExpr::Named(name.clone(), args.iter().map(go).collect(), span.clone())
+        }
         TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => TypeExpr::Record(
@@ -1065,10 +1068,12 @@ fn substitute_type_params(
 ) -> TypeExpr {
     let go = |t: &TypeExpr| substitute_type_params(t, subst);
     match ty {
-        TypeExpr::Named(name, args) if args.is_empty() => subst
+        TypeExpr::Named(name, args, _) if args.is_empty() => subst
             .get(name.as_str())
             .map_or_else(|| ty.clone(), |replacement| (*replacement).clone()),
-        TypeExpr::Named(name, args) => TypeExpr::Named(name.clone(), args.iter().map(go).collect()),
+        TypeExpr::Named(name, args, span) => {
+            TypeExpr::Named(name.clone(), args.iter().map(go).collect(), span.clone())
+        }
         TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => {
             TypeExpr::Record(fields.iter().map(|(n, t)| (n.clone(), go(t))).collect())
@@ -1096,7 +1101,7 @@ fn substitute_type_params(
         // associated type the bare spelling does
         TypeExpr::Projection {
             base, assoc_name, ..
-        } if matches!(base.as_ref(), TypeExpr::Named(n, a) if n == "Self" && a.is_empty())
+        } if matches!(base.as_ref(), TypeExpr::Named(n, a, _) if n == "Self" && a.is_empty())
             && subst.contains_key(assoc_name.as_str()) =>
         {
             (*subst[assoc_name.as_str()]).clone()

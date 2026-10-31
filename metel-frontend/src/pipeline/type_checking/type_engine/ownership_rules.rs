@@ -25,7 +25,7 @@ impl TypeDefinitionRegistry {
         if !ordinary_where_clause(implementation) || !implementation.aspect_type_args.is_empty() {
             return None;
         }
-        let TypeExpr::Named(_, arguments) = &implementation.target_type else {
+        let TypeExpr::Named(_, arguments, _) = &implementation.target_type else {
             return None;
         };
         let count = self
@@ -43,7 +43,7 @@ impl TypeDefinitionRegistry {
         let mut used = HashSet::new();
         let mut conditions = Vec::new();
         for argument in arguments {
-            let TypeExpr::Named(name, inner) = argument else {
+            let TypeExpr::Named(name, inner, _) = argument else {
                 return None;
             };
             if !inner.is_empty() || !used.insert(name) {
@@ -89,7 +89,7 @@ impl TypeDefinitionRegistry {
         module: &[String],
         bound: &Bound,
     ) -> Option<(SymbolId, Polarity)> {
-        let BoundHead::Aspect(TypeExpr::Named(name, arguments)) = &bound.head else {
+        let BoundHead::Aspect(TypeExpr::Named(name, arguments, _)) = &bound.head else {
             return None;
         };
         if !arguments.is_empty() || !bound.assoc_bindings.is_empty() {

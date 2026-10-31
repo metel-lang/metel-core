@@ -3166,7 +3166,11 @@ fn parse_type_expr(
         Rule::unit_type => Ok(TypeExpr::Unit),
         // RFC-0078: `!` lowers to the same AST shape the `Never` identifier
         // spelling already produces, reusing all existing `Never` machinery.
-        Rule::never_type => Ok(TypeExpr::Named("Never".to_string(), vec![])),
+        Rule::never_type => Ok(TypeExpr::Named(
+            "Never".to_string(),
+            vec![],
+            Span::of(&pair, filename).into(),
+        )),
         Rule::tuple_type => {
             let elems = pair
                 .into_inner()
@@ -3303,6 +3307,7 @@ fn parse_type_expr(
             let path_pair = inner
                 .next()
                 .ok_or_else(|| MetelError::internal("named_type: expected name"))?;
+            let name_span = Span::of(&path_pair, filename);
             let name = collect_path_components(path_pair)?.join("::");
             let mut args = vec![];
             for p in inner {
@@ -3343,7 +3348,7 @@ fn parse_type_expr(
                     }
                 }
             }
-            Ok(TypeExpr::Named(name, args))
+            Ok(TypeExpr::Named(name, args, name_span.into()))
         }
         Rule::record_projection_type => {
             let span = Span::of(&pair, filename);
@@ -3646,6 +3651,7 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                         head = Some(BoundHead::Row(parse_row_bound(first, filename)?));
                     }
                     Rule::type_path => {
+                        let name_span = Span::of(&first, filename);
                         let name = collect_path_components(first)?.join("::");
                         let mut args = vec![];
                         for arg in inner.filter(|q| q.as_rule() == Rule::bound_arg) {
@@ -3678,7 +3684,11 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                                 }
                             }
                         }
-                        head = Some(BoundHead::Aspect(TypeExpr::Named(name, args)));
+                        head = Some(BoundHead::Aspect(TypeExpr::Named(
+                            name,
+                            args,
+                            name_span.into(),
+                        )));
                     }
                     r => {
                         return Err(MetelError::internal(format!(

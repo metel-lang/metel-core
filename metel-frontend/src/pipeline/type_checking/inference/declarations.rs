@@ -528,7 +528,7 @@ pub(super) fn infer_decl(
 pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
     match te {
         TypeExpr::ImplAspect { .. } => true,
-        TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_impl_aspect),
+        TypeExpr::Named(_, args, _) => args.iter().any(type_expr_contains_impl_aspect),
         TypeExpr::Tuple(elems) => elems.iter().any(type_expr_contains_impl_aspect),
         TypeExpr::Record(fields) => fields
             .iter()
@@ -577,21 +577,22 @@ pub(super) fn rewrite_impl_aspect_returns(
     replacements: &mut Vec<(String, String)>,
 ) -> TypeExpr {
     match te {
-        TypeExpr::ImplAspect { bound, .. } => {
+        TypeExpr::ImplAspect { bound, span, .. } => {
             let aspect_name = match bound.as_ref() {
-                TypeExpr::Named(name, _) => name.clone(),
+                TypeExpr::Named(name, _, _) => name.clone(),
                 _ => String::new(),
             };
             let placeholder = format!("_OpaqueRet{counter}");
             *counter += 1;
             replacements.push((placeholder.clone(), aspect_name));
-            TypeExpr::Named(placeholder, vec![])
+            TypeExpr::Named(placeholder, vec![], span.clone().into())
         }
-        TypeExpr::Named(name, args) => TypeExpr::Named(
+        TypeExpr::Named(name, args, span) => TypeExpr::Named(
             name.clone(),
             args.iter()
                 .map(|a| rewrite_impl_aspect_returns(a, counter, replacements))
                 .collect(),
+            span.clone(),
         ),
         TypeExpr::Tuple(elems) => TypeExpr::Tuple(
             elems
@@ -767,7 +768,7 @@ fn collect_polarized_aspect_arguments<'a>(
             if bound.polarity != polarity {
                 continue;
             }
-            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(aspect, args)) = &bound.head
+            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(aspect, args, _)) = &bound.head
             else {
                 continue;
             };
@@ -909,7 +910,7 @@ fn names_open_row(te: &TypeExpr) -> bool {
         TypeExpr::OpenRecord(..) | TypeExpr::OpenRecordProjection { .. } | TypeExpr::RowArg(_) => {
             true
         }
-        TypeExpr::Named(_, args) => args.iter().any(names_open_row),
+        TypeExpr::Named(_, args, _) => args.iter().any(names_open_row),
         TypeExpr::Tuple(items) => items.iter().any(names_open_row),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
@@ -1099,7 +1100,7 @@ pub(super) fn infer_fun_decl(
             span: proj_span,
             ..
         } = te
-            && let TypeExpr::Named(ref n, _) = **base
+            && let TypeExpr::Named(ref n, _, _) = **base
             && let Some(&base_tv) = generic_map.get(n.as_str())
         {
             // Find the aspect(s) that declare this assoc type.
@@ -1770,7 +1771,7 @@ pub(super) fn infer_impl_method(
 ) -> Result<(), MetelError> {
     let array_target_generic_name = match &ib.target_type {
         TypeExpr::Array(inner) => match inner.as_ref() {
-            TypeExpr::Named(name, args) if args.is_empty() => ib
+            TypeExpr::Named(name, args, _) if args.is_empty() => ib
                 .generics
                 .iter()
                 .find(|gp| gp.name == *name)
@@ -1784,7 +1785,7 @@ pub(super) fn infer_impl_method(
     // than manufacturing a Named("T") placeholder: the abstract-body handoff
     // must preserve its bound facts without looking the spelling up later.
     let structural_target_generic_name = match &ib.target_type {
-        TypeExpr::Named(name, arguments)
+        TypeExpr::Named(name, arguments, _)
             if arguments.is_empty()
                 && ib.generics.iter().any(|generic| {
                     !generic.is_row && !generic.is_record && generic.name == *name
@@ -1888,7 +1889,7 @@ pub(super) fn infer_impl_method(
     // the body, but the scheme built afterwards needs them too.
     let mut impl_row_bounds: HashMap<TypeVar, Vec<GenericBound>> = HashMap::new();
     if ib.generics.iter().any(|g| g.is_row) {
-        if let (TypeExpr::Named(_, target_args), Some(names)) = (
+        if let (TypeExpr::Named(_, target_args, _), Some(names)) = (
             &ib.target_type,
             ctx.struct_generic_names_for(target_name).cloned(),
         ) {
@@ -1968,7 +1969,7 @@ pub(super) fn infer_impl_method(
     let mut enclosing_declared: Vec<(String, TypeVar)> = Vec::new();
     if let Some(names) = ctx.struct_generic_names_for(target_name).cloned() {
         let target_args = match &ib.target_type {
-            TypeExpr::Named(_, args) => Some(args.as_slice()),
+            TypeExpr::Named(_, args, _) => Some(args.as_slice()),
             _ => None,
         };
         for (i, name) in names.iter().enumerate() {
@@ -1977,7 +1978,7 @@ pub(super) fn infer_impl_method(
             };
             let target_names_parameter = target_args.is_none_or(|args| {
                 args.is_empty()
-                    || matches!(args.get(i), Some(TypeExpr::Named(arg, inner))
+                    || matches!(args.get(i), Some(TypeExpr::Named(arg, inner, _))
                         if inner.is_empty() && arg == name)
             });
             if target_names_parameter {
@@ -2011,8 +2012,13 @@ pub(super) fn infer_impl_method(
             .cloned()
             .unwrap_or_default()
     };
-    let structural_self_type_expr = array_target_generic_name
-        .map(|name| TypeExpr::Array(Box::new(TypeExpr::Named(name.to_string(), vec![]))));
+    let structural_self_type_expr = array_target_generic_name.map(|name| {
+        TypeExpr::Array(Box::new(TypeExpr::Named(
+            name.to_string(),
+            vec![],
+            crate::data::ast::Span::new(0, 0, "").into(),
+        )))
+    });
     let synth = super::super::registry::synth_generics_for_impl(
         &generic_names_for_impl,
         &super::super::registry::impl_generics_with_row_aliases(ib, &generic_names_for_impl),
@@ -2119,7 +2125,7 @@ pub(super) fn infer_impl_method(
             span: proj_span,
             ..
         } = te
-            && let TypeExpr::Named(ref n, _) = **base
+            && let TypeExpr::Named(ref n, _, _) = **base
             && let Some(&base_tv) = generic_map.get(n.as_str())
         {
             let mut matching_aspects: Vec<String> = Vec::new();
@@ -2847,12 +2853,13 @@ pub(super) fn definition_body_scheme(
 
 pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr {
     match te {
-        TypeExpr::Named(name, args) if name == "Self" && args.is_empty() => replacement.clone(),
-        TypeExpr::Named(name, args) => TypeExpr::Named(
+        TypeExpr::Named(name, args, _) if name == "Self" && args.is_empty() => replacement.clone(),
+        TypeExpr::Named(name, args, span) => TypeExpr::Named(
             name.clone(),
             args.iter()
                 .map(|arg| substitute_structural_self(arg, replacement))
                 .collect(),
+            span.clone(),
         ),
         TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(
@@ -2975,7 +2982,7 @@ pub(super) fn infer_default_aspect_method(
     // does for the pre-registered signature -- this is the SEPARATE conversion that
     // actually type-checks the default body itself against its declared return type.
     let te_to_infer = |te: &TypeExpr, ctx: &InferContext| -> InferType {
-        if let TypeExpr::Named(n, args) = te
+        if let TypeExpr::Named(n, args, _) = te
             && args.is_empty()
             && ctx
                 .registry()

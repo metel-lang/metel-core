@@ -479,7 +479,7 @@ impl Cx<'_> {
             TypeExpr::RecordProjection { path, fields, span } => {
                 self.projection(path, fields, span, field_of, self_target)
             }
-            TypeExpr::Named(name, args) => {
+            TypeExpr::Named(name, args, _) => {
                 if !self.is_type_name(name, generics, self_allowed, local_types) {
                     return Err(Self::unknown_type(name, span));
                 }
@@ -696,7 +696,7 @@ impl Cx<'_> {
                     self_target,
                     local_types,
                 )?;
-                let TypeExpr::Named(aspect_name, _) = bound.as_ref() else {
+                let TypeExpr::Named(aspect_name, _, _) = bound.as_ref() else {
                     unreachable!("dyn_type grammar only ever produces a named_type bound")
                 };
                 let methods = self
@@ -982,7 +982,7 @@ impl Cx<'_> {
         self_target: Option<&str>,
         local_types: &[HashSet<String>],
     ) -> Result<(), MetelError> {
-        let TypeExpr::Named(name, args) = aspect else {
+        let TypeExpr::Named(name, args, _) = aspect else {
             return Err(MetelError::type_error(
                 TypeErrorCode::T0003,
                 "aspect bounds must name an aspect",
@@ -1267,7 +1267,7 @@ impl Cx<'_> {
     /// Treat only an argument that repeats its declared parameter name as that inherited
     /// binder; `extend Option<i64>` must not accidentally make a free `T` valid.
     fn inherited_impl_generics(&self, target: &TypeExpr) -> HashSet<String> {
-        let TypeExpr::Named(name, args) = target else {
+        let TypeExpr::Named(name, args, _) = target else {
             return HashSet::new();
         };
         let Some(declared) = self
@@ -1280,7 +1280,7 @@ impl Cx<'_> {
             .iter()
             .zip(args)
             .filter_map(|(declared_name, arg)| match arg {
-                TypeExpr::Named(actual_name, nested)
+                TypeExpr::Named(actual_name, nested, _)
                     if nested.is_empty() && actual_name == declared_name =>
                 {
                     Some(actual_name.clone())
@@ -1367,7 +1367,7 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            TypeExpr::Named(_, items) | TypeExpr::Tuple(items) => items.iter().try_for_each(go),
+            TypeExpr::Named(_, items, _) | TypeExpr::Tuple(items) => items.iter().try_for_each(go),
             TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
                 fields.iter().try_for_each(|(_, t)| go(t))
             }

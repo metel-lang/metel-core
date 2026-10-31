@@ -1822,7 +1822,7 @@ fn nominal_array_extend_does_not_collide_with_structural_array_extend() {
             .clone()
             .find_map(|d| match d {
                 TypedDecl::Impl(ib)
-                    if matches!(&ib.target_type, crate::data::ast::TypeExpr::Named(n, _) if n == "Array") =>
+                    if matches!(&ib.target_type, crate::data::ast::TypeExpr::Named(n, _, _) if n == "Array") =>
                 {
                     ib.methods.iter().find(|f| f.name == "show")
                 }

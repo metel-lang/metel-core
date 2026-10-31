@@ -1566,7 +1566,7 @@ fn construct_binop(
 }
 
 fn type_to_type_expr(ty: &Type) -> TypeExpr {
-    let named = |s: &str| TypeExpr::Named(s.to_string(), vec![]);
+    let named = |s: &str| TypeExpr::Named(s.to_string(), vec![], Span::new(0, 0, "").into());
     match ty {
         Type::I64 => named("i64"),
         Type::F64 => named("f64"),
@@ -1613,9 +1613,11 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
                 call_mutation: *call_mutation,
             }
         }
-        Type::Named(name, args, ..) => {
-            TypeExpr::Named(name.clone(), args.iter().map(type_to_type_expr).collect())
-        }
+        Type::Named(name, args, ..) => TypeExpr::Named(
+            name.clone(),
+            args.iter().map(type_to_type_expr).collect(),
+            Span::new(0, 0, "").into(),
+        ),
         Type::Residual { brand, fields } => TypeExpr::RecordProjection {
             path: vec![brand.clone()],
             fields: fields.iter().map(|(name, _)| name.clone()).collect(),
@@ -1625,6 +1627,7 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
             bound: Box::new(TypeExpr::Named(
                 aspect.clone(),
                 type_args.iter().map(type_to_type_expr).collect(),
+                Span::new(0, 0, "").into(),
             )),
             span: Span::new(0, 0, ""),
         },

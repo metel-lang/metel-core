@@ -87,7 +87,7 @@ pub(super) fn check_object_safe(
             // exactly as RFC-0008 §3's own worked example does ("Clone::clone
             // returns Self"), not the generic nested-mention wording.
             let is_bare_self =
-                matches!(ret, TypeExpr::Named(n, args) if n == "Self" && args.is_empty());
+                matches!(ret, TypeExpr::Named(n, args, _) if n == "Self" && args.is_empty());
             if is_bare_self {
                 return Err(ObjectSafetyViolation {
                     method_name: method.name.clone(),
@@ -110,7 +110,7 @@ pub(super) fn check_object_safe(
 /// on the first one found.
 fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Option<String> {
     match te {
-        TypeExpr::Named(name, args) => {
+        TypeExpr::Named(name, args, _) => {
             if name == "Self" {
                 return Some("mentions Self".to_string());
             }
@@ -133,7 +133,7 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         TypeExpr::Projection {
             base, assoc_name, ..
         } => {
-            if matches!(base.as_ref(), TypeExpr::Named(n, _) if n == "Self")
+            if matches!(base.as_ref(), TypeExpr::Named(n, _, _) if n == "Self")
                 && assoc_type_names.contains(assoc_name.as_str())
             {
                 return Some(format!("references Self::{assoc_name}"));

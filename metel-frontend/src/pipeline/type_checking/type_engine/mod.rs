@@ -2795,7 +2795,7 @@ impl GenericBound {
             return Some(Self::Row(RowConstraint::from(row)));
         }
         match &bound.head {
-            crate::data::ast::BoundHead::Aspect(TypeExpr::Named(name, _)) => {
+            crate::data::ast::BoundHead::Aspect(TypeExpr::Named(name, _, _)) => {
                 Some(Self::Aspect(name.clone()))
             }
             _ => None,
@@ -2817,7 +2817,7 @@ impl fmt::Display for GenericBound {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn write_type_expr(f: &mut fmt::Formatter<'_>, ty: &TypeExpr) -> fmt::Result {
             match ty {
-                TypeExpr::Named(name, args) => {
+                TypeExpr::Named(name, args, _) => {
                     f.write_str(name)?;
                     if !args.is_empty() {
                         f.write_str("<")?;
@@ -5004,7 +5004,7 @@ impl TypeDefinitionRegistry {
             return;
         };
         let target = match &implementation.target_type {
-            TypeExpr::Named(name, _) => {
+            TypeExpr::Named(name, _, _) => {
                 if implementation
                     .generics
                     .iter()
@@ -5046,7 +5046,7 @@ impl TypeDefinitionRegistry {
         implementation: &crate::data::ast::ImplBlock,
     ) -> bool {
         use crate::data::ast::TypeExpr;
-        let TypeExpr::Named(_, arguments) = &implementation.target_type else {
+        let TypeExpr::Named(_, arguments, _) = &implementation.target_type else {
             return false;
         };
         if implementation.where_clause.is_some()
@@ -5078,7 +5078,7 @@ impl TypeDefinitionRegistry {
             .collect();
         let mut used = HashSet::new();
         for argument in arguments {
-            let TypeExpr::Named(name, inner) = argument else {
+            let TypeExpr::Named(name, inner, _) = argument else {
                 return false;
             };
             if !inner.is_empty() || !names.contains(name) || !used.insert(name) {

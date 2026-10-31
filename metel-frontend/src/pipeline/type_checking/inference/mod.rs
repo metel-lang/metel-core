@@ -161,7 +161,7 @@ fn ann_to_infer(te: &TypeExpr, ctx: &mut InferContext) -> InferType {
     if let TypeExpr::Projection {
         base, assoc_name, ..
     } = te
-        && let TypeExpr::Named(ref n, _) = **base
+        && let TypeExpr::Named(ref n, _, _) = **base
         && let Some(base_tv) = ctx.type_params().get(n.as_str()).copied()
     {
         let mut matching_aspect = None;
@@ -529,7 +529,7 @@ fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
 fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> bool {
     let go = |t: &TypeExpr| mentions_type_param(t, params);
     match ty {
-        TypeExpr::Named(name, args) => params.contains(name.as_str()) || args.iter().any(go),
+        TypeExpr::Named(name, args, _) => params.contains(name.as_str()) || args.iter().any(go),
         TypeExpr::Tuple(items) => items.iter().any(go),
         TypeExpr::Record(fields) => fields.iter().any(|(_, t)| go(t)),
         TypeExpr::Array(inner)
@@ -585,7 +585,7 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
 /// handles them precisely, comparing the two impls' bounds instead of
 /// discarding them (issue #302).
 fn closed_nominal_target(ib: &ImplBlock, target_name: &str) -> Option<Type> {
-    if !matches!(&ib.target_type, TypeExpr::Named(_, _)) {
+    if !matches!(&ib.target_type, TypeExpr::Named(_, _, _)) {
         return None;
     }
     let params: std::collections::HashSet<&str> =
@@ -664,7 +664,7 @@ fn substitute_impl_params(
 /// An impl target argument as an `InferType`, with any mention of the impl's
 /// own generic parameters resolved to their type variables.
 fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
-    if let TypeExpr::Named(name, args) = ty
+    if let TypeExpr::Named(name, args, _) = ty
         && args.is_empty()
         && let Some(param) = params.iter().find(|p| &p.name == name)
     {
@@ -672,7 +672,7 @@ fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
     }
     let go = |t: &TypeExpr| type_expr_as_infer(t, params);
     match ty {
-        TypeExpr::Named(name, args) => InferType::Named(
+        TypeExpr::Named(name, args, _) => InferType::Named(
             name.clone(),
             args.iter().map(go).collect(),
             crate::data::types::NominalId::NONE,
@@ -747,7 +747,7 @@ fn check_copy_impl_eligibility(
 ) -> Result<(), MetelError> {
     let (params, assumptions) = impl_params(ib, ctx);
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
-    if let TypeExpr::Named(_, target_args) = &ib.target_type {
+    if let TypeExpr::Named(_, target_args, _) = &ib.target_type {
         let target_id = ctx
             .registry()
             .resolve_type_id(ctx.current_module_path(), target_name);
@@ -900,7 +900,7 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     if let TypeExpr::Projection {
                         base, assoc_name, ..
                     } = te
-                        && let TypeExpr::Named(ref n, _) = **base
+                        && let TypeExpr::Named(ref n, _, _) = **base
                         && let Some(&base_tv) = generic_map.get(n.as_str())
                     {
                         // NOTE: use the locally-computed `type_var_bounds` map, not
@@ -1334,7 +1334,7 @@ fn field_wise_names_nominal_row_arg(fun: &FunDecl, index: usize) -> bool {
 /// Whether `ty` contains `Nominal<.., ..R, ..>` for the row variable `var`.
 fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
     match ty {
-        TypeExpr::Named(_, args) => args.iter().any(|arg| {
+        TypeExpr::Named(_, args, _) => args.iter().any(|arg| {
             matches!(arg, TypeExpr::RowArg(tail) if tail.var.as_deref() == Some(var))
                 || type_names_row_arg(arg, var)
         }),
@@ -1644,7 +1644,7 @@ struct SignatureEnv {
 fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType {
     let go = |ty: &TypeExpr| signature_type_expr_to_infer(ty, env);
     match te {
-        TypeExpr::Named(name, args) if args.is_empty() => {
+        TypeExpr::Named(name, args, _) if args.is_empty() => {
             if let Some(&var) = env.generic_vars.get(name) {
                 InferType::Var(var)
             } else if let Some(ty) = env.alias_types.get(name) {
@@ -1657,7 +1657,7 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
                 InferType::Named(name.clone(), vec![], crate::data::types::NominalId::NONE)
             }
         }
-        TypeExpr::Named(name, args) => InferType::Named(
+        TypeExpr::Named(name, args, _) => InferType::Named(
             name.clone(),
             args.iter().map(go).collect(),
             crate::data::types::NominalId::NONE,
@@ -1691,7 +1691,7 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
         TypeExpr::Projection {
             base, assoc_name, ..
         } => {
-            if let TypeExpr::Named(base_name, args) = base.as_ref()
+            if let TypeExpr::Named(base_name, args, _) = base.as_ref()
                 && base_name == "Self"
                 && args.is_empty()
                 && let Some(ty) = env.alias_types.get(assoc_name)
@@ -1711,7 +1711,7 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             crate::data::types::NominalId::NONE,
         ),
         TypeExpr::DynAspect { bound, .. } => {
-            let TypeExpr::Named(aspect, args) = bound.as_ref() else {
+            let TypeExpr::Named(aspect, args, _) = bound.as_ref() else {
                 unreachable!("dyn_type grammar only ever produces a named_type bound")
             };
             InferType::Dyn {
@@ -1773,7 +1773,7 @@ fn signature_param_type(param: &Param, env: &SignatureEnv) -> InferType {
 }
 
 fn impl_signature_self_type(ib: &ImplBlock, params: &[ImplParam], target_name: &str) -> InferType {
-    if matches!(&ib.target_type, TypeExpr::Named(name, args) if args.is_empty() && name == target_name)
+    if matches!(&ib.target_type, TypeExpr::Named(name, args, _) if args.is_empty() && name == target_name)
         && let Some(prim) = primitive_type_from_name(target_name)
     {
         return InferType::Concrete(prim);

@@ -453,7 +453,7 @@ impl Bound {
     #[must_use]
     pub fn aspect_name(&self) -> Option<&str> {
         match &self.head {
-            BoundHead::Aspect(TypeExpr::Named(name, _)) => Some(name.as_str()),
+            BoundHead::Aspect(TypeExpr::Named(name, _, _)) => Some(name.as_str()),
             _ => None,
         }
     }
@@ -1035,9 +1035,29 @@ pub enum AssignTarget {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+/// Where a type name is written (metel-core#1612). It keys the identity pass's resolution of the
+/// name, but it is not part of the type: two annotations that spell the same type are the same
+/// `TypeExpr` wherever they sit. `Debug` therefore prints no position, so the places that compare
+/// annotations by their rendering (`format!("{ty:?}")`, e.g. row-bound entailment) keep comparing
+/// shape and spelling only.
+#[derive(Clone)]
+pub struct NameSpan(pub Span);
+
+impl std::fmt::Debug for NameSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("..")
+    }
+}
+
+impl From<Span> for NameSpan {
+    fn from(span: Span) -> Self {
+        Self(span)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
-    Named(String, Vec<TypeExpr>),
+    Named(String, Vec<TypeExpr>, NameSpan),
     Unit,
     Tuple(Vec<TypeExpr>),
     Record(Vec<(String, TypeExpr)>),
