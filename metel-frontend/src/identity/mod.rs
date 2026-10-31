@@ -52,8 +52,8 @@ pub use lexical_path::{InheritedMethodTarget, LexicalPath, LexicalSeg};
 mod allocate;
 pub(crate) use allocate::allocate_inherited_body;
 pub use allocate::{
-    Allocation, BindingSpans, GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph,
-    allocate_module,
+    Allocation, BindingSpans, GraphModuleNav, ModuleNav, TypeParamSpans, allocate_for_graph,
+    allocate_graph, allocate_module,
 };
 
 mod position;
@@ -139,6 +139,35 @@ pub struct NameId(pub u32);
 /// (ADR-0054).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct LabelId(pub u32);
+
+/// Which generic list of a declaration a parameter was declared in. An `impl` or `aspect` header's
+/// parameters are in scope in every method it holds, next to the method's own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum GenericLevel {
+    /// The enclosing `impl` or `aspect` header.
+    Container,
+    /// The function or method's own `<...>` list.
+    Own,
+}
+
+/// Identity of a generic parameter (ADR-0067): a function of the declaration it belongs to, the list it
+/// was written in and its position there, never of where its text sits. A written `T` in a type
+/// annotation resolves to one of these ([`TypeParamSpans`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct TypeParamId(pub u64);
+
+impl TypeParamId {
+    /// The parameter at `ordinal` in the `level` generic list of the body owned by `owner`.
+    #[must_use]
+    pub fn new(owner: BindingId, level: GenericLevel, ordinal: u32) -> Self {
+        let mut h = DefaultHasher::new();
+        "metel.identity.type-param.v1".hash(&mut h);
+        owner.hash(&mut h);
+        level.hash(&mut h);
+        ordinal.hash(&mut h);
+        Self(h.finish())
+    }
+}
 
 /// Identity of a value definition or a value use: either a globally addressable
 /// declaration ([`SymbolId`]) or a lexical binding ([`LocalId`]).

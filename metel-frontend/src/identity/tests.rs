@@ -897,3 +897,127 @@ fn the_durable_resolution_map_is_keyed_by_identity_not_position() {
     let _definitions: &HashMap<BindingId, crate::identity::DefinitionInfo> = &map.definitions;
     let _references: &HashMap<crate::identity::RefId, Resolution> = &map.references;
 }
+
+// ── written generic-parameter names (ADR-0067, metel-core#1612) ─────────────
+
+fn named_span(te: &crate::data::ast::TypeExpr) -> Span {
+    let crate::data::ast::TypeExpr::Named(_, _, span) = te else {
+        panic!("not a named type: {te:?}")
+    };
+    span.0.clone()
+}
+
+fn parsed_fun(source: &str, index: usize) -> crate::data::ast::FunDecl {
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let crate::data::ast::Decl::Fun(fun) = &program.decls[index] else {
+        panic!("function at {index}")
+    };
+    fun.clone()
+}
+
+#[test]
+fn a_written_generic_parameter_resolves_to_one_identity_across_its_signature() {
+    let source = "fun id<T>(x: T) -> T { let y: T := x; y }";
+    let fixture = Fixture::build(source);
+    let fun = parsed_fun(source, 0);
+    let spans = &fixture.alloc.type_param_spans;
+    let param = spans.get(&named_span(fun.params[0].type_ann.as_ref().unwrap()));
+    let ret = spans.get(&named_span(fun.return_type.as_ref().unwrap()));
+    assert!(param.is_some());
+    assert_eq!(param, ret);
+    let crate::data::ast::Decl::Let(let_decl) = &fun.body.stmts[0] else {
+        panic!("let")
+    };
+    assert_eq!(
+        spans.get(&named_span(let_decl.type_ann.as_ref().unwrap())),
+        param
+    );
+}
+
+#[test]
+fn same_spelled_parameters_of_different_functions_have_distinct_identities() {
+    let source = "fun a<T>(x: T) -> T { x } fun b<T>(x: T) -> T { x }";
+    let fixture = Fixture::build(source);
+    let spans = &fixture.alloc.type_param_spans;
+    let of = |index| {
+        let fun = parsed_fun(source, index);
+        spans
+            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .expect("T resolves")
+    };
+    assert_ne!(of(0), of(1));
+}
+
+#[test]
+fn a_parameters_identity_survives_reformatting() {
+    let compact = Fixture::build("fun id<T>(x: T) -> T { x }");
+    let spaced = Fixture::build("\n\n// note\nfun   id<T>(\n    x: T,\n) -> T {\n    x\n}\n");
+    let id = |fixture: &Fixture, source: &str| {
+        let fun = parsed_fun(source, 0);
+        fixture
+            .alloc
+            .type_param_spans
+            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .expect("T resolves")
+    };
+    assert_eq!(
+        id(&compact, "fun id<T>(x: T) -> T { x }"),
+        id(
+            &spaced,
+            "\n\n// note\nfun   id<T>(\n    x: T,\n) -> T {\n    x\n}\n"
+        )
+    );
+}
+
+#[test]
+fn a_name_that_is_not_a_generic_parameter_has_no_parameter_identity() {
+    let source = "struct Box { value: i64 } fun f<T>(x: T, n: i64, b: Box) -> i64 { n }";
+    let fixture = Fixture::build(source);
+    let fun = parsed_fun(source, 1);
+    let spans = &fixture.alloc.type_param_spans;
+    assert!(
+        spans
+            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .is_some()
+    );
+    assert!(
+        spans
+            .get(&named_span(fun.params[1].type_ann.as_ref().unwrap()))
+            .is_none()
+    );
+    assert!(
+        spans
+            .get(&named_span(fun.params[2].type_ann.as_ref().unwrap()))
+            .is_none()
+    );
+}
+
+#[test]
+fn a_method_sees_its_impls_parameters_and_its_own() {
+    let source =
+        "struct W<T> { v: T } extend<T> W<T> { fun map<U>(self, f: |T| -> U) -> U { f(self.v) } }";
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let fixture = Fixture::build(source);
+    let crate::data::ast::Decl::Impl(impl_block) = &program.decls[1] else {
+        panic!("impl")
+    };
+    let method = &impl_block.methods[0];
+    let crate::data::ast::TypeExpr::Fun {
+        params,
+        return_type,
+        ..
+    } = method.params[1].type_ann.as_ref().unwrap()
+    else {
+        panic!("fn type")
+    };
+    let spans = &fixture.alloc.type_param_spans;
+    let t = spans.get(&named_span(&params[0])).expect("impl T");
+    let u = spans
+        .get(&named_span(return_type.as_ref().unwrap()))
+        .expect("method U");
+    assert_ne!(t, u);
+    assert_eq!(
+        spans.get(&named_span(method.return_type.as_ref().unwrap())),
+        Some(u)
+    );
+}
