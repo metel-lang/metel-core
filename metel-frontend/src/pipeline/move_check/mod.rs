@@ -634,10 +634,15 @@ impl<'a> Checker<'a> {
             // it is not itself a place being read, so it's consumed, not observed.
             TypedExpr::RefTemp { init, .. } => self.consume_expr(init, current_module, state),
             TypedExpr::Assign { target, value, .. } => {
-                self.observe_assignment_target(target, current_module, state);
+                // The right-hand side runs first, and the target's own sub-expressions (an index,
+                // the object of a projection) only if it completes, as the interpreter does
+                // (metel-core#1431).
                 self.consume_expr(value, current_module, state);
-                if let Some(place) = from_typed_place(target) {
-                    state.reinitialize(&place);
+                if !state.diverged {
+                    self.observe_assignment_target(target, current_module, state);
+                    if let Some(place) = from_typed_place(target) {
+                        state.reinitialize(&place);
+                    }
                 }
             }
             TypedExpr::Call { callee, args, .. } => {

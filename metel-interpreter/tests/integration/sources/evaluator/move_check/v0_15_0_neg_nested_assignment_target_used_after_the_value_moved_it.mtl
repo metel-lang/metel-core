@@ -1,0 +1,11 @@
+// metel-core#1431: the same for a nested target, an index inside a field path.
+struct Grid { cells: [i64; 2] }
+
+fun take(s: String) -> i64 { 0 }
+fun slot(s: &String) -> u64 { 0 }
+
+fun main() {
+    var g := Grid { cells = [1, 2] };
+    let s := "x".to_string();
+    g.cells[slot(&s)] := take(s);
+}
