@@ -1,0 +1,6 @@
+// metel-core#1740: the object of a field assignment must itself be a place; a call result is not.
+struct S { f: i64 }
+fun mk() -> S { S { f = 1 } }
+fun main() {
+    mk().f := 5;
+}
