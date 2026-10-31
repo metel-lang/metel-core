@@ -1,0 +1,5 @@
+// metel-core#1721 (legality-8): the same in a generic body, where the capture type is a parameter.
+fun keep<T>(x: T) {
+    let f := [x] || { let y := x; };
+}
+fun main() {}

@@ -1,0 +1,8 @@
+// metel-core#1721 (legality-8): passing a non-`Copy` capture by value moves it out of the environment.
+fun take(s: String) {}
+
+fun main() {
+    let s := "a".to_string();
+    let c := [s] || { take(s); };
+    c();
+}

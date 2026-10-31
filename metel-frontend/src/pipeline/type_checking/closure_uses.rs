@@ -334,6 +334,184 @@ fn collect_closure_expr_uses(
     }
 }
 
+/// The free names a closure body consumes by value: a bare identifier in a position that takes
+/// ownership of it, namely a block tail, a `let` initialiser, a call or method-call argument, a
+/// `return` or `break` value, an assigned value, or an element of a tuple, array, record or struct
+/// literal. Whether a name is a non-`Copy` capture is for the caller to say; legality-8 asks for
+/// `once` only when it is.
+pub(super) fn collect_consumed_names(
+    block: &crate::data::ast::Block,
+    bound: &mut std::collections::BTreeSet<String>,
+    out: &mut Vec<(String, Span)>,
+) {
+    for decl in &block.stmts {
+        match decl {
+            crate::data::ast::Decl::Let(ld) => {
+                consume(&ld.value, bound, out);
+                bound.insert(ld.name.clone());
+            }
+            crate::data::ast::Decl::Mut(md) => {
+                consume(&md.value, bound, out);
+                bound.insert(md.name.clone());
+            }
+            crate::data::ast::Decl::LetPattern(ld) => {
+                consume(&ld.value, bound, out);
+                collect_pattern_bindings(&ld.pattern, bound);
+            }
+            crate::data::ast::Decl::Stmt(stmt) => stmt_consumed_names(stmt, bound, out),
+            crate::data::ast::Decl::Fun(fun) => {
+                bound.insert(fun.name.clone());
+            }
+            _ => {}
+        }
+    }
+    if let Some(tail) = &block.tail {
+        consume(tail, bound, out);
+    }
+}
+
+fn stmt_consumed_names(
+    stmt: &crate::data::ast::Stmt,
+    bound: &mut std::collections::BTreeSet<String>,
+    out: &mut Vec<(String, Span)>,
+) {
+    match stmt {
+        crate::data::ast::Stmt::Expr(expr) => inner_consumed_names(expr, bound, out),
+        crate::data::ast::Stmt::While(ws) => {
+            inner_consumed_names(&ws.condition, bound, out);
+            collect_consumed_names(&ws.body, &mut bound.clone(), out);
+        }
+        crate::data::ast::Stmt::For(fs) => {
+            let mut loop_bound = bound.clone();
+            match &fs.init {
+                Some(crate::data::ast::ForInit::Let(ld)) => {
+                    consume(&ld.value, &loop_bound, out);
+                    loop_bound.insert(ld.name.clone());
+                }
+                Some(crate::data::ast::ForInit::Mut(md)) => {
+                    consume(&md.value, &loop_bound, out);
+                    loop_bound.insert(md.name.clone());
+                }
+                Some(crate::data::ast::ForInit::Expr(expr)) => {
+                    inner_consumed_names(expr, &loop_bound, out);
+                }
+                None => {}
+            }
+            if let Some(condition) = &fs.condition {
+                inner_consumed_names(condition, &loop_bound, out);
+            }
+            if let Some(step) = &fs.step {
+                inner_consumed_names(step, &loop_bound, out);
+            }
+            collect_consumed_names(&fs.body, &mut loop_bound, out);
+        }
+        crate::data::ast::Stmt::ForIn(fs) => {
+            inner_consumed_names(&fs.iterable, bound, out);
+            let mut loop_bound = bound.clone();
+            loop_bound.insert(fs.binding.clone());
+            collect_consumed_names(&fs.body, &mut loop_bound, out);
+        }
+    }
+}
+
+/// `expr` sits where its value is taken: a bare free identifier is consumed.
+fn consume(expr: &Expr, bound: &std::collections::BTreeSet<String>, out: &mut Vec<(String, Span)>) {
+    match expr {
+        Expr::Ident(name, span) if !bound.contains(name) => out.push((name.clone(), span.clone())),
+        _ => inner_consumed_names(expr, bound, out),
+    }
+}
+
+fn inner_consumed_names(
+    expr: &Expr,
+    bound: &std::collections::BTreeSet<String>,
+    out: &mut Vec<(String, Span)>,
+) {
+    match expr {
+        Expr::Tuple(items, _) | Expr::Array(items, _) => {
+            for item in items {
+                consume(item, bound, out);
+            }
+        }
+        Expr::StructLiteral { fields, .. } => {
+            for (_, value) in fields {
+                consume(value, bound, out);
+            }
+        }
+        Expr::RecordLiteral { fields, spread, .. } => {
+            for (_, value) in fields {
+                consume(value, bound, out);
+            }
+            if let Some((value, _, _)) = spread {
+                consume(value, bound, out);
+            }
+        }
+        Expr::Call { callee, args, .. } => {
+            inner_consumed_names(callee, bound, out);
+            for arg in args {
+                consume(arg, bound, out);
+            }
+        }
+        Expr::MethodCall { receiver, args, .. } => {
+            inner_consumed_names(receiver, bound, out);
+            for arg in args {
+                consume(arg, bound, out);
+            }
+        }
+        Expr::Assign { value, .. } => consume(value, bound, out),
+        Expr::Return(ret) => {
+            if let Some(value) = &ret.value {
+                consume(value, bound, out);
+            }
+        }
+        Expr::Break(brk) => {
+            if let Some(value) = &brk.value {
+                consume(value, bound, out);
+            }
+        }
+        Expr::RepeatArray(value, _, _)
+        | Expr::UnaryOp(_, value, _)
+        | Expr::Cast { expr: value, .. }
+        | Expr::Ascribe { expr: value, .. }
+        | Expr::PropagateError { expr: value, .. }
+        | Expr::FieldAccess { object: value, .. }
+        | Expr::TupleAccess { object: value, .. } => inner_consumed_names(value, bound, out),
+        Expr::BinOp(left, _, right, _) => {
+            inner_consumed_names(left, bound, out);
+            inner_consumed_names(right, bound, out);
+        }
+        Expr::Index { object, index, .. } => {
+            inner_consumed_names(object, bound, out);
+            inner_consumed_names(index, bound, out);
+        }
+        Expr::Match(m) => {
+            inner_consumed_names(&m.scrutinee, bound, out);
+            for arm in &m.arms {
+                let mut arm_bound = bound.clone();
+                collect_pattern_bindings(&arm.pattern, &mut arm_bound);
+                if let Some(guard) = &arm.guard {
+                    inner_consumed_names(guard, &arm_bound, out);
+                }
+                collect_consumed_names(&arm.body, &mut arm_bound, out);
+            }
+        }
+        Expr::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            inner_consumed_names(condition, bound, out);
+            collect_consumed_names(then_branch, &mut bound.clone(), out);
+            if let Some(else_branch) = else_branch {
+                collect_consumed_names(else_branch, &mut bound.clone(), out);
+            }
+        }
+        Expr::Loop { body, .. } => collect_consumed_names(body, &mut bound.clone(), out),
+        _ => {}
+    }
+}
+
 fn collect_pattern_bindings(
     pattern: &crate::data::ast::Pattern,
     bound: &mut std::collections::BTreeSet<String>,
