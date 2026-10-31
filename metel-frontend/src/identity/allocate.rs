@@ -23,7 +23,8 @@ use std::collections::HashMap;
 use crate::identity::symbols::Namespace;
 
 use crate::data::ast::{
-    AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, MatchArm, Param, Pattern, Span, Stmt,
+    AspectMethod, AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, FunDecl, GenericParam,
+    ImplBlock, MatchArm, Param, Pattern, Span, Stmt, TypeExpr,
 };
 use crate::pipeline::name_resolution::name_resolver::{
     BindingKind, ModuleScope, ResolvedNames, canonical_path, impl_method_symbol_name,
@@ -33,8 +34,9 @@ use crate::pipeline::name_resolution::name_resolver::{
 use super::lexical_path::{LexicalPath, LexicalSeg};
 use super::position::{PositionHit, PositionIndex};
 use super::{
-    BindingId, DefinitionInfo, DefinitionKind, LocalId, ModuleId, ModuleTable, NameInterner, RefId,
-    Resolution, ResolutionMap, UnresolvedCause, UnresolvedRef, structural_hash,
+    BindingId, DefinitionInfo, DefinitionKind, GenericLevel, LocalId, ModuleId, ModuleTable,
+    NameInterner, RefId, Resolution, ResolutionMap, TypeParamId, UnresolvedCause, UnresolvedRef,
+    structural_hash,
 };
 
 /// Read-only context for turning a module-qualified path's prefix segments into
@@ -137,6 +139,78 @@ pub struct Allocation {
     pub positions: PositionIndex,
     /// The transient span → [`BindingId`] bridge for the typed-AST pass.
     pub binding_spans: BindingSpans,
+    /// Written generic-parameter names in type annotations → the parameter they denote.
+    pub type_param_spans: TypeParamSpans,
+}
+
+/// The span of each written type name that denotes a generic parameter → that parameter's
+/// [`TypeParamId`] (ADR-0067). Like [`BindingSpans`] it is a transient bridge: the consumer reads the
+/// id off a [`crate::data::ast::TypeExpr::Named`]'s span and keeps only the id.
+#[derive(Debug, Clone, Default)]
+pub struct TypeParamSpans(HashMap<Span, TypeParamId>);
+
+impl TypeParamSpans {
+    /// The parameter the type name written at `span` denotes, if it denotes one.
+    #[must_use]
+    pub fn get(&self, span: &Span) -> Option<TypeParamId> {
+        self.0.get(span).copied()
+    }
+
+    /// Number of recorded names.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether nothing is recorded.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+/// The generic lists and return type of the declaration whose body [`walk_body`] walks: what the
+/// written types in its signature and body can denote.
+#[derive(Default)]
+struct SigTypes<'a> {
+    generics: Vec<(GenericLevel, Vec<&'a str>)>,
+    return_type: Option<&'a TypeExpr>,
+}
+
+impl<'a> SigTypes<'a> {
+    fn of_function(fun: &'a FunDecl) -> Self {
+        Self {
+            generics: vec![(GenericLevel::Own, generic_names(&fun.generics))],
+            return_type: fun.return_type.as_ref(),
+        }
+    }
+
+    fn of_method(container: &'a [GenericParam], method: &'a FunDecl) -> Self {
+        Self {
+            generics: vec![
+                (GenericLevel::Container, generic_names(container)),
+                (GenericLevel::Own, generic_names(&method.generics)),
+            ],
+            return_type: method.return_type.as_ref(),
+        }
+    }
+
+    fn of_aspect_method(container: &'a [String], method: &'a AspectMethod) -> Self {
+        Self {
+            generics: vec![
+                (
+                    GenericLevel::Container,
+                    container.iter().map(String::as_str).collect(),
+                ),
+                (GenericLevel::Own, generic_names(&method.generics)),
+            ],
+            return_type: method.return_type.as_ref(),
+        }
+    }
+}
+
+fn generic_names(generics: &[GenericParam]) -> Vec<&str> {
+    generics.iter().map(|g| g.name.as_str()).collect()
 }
 
 /// Declared-name spans, resolved value-reference spans, and whole impl-method
@@ -206,6 +280,7 @@ pub fn allocate_module(
                         BindingId::Global(sym),
                         &fun.params,
                         &fun.body,
+                        &SigTypes::of_function(fun),
                         interner,
                         &mut acc,
                         nav,
@@ -228,21 +303,15 @@ pub fn allocate_module(
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
             }
-            Decl::Impl(impl_block) => {
-                for method in &impl_block.methods {
-                    let Some(method_name) = impl_method_symbol_name(impl_block, &method.name)
-                    else {
-                        continue;
-                    };
-                    let key = (module_path.to_vec(), Namespace::Value, method_name);
-                    if let Some(&sym) = names.symbols.get(&key) {
-                        let ordinal = method_ordinals.entry(sym).or_default();
-                        let owner = allocate_method_body(sym, *ordinal, method, interner, &mut acc);
-                        *ordinal += 1;
-                        walk_body(owner, &method.params, &method.body, interner, &mut acc, nav);
-                    }
-                }
-            }
+            Decl::Impl(impl_block) => walk_impl_methods(
+                module_path,
+                impl_block,
+                names,
+                &mut method_ordinals,
+                interner,
+                &mut acc,
+                nav,
+            ),
             Decl::Aspect(aspect) => {
                 // Only default method bodies have code to walk; a bodiless
                 // `fun name(...);` declaration binds nothing.
@@ -253,10 +322,12 @@ pub fn allocate_module(
                     let method_name = method_symbol_name(&aspect.name, None, &method.name);
                     let key = (module_path.to_vec(), Namespace::Value, method_name);
                     if let Some(&sym) = names.symbols.get(&key) {
+                        let sig = SigTypes::of_aspect_method(&aspect.generics, method);
                         walk_body(
                             BindingId::Global(sym),
                             &method.params,
                             body,
+                            &sig,
                             interner,
                             &mut acc,
                             nav,
@@ -296,6 +367,7 @@ pub fn allocate_module(
     let mut binding_spans = binding_spans_from(&acc.positions, &acc.out);
     binding_spans.0.extend(acc.method_body_spans);
     Allocation {
+        type_param_spans: TypeParamSpans(acc.type_param_spans),
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
         binding_spans,
@@ -330,6 +402,7 @@ struct ModuleAlloc {
     // Whole declaration spans join construction facts but must not turn
     // literals or whitespace into name sites in the editor position index.
     method_body_spans: HashMap<Span, BindingId>,
+    type_param_spans: HashMap<Span, TypeParamId>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -369,6 +442,7 @@ pub fn allocate_graph(
     let mut resolution = ResolutionMap::default();
     let mut positions = Vec::with_capacity(modules.len());
     let mut binding_spans = HashMap::new();
+    let mut type_param_spans = HashMap::new();
     for (module_path, decls) in modules {
         let nav = ModuleNav {
             table: graph_nav.table,
@@ -380,11 +454,13 @@ pub fn allocate_graph(
         resolution.extend_from(allocation.resolution);
         positions.push(allocation.positions);
         binding_spans.extend(allocation.binding_spans.0);
+        type_param_spans.extend(allocation.type_param_spans.0);
     }
     Allocation {
         resolution,
         positions: PositionIndex::from_indices(positions),
         binding_spans: BindingSpans(binding_spans),
+        type_param_spans: TypeParamSpans(type_param_spans),
     }
 }
 
@@ -475,6 +551,7 @@ pub(crate) fn allocate_inherited_body(
         binder,
         &method.params,
         &method.body,
+        &SigTypes::default(),
         &mut NameInterner::new(),
         &mut acc,
         ModuleNav {
@@ -501,12 +578,46 @@ pub(crate) fn allocate_inherited_body(
     (binder, spans)
 }
 
+/// Walk each method of one `extend` block under its method symbol's owner.
+fn walk_impl_methods(
+    module_path: &[String],
+    impl_block: &ImplBlock,
+    names: &ResolvedNames,
+    method_ordinals: &mut HashMap<super::SymbolId, u32>,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    for method in &impl_block.methods {
+        let Some(method_name) = impl_method_symbol_name(impl_block, &method.name) else {
+            continue;
+        };
+        let key = (module_path.to_vec(), Namespace::Value, method_name);
+        if let Some(&sym) = names.symbols.get(&key) {
+            let ordinal = method_ordinals.entry(sym).or_default();
+            let owner = allocate_method_body(sym, *ordinal, method, interner, acc);
+            *ordinal += 1;
+            let sig = SigTypes::of_method(&impl_block.generics, method);
+            walk_body(
+                owner,
+                &method.params,
+                &method.body,
+                &sig,
+                interner,
+                acc,
+                nav,
+            );
+        }
+    }
+}
+
 /// Walk one function-shaped body (a free function, an impl method, or an aspect
 /// default method): bind its parameters, then walk its block.
 fn walk_body(
     owner: BindingId,
     params: &[Param],
     body: &Block,
+    sig: &SigTypes<'_>,
     interner: &mut NameInterner,
     acc: &mut ModuleAlloc,
     nav: ModuleNav<'_>,
@@ -522,7 +633,27 @@ fn walk_body(
         closure_counter: vec![0],
         propagate_counter: vec![0],
         use_counter: HashMap::new(),
+        type_params: HashMap::new(),
     };
+    // An own parameter shadows a container's of the same name, so the lists are inserted
+    // outermost first.
+    for (level, names) in &sig.generics {
+        for (ordinal, name) in names.iter().enumerate() {
+            let ordinal = u32::try_from(ordinal).unwrap_or(u32::MAX);
+            walker.type_params.insert(
+                (*name).to_string(),
+                TypeParamId::new(owner, *level, ordinal),
+            );
+        }
+    }
+    for param in params {
+        if let Some(ann) = &param.type_ann {
+            walker.record_type_expr(ann);
+        }
+    }
+    if let Some(ret) = sig.return_type {
+        walker.record_type_expr(ret);
+    }
     for (i, param) in params.iter().enumerate() {
         walker.bind(
             &param.name,
@@ -558,7 +689,7 @@ fn walk_module_statements(
         tail: None,
         span: Span::new(0, 0, ""),
     };
-    walk_body(owner, &[], &block, interner, acc, nav);
+    walk_body(owner, &[], &block, &SigTypes::default(), interner, acc, nav);
 }
 
 /// Walk a top-level `let`/`mut`'s own initializer expression (metel-core#1100)
@@ -587,6 +718,7 @@ fn walk_value_body(
         closure_counter: vec![0],
         propagate_counter: vec![0],
         use_counter: HashMap::new(),
+        type_params: HashMap::new(),
     };
     walker.walk_expr(value);
 }
@@ -614,6 +746,9 @@ struct Walker<'a> {
     propagate_counter: Vec<u32>,
     /// `(scope path, name)` → uses seen, for [`LexicalSeg::Use`] disambiguation.
     use_counter: HashMap<(Vec<LexicalSeg>, String), u32>,
+    /// The generic parameters in scope for the written types of this body, by the spelling they
+    /// were declared with. Used only here, to attach each written name its [`TypeParamId`].
+    type_params: HashMap<String, TypeParamId>,
 }
 
 impl Walker<'_> {
@@ -754,7 +889,90 @@ impl Walker<'_> {
         self.leave();
     }
 
+    /// Record, for each written name in `te` that denotes a generic parameter in scope, the
+    /// parameter it denotes. A block-local type of the same spelling is not yet considered (#1612,
+    /// step 3).
+    fn record_type_expr(&mut self, te: &TypeExpr) {
+        match te {
+            TypeExpr::Named(name, args, span) => {
+                if args.is_empty()
+                    && let Some(&id) = self.type_params.get(name)
+                {
+                    self.acc.type_param_spans.insert(span.0.clone(), id);
+                }
+                for arg in args {
+                    self.record_type_expr(arg);
+                }
+            }
+            TypeExpr::Tuple(items) => {
+                for item in items {
+                    self.record_type_expr(item);
+                }
+            }
+            TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
+                for (_, field) in fields {
+                    self.record_type_expr(field);
+                }
+            }
+            TypeExpr::Array(inner)
+            | TypeExpr::SizedArray(inner, _)
+            | TypeExpr::Reference(inner)
+            | TypeExpr::MutReference(inner)
+            | TypeExpr::RowArgLiteral(inner) => self.record_type_expr(inner),
+            TypeExpr::Fun {
+                params,
+                return_type,
+                ..
+            } => {
+                for item in params {
+                    self.record_type_expr(item);
+                }
+                if let Some(ret) = return_type {
+                    self.record_type_expr(ret);
+                }
+            }
+            TypeExpr::ImplAspect { bound, .. } | TypeExpr::DynAspect { bound, .. } => {
+                self.record_type_expr(bound);
+            }
+            TypeExpr::Projection { base, .. } => self.record_type_expr(base),
+            _ => {}
+        }
+    }
+
+    fn record_expr_types(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Cast { target_type, .. } => self.record_type_expr(target_type),
+            Expr::Ascribe { ann, .. } => self.record_type_expr(ann),
+            Expr::Call { type_args, .. } | Expr::MethodCall { type_args, .. } => {
+                for item in type_args {
+                    self.record_type_expr(item);
+                }
+            }
+            Expr::Closure {
+                params,
+                return_type,
+                ..
+            } => {
+                for ann in params.iter().filter_map(|p| p.type_ann.as_ref()) {
+                    self.record_type_expr(ann);
+                }
+                if let Some(ret) = return_type {
+                    self.record_type_expr(ret);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn walk_decl(&mut self, decl: &Decl) {
+        let annotation = match decl {
+            Decl::Let(d) => d.type_ann.as_ref(),
+            Decl::Mut(d) => d.type_ann.as_ref(),
+            _ => None,
+        };
+        if let Some(ann) = annotation {
+            self.record_type_expr(ann);
+        }
         match decl {
             Decl::Let(d) => {
                 self.walk_expr(&d.value);
@@ -871,6 +1089,7 @@ impl Walker<'_> {
     // `move_check::Checker::observe_expr`, `path_normalizer::normalize_expr`).
     #[allow(clippy::too_many_lines)]
     fn walk_expr(&mut self, expr: &Expr) {
+        self.record_expr_types(expr);
         match expr {
             Expr::Ident(name, span) => self.record_use(name, span),
             // A module-qualified path: its module-prefix segments each get a
