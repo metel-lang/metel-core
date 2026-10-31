@@ -220,6 +220,9 @@ pub struct BindingSpans {
     /// list first. The one place a parameter's spelling is paired with its identity: a scheme's
     /// `param_names` are joined to ids here, once, where the scheme is built.
     declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
+    /// A `struct` or `enum` declaration → the generic parameters it declares, in order. A literal
+    /// or pattern of the type pairs them with its type arguments by position.
+    type_decl_params: HashMap<super::SymbolId, Vec<(String, TypeParamId)>>,
 }
 
 impl BindingSpans {
@@ -242,6 +245,14 @@ impl BindingSpans {
     pub fn declared_type_params(&self, span: &Span) -> &[(String, TypeParamId)] {
         self.declared_type_params
             .get(span)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// The generic parameters the `struct` or `enum` declared as `symbol` introduces, in order.
+    #[must_use]
+    pub fn type_decl_params(&self, symbol: super::SymbolId) -> &[(String, TypeParamId)] {
+        self.type_decl_params
+            .get(&symbol)
             .map_or(&[], Vec::as_slice)
     }
 
@@ -323,6 +334,9 @@ pub fn allocate_module(
                 &mut acc,
                 nav,
             ),
+            Decl::Struct(_) | Decl::Enum(_) => {
+                walk_type_decl_item(module_path, decl, names, interner, &mut acc, nav);
+            }
             Decl::Aspect(aspect) => {
                 // Only default method bodies have code to walk; a bodiless
                 // `fun name(...);` declaration binds nothing.
@@ -379,6 +393,7 @@ pub fn allocate_module(
     binding_spans.bindings.extend(acc.method_body_spans);
     binding_spans.type_params = acc.type_param_spans;
     binding_spans.declared_type_params = acc.declared_type_params;
+    binding_spans.type_decl_params = acc.type_decl_params;
     Allocation {
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
@@ -419,6 +434,7 @@ struct ModuleAlloc {
     method_body_spans: HashMap<Span, BindingId>,
     type_param_spans: HashMap<Span, TypeParamId>,
     declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
+    type_decl_params: HashMap<super::SymbolId, Vec<(String, TypeParamId)>>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -477,6 +493,9 @@ pub fn allocate_graph(
         binding_spans
             .declared_type_params
             .extend(allocation.binding_spans.declared_type_params);
+        binding_spans
+            .type_decl_params
+            .extend(allocation.binding_spans.type_decl_params);
     }
     Allocation {
         resolution,
@@ -707,6 +726,125 @@ fn walk_module_statements(
 /// only descended into `Decl::Fun`/`Impl`/`Aspect` bodies, so a name used
 /// only here got no `PositionHit::Reference` entry to promote and stayed
 /// `BindingId`-less on the typed IR, forcing a name-map lookup at runtime.
+/// Walk a module-level `struct` or `enum` declaration.
+fn walk_type_decl_item(
+    module_path: &[String],
+    decl: &Decl,
+    names: &ResolvedNames,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    match decl {
+        Decl::Struct(decl) => {
+            let fields = decl.fields.iter().map(|field| &field.type_ann).collect();
+            walk_named_type_decl(
+                module_path,
+                &decl.name,
+                (&decl.generics, decl.where_clause.as_ref(), fields),
+                names,
+                interner,
+                acc,
+                nav,
+            );
+        }
+        Decl::Enum(decl) => {
+            let fields = decl
+                .variants
+                .iter()
+                .flat_map(|variant| variant.fields.iter().map(|field| &field.type_ann))
+                .collect();
+            walk_named_type_decl(
+                module_path,
+                &decl.name,
+                (&decl.generics, decl.where_clause.as_ref(), fields),
+                names,
+                interner,
+                acc,
+                nav,
+            );
+        }
+        _ => {}
+    }
+}
+
+/// Find the module-level `struct` or `enum` `name` and walk its declaration.
+fn walk_named_type_decl(
+    module_path: &[String],
+    name: &str,
+    (generics, where_clause, field_types): (&[GenericParam], Option<&WhereClause>, Vec<&TypeExpr>),
+    names: &ResolvedNames,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    let key = (module_path.to_vec(), Namespace::Type, name.to_string());
+    if let Some(&symbol) = names.symbols.get(&key) {
+        walk_type_decl(
+            symbol,
+            generics,
+            where_clause,
+            field_types,
+            interner,
+            acc,
+            nav,
+        );
+    }
+}
+
+/// Declare the generic parameters of a `struct` or `enum`, and record the written types in its
+/// bounds, `where` clause and field types against them.
+fn walk_type_decl(
+    symbol: super::SymbolId,
+    generics: &[GenericParam],
+    where_clause: Option<&WhereClause>,
+    field_types: Vec<&TypeExpr>,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    let owner = BindingId::Global(symbol);
+    let mut walker = Walker {
+        owner,
+        interner,
+        acc,
+        nav,
+        scopes: vec![Scope::default()],
+        path: LexicalPath::root(),
+        block_counter: vec![0],
+        closure_counter: vec![0],
+        propagate_counter: vec![0],
+        use_counter: HashMap::new(),
+        type_params: HashMap::new(),
+        impl_aspects: None,
+        synthesised: Vec::new(),
+        sig_scope: LexicalPath::root(),
+    };
+    let sig = SigTypes {
+        generics: vec![(GenericLevel::Own, generic_names(generics))],
+        return_type: None,
+        decl_span: None,
+        own_generics: generics,
+        where_clause,
+    };
+    walker.declare_signature(&sig, &[]);
+    for ty in field_types {
+        walker.record_type_expr(ty);
+    }
+    let declared = generics
+        .iter()
+        .enumerate()
+        .map(|(ordinal, generic)| {
+            let ordinal = u32::try_from(ordinal).unwrap_or(u32::MAX);
+            (
+                generic.name.clone(),
+                TypeParamId::new(owner, &LexicalPath::root(), GenericLevel::Own, ordinal),
+            )
+        })
+        .collect();
+    acc.type_decl_params.insert(symbol, declared);
+}
+
 fn walk_value_body(
     owner: BindingId,
     value: &Expr,

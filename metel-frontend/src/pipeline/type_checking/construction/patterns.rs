@@ -902,13 +902,12 @@ pub(super) fn construct_enum_literal_ty(
         .collect::<Result<_, _>>()?;
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
-    let generic_types_by_name = GenericArgs::by_name(
-        enum_id
-            .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
-            .into_iter()
-            .flatten()
-            .cloned()
-            .zip(concrete_args.iter().cloned()),
+    let generic_types_by_name = GenericArgs::from_declaration(
+        ctx.identity.binding_spans,
+        enum_id.map_or(&[][..], |id| {
+            ctx.identity.binding_spans.type_decl_params(id)
+        }),
+        concrete_args.iter().cloned(),
     );
     let record_kinds = enum_id
         .and_then(|id| ctx.registry.type_param_record_kinds_by_id(id))

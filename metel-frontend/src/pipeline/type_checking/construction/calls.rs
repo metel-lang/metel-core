@@ -951,14 +951,11 @@ pub(super) fn check_scheme_assoc_eq(
     Ok(())
 }
 
-/// The concrete types a bound check resolves written generic names to (ADR-0067). A function's
-/// parameters resolve by the identity recorded at the written name; a struct's or enum's declared
-/// parameters still resolve by spelling until their headers have identities.
+/// The concrete types a bound check resolves written generic names to: each declared parameter, by
+/// the identity recorded at the written name (ADR-0067).
 pub(super) struct GenericArgs<'a> {
     spans: Option<&'a BindingSpans>,
     by_id: HashMap<TypeParamId, Type>,
-    // resolution-freeze-allow: the declared type-parameter names of the one struct or enum being constructed; they are unique within it. Goes with the struct/enum header identities (metel-core#1612).
-    by_name: HashMap<String, Type>,
 }
 
 impl<'a> GenericArgs<'a> {
@@ -967,7 +964,6 @@ impl<'a> GenericArgs<'a> {
         Self {
             spans: None,
             by_id: HashMap::new(),
-            by_name: HashMap::new(),
         }
     }
 
@@ -986,16 +982,18 @@ impl<'a> GenericArgs<'a> {
         Self {
             spans: Some(spans),
             by_id,
-            by_name: HashMap::new(),
         }
     }
 
-    /// The declared parameters of a struct or enum, by the spelling they were declared with.
-    pub(super) fn by_name(declared: impl IntoIterator<Item = (String, Type)>) -> Self {
+    /// The declared parameters of a `struct` or `enum`, each with the type argument at its position.
+    pub(super) fn from_declaration(
+        spans: &'a BindingSpans,
+        declared: &[(String, TypeParamId)],
+        args: impl IntoIterator<Item = Type>,
+    ) -> Self {
         Self {
-            spans: None,
-            by_id: HashMap::new(),
-            by_name: declared.into_iter().collect(),
+            spans: Some(spans),
+            by_id: declared.iter().map(|(_, id)| *id).zip(args).collect(),
         }
     }
 }
@@ -1008,7 +1006,6 @@ pub(super) fn resolve_row_field_type(
     current_module: &[String],
 ) -> Result<Type, MetelError> {
     let mut by_id = HashMap::new();
-    let mut by_name = HashMap::new();
     let mut subst = Substitution::new();
     let mut next = 0u32;
     let mut fresh = |concrete: &Type| {
@@ -1020,22 +1017,20 @@ pub(super) fn resolve_row_field_type(
     for (id, concrete) in &generic_types_by_name.by_id {
         by_id.insert(*id, fresh(concrete));
     }
-    for (name, concrete) in &generic_types_by_name.by_name {
-        by_name.insert(name.clone(), fresh(concrete));
-    }
     let assoc_ctx = AssocResolveCtx {
         registry,
         current_module,
         current_aspect: None,
         local_types: &[],
     };
+    let no_names = HashMap::new();
     let scope = match generic_types_by_name.spans {
         Some(spans) => GenericScope::ById {
             spans,
             vars: &by_id,
-            names: Some(&by_name),
+            names: None,
         },
-        None => GenericScope::ByName(&by_name),
+        None => GenericScope::ByName(&no_names),
     };
     let inferred = type_expr_to_infer_by_identity(ty, scope, None, &assoc_ctx);
     infer_type_to_type(&subst.apply(&inferred), span)
