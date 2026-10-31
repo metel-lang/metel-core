@@ -1004,7 +1004,7 @@ fn register_core_natives_from_embedded(runtime: &mut RuntimeRegistry) {
                 }
             }
             crate::data::ast::Decl::Impl(ib) => {
-                let crate::data::ast::TypeExpr::Named(target_name, _) = &ib.target_type else {
+                let crate::data::ast::TypeExpr::Named(target_name, _, _) = &ib.target_type else {
                     continue;
                 };
                 // Every std::core impl targets a builtin type with a well-known id.

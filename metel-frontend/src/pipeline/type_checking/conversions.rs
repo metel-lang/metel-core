@@ -143,7 +143,7 @@ pub(crate) fn find_anonymous_open_record_tail(te: &TypeExpr) -> Option<&crate::d
                     .find_map(|(_, ty)| find_anonymous_open_record_tail(ty))
             }
         }
-        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => {
+        TypeExpr::Named(_, args, _) | TypeExpr::Tuple(args) => {
             args.iter().find_map(find_anonymous_open_record_tail)
         }
         TypeExpr::Record(fields) => fields
@@ -191,7 +191,7 @@ fn type_expr_to_infer_in_context(
     assoc_ctx: Option<&AssocResolveCtx<'_>>,
 ) -> InferType {
     match te {
-        TypeExpr::Named(name, args) => {
+        TypeExpr::Named(name, args, name_span) => {
             // RFC-0082 §1.2 bare-name sugar: inside an aspect's method signature,
             // `Item` alone resolves as `Self::Item` when the aspect declares
             // an associated type named `Item`.
@@ -202,7 +202,7 @@ fn type_expr_to_infer_in_context(
                     && decls.iter().any(|d| d.name == *name)
                 {
                     // Treat as Projection { base: Self, assoc_name: name }
-                    let base = TypeExpr::Named("Self".to_string(), vec![]);
+                    let base = TypeExpr::Named("Self".to_string(), vec![], name_span.clone());
                     let proj = TypeExpr::Projection {
                         base: Box::new(base),
                         assoc_name: name.clone(),
@@ -231,7 +231,7 @@ fn type_expr_to_infer_in_context(
                     // `self_ty_name` is always the real target name, never the
                     // literal string "Self".
                     return type_expr_to_infer_in_context(
-                        &TypeExpr::Named(target.to_string(), vec![]),
+                        &TypeExpr::Named(target.to_string(), vec![], Span::new(0, 0, "").into()),
                         generics,
                         self_ty_name,
                         assoc_ctx,
@@ -368,7 +368,7 @@ fn type_expr_to_infer_in_context(
             // is handled by the caller in inference.rs with &mut InferContext).
             if matches!(&base_ty, InferType::Var(_)) {
                 let base_name = match base.as_ref() {
-                    TypeExpr::Named(n, _) => n.clone(),
+                    TypeExpr::Named(n, _, _) => n.clone(),
                     _ => String::new(),
                 };
                 return InferType::Named(
@@ -429,7 +429,7 @@ fn type_expr_to_infer_in_context(
         // via `dyn_type = { "dyn" ~ named_type }`), so its name is the principal
         // aspect and its args are the aspect's own type arguments.
         TypeExpr::DynAspect { bound, .. } => {
-            let TypeExpr::Named(aspect, args) = bound.as_ref() else {
+            let TypeExpr::Named(aspect, args, _) = bound.as_ref() else {
                 unreachable!("dyn_type grammar only ever produces a named_type bound")
             };
             InferType::Dyn {

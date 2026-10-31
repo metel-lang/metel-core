@@ -214,7 +214,7 @@ fn build_aspect_method_map(
 /// `List<i32>` → `"List"`, `Foo` → `"Foo"`, everything else → `None`.
 fn type_expr_outer_name(te: &TypeExpr) -> Option<String> {
     match te {
-        TypeExpr::Named(name, _) => Some(name.clone()),
+        TypeExpr::Named(name, _, _) => Some(name.clone()),
         _ => None,
     }
 }

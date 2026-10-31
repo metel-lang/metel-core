@@ -115,7 +115,7 @@ enum CanonicalType {
 fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr) -> CanonicalType {
     let go = |t: &TypeExpr| canonicalize(names, current_module, t);
     match ty {
-        TypeExpr::Named(name, args) => {
+        TypeExpr::Named(name, args, _) => {
             let cargs: Vec<_> = args.iter().map(go).collect();
             match resolve_id(names, current_module, name) {
                 Some(id) => CanonicalType::Resolved(id, cargs),
@@ -203,7 +203,7 @@ fn canonicalize_impl_target(
         ib.generics.iter().map(|g| g.name.as_str()).collect();
 
     let map_arg = |i: usize, arg: &TypeExpr| -> CanonicalType {
-        if let TypeExpr::Named(n, inner_args) = arg
+        if let TypeExpr::Named(n, inner_args, _) = arg
             && inner_args.is_empty()
             && impl_param_names.contains(n.as_str())
         {
@@ -213,7 +213,7 @@ fn canonicalize_impl_target(
     };
 
     match &ib.target_type {
-        TypeExpr::Named(target_name, args) if !args.is_empty() => {
+        TypeExpr::Named(target_name, args, _) if !args.is_empty() => {
             // Top-level args: map each to TypeParam(i) if it's an impl param,
             // else canonicalize normally.
             let cargs: Vec<CanonicalType> = args
@@ -269,7 +269,7 @@ fn name_at<'a>(
     arg: &'a TypeExpr,
     impl_param_names: &std::collections::HashSet<&str>,
 ) -> Option<&'a str> {
-    if let TypeExpr::Named(n, _) = arg
+    if let TypeExpr::Named(n, _, _) = arg
         && impl_param_names.contains(n.as_str())
     {
         return Some(n.as_str());
@@ -308,7 +308,7 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
     // type param at `ib.generics` position 0 may appear at a different target
     // position (e.g. `impl<T, U> ... for Pair<U, T>`).
     let (arg_count, name_to_target_pos): (usize, HashMap<&str, usize>) = match &ib.target_type {
-        TypeExpr::Named(_, args) => {
+        TypeExpr::Named(_, args, _) => {
             let map = args
                 .iter()
                 .enumerate()
@@ -493,7 +493,7 @@ fn distinct_primitive_types(a: &TypeExpr, b: &TypeExpr) -> bool {
         "Char",
     ];
     match (a, b) {
-        (TypeExpr::Named(x, xa), TypeExpr::Named(y, ya)) => {
+        (TypeExpr::Named(x, xa, _), TypeExpr::Named(y, ya, _)) => {
             xa.is_empty()
                 && ya.is_empty()
                 && x != y
@@ -525,7 +525,7 @@ fn rows_provably_disjoint(
                                 (Some(_), None) => false,
                                 (Some(n), Some(w)) => {
                                     !distinct_primitive_types(n, w)
-                                        && matches!((n, w), (TypeExpr::Named(x, _), TypeExpr::Named(y, _)) if x == y)
+                                        && matches!((n, w), (TypeExpr::Named(x, _, _), TypeExpr::Named(y, _, _)) if x == y)
                                 }
                             }
                     })
@@ -585,8 +585,8 @@ fn outermost_id(
     ty: &TypeExpr,
 ) -> Option<SymbolId> {
     match ty {
-        TypeExpr::Named(name, args) if args.is_empty() && impl_generics.contains(name) => None,
-        TypeExpr::Named(name, _) => resolve_id(names, current_module, name),
+        TypeExpr::Named(name, args, _) if args.is_empty() && impl_generics.contains(name) => None,
+        TypeExpr::Named(name, _, _) => resolve_id(names, current_module, name),
         _ => None,
     }
 }
@@ -1014,7 +1014,7 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
                         | TypeExpr::Fun { .. }
                 );
             let target_head = match &ib.target_type {
-                TypeExpr::Named(name, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
+                TypeExpr::Named(name, _, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
                 _ => String::new(),
             };
             impls.push(CollectedImpl {

@@ -360,7 +360,7 @@ impl<'a> Checker<'a> {
                 // local, checker-only view, not a change to what the rest of the
                 // typechecker believes.
                 let self_ty = match &ib.target_type {
-                    crate::data::ast::TypeExpr::Named(name, _) => {
+                    crate::data::ast::TypeExpr::Named(name, _, _) => {
                         Some(primitive_type_from_name(name).unwrap_or_else(|| {
                             Type::Named(name.clone(), vec![], crate::data::types::NominalId::NONE)
                         }))

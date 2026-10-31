@@ -506,7 +506,7 @@ fn expand_refs(
     for child in children_mut(te) {
         expand_refs(child, home, local, raw, import_scopes, chain, memo)?;
     }
-    let TypeExpr::Named(name, args) = te else {
+    let TypeExpr::Named(name, args, _) = te else {
         return Ok(());
     };
     if local.contains(name.as_str()) {
@@ -630,7 +630,7 @@ impl Expander<'_> {
         for child in children_mut(te) {
             self.qualify_alias_local_types(child, home, type_names, span);
         }
-        let TypeExpr::Named(name, _) = te else {
+        let TypeExpr::Named(name, _, _) = te else {
             return;
         };
         let type_name = name.clone();
@@ -638,7 +638,7 @@ impl Expander<'_> {
             return;
         }
         let local_name = self.import_alias_for_type(home, &type_name, span);
-        if let TypeExpr::Named(name, _) = te {
+        if let TypeExpr::Named(name, _, _) = te {
             *name = local_name;
         }
     }
@@ -676,13 +676,13 @@ impl Expander<'_> {
         if let TypeExpr::Projection {
             base, assoc_name, ..
         } = te
-            && matches!(base.as_ref(), TypeExpr::Named(n, a) if n == "Self" && a.is_empty())
+            && matches!(base.as_ref(), TypeExpr::Named(n, a, _) if n == "Self" && a.is_empty())
             && let Some(alias) = self.local_lookup(assoc_name)
         {
             *te = alias.target;
             return Ok(());
         }
-        let TypeExpr::Named(name, args) = te else {
+        let TypeExpr::Named(name, args, _) = te else {
             return Ok(());
         };
         let Some(alias) = self.resolve_named(name)? else {
@@ -715,7 +715,7 @@ impl Expander<'_> {
         if !alias.params.is_empty() {
             return Ok(());
         }
-        let TypeExpr::Named(real, real_args) = &alias.target else {
+        let TypeExpr::Named(real, real_args, _) = &alias.target else {
             return Ok(());
         };
         if !real_args.is_empty() {
@@ -973,7 +973,7 @@ impl Expander<'_> {
         for child in children_mut(te) {
             self.expand_local_refs(child, local_params, siblings, chain)?;
         }
-        let TypeExpr::Named(name, args) = te else {
+        let TypeExpr::Named(name, args, _) = te else {
             return Ok(());
         };
         if local_params.contains(name.as_str()) {
@@ -1200,7 +1200,7 @@ fn subst_params(body: &TypeExpr, subst: &HashMap<&str, &TypeExpr>) -> TypeExpr {
 }
 
 fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
-    if let TypeExpr::Named(name, args) = te
+    if let TypeExpr::Named(name, args, _) = te
         && args.is_empty()
         && let Some(replacement) = subst.get(name.as_str())
     {
@@ -1231,7 +1231,7 @@ fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
                 *te = TypeExpr::OpenRecord(std::mem::take(fields), rest_tail.clone());
             }
             TypeExpr::RowArg(rest_tail) => tail.var.clone_from(&rest_tail.var),
-            TypeExpr::Named(name, args) if args.is_empty() => tail.var = Some(name.clone()),
+            TypeExpr::Named(name, args, _) if args.is_empty() => tail.var = Some(name.clone()),
             _ => {}
         }
     }
@@ -1241,7 +1241,7 @@ fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
 /// (including a `Named`'s type arguments).
 fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
     match te {
-        TypeExpr::Named(_, args) | TypeExpr::Tuple(args) => args.iter_mut().collect(),
+        TypeExpr::Named(_, args, _) | TypeExpr::Tuple(args) => args.iter_mut().collect(),
         TypeExpr::Record(fields) => fields.iter_mut().map(|(_, t)| t).collect(),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)

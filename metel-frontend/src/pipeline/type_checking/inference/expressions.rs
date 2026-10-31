@@ -1958,8 +1958,8 @@ fn infer_expr_inner(
                         let ret_ty = method_def.return_type.as_ref().map_or(
                             InferType::unit(),
                             |rt| match rt {
-                                TypeExpr::Named(n, _) if n == "Self" => InferType::Var(*tv),
-                                TypeExpr::Named(n, args)
+                                TypeExpr::Named(n, _, _) if n == "Self" => InferType::Var(*tv),
+                                TypeExpr::Named(n, args, _)
                                     if args.is_empty()
                                         && ctx
                                             .aspect_assoc_type_decls(aspect_name)

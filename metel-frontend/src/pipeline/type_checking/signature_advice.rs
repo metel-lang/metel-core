@@ -19,7 +19,7 @@ fn mentions_record_or_row(te: &TypeExpr) -> bool {
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::RowArg(_)
         | TypeExpr::RowArgLiteral(_) => true,
-        TypeExpr::Named(_, args) => args.iter().any(mentions_record_or_row),
+        TypeExpr::Named(_, args, _) => args.iter().any(mentions_record_or_row),
         TypeExpr::Tuple(items) => items.iter().any(mentions_record_or_row),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)

@@ -151,7 +151,7 @@ pub(super) fn impl_generics_with_row_aliases(
     struct_generic_names: &[String],
 ) -> Vec<GenericParam> {
     let mut generics = ib.generics.clone();
-    let TypeExpr::Named(_, args) = &ib.target_type else {
+    let TypeExpr::Named(_, args, _) = &ib.target_type else {
         return generics;
     };
     for (arg, struct_name) in args.iter().zip(struct_generic_names) {
@@ -172,7 +172,7 @@ pub(super) fn impl_generics_with_row_aliases(
 }
 
 fn bare_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Option<&str> {
-    let TypeExpr::Named(name, args) = &ib.target_type else {
+    let TypeExpr::Named(name, args, _) = &ib.target_type else {
         return None;
     };
     if !args.is_empty() {
@@ -256,7 +256,7 @@ pub(crate) fn record_target_row(ib: &crate::data::ast::ImplBlock) -> Option<RowC
 pub(crate) fn impl_nominal_row_arg_all_fields(
     ib: &crate::data::ast::ImplBlock,
 ) -> Vec<(String, GenericBound)> {
-    let (TypeExpr::Named(_, args), Some(wc)) = (&ib.target_type, &ib.where_clause) else {
+    let (TypeExpr::Named(_, args, _), Some(wc)) = (&ib.target_type, &ib.where_clause) else {
         return vec![];
     };
     wc.field_wise
@@ -312,7 +312,7 @@ pub(super) fn array_target_generic_name(ib: &crate::data::ast::ImplBlock) -> Opt
     let TypeExpr::Array(inner) = &ib.target_type else {
         return None;
     };
-    let TypeExpr::Named(name, args) = inner.as_ref() else {
+    let TypeExpr::Named(name, args, _) = inner.as_ref() else {
         return None;
     };
     if !args.is_empty() {
@@ -355,13 +355,13 @@ fn populate_schemes_from_embedded_core(
             Decl::Impl(ib) => {
                 // Static native methods on generic structs become joined-key
                 // schemes ("List::new") quantified over the struct's params.
-                let TypeExpr::Named(target_name, target_args) = &ib.target_type else {
+                let TypeExpr::Named(target_name, target_args, _) = &ib.target_type else {
                     continue;
                 };
                 let generic_map: HashMap<String, TypeVar> = target_args
                     .iter()
                     .filter_map(|te| match te {
-                        TypeExpr::Named(n, args) if args.is_empty() => {
+                        TypeExpr::Named(n, args, _) if args.is_empty() => {
                             Some((n.clone(), type_var_gen.fresh()))
                         }
                         _ => None,
@@ -751,7 +751,7 @@ fn register_program_decls(
         if let Decl::Impl(ib) = decl {
             registry.register_nominal_ownership_candidate(current_module_path, ib);
             let nominal_target_name = match &ib.target_type {
-                TypeExpr::Named(name, _) => Some(name.clone()),
+                TypeExpr::Named(name, _, _) => Some(name.clone()),
                 _ => None,
             };
             let is_array_generic_target = array_target_generic_name(ib).is_some();
@@ -996,7 +996,7 @@ fn register_program_decls(
                             neg_bounds,
                         );
                     }
-                } else if let (Some(target_name), TypeExpr::Named(_, target_type_args)) =
+                } else if let (Some(target_name), TypeExpr::Named(_, target_type_args, _)) =
                     (nominal_target_name.as_ref(), &ib.target_type)
                 {
                     let concrete_target_args: Vec<crate::data::types::Type> = target_type_args
@@ -1026,7 +1026,7 @@ fn register_program_decls(
 fn type_expr_contains_row_arg(ty: &crate::data::ast::TypeExpr) -> bool {
     use crate::data::ast::TypeExpr;
     match ty {
-        TypeExpr::Named(_, args) => args.iter().any(type_expr_contains_row_arg),
+        TypeExpr::Named(_, args, _) => args.iter().any(type_expr_contains_row_arg),
         TypeExpr::Tuple(items) => items.iter().any(type_expr_contains_row_arg),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
@@ -1137,7 +1137,7 @@ fn register_generic_impl_method_schemes(
     // position, whatever the impl calls it; a row generic the target doesn't splice
     // (`Rest`) is an extra quantified var, pinned later by its decomposition equation.
     let mut impl_extra_row_vars: Vec<(String, TypeVar)> = Vec::new();
-    if let crate::data::ast::TypeExpr::Named(_, target_args) = &ib.target_type {
+    if let crate::data::ast::TypeExpr::Named(_, target_args, _) = &ib.target_type {
         for (arg, &tv) in target_args.iter().zip(type_params.iter()) {
             if let crate::data::ast::TypeExpr::RowArg(tail) = arg
                 && let Some(name) = tail.var.as_deref()
@@ -1548,8 +1548,11 @@ fn register_array_impl_method_schemes(
     let element_tv = type_var_gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
-    let structural_self_type_expr =
-        TypeExpr::Array(Box::new(TypeExpr::Named(element_name.to_string(), vec![])));
+    let structural_self_type_expr = TypeExpr::Array(Box::new(TypeExpr::Named(
+        element_name.to_string(),
+        vec![],
+        Span::new(0, 0, "").into(),
+    )));
     let by_var: HashMap<TypeVar, Vec<GenericBound>> = std::iter::once(element_tv)
         .zip(collect_type_param_bounds(
             &ib.generics,
@@ -1744,12 +1747,13 @@ fn register_record_target_impl(
 
 fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr {
     match te {
-        TypeExpr::Named(name, args) if name == "Self" && args.is_empty() => replacement.clone(),
-        TypeExpr::Named(name, args) => TypeExpr::Named(
+        TypeExpr::Named(name, args, _) if name == "Self" && args.is_empty() => replacement.clone(),
+        TypeExpr::Named(name, args, span) => TypeExpr::Named(
             name.clone(),
             args.iter()
                 .map(|arg| substitute_structural_self(arg, replacement))
                 .collect(),
+            span.clone(),
         ),
         TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(

@@ -81,7 +81,7 @@ fn rename_bounds(bounds: &mut [Bound], replacements: &HashMap<String, String>) {
 
 fn rename_type(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
     match ty {
-        TypeExpr::Named(name, arguments) => {
+        TypeExpr::Named(name, arguments, _) => {
             rename_name(name, replacements);
             for argument in arguments {
                 rename_type(argument, replacements);
@@ -138,7 +138,7 @@ fn rename_type(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
 fn rename_aspect_arguments(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
     // Aspect heads resolve in the aspect namespace, even when a parameter has
     // the same spelling. Only their argument types refer to parameter binders.
-    if let TypeExpr::Named(_, arguments) = ty {
+    if let TypeExpr::Named(_, arguments, _) = ty {
         for argument in arguments {
             rename_type(argument, replacements);
         }

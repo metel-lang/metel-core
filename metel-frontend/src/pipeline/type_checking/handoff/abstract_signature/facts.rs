@@ -418,7 +418,8 @@ impl FactFreezer<'_> {
             .and_then(|members| members.iter().find(|member| member.name == projection.name))
             .ok_or_else(|| MetelError::internal("associated projection has no declared member"))?;
         for bound in &declaration.bounds {
-            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(name, arguments)) = &bound.head
+            let crate::data::ast::BoundHead::Aspect(TypeExpr::Named(name, arguments, _)) =
+                &bound.head
             else {
                 return Err(MetelError::internal(
                     "associated member bound contract is not retained",

@@ -1489,8 +1489,8 @@ fn runtime_type_pattern(value: &Value) -> Option<RuntimeTypePattern> {
 
 fn runtime_type_key(ty: &TypeExpr) -> String {
     match ty {
-        TypeExpr::Named(name, args) if args.is_empty() => name.clone(),
-        TypeExpr::Named(name, args) => format!(
+        TypeExpr::Named(name, args, _) if args.is_empty() => name.clone(),
+        TypeExpr::Named(name, args, _) => format!(
             "{name}<{}>",
             args.iter()
                 .map(runtime_type_key)
@@ -1651,12 +1651,9 @@ fn runtime_method_from_decl(
             if param.receiver.is_some() {
                 None
             } else {
-                Some(
-                    param
-                        .type_ann
-                        .clone()
-                        .unwrap_or_else(|| TypeExpr::Named("_".to_string(), vec![])),
-                )
+                Some(param.type_ann.clone().unwrap_or_else(|| {
+                    TypeExpr::Named("_".to_string(), vec![], param.span.clone().into())
+                }))
             }
         })
         .collect::<Vec<_>>();
@@ -2411,7 +2408,7 @@ fn run_passes(
                 }
             }
             TypedDecl::Impl(impl_block) => match &impl_block.target_type {
-                crate::data::ast::TypeExpr::Named(type_name, _) => {
+                crate::data::ast::TypeExpr::Named(type_name, _, _) => {
                     let Some(target_id) = impl_block
                         .target_type_id
                         .or_else(|| builtins::builtin_type_id(type_name))
@@ -4240,7 +4237,7 @@ pub fn eval_expr(
             // Dispatch through From impl using the full aspect-signature key
             // "Target::From<Source>::from", then fall back to "Target::from"
             // (used by built-in Int::from / Float::from which have no type arg).
-            if let crate::data::ast::TypeExpr::Named(target_name, _) = target_type {
+            if let crate::data::ast::TypeExpr::Named(target_name, _, _) = target_type {
                 // Prefer the cast's own resolved target identity (metel-core#1054):
                 // two modules can each declare a same-named type with its own
                 // From impl, and target_type's bare spelling has no module

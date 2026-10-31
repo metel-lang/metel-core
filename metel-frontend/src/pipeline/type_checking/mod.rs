@@ -1002,7 +1002,7 @@ fn enforce_native_stdlib_only(program: &Program, module_path: &[String]) -> Resu
 /// keyed on.
 pub(crate) fn impl_target_head(target: &crate::data::ast::TypeExpr) -> Option<&str> {
     match target {
-        crate::data::ast::TypeExpr::Named(name, _) => Some(name),
+        crate::data::ast::TypeExpr::Named(name, _, _) => Some(name),
         _ => None,
     }
 }
@@ -1070,7 +1070,7 @@ fn check_impl_field_wise_constraints(
 fn impl_target_row_arg_names(ib: &crate::data::ast::ImplBlock, var: &str) -> bool {
     use crate::data::ast::TypeExpr;
     ib.generics.iter().any(|g| g.is_row && g.name == var)
-        && matches!(&ib.target_type, TypeExpr::Named(_, args)
+        && matches!(&ib.target_type, TypeExpr::Named(_, args, _)
             if args.iter().any(|arg| matches!(arg, TypeExpr::RowArg(tail) if tail.var.as_deref() == Some(var))))
 }
 
@@ -1080,7 +1080,7 @@ fn record_target_mentions_type_param(ib: &crate::data::ast::ImplBlock) -> bool {
     use crate::data::ast::TypeExpr;
     fn mentions(ty: &TypeExpr, params: &std::collections::HashSet<&str>) -> bool {
         match ty {
-            TypeExpr::Named(name, args) => {
+            TypeExpr::Named(name, args, _) => {
                 params.contains(name.as_str()) || args.iter().any(|a| mentions(a, params))
             }
             TypeExpr::Tuple(items) => items.iter().any(|t| mentions(t, params)),
@@ -1144,7 +1144,7 @@ pub(crate) fn reject_unregisterable_impl_target(
     // would never apply (its receiver is a bare type variable, which no method lookup
     // reaches), so it is rejected rather than accepted and inert (metel-core#1241). The
     // supported spelling of the same impl is a row target.
-    if let TypeExpr::Named(name, args) = &ib.target_type
+    if let TypeExpr::Named(name, args, _) = &ib.target_type
         && args.is_empty()
         && ib.generics.iter().any(|g| g.name == *name && g.is_record)
     {
@@ -1226,7 +1226,7 @@ pub(crate) fn reject_unregisterable_impl_target(
         // register an impl against, the same reason `impl Aspect` can't be an
         // impl target either.
         TypeExpr::DynAspect { .. } => "a `dyn Aspect` type",
-        TypeExpr::Named(_, _) => unreachable!("nominal targets returned early"),
+        TypeExpr::Named(_, _, _) => unreachable!("nominal targets returned early"),
         // RFC-0121 installment 2: same restriction as `OpenRecord` above.
         TypeExpr::OpenRecordProjection { .. } => {
             unreachable!("OpenRecordProjection cannot appear as an impl block's target type")

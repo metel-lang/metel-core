@@ -331,7 +331,7 @@ fn render_type_key(te: &TypeExpr, params: &[&str]) -> String {
         rendered.join(",")
     };
     match te {
-        TypeExpr::Named(name, args) => {
+        TypeExpr::Named(name, args, _) => {
             if args.is_empty() {
                 params
                     .iter()

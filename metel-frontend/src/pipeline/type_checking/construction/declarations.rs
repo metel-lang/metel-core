@@ -624,17 +624,16 @@ pub(super) fn construct_impl_decl(
     // whose written argument is exactly `Option`'s own declared generic
     // parameter, in the same position -- not a real generic re-declaration on
     // the `extend` itself, which `ib.generics` alone would miss)?
-    let target_instantiation_args =
-        match &ib.target_type {
-            TypeExpr::Named(target_type_name, args) if !args.is_empty() => {
-                let struct_generic_names = ctx
-                    .registry
-                    .struct_generic_names_for(ctx.current_module, target_type_name)
-                    .cloned()
-                    .unwrap_or_default();
-                let covers_every_instantiation = args.len() == struct_generic_names.len()
+    let target_instantiation_args = match &ib.target_type {
+        TypeExpr::Named(target_type_name, args, _) if !args.is_empty() => {
+            let struct_generic_names = ctx
+                .registry
+                .struct_generic_names_for(ctx.current_module, target_type_name)
+                .cloned()
+                .unwrap_or_default();
+            let covers_every_instantiation = args.len() == struct_generic_names.len()
                 && args.iter().zip(struct_generic_names.iter()).all(|(arg, gname)| {
-                    matches!(arg, TypeExpr::Named(n, inner) if inner.is_empty() && n == gname)
+                    matches!(arg, TypeExpr::Named(n, inner, _) if inner.is_empty() && n == gname)
                         // RFC-0121 item 2: `extend<record R> Session<..R>` splices the impl's
                         // own row generic, which any instantiation's row binds -- the
                         // same "every instantiation" as writing the param's own name.
@@ -643,14 +642,14 @@ pub(super) fn construct_impl_decl(
                                 ib.generics.iter().any(|g| g.name == v)
                             }))
                 });
-                if covers_every_instantiation {
-                    None
-                } else {
-                    Some(args.clone())
-                }
+            if covers_every_instantiation {
+                None
+            } else {
+                Some(args.clone())
             }
-            _ => None,
-        };
+        }
+        _ => None,
+    };
 
     let row_guards = row_guards_for_impl(ib);
 
@@ -743,7 +742,7 @@ fn inherited_method_identity(
         TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
             crate::identity::InheritedMethodTarget::Record
         }
-        TypeExpr::Named(name, _) => {
+        TypeExpr::Named(name, _, _) => {
             crate::identity::InheritedMethodTarget::Nominal(ctx.written_type_id(name)?)
         }
         _ => return None,
@@ -1055,13 +1054,13 @@ fn row_guards_for_impl(ib: &crate::data::ast::ImplBlock) -> Vec<crate::data::typ
         }
         _ => {}
     }
-    let TypeExpr::Named(_, args) = &ib.target_type else {
+    let TypeExpr::Named(_, args, _) = &ib.target_type else {
         return vec![];
     };
     let mut guards = Vec::new();
     for (position, arg) in args.iter().enumerate() {
         let name = match arg {
-            TypeExpr::Named(n, inner) if inner.is_empty() => n.as_str(),
+            TypeExpr::Named(n, inner, _) if inner.is_empty() => n.as_str(),
             TypeExpr::RowArg(tail) => match tail.var.as_deref() {
                 Some(v) => v,
                 None => continue,
