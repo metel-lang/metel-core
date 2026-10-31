@@ -1,0 +1,8 @@
+// metel-core#1221: a `root::` path names an item of a module the current module does not import
+// itself, as long as that module does not depend on this one.
+import root::lib::f;
+
+fun main() {
+    assert(f() == 6);
+    assert(root::util::g() == 5);
+}

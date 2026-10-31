@@ -46,6 +46,9 @@ impl NormalizedModuleGraph {
     }
 }
 
+/// An item bound under a path written without importing it: the module, the local key, the binding.
+type ImplicitImport = (Vec<String>, (Namespace, String), ImportBinding);
+
 /// What the rewrite needs to resolve a path: the canonical symbol table, and which enum variants
 /// are unit variants (a variant with no fields is written as a bare path and used as a value).
 struct PathSymbols<'a> {
@@ -58,6 +61,44 @@ struct PathSymbols<'a> {
     /// The `module::Type::member` paths rewritten so far, per module, for the type checker
     /// (`ModuleScope::qualified_paths`).
     qualified: std::cell::RefCell<Vec<(Vec<String>, Span, QualifiedPath)>>,
+    /// Items a `root::` or `super::` path names without an import, per module: the path as
+    /// written is the local name the item is bound under (metel-core#1221).
+    implicit_imports: std::cell::RefCell<Vec<ImplicitImport>>,
+    /// The modules each module imports or re-exports from: the module graph's dependency edges.
+    deps: std::collections::HashMap<Vec<String>, HashSet<Vec<String>>>,
+    /// Set when a `root::` or `super::` path names an item of a module that depends on the current
+    /// one; the caller reports it at the path.
+    cycle: std::cell::RefCell<Option<String>>,
+}
+
+/// Whether `from` depends on `target`, directly or through the modules it imports.
+fn module_depends_on(
+    deps: &std::collections::HashMap<Vec<String>, HashSet<Vec<String>>>,
+    from: &[String],
+    target: &[String],
+) -> bool {
+    let mut seen: HashSet<&[String]> = HashSet::new();
+    let mut stack: Vec<&[String]> = vec![from];
+    while let Some(module) = stack.pop() {
+        if module == target {
+            return true;
+        }
+        if !seen.insert(module) {
+            continue;
+        }
+        if let Some(next) = deps.get(module) {
+            stack.extend(next.iter().map(Vec::as_slice));
+        }
+    }
+    false
+}
+
+fn module_display(module: &[String]) -> String {
+    if module.is_empty() {
+        "root".to_string()
+    } else {
+        module.join("::")
+    }
 }
 
 // arch-implements: ["arch.path-normalization.requirement-1"]
@@ -115,6 +156,23 @@ pub fn normalize(
             unit_variants,
             public_types,
             qualified: std::cell::RefCell::new(Vec::new()),
+            implicit_imports: std::cell::RefCell::new(Vec::new()),
+            deps: names
+                .scopes
+                .iter()
+                .map(|(module, scope)| {
+                    let edges = scope
+                        .explicit
+                        .values()
+                        .chain(scope.re_exports.values())
+                        .map(|binding| binding.source_module.clone())
+                        .chain(scope.globs.iter().map(|(_, glob)| glob.clone()))
+                        .filter(|dep| dep != module)
+                        .collect();
+                    (module.clone(), edges)
+                })
+                .collect(),
+            cycle: std::cell::RefCell::new(None),
         };
         for loaded in &mut graph.modules {
             let scope = names.scopes.get(&loaded.module_path);
@@ -126,13 +184,22 @@ pub fn normalize(
                 &symbols,
             )?;
         }
-        symbols.qualified.into_inner()
+        (
+            symbols.qualified.into_inner(),
+            symbols.implicit_imports.into_inner(),
+        )
     };
-    if !qualified.is_empty() {
+    let (qualified, implicit_imports) = qualified;
+    if !qualified.is_empty() || !implicit_imports.is_empty() {
         let names_mut = Rc::make_mut(&mut names);
         for (module, span, path) in qualified {
             if let Some(scope) = names_mut.scopes.get_mut(&module) {
                 scope.qualified_paths.insert(span, path);
+            }
+        }
+        for (module, key, binding) in implicit_imports {
+            if let Some(scope) = names_mut.scopes.get_mut(&module) {
+                scope.explicit.entry(key).or_insert(binding);
             }
         }
     }
@@ -336,9 +403,16 @@ fn normalize_expr(
                 *expr = Expr::Path(path, path_spans, span.clone());
                 return Ok(());
             }
-            if let Some((resolved, symbol_id)) =
-                try_resolve_path(segments, scope, current_module, module_names, symbols)
-            {
+            let resolved_path =
+                try_resolve_path(segments, scope, current_module, module_names, symbols);
+            if let Some(message) = symbols.cycle.borrow_mut().take() {
+                return Err(MetelError::parse(
+                    crate::data::error::ParseErrorCode::P0001,
+                    message,
+                    span,
+                ));
+            }
+            if let Some((resolved, symbol_id)) = resolved_path {
                 let original = std::mem::take(segments);
                 *expr = Expr::ResolvedPath {
                     resolved,
@@ -517,6 +591,22 @@ fn lookup_symbol(
         })
 }
 
+/// As [`lookup_symbol`], with the namespace the symbol was found in.
+fn lookup_namespaced_symbol(
+    symbols: &PathSymbols<'_>,
+    module: &[String],
+    name: &str,
+) -> Option<(Namespace, crate::identity::symbols::SymbolId)> {
+    [Namespace::Value, Namespace::Type]
+        .into_iter()
+        .find_map(|ns| {
+            symbols
+                .map
+                .get(&(module.to_vec(), ns, name.to_string()))
+                .map(|id| (ns, *id))
+        })
+}
+
 /// The explicit import binding satisfying `pred`, with its local name. A name imported in both
 /// namespaces is tried value-first, so the answer does not depend on map iteration order.
 fn explicit_binding(
@@ -571,6 +661,22 @@ fn try_resolve_path(
 
     // Keywords: root/self/super — the declared name is the last segment
     if first == "root" || first == "self" || first == "super" {
+        // The module the path names: the keyword's module, then any submodule segments.
+        let root = match first.as_str() {
+            "root" => crate::data::ast::PathRoot::Root,
+            "super" => crate::data::ast::PathRoot::Super,
+            _ => crate::data::ast::PathRoot::Self_,
+        };
+        let mut target = root.resolve(current_module);
+        target.extend_from_slice(&segments[1..segments.len() - 1]);
+        // An import of exactly that item, under whatever alias it was given.
+        if let Some(s) = scope
+            && let Some((local, binding)) = explicit_binding(s, |_, b| {
+                b.source_module == target && &b.source_name == declared_name
+            })
+        {
+            return Some((local.clone(), Some(binding.symbol_id)));
+        }
         // Check the scope for an alias, otherwise use the declared name
         if let Some(s) = scope
             && let Some((local, binding)) =
@@ -578,13 +684,46 @@ fn try_resolve_path(
         {
             return Some((local.clone(), Some(binding.symbol_id)));
         }
+        // An item of another module that the path names without importing it: bind it under the
+        // path as written, like an import, so the checker finds its scheme (metel-core#1221).
+        if target != current_module
+            && let Some((namespace, symbol)) =
+                lookup_namespaced_symbol(symbols, &target, declared_name)
+        {
+            // Modules are checked in dependency order, so the item's module must not itself
+            // depend on this one: `parser` cannot name `root::helper` while `root` imports `parser`.
+            if module_depends_on(&symbols.deps, &target, current_module) {
+                *symbols.cycle.borrow_mut() = Some(format!(
+                    "circular module dependency: `{}` names `{}`, declared in `{}`, which depends \
+                     on `{}`",
+                    module_display(current_module),
+                    segments.join("::"),
+                    module_display(&target),
+                    module_display(current_module),
+                ));
+                return None;
+            }
+            let alias = segments.join("::");
+            symbols.implicit_imports.borrow_mut().push((
+                current_module.to_vec(),
+                (namespace, alias.clone()),
+                ImportBinding {
+                    source_module: target,
+                    source_name: declared_name.clone(),
+                    kind: crate::pipeline::name_resolution::name_resolver::BindingKind::Item,
+                    namespace,
+                    symbol_id: symbol,
+                },
+            ));
+            return Some((alias, Some(symbol)));
+        }
         // `self::name` with no explicit alias refers to this same module's own
         // declaration — look its `SymbolId` up directly rather than leaving it
         // `None` (which forced evaluation back onto the name map). `root`/
         // `super` aren't resolved to a module here (this pass doesn't track
         // module hierarchy), so they keep the pre-existing `None` and rely on
         // downstream name resolution, same as before.
-        let symbol_id = if first == "self" {
+        let symbol_id = if first == "self" || target == current_module {
             lookup_symbol(symbols, current_module, declared_name)
         } else {
             None
