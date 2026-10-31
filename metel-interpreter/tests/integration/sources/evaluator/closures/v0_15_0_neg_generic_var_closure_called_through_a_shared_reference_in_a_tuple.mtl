@@ -1,0 +1,10 @@
+// metel-core#1703 (RFC 0153, legality-10): a `&` held in a tuple element, two steps from the callee.
+struct Cell {
+    go: var || -> i64,
+}
+
+fun peek<T: Copy>(pair: (&Cell, i64), x: T) -> i64 {
+    (pair.0.go)() // error: `var` closure called through a shared reference
+}
+
+fun main() { }

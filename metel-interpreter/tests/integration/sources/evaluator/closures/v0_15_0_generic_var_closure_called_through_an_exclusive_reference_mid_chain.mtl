@@ -1,0 +1,15 @@
+// metel-core#1703 (RFC 0153, legality-10): an exclusive `&var` in the middle of the chain grants the
+// access a `var` closure needs, so the call is accepted.
+struct Cell {
+    go: var || -> i64,
+}
+
+struct Handle {
+    cell: &var Cell,
+}
+
+fun bump<T: Copy>(h: Handle, x: T) -> i64 {
+    (h.cell.go)()
+}
+
+fun main() { }
