@@ -139,34 +139,6 @@ pub struct Allocation {
     pub positions: PositionIndex,
     /// The transient span → [`BindingId`] bridge for the typed-AST pass.
     pub binding_spans: BindingSpans,
-    /// Written generic-parameter names in type annotations → the parameter they denote.
-    pub type_param_spans: TypeParamSpans,
-}
-
-/// The span of each written type name that denotes a generic parameter → that parameter's
-/// [`TypeParamId`] (ADR-0067). Like [`BindingSpans`] it is a transient bridge: the consumer reads the
-/// id off a [`crate::data::ast::TypeExpr::Named`]'s span and keeps only the id.
-#[derive(Debug, Clone, Default)]
-pub struct TypeParamSpans(HashMap<Span, TypeParamId>);
-
-impl TypeParamSpans {
-    /// The parameter the type name written at `span` denotes, if it denotes one.
-    #[must_use]
-    pub fn get(&self, span: &Span) -> Option<TypeParamId> {
-        self.0.get(span).copied()
-    }
-
-    /// Number of recorded names.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// Whether nothing is recorded.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
 }
 
 /// The generic lists and return type of the declaration whose body [`walk_body`] walks: what the
@@ -175,6 +147,8 @@ impl TypeParamSpans {
 struct SigTypes<'a> {
     generics: Vec<(GenericLevel, Vec<&'a str>)>,
     return_type: Option<&'a TypeExpr>,
+    /// The declaration's own span: the key its generic parameters are filed under.
+    decl_span: Option<&'a Span>,
 }
 
 impl<'a> SigTypes<'a> {
@@ -182,6 +156,7 @@ impl<'a> SigTypes<'a> {
         Self {
             generics: vec![(GenericLevel::Own, generic_names(&fun.generics))],
             return_type: fun.return_type.as_ref(),
+            decl_span: Some(&fun.span),
         }
     }
 
@@ -192,6 +167,7 @@ impl<'a> SigTypes<'a> {
                 (GenericLevel::Own, generic_names(&method.generics)),
             ],
             return_type: method.return_type.as_ref(),
+            decl_span: Some(&method.span),
         }
     }
 
@@ -205,6 +181,7 @@ impl<'a> SigTypes<'a> {
                 (GenericLevel::Own, generic_names(&method.generics)),
             ],
             return_type: method.return_type.as_ref(),
+            decl_span: Some(&method.span),
         }
     }
 }
@@ -224,26 +201,50 @@ fn generic_names(generics: &[GenericParam]) -> Vec<&str> {
 /// lowering passes leave `Expr::Ident` and binding-name spans untouched, so
 /// parse-time spans match what construction sees.
 #[derive(Debug, Clone, Default)]
-pub struct BindingSpans(HashMap<Span, BindingId>);
+pub struct BindingSpans {
+    bindings: HashMap<Span, BindingId>,
+    /// The span of each written type name that denotes a generic parameter → that parameter
+    /// (ADR-0067). Read off a [`crate::data::ast::TypeExpr::Named`]'s span; only the id is kept.
+    type_params: HashMap<Span, TypeParamId>,
+    /// A function or method declaration's span → the generic parameters it declares, outermost
+    /// list first. The one place a parameter's spelling is paired with its identity: a scheme's
+    /// `param_names` are joined to ids here, once, where the scheme is built.
+    declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
+}
 
 impl BindingSpans {
     /// The binding whose definition, method declaration or resolved-reference
     /// span is exactly `span`.
     #[must_use]
     pub fn get(&self, span: &Span) -> Option<BindingId> {
-        self.0.get(span).copied()
+        self.bindings.get(span).copied()
     }
 
-    /// Number of recorded spans.
+    /// The generic parameter the type name written at `span` denotes, if it denotes one.
+    #[must_use]
+    pub fn type_param_at(&self, span: &Span) -> Option<TypeParamId> {
+        self.type_params.get(span).copied()
+    }
+
+    /// The generic parameters the function or method declared at `span` introduces, the
+    /// enclosing `extend` or aspect header's first.
+    #[must_use]
+    pub fn declared_type_params(&self, span: &Span) -> &[(String, TypeParamId)] {
+        self.declared_type_params
+            .get(span)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Number of recorded binding spans.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.bindings.len()
     }
 
-    /// Whether nothing is recorded.
+    /// Whether no binding span is recorded.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.bindings.is_empty()
     }
 }
 
@@ -365,9 +366,10 @@ pub fn allocate_module(
     classify_globals(&mut acc.out, &acc.positions, names);
 
     let mut binding_spans = binding_spans_from(&acc.positions, &acc.out);
-    binding_spans.0.extend(acc.method_body_spans);
+    binding_spans.bindings.extend(acc.method_body_spans);
+    binding_spans.type_params = acc.type_param_spans;
+    binding_spans.declared_type_params = acc.declared_type_params;
     Allocation {
-        type_param_spans: TypeParamSpans(acc.type_param_spans),
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
         binding_spans,
@@ -389,7 +391,10 @@ fn binding_spans_from(positions: &[(Span, PositionHit)], map: &ResolutionMap) ->
             out.insert(span.clone(), b);
         }
     }
-    BindingSpans(out)
+    BindingSpans {
+        bindings: out,
+        ..BindingSpans::default()
+    }
 }
 
 /// The three per-module accumulators the identity walk fills, bundled so
@@ -403,6 +408,7 @@ struct ModuleAlloc {
     // literals or whitespace into name sites in the editor position index.
     method_body_spans: HashMap<Span, BindingId>,
     type_param_spans: HashMap<Span, TypeParamId>,
+    declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -441,8 +447,7 @@ pub fn allocate_graph(
 ) -> Allocation {
     let mut resolution = ResolutionMap::default();
     let mut positions = Vec::with_capacity(modules.len());
-    let mut binding_spans = HashMap::new();
-    let mut type_param_spans = HashMap::new();
+    let mut binding_spans = BindingSpans::default();
     for (module_path, decls) in modules {
         let nav = ModuleNav {
             table: graph_nav.table,
@@ -453,14 +458,20 @@ pub fn allocate_graph(
         let allocation = allocate_module(module_path, decls, names, interner, nav);
         resolution.extend_from(allocation.resolution);
         positions.push(allocation.positions);
-        binding_spans.extend(allocation.binding_spans.0);
-        type_param_spans.extend(allocation.type_param_spans.0);
+        binding_spans
+            .bindings
+            .extend(allocation.binding_spans.bindings);
+        binding_spans
+            .type_params
+            .extend(allocation.binding_spans.type_params);
+        binding_spans
+            .declared_type_params
+            .extend(allocation.binding_spans.declared_type_params);
     }
     Allocation {
         resolution,
         positions: PositionIndex::from_indices(positions),
-        binding_spans: BindingSpans(binding_spans),
-        type_param_spans: TypeParamSpans(type_param_spans),
+        binding_spans,
     }
 }
 
@@ -563,18 +574,19 @@ pub(crate) fn allocate_inherited_body(
     );
     // Global references retain the source aspect's resolution. Locals belong
     // to the inherited body, so copying the source LocalIds would conflate impls.
-    let mut spans = BindingSpans(
-        source
-            .0
+    let mut spans = BindingSpans {
+        bindings: source
+            .bindings
             .iter()
             .filter(|(_, binding)| matches!(binding, BindingId::Global(_)))
             .map(|(span, binding)| (span.clone(), *binding))
             .collect(),
-    );
+        ..BindingSpans::default()
+    };
     spans
-        .0
-        .extend(binding_spans_from(&acc.positions, &acc.out).0);
-    spans.0.insert(method.span.clone(), binder);
+        .bindings
+        .extend(binding_spans_from(&acc.positions, &acc.out).bindings);
+    spans.bindings.insert(method.span.clone(), binder);
     (binder, spans)
 }
 
@@ -634,26 +646,11 @@ fn walk_body(
         propagate_counter: vec![0],
         use_counter: HashMap::new(),
         type_params: HashMap::new(),
+        impl_aspects: None,
+        synthesised: Vec::new(),
+        sig_scope: LexicalPath::root(),
     };
-    // An own parameter shadows a container's of the same name, so the lists are inserted
-    // outermost first.
-    for (level, names) in &sig.generics {
-        for (ordinal, name) in names.iter().enumerate() {
-            let ordinal = u32::try_from(ordinal).unwrap_or(u32::MAX);
-            walker.type_params.insert(
-                (*name).to_string(),
-                TypeParamId::new(owner, *level, ordinal),
-            );
-        }
-    }
-    for param in params {
-        if let Some(ann) = &param.type_ann {
-            walker.record_type_expr(ann);
-        }
-    }
-    if let Some(ret) = sig.return_type {
-        walker.record_type_expr(ret);
-    }
+    walker.declare_signature(sig, params);
     for (i, param) in params.iter().enumerate() {
         walker.bind(
             &param.name,
@@ -719,6 +716,9 @@ fn walk_value_body(
         propagate_counter: vec![0],
         use_counter: HashMap::new(),
         type_params: HashMap::new(),
+        impl_aspects: None,
+        synthesised: Vec::new(),
+        sig_scope: LexicalPath::root(),
     };
     walker.walk_expr(value);
 }
@@ -749,6 +749,14 @@ struct Walker<'a> {
     /// The generic parameters in scope for the written types of this body, by the spelling they
     /// were declared with. Used only here, to attach each written name its [`TypeParamId`].
     type_params: HashMap<String, TypeParamId>,
+    /// Counts the `impl Aspect` parameter types seen so far in the signature being declared, and
+    /// is `None` outside a signature's parameter types, where such a type is not a parameter.
+    impl_aspects: Option<u32>,
+    /// Parameters the signature being declared adds for its `impl Aspect` parameter types.
+    synthesised: Vec<(String, TypeParamId)>,
+    /// The path of the function whose signature is being declared: the scope its parameters' ids are
+    /// taken in.
+    sig_scope: LexicalPath,
 }
 
 impl Walker<'_> {
@@ -889,6 +897,43 @@ impl Walker<'_> {
         self.leave();
     }
 
+    /// Open the generic scope of the function whose signature is `sig`, and record the written
+    /// types of its parameters and return type. An own parameter shadows a header one of the same
+    /// name, so the lists are declared outermost first. Returns the scope it replaced.
+    fn declare_signature(
+        &mut self,
+        sig: &SigTypes<'_>,
+        params: &[Param],
+    ) -> HashMap<String, TypeParamId> {
+        let outer = std::mem::take(&mut self.type_params);
+        self.sig_scope = self.path.clone();
+        let mut declared = Vec::new();
+        for (level, names) in &sig.generics {
+            for (ordinal, name) in names.iter().enumerate() {
+                let ordinal = u32::try_from(ordinal).unwrap_or(u32::MAX);
+                let id = TypeParamId::new(self.owner, &self.sig_scope, *level, ordinal);
+                self.type_params.insert((*name).to_string(), id);
+                declared.push(((*name).to_string(), id));
+            }
+        }
+        self.synthesised.clear();
+        self.impl_aspects = Some(0);
+        for param in params {
+            if let Some(ann) = &param.type_ann {
+                self.record_type_expr(ann);
+            }
+        }
+        self.impl_aspects = None;
+        declared.append(&mut self.synthesised);
+        if let Some(span) = sig.decl_span {
+            self.acc.declared_type_params.insert(span.clone(), declared);
+        }
+        if let Some(ret) = sig.return_type {
+            self.record_type_expr(ret);
+        }
+        outer
+    }
+
     /// Record, for each written name in `te` that denotes a generic parameter in scope, the
     /// parameter it denotes. A block-local type of the same spelling is not yet considered (#1612,
     /// step 3).
@@ -930,6 +975,23 @@ impl Walker<'_> {
                 if let Some(ret) = return_type {
                     self.record_type_expr(ret);
                 }
+            }
+            TypeExpr::ImplAspect { span, .. } if self.impl_aspects.is_some() => {
+                // Lowering turns this type into a generic parameter named by its position among
+                // the signature's `impl Aspect` parameter types, and gives it this span.
+                let index = self.impl_aspects.unwrap_or(0);
+                self.impl_aspects = Some(index + 1);
+                let id = TypeParamId::new(
+                    self.owner,
+                    &self.sig_scope,
+                    GenericLevel::Synthesised,
+                    index,
+                );
+                self.synthesised.push((
+                    crate::pipeline::type_checking::impl_aspect_param_name(index as usize),
+                    id,
+                ));
+                self.acc.type_param_spans.insert(span.clone(), id);
             }
             TypeExpr::ImplAspect { bound, .. } | TypeExpr::DynAspect { bound, .. } => {
                 self.record_type_expr(bound);
@@ -1001,6 +1063,8 @@ impl Walker<'_> {
                 // here we only descend into the body under a NestedFn step with
                 // its own fresh parameter scope.
                 self.enter(LexicalSeg::NestedFn(f.name.clone()));
+                // A nested function sees only its own generics (RFC-0195).
+                let outer_params = self.declare_signature(&SigTypes::of_function(f), &f.params);
                 for (i, param) in f.params.iter().enumerate() {
                     self.bind(
                         &param.name,
@@ -1010,6 +1074,7 @@ impl Walker<'_> {
                     );
                 }
                 self.walk_block(&f.body);
+                self.type_params = outer_params;
                 self.leave();
             }
             Decl::Stmt(stmt) => self.walk_stmt(stmt),

@@ -1383,6 +1383,7 @@ fn register_generic_impl_method_schemes(
         let scheme = TypeScheme {
             quantified_vars: quantified,
             param_names,
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -1548,11 +1549,8 @@ fn register_array_impl_method_schemes(
     let element_tv = type_var_gen.fresh();
     let mut type_gen_map = HashMap::new();
     type_gen_map.insert(element_name.to_string(), element_tv);
-    let structural_self_type_expr = TypeExpr::Array(Box::new(TypeExpr::Named(
-        element_name.to_string(),
-        vec![],
-        Span::new(0, 0, "").into(),
-    )));
+    let structural_self_type_expr =
+        TypeExpr::Array(Box::new(TypeExpr::synthetic_named(element_name)));
     let by_var: HashMap<TypeVar, Vec<GenericBound>> = std::iter::once(element_tv)
         .zip(collect_type_param_bounds(
             &ib.generics,
@@ -1612,6 +1610,7 @@ fn register_array_impl_method_schemes(
         let scheme = TypeScheme {
             quantified_vars: quantified,
             param_names,
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -1700,6 +1699,7 @@ fn register_record_impl_method_schemes(
         let scheme = TypeScheme {
             quantified_vars: quantified,
             param_names,
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],

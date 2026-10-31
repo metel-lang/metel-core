@@ -52,8 +52,8 @@ pub use lexical_path::{InheritedMethodTarget, LexicalPath, LexicalSeg};
 mod allocate;
 pub(crate) use allocate::allocate_inherited_body;
 pub use allocate::{
-    Allocation, BindingSpans, GraphModuleNav, ModuleNav, TypeParamSpans, allocate_for_graph,
-    allocate_graph, allocate_module,
+    Allocation, BindingSpans, GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph,
+    allocate_module,
 };
 
 mod position;
@@ -148,6 +148,9 @@ pub enum GenericLevel {
     Container,
     /// The function or method's own `<...>` list.
     Own,
+    /// A parameter the function does not write but lowering adds for it: one per `impl Aspect`
+    /// parameter type.
+    Synthesised,
 }
 
 /// Identity of a generic parameter (ADR-0067): a function of the declaration it belongs to, the list it
@@ -157,12 +160,14 @@ pub enum GenericLevel {
 pub struct TypeParamId(pub u64);
 
 impl TypeParamId {
-    /// The parameter at `ordinal` in the `level` generic list of the body owned by `owner`.
+    /// The parameter at `ordinal` in the `level` generic list of the function at `scope` (the root
+    /// path for the body's own function, a `NestedFn` path for a function declared inside it).
     #[must_use]
-    pub fn new(owner: BindingId, level: GenericLevel, ordinal: u32) -> Self {
+    pub fn new(owner: BindingId, scope: &LexicalPath, level: GenericLevel, ordinal: u32) -> Self {
         let mut h = DefaultHasher::new();
         "metel.identity.type-param.v1".hash(&mut h);
         owner.hash(&mut h);
+        scope.hash(&mut h);
         level.hash(&mut h);
         ordinal.hash(&mut h);
         Self(h.finish())

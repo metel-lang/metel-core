@@ -1055,6 +1055,15 @@ impl From<Span> for NameSpan {
     }
 }
 
+impl TypeExpr {
+    /// A bare type name that no source wrote (one built from a resolved type, or by lowering), so it
+    /// has no position to resolve through.
+    #[must_use]
+    pub fn synthetic_named(name: &str) -> Self {
+        Self::Named(name.to_string(), vec![], Span::new(0, 0, "").into())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
     Named(String, Vec<TypeExpr>, NameSpan),

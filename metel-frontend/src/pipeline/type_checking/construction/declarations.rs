@@ -328,6 +328,7 @@ pub(super) fn construct_fun_decl(
         Some(entry) => TypeScheme {
             quantified_vars: vec![],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],

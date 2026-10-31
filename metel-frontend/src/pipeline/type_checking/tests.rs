@@ -300,3 +300,26 @@ fn a_local_is_resolved_by_its_binding_not_its_spelling() {
     let _ = std::fs::remove_dir_all(&dir);
     result.expect("each reference resolves to the binding it names");
 }
+
+// ADR-0067: a scheme's parameters are paired with the identities their declaration introduces, an
+// own parameter shadowing a same-named header one, and a variable no source parameter declares
+// (an inference variable, whose name is empty) has none.
+#[test]
+fn scheme_parameters_take_the_identity_of_the_declared_parameter() {
+    use crate::identity::{BindingId, GenericLevel, TypeParamId};
+    let owner = BindingId::Local(crate::identity::LocalId(7));
+    let root = crate::identity::LexicalPath::root();
+    let header_t = TypeParamId::new(owner, &root, GenericLevel::Container, 0);
+    let own_t = TypeParamId::new(owner, &root, GenericLevel::Own, 0);
+    let own_u = TypeParamId::new(owner, &root, GenericLevel::Own, 1);
+    let declared = vec![
+        ("T".to_string(), header_t),
+        ("T".to_string(), own_t),
+        ("U".to_string(), own_u),
+    ];
+    let names = vec!["T".to_string(), String::new(), "U".to_string()];
+    assert_eq!(
+        super::scheme_param_ids(&names, &declared),
+        vec![Some(own_t), None, Some(own_u)]
+    );
+}

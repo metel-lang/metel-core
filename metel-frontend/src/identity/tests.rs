@@ -920,16 +920,16 @@ fn a_written_generic_parameter_resolves_to_one_identity_across_its_signature() {
     let source = "fun id<T>(x: T) -> T { let y: T := x; y }";
     let fixture = Fixture::build(source);
     let fun = parsed_fun(source, 0);
-    let spans = &fixture.alloc.type_param_spans;
-    let param = spans.get(&named_span(fun.params[0].type_ann.as_ref().unwrap()));
-    let ret = spans.get(&named_span(fun.return_type.as_ref().unwrap()));
+    let spans = &fixture.alloc.binding_spans;
+    let param = spans.type_param_at(&named_span(fun.params[0].type_ann.as_ref().unwrap()));
+    let ret = spans.type_param_at(&named_span(fun.return_type.as_ref().unwrap()));
     assert!(param.is_some());
     assert_eq!(param, ret);
     let crate::data::ast::Decl::Let(let_decl) = &fun.body.stmts[0] else {
         panic!("let")
     };
     assert_eq!(
-        spans.get(&named_span(let_decl.type_ann.as_ref().unwrap())),
+        spans.type_param_at(&named_span(let_decl.type_ann.as_ref().unwrap())),
         param
     );
 }
@@ -938,11 +938,11 @@ fn a_written_generic_parameter_resolves_to_one_identity_across_its_signature() {
 fn same_spelled_parameters_of_different_functions_have_distinct_identities() {
     let source = "fun a<T>(x: T) -> T { x } fun b<T>(x: T) -> T { x }";
     let fixture = Fixture::build(source);
-    let spans = &fixture.alloc.type_param_spans;
+    let spans = &fixture.alloc.binding_spans;
     let of = |index| {
         let fun = parsed_fun(source, index);
         spans
-            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .type_param_at(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
             .expect("T resolves")
     };
     assert_ne!(of(0), of(1));
@@ -956,8 +956,8 @@ fn a_parameters_identity_survives_reformatting() {
         let fun = parsed_fun(source, 0);
         fixture
             .alloc
-            .type_param_spans
-            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .binding_spans
+            .type_param_at(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
             .expect("T resolves")
     };
     assert_eq!(
@@ -974,20 +974,20 @@ fn a_name_that_is_not_a_generic_parameter_has_no_parameter_identity() {
     let source = "struct Box { value: i64 } fun f<T>(x: T, n: i64, b: Box) -> i64 { n }";
     let fixture = Fixture::build(source);
     let fun = parsed_fun(source, 1);
-    let spans = &fixture.alloc.type_param_spans;
+    let spans = &fixture.alloc.binding_spans;
     assert!(
         spans
-            .get(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
+            .type_param_at(&named_span(fun.params[0].type_ann.as_ref().unwrap()))
             .is_some()
     );
     assert!(
         spans
-            .get(&named_span(fun.params[1].type_ann.as_ref().unwrap()))
+            .type_param_at(&named_span(fun.params[1].type_ann.as_ref().unwrap()))
             .is_none()
     );
     assert!(
         spans
-            .get(&named_span(fun.params[2].type_ann.as_ref().unwrap()))
+            .type_param_at(&named_span(fun.params[2].type_ann.as_ref().unwrap()))
             .is_none()
     );
 }
@@ -1010,14 +1010,48 @@ fn a_method_sees_its_impls_parameters_and_its_own() {
     else {
         panic!("fn type")
     };
-    let spans = &fixture.alloc.type_param_spans;
-    let t = spans.get(&named_span(&params[0])).expect("impl T");
+    let spans = &fixture.alloc.binding_spans;
+    let t = spans
+        .type_param_at(&named_span(&params[0]))
+        .expect("impl T");
     let u = spans
-        .get(&named_span(return_type.as_ref().unwrap()))
+        .type_param_at(&named_span(return_type.as_ref().unwrap()))
         .expect("method U");
     assert_ne!(t, u);
     assert_eq!(
-        spans.get(&named_span(method.return_type.as_ref().unwrap())),
+        spans.type_param_at(&named_span(method.return_type.as_ref().unwrap())),
         Some(u)
     );
+}
+
+#[test]
+fn a_nested_function_has_its_own_parameter_identities() {
+    let source = "fun outer<T>(x: T) -> T { fun inner<T>(y: T) -> T { y } x }";
+    let fixture = Fixture::build(source);
+    let outer = parsed_fun(source, 0);
+    let crate::data::ast::Decl::Fun(inner) = &outer.body.stmts[0] else {
+        panic!("nested fun")
+    };
+    let spans = &fixture.alloc.binding_spans;
+    let outer_t = spans
+        .type_param_at(&named_span(outer.params[0].type_ann.as_ref().unwrap()))
+        .expect("outer T");
+    let inner_t = spans
+        .type_param_at(&named_span(inner.params[0].type_ann.as_ref().unwrap()))
+        .expect("inner T");
+    assert_ne!(outer_t, inner_t);
+    assert_eq!(spans.declared_type_params(&inner.span).len(), 1);
+    assert_eq!(spans.declared_type_params(&inner.span)[0].1, inner_t);
+}
+
+#[test]
+fn impl_aspect_parameter_types_are_declared_as_synthesised_parameters() {
+    let source = "aspect A {} fun both(a: extends A, b: extends A) {}";
+    let fixture = Fixture::build(source);
+    let fun = parsed_fun(source, 1);
+    let spans = &fixture.alloc.binding_spans;
+    let declared = spans.declared_type_params(&fun.span);
+    let names: Vec<&str> = declared.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["_ImplT0", "_ImplT1"]);
+    assert_ne!(declared[0].1, declared[1].1);
 }

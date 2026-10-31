@@ -22,6 +22,7 @@ mod construction;
 mod conversions;
 mod handoff;
 mod inference;
+pub(crate) use inference::impl_aspect_param_name;
 mod object_safety;
 mod overload;
 mod projections;
@@ -267,6 +268,7 @@ fn refresh_scheme_for_export(
     TypeScheme {
         quantified_vars,
         param_names: scheme.param_names.clone(),
+        param_ids: scheme.param_ids.clone(),
         // Order is preserved by the renaming, so positional bounds stay valid.
         bounds: scheme.bounds.clone(),
         neg_bounds: scheme.neg_bounds.clone(),
@@ -1810,6 +1812,10 @@ fn build_module_scheme_env(
             .iter()
             .map(|var| fg.name_map.get(var).cloned().unwrap_or_default())
             .collect();
+        scheme.param_ids = scheme_param_ids(
+            &scheme.param_names,
+            origins.binding_spans.declared_type_params(&fg.span),
+        );
         if let Some(binding) = origins.binding_spans.get(&fg.span) {
             scheme_ids.insert(binding, scheme.clone());
         }
@@ -1834,6 +1840,26 @@ fn build_module_scheme_env(
         }
     }
     (scheme_env, scheme_ids)
+}
+
+/// The identity of each of a scheme's parameters, given the parameters its declaration introduces
+/// (ADR-0067). This is the one place a parameter's spelling is paired with its identity: a scheme
+/// is built from inference, which names its quantified variables, and the declaration list is the
+/// identity pass's. An own parameter shadows a same-named header one, so the last match wins.
+fn scheme_param_ids(
+    param_names: &[String],
+    declared: &[(String, crate::identity::TypeParamId)],
+) -> Vec<Option<crate::identity::TypeParamId>> {
+    param_names
+        .iter()
+        .map(|name| {
+            declared
+                .iter()
+                .rev()
+                .find(|(declared_name, _)| declared_name == name)
+                .map(|(_, id)| *id)
+        })
+        .collect()
 }
 
 fn overloaded_fun_names(program: &Program) -> HashSet<String> {
