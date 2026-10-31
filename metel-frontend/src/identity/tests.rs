@@ -1082,3 +1082,24 @@ fn a_struct_and_an_enum_declare_their_generic_parameters_in_order() {
         Some(pair[1].1)
     );
 }
+
+#[test]
+fn a_bodiless_aspect_method_declares_the_aspects_parameters_before_its_own() {
+    let source = "aspect Conv<T> { fun to<U>(self, x: T) -> U; }";
+    let fixture = Fixture::build(source);
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let crate::data::ast::Decl::Aspect(aspect) = &program.decls[0] else {
+        panic!("aspect")
+    };
+    let method = &aspect.methods[0];
+    let spans = &fixture.alloc.binding_spans;
+    let declared = spans.declared_type_params(&method.span);
+    assert_eq!(
+        declared.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        ["T", "U"]
+    );
+    assert_eq!(
+        spans.type_param_at(&named_span(method.params[1].type_ann.as_ref().unwrap())),
+        Some(declared[0].1)
+    );
+}

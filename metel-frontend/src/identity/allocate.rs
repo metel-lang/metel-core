@@ -23,8 +23,9 @@ use std::collections::HashMap;
 use crate::identity::symbols::Namespace;
 
 use crate::data::ast::{
-    AspectMethod, AssignTarget, Block, Bound, BoundHead, CaptureSpec, Decl, Expr, ForInit, FunDecl,
-    GenericParam, ImplBlock, MatchArm, Param, Pattern, RowTail, Span, Stmt, TypeExpr, WhereClause,
+    AspectDecl, AspectMethod, AssignTarget, Block, Bound, BoundHead, CaptureSpec, Decl, Expr,
+    ForInit, FunDecl, GenericParam, ImplBlock, MatchArm, Param, Pattern, RowTail, Span, Stmt,
+    TypeExpr, WhereClause,
 };
 use crate::pipeline::name_resolution::name_resolver::{
     BindingKind, ModuleScope, ResolvedNames, canonical_path, impl_method_symbol_name,
@@ -338,27 +339,7 @@ pub fn allocate_module(
                 walk_type_decl_item(module_path, decl, names, interner, &mut acc, nav);
             }
             Decl::Aspect(aspect) => {
-                // Only default method bodies have code to walk; a bodiless
-                // `fun name(...);` declaration binds nothing.
-                for method in &aspect.methods {
-                    let Some(body) = &method.default_body else {
-                        continue;
-                    };
-                    let method_name = method_symbol_name(&aspect.name, None, &method.name);
-                    let key = (module_path.to_vec(), Namespace::Value, method_name);
-                    if let Some(&sym) = names.symbols.get(&key) {
-                        let sig = SigTypes::of_aspect_method(&aspect.generics, method);
-                        walk_body(
-                            BindingId::Global(sym),
-                            &method.params,
-                            body,
-                            &sig,
-                            interner,
-                            &mut acc,
-                            nav,
-                        );
-                    }
-                }
+                walk_aspect_methods(module_path, aspect, names, interner, &mut acc, nav);
             }
             _ => {}
         }
@@ -663,22 +644,7 @@ fn walk_body(
     acc: &mut ModuleAlloc,
     nav: ModuleNav<'_>,
 ) {
-    let mut walker = Walker {
-        owner,
-        interner,
-        acc,
-        nav,
-        scopes: vec![Scope::default()],
-        path: LexicalPath::root(),
-        block_counter: vec![0],
-        closure_counter: vec![0],
-        propagate_counter: vec![0],
-        use_counter: HashMap::new(),
-        type_params: HashMap::new(),
-        impl_aspects: None,
-        synthesised: Vec::new(),
-        sig_scope: LexicalPath::root(),
-    };
+    let mut walker = Walker::new(owner, interner, acc, nav);
     walker.declare_signature(sig, params);
     for (i, param) in params.iter().enumerate() {
         walker.bind(
@@ -726,6 +692,51 @@ fn walk_module_statements(
 /// only descended into `Decl::Fun`/`Impl`/`Aspect` bodies, so a name used
 /// only here got no `PositionHit::Reference` entry to promote and stayed
 /// `BindingId`-less on the typed IR, forcing a name-map lookup at runtime.
+/// Walk the methods of an aspect: a default body as code, a bodiless signature for the parameters
+/// it names.
+fn walk_aspect_methods(
+    module_path: &[String],
+    aspect: &AspectDecl,
+    names: &ResolvedNames,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    // Only default method bodies have code to walk; a bodiless
+    // `fun name(...);` declaration binds nothing, but its signature still
+    // names the aspect's parameters.
+    let aspect_key = (module_path.to_vec(), Namespace::Type, aspect.name.clone());
+    for method in &aspect.methods {
+        let Some(body) = &method.default_body else {
+            if let Some(&aspect_symbol) = names.symbols.get(&aspect_key) {
+                declare_abstract_aspect_method(
+                    aspect_symbol,
+                    &aspect.generics,
+                    method,
+                    interner,
+                    acc,
+                    nav,
+                );
+            }
+            continue;
+        };
+        let method_name = method_symbol_name(&aspect.name, None, &method.name);
+        let key = (module_path.to_vec(), Namespace::Value, method_name);
+        if let Some(&sym) = names.symbols.get(&key) {
+            let sig = SigTypes::of_aspect_method(&aspect.generics, method);
+            walk_body(
+                BindingId::Global(sym),
+                &method.params,
+                body,
+                &sig,
+                interner,
+                acc,
+                nav,
+            );
+        }
+    }
+}
+
 /// Walk a module-level `struct` or `enum` declaration.
 fn walk_type_decl_item(
     module_path: &[String],
@@ -804,22 +815,7 @@ fn walk_type_decl(
     nav: ModuleNav<'_>,
 ) {
     let owner = BindingId::Global(symbol);
-    let mut walker = Walker {
-        owner,
-        interner,
-        acc,
-        nav,
-        scopes: vec![Scope::default()],
-        path: LexicalPath::root(),
-        block_counter: vec![0],
-        closure_counter: vec![0],
-        propagate_counter: vec![0],
-        use_counter: HashMap::new(),
-        type_params: HashMap::new(),
-        impl_aspects: None,
-        synthesised: Vec::new(),
-        sig_scope: LexicalPath::root(),
-    };
+    let mut walker = Walker::new(owner, interner, acc, nav);
     let sig = SigTypes {
         generics: vec![(GenericLevel::Own, generic_names(generics))],
         return_type: None,
@@ -845,6 +841,24 @@ fn walk_type_decl(
     acc.type_decl_params.insert(symbol, declared);
 }
 
+/// Declare the parameters a method of an aspect names in its signature when it has no default body
+/// to walk: the aspect's own, then the method's.
+fn declare_abstract_aspect_method(
+    aspect: super::SymbolId,
+    aspect_generics: &[String],
+    method: &AspectMethod,
+    interner: &mut NameInterner,
+    acc: &mut ModuleAlloc,
+    nav: ModuleNav<'_>,
+) {
+    let mut walker = Walker::new(BindingId::Global(aspect), interner, acc, nav);
+    walker.path = LexicalPath::root().child(LexicalSeg::NestedFn(method.name.clone()));
+    walker.declare_signature(
+        &SigTypes::of_aspect_method(aspect_generics, method),
+        &method.params,
+    );
+}
+
 fn walk_value_body(
     owner: BindingId,
     value: &Expr,
@@ -852,22 +866,7 @@ fn walk_value_body(
     acc: &mut ModuleAlloc,
     nav: ModuleNav<'_>,
 ) {
-    let mut walker = Walker {
-        owner,
-        interner,
-        acc,
-        nav,
-        scopes: vec![Scope::default()],
-        path: LexicalPath::root(),
-        block_counter: vec![0],
-        closure_counter: vec![0],
-        propagate_counter: vec![0],
-        use_counter: HashMap::new(),
-        type_params: HashMap::new(),
-        impl_aspects: None,
-        synthesised: Vec::new(),
-        sig_scope: LexicalPath::root(),
-    };
+    let mut walker = Walker::new(owner, interner, acc, nav);
     walker.walk_expr(value);
 }
 
@@ -905,6 +904,32 @@ struct Walker<'a> {
     /// The path of the function whose signature is being declared: the scope its parameters' ids are
     /// taken in.
     sig_scope: LexicalPath,
+}
+
+impl<'a> Walker<'a> {
+    fn new(
+        owner: BindingId,
+        interner: &'a mut NameInterner,
+        acc: &'a mut ModuleAlloc,
+        nav: ModuleNav<'a>,
+    ) -> Self {
+        Self {
+            owner,
+            interner,
+            acc,
+            nav,
+            scopes: vec![Scope::default()],
+            path: LexicalPath::root(),
+            block_counter: vec![0],
+            closure_counter: vec![0],
+            propagate_counter: vec![0],
+            use_counter: HashMap::new(),
+            type_params: HashMap::new(),
+            impl_aspects: None,
+            synthesised: Vec::new(),
+            sig_scope: LexicalPath::root(),
+        }
+    }
 }
 
 impl Walker<'_> {
