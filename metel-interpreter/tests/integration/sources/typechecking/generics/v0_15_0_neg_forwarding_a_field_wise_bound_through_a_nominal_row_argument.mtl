@@ -1,0 +1,11 @@
+// metel-core#1495: `forward` passes its row on to `id_of`, which requires `..R: Copy`, without declaring
+// it. That is reported where `forward` is written, not as an internal error at its first call.
+record Req<record R> { data: { ..R } }
+
+fun id_of<record R>(r: Req<..R>) -> i64 where ..R: Copy { 1 }
+
+fun forward<record R>(r: Req<..R>) -> i64 {
+    id_of(r)
+}
+
+fun main() { }
