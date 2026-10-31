@@ -3076,8 +3076,11 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
             index,
             span,
         }),
-        _ => Err(MetelError::internal(
-            "assign target must be an identifier, field access, tuple access, or index expression",
+        other => Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "cannot assign to this expression; an assignment target is a name, a field \
+             (`x.f`), a tuple element (`t.0`), an index (`a[i]`) or a dereference (`*p`)",
+            other.span(),
         )),
     }
 }

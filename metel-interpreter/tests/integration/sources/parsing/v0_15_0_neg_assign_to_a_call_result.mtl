@@ -1,0 +1,5 @@
+// metel-core#1591: a call is not an assignment target either.
+fun f() -> i64 { 1 }
+fun main() {
+    f() := 2;
+}

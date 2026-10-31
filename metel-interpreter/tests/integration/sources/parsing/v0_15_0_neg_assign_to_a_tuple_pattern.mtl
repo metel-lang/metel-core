@@ -1,0 +1,7 @@
+// metel-core#1591: a tuple on the left of `:=` is not an assignment target; the parser says so
+// instead of failing with an internal error.
+fun main() {
+    var a := 1;
+    var b := 2;
+    (a, b) := (b, a);
+}
