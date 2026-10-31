@@ -464,8 +464,15 @@ fn type_expr_to_infer_in_context(
             let TypeExpr::Named(aspect, args, _) = bound.as_ref() else {
                 unreachable!("dyn_type grammar only ever produces a named_type bound")
             };
+            // An aspect imported `as Alias` names the declared aspect (metel-core#1223).
+            let aspect = assoc_ctx
+                .and_then(|ctx| {
+                    ctx.registry
+                        .canonicalize_type_name(ctx.current_module, aspect)
+                })
+                .unwrap_or_else(|| aspect.clone());
             InferType::Dyn {
-                aspect: aspect.clone(),
+                aspect,
                 type_args: args
                     .iter()
                     .map(|a| type_expr_to_infer_in_context(a, generics, self_ty_name, assoc_ctx))

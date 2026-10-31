@@ -1,0 +1,3 @@
+public aspect Shape { fun area(&self) -> i64; }
+public struct Sq { public s: i64 }
+extend Sq: Shape { fun area(&self) -> i64 { self.s * self.s } }

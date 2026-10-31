@@ -1,0 +1,7 @@
+runner = "full_pipeline"
+prelude = "default"
+[options]
+spec = ["spec.modules.imports.legality-2"]
+
+[expect]
+status = "success"
