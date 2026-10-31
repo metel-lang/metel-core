@@ -1,0 +1,14 @@
+// metel-core#1431: when the right-hand side exits control flow the target is never evaluated, so a
+// value it moved before leaving is not a use-after-move in the target's index.
+fun take(s: String) -> i64 { 0 }
+fun slot(s: &String) -> u64 { 0 }
+
+fun run() {
+    var a := [1, 2];
+    let s := "x".to_string();
+    a[slot(&s)] := match (0) { _ => { take(s); return } };
+}
+
+fun main() {
+    run();
+}

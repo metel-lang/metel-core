@@ -1,0 +1,10 @@
+// metel-core#1431: the right-hand side of an assignment runs before the target's index, so a value
+// the right-hand side moves is gone when the index reads it.
+fun take(s: String) -> i64 { 0 }
+fun slot(s: &String) -> u64 { 0 }
+
+fun main() {
+    var a := [1, 2];
+    let s := "x".to_string();
+    a[slot(&s)] := take(s);
+}
