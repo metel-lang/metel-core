@@ -139,14 +139,18 @@ fn verify_closure_capture_list(
 
     verify_shared_capture_writes(capture_specs, &writes)?;
 
-    // A tail read of an owned non-Copy capture is returned by value, so it
-    // consumes the environment field. RFC-0134 requires that capability to be
-    // written as `once`; ordinary reads in non-consuming positions stay many.
-    if call_multiplicity != crate::data::types::CallMultiplicity::Once
-        && let Some(crate::data::ast::Expr::Ident(name, tail_span)) = body.tail.as_deref()
-            && capture_specs.iter().any(|capture| {
+    // A by-value use of an owned non-Copy capture (returned, bound, passed on) consumes the
+    // environment field. RFC-0134 requires that capability to be written as `once`; reads in
+    // non-consuming positions stay many.
+    if call_multiplicity != crate::data::types::CallMultiplicity::Once {
+        let mut consumed = Vec::new();
+        let mut consume_bound: std::collections::BTreeSet<String> =
+            params.iter().map(|param| param.name.clone()).collect();
+        super::super::closure_uses::collect_consumed_names(body, &mut consume_bound, &mut consumed);
+        for (name, use_span) in &consumed {
+            if capture_specs.iter().any(|capture| {
                 matches!(capture, crate::data::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
-            }) && ctx.lookup_at(tail_span).is_some_and(|ty| {
+            }) && ctx.lookup_at(use_span).is_some_and(|ty| {
                 !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
             }) {
                 return Err(MetelError::type_error(
@@ -155,6 +159,8 @@ fn verify_closure_capture_list(
                     span,
                 ));
             }
+        }
+    }
 
     verify_var_for_capture_writes(
         capture_specs,

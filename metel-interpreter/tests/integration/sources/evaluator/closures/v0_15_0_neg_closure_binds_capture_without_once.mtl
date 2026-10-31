@@ -1,0 +1,6 @@
+// metel-core#1721 (legality-8): binding a non-`Copy` capture moves it out of the environment.
+fun main() {
+    let s := "a".to_string();
+    let b := [s] || { let t := s; };
+    b();
+}

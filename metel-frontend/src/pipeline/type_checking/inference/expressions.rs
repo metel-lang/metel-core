@@ -2589,16 +2589,28 @@ fn infer_expr_inner(
             {
                 ctx.record_closure_write_violation(span.clone(), violation);
             }
-            // A listed by-value capture returned as the tail consumes the environment when its type
-            // is not `Copy`; that needs `once` (legality-8).
-            if *call_multiplicity != crate::data::types::CallMultiplicity::Once
-                && let Some(Expr::Ident(tail, _)) = body.tail.as_deref()
-                && captures.iter().any(|capture| {
-                    matches!(capture, crate::data::ast::CaptureSpec::Owned { name, .. } if name == tail)
-                })
-                && let Some(ty) = ctx.lookup(tail)
-            {
-                ctx.record_closure_once_obligation(span.clone(), tail.clone(), ty);
+            // A listed by-value capture consumed in the body (returned, bound, passed on) consumes
+            // the environment when its type is not `Copy`; that needs `once` (legality-8).
+            if *call_multiplicity != crate::data::types::CallMultiplicity::Once {
+                let mut consumed = Vec::new();
+                let mut consume_bound: std::collections::BTreeSet<String> =
+                    params.iter().map(|p| p.name.clone()).collect();
+                super::super::closure_uses::collect_consumed_names(
+                    body,
+                    &mut consume_bound,
+                    &mut consumed,
+                );
+                if let Some((name, ty)) = consumed.iter().find_map(|(name, _)| {
+                    captures
+                        .iter()
+                        .any(|capture| {
+                            matches!(capture, crate::data::ast::CaptureSpec::Owned { name: n, .. } if n == name)
+                        })
+                        .then(|| ctx.lookup(name).map(|ty| (name.clone(), ty)))
+                        .flatten()
+                }) {
+                    ctx.record_closure_once_obligation(span.clone(), name, ty);
+                }
             }
             ctx.pop_loop_depth(saved_loop_depth);
             constrain_at_declared_boundary(ctx, body_ty, ret_ty.clone(), body.span.clone());

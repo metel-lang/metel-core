@@ -31,7 +31,7 @@ fun option_map_2<T, U>(opt: Option<T>, f: |T| -> U) -> Option<U> {
     }
 }
 
-fun option_and_then<T, U>(opt: Option<T>, f: |T| -> Option<U>) -> Option<U> {
+fun option_and_then<T, U>(opt: Option<T>, f: once |T| -> Option<U>) -> Option<U> {
     match (opt) {
         Option::Some { value } => f(value),
         _                      => Option::None,

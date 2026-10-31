@@ -1,0 +1,19 @@
+// metel-core#1721 (legality-8): a closure that moves a capture out says `once`; one that only
+// reads it, or consumes a `Copy` capture, stays callable many times.
+fun take(s: String) {}
+
+fun main() {
+    let s := "a".to_string();
+    let c := [s] once || { take(s); };
+    c();
+
+    let r := "b".to_string();
+    let reader := [r] || { r.len() };
+    assert(reader() == 1);
+    assert(reader() == 1);
+
+    let n := 5;
+    let copier := [n] || { let m := n; m + 1 };
+    assert(copier() == 6);
+    assert(copier() == 6);
+}
