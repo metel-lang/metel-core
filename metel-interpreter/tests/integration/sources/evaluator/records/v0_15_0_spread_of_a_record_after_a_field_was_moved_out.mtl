@@ -1,0 +1,26 @@
+// metel-core#1459: a `record` after some of its fields were moved out is its remaining fields, and
+// spreading it yields an anonymous record of them, like spreading the whole record.
+record Tok { value: String, id: i64, n: i64 }
+
+fun mk() -> Tok {
+    Tok { value = "y".to_string(), id = 2, n = 3 }
+}
+
+fun main() {
+    let b := mk();
+    let a := b.value;
+    let r := { ..b };
+    assert(r.id == 2);
+    assert(r.n == 3);
+
+    let c := mk();
+    let moved := c.value;
+    let s := { extra = 1, ..c };
+    assert(s.extra == 1);
+    assert(s.id == 2);
+
+    let d := mk();
+    let taken := d.value;
+    let t := { ..d.{ id, n } };
+    assert(t.n == 3);
+}

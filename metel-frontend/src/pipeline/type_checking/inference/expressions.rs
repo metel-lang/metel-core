@@ -568,6 +568,10 @@ fn infer_expr_inner(
                     InferType::Named(name, args, _) => InferType::Record(
                         super::patterns::nominal_record_fields(&name, &args, spread_span, ctx)?,
                     ),
+                    // A `record` after some fields were moved out is its remaining fields, whose
+                    // row is known: spreading it discards the brand like spreading the whole
+                    // record does (metel-core#1459).
+                    InferType::Residual { fields, .. } => InferType::Record(fields),
                     other => other,
                 };
                 if through_reference && !infer_row_is_copy(ctx, &spread_ty) {
