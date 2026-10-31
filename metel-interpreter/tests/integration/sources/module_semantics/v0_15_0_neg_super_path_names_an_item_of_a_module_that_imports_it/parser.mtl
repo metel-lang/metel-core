@@ -1,0 +1,1 @@
+public fun make() -> i64 { super::helper() + 1 }

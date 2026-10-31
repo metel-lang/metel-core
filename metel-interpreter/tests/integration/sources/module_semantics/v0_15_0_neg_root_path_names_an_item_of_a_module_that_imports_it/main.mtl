@@ -1,0 +1,9 @@
+// metel-core#1221: the root imports `parser`, so `parser` cannot name an item of the root; it is a
+// circular module dependency, reported where the path is written.
+import root::parser::make;
+
+public fun helper() -> i64 { 41 }
+
+fun main() {
+    assert(make() == 42);
+}

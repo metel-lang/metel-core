@@ -1,0 +1,7 @@
+// metel-core#1221: `root::name` and `self::name` in the root module name its own item.
+public fun helper() -> i64 { 41 }
+
+fun main() {
+    assert(root::helper() == 41);
+    assert(self::helper() == 41);
+}

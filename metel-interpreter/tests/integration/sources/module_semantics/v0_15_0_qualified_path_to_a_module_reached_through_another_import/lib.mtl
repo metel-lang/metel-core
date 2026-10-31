@@ -1,0 +1,3 @@
+import root::util::g;
+
+public fun f() -> i64 { g() + 1 }

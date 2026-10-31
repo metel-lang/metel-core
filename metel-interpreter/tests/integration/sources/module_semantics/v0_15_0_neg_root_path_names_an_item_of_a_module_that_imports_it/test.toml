@@ -1,0 +1,9 @@
+runner = "full_pipeline"
+prelude = "default"
+[options]
+error = ["P0001"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "circular module dependency"
