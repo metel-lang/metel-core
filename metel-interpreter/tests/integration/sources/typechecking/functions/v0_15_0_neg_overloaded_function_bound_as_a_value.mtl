@@ -1,0 +1,7 @@
+// metel-core#1230: an overloaded name is defined; its definitions are selected at a call, so a bare
+// reference says it is overloaded instead of claiming the name is undefined.
+fun f(x: i64) -> i64 { 1 }
+fun f(x: String) -> i64 { 2 }
+fun main() {
+    let g := f;
+}

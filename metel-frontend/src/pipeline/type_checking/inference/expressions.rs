@@ -502,11 +502,17 @@ fn infer_expr_inner(
                 return Ok(var);
             }
             Err(ctx.private_import_error(name, span).unwrap_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    format!("undefined name `{name}`"),
-                    span,
-                )
+                // An overloaded name is defined: its definitions are selected at a call, so a bare
+                // reference has no single definition to be a value (metel-core#1230).
+                let message = if ctx.is_overloaded(name) {
+                    format!(
+                        "`{name}` is overloaded, so it cannot be used as a function value; \
+                         call it, or use a function that has a single definition"
+                    )
+                } else {
+                    format!("undefined name `{name}`")
+                };
+                MetelError::type_error(TypeErrorCode::T0003, message, span)
             }))
         }
         Expr::ResolvedPath {
