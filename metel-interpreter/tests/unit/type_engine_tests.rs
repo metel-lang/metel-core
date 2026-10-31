@@ -730,6 +730,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -769,6 +770,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![quantified],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -804,6 +806,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -827,6 +830,7 @@ mod phase_6_type_schemes {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0), TypeVar(1)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -891,6 +895,7 @@ mod phase_7_infer_context {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -918,6 +923,7 @@ mod phase_7_infer_context {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -947,6 +953,7 @@ mod phase_7_infer_context {
             TypeScheme {
                 quantified_vars: vec![TypeVar(0)],
                 param_names: vec![],
+                param_ids: vec![],
                 bounds: vec![],
                 neg_bounds: vec![],
                 record_kinds: vec![],
@@ -1225,6 +1232,7 @@ mod phase_8_known_limitations {
         let scheme = TypeScheme {
             quantified_vars: vec![TypeVar(0)],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],

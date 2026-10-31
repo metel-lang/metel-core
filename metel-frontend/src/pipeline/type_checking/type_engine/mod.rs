@@ -2093,6 +2093,10 @@ pub struct TypeScheme {
     pub quantified_vars: Vec<TypeVar>,
     /// Source-level names for quantified vars (same order). Empty for builtins.
     pub param_names: Vec<String>,
+    /// The identity of each quantified var's declared generic parameter (same order). `None` for a
+    /// variable no source parameter declares. Empty when the scheme was not built from a declaration
+    /// the identity pass walked (a builtin, a derived scheme).
+    pub param_ids: Vec<Option<crate::identity::TypeParamId>>,
     /// Positive bounds per quantified var (same order; empty Vec = unbounded).
     /// Bounds travel WITH the scheme so they survive prelude derivation and
     /// the export alpha-renaming, unlike the TypeVar-keyed `fun_bounds`
@@ -2163,6 +2167,7 @@ impl TypeScheme {
         Self {
             quantified_vars: vec![],
             param_names: vec![],
+            param_ids: vec![],
             bounds: vec![],
             neg_bounds: vec![],
             record_kinds: vec![],
@@ -2378,6 +2383,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
     TypeScheme {
         quantified_vars: quantified,
         param_names: vec![],
+        param_ids: vec![],
         bounds: vec![],
         neg_bounds: vec![],
         record_kinds: vec![],

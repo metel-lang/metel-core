@@ -2,7 +2,12 @@ use super::{
     Bound, Decl, Expr, FunDecl, GenericParam, ImplBlock, Param, Polarity, Program, Span, TypeExpr,
 };
 
-pub(super) fn lower_impl_aspect(fun: &FunDecl, counter: &mut usize) -> FunDecl {
+/// Lower each `impl Aspect` parameter type of `fun` to a generic named by its position among them
+/// (`impl_aspect_param_name`). The count restarts for every function: the names only have to be
+/// distinct within one signature, and the identity pass declares the same parameters by the same
+/// per-signature position.
+pub(super) fn lower_impl_aspect(fun: &FunDecl) -> FunDecl {
+    let counter = &mut 0usize;
     let mut extra_generics: Vec<GenericParam> = Vec::new();
     let new_params: Vec<Param> = fun
         .params
@@ -60,6 +65,12 @@ fn lower_impl_aspect_fields(
         .collect()
 }
 
+/// The name lowering gives the `index`-th `impl Aspect` parameter type of a signature. The identity
+/// pass declares the same parameter under the same name, so a scheme's `_ImplT{n}` pairs with it.
+pub(crate) fn impl_aspect_param_name(index: usize) -> String {
+    format!("_ImplT{index}")
+}
+
 fn lower_impl_aspect_param_type(
     type_expr: &TypeExpr,
     counter: &mut usize,
@@ -67,7 +78,7 @@ fn lower_impl_aspect_param_type(
 ) -> TypeExpr {
     match type_expr {
         TypeExpr::ImplAspect { bound, span, .. } => {
-            let anon_name = format!("_ImplT{counter}");
+            let anon_name = impl_aspect_param_name(*counter);
             *counter += 1;
             extra_generics.push(GenericParam {
                 name: anon_name.clone(),
@@ -450,18 +461,13 @@ fn expand_impl_defaults(
 }
 
 fn lower_impl_aspects_in_program(program: Program) -> Program {
-    let mut counter = 0usize;
     let decls = program
         .decls
         .into_iter()
         .map(|decl| match decl {
-            Decl::Fun(fun) => Decl::Fun(lower_impl_aspect(&fun, &mut counter)),
+            Decl::Fun(fun) => Decl::Fun(lower_impl_aspect(&fun)),
             Decl::Impl(ib) => Decl::Impl(ImplBlock {
-                methods: ib
-                    .methods
-                    .iter()
-                    .map(|m| lower_impl_aspect(m, &mut counter))
-                    .collect(),
+                methods: ib.methods.iter().map(lower_impl_aspect).collect(),
                 ..ib
             }),
             other => other,
