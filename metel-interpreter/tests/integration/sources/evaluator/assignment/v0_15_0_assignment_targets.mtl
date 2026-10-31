@@ -1,0 +1,22 @@
+// metel-core#1591 (spec.expressions.assignment.legality-1): every form of assignment target.
+struct Point { x: i64, y: i64 }
+
+fun main() {
+    var n := 1;
+    var p := Point { x = 1, y = 2 };
+    var t := (1, 2);
+    var a := [1, 2, 3];
+
+    n := 4;          // a name
+    p.x := 5;        // a field
+    t.0 := 6;        // a tuple element
+    a[1] := 7;       // an array element
+    p.y += 1;        // compound assignment
+    let r: &var i64 := &var n;
+    *r := 8;         // through a `&var` reference
+    assert(n == 8);
+    assert(p.x == 5);
+    assert(p.y == 3);
+    assert(t.0 == 6);
+    assert(a[1] == 7);
+}
