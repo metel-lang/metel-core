@@ -1939,7 +1939,6 @@ fn shared_reference_root_in_lvalue_path(expr: &TypedExpr) -> Option<&Type> {
     }
 }
 
-// arch-implements: ["arch.type-construction.requirement-7"]
 /// The inclusive range of values an integer type holds, or `None` for a type that is not an integer.
 fn integer_range(ty: &Type) -> Option<(i128, i128)> {
     Some(match ty {
@@ -2007,6 +2006,7 @@ impl ConstructCtx<'_> {
     }
 }
 
+// arch-implements: ["arch.type-construction.requirement-7"]
 fn construct_unaryop(
     op: &UnaryOp,
     operand: &Expr,
