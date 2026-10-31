@@ -1,8 +1,8 @@
 use super::super::closure_uses::{capture_name, capture_span, collect_closure_body_uses};
 use super::{
-    AssignTarget, ConstructCtx, Expr, ForInit, GenericArgs, HashMap, InferType, Literal,
-    MetelError, MethodDispatch, Param, Span, Stmt, Substitution, Type, TypeErrorCode, TypeVar,
-    TypedBreakExpr, TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl,
+    AssignTarget, ConstructCtx, Expr, ForInit, GenericArgs, GenericScope, HashMap, InferType,
+    Literal, MetelError, MethodDispatch, Param, Span, Stmt, Substitution, Type, TypeErrorCode,
+    TypeVar, TypedBreakExpr, TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl,
     TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
     assign_target_to_typed_place, block_result_type, builtin_pattern_method_expr,
     check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
@@ -14,9 +14,10 @@ use super::{
     instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_singleton_coerce,
     merge_branch_types, peel_type_references, resolve_expected_enum, resolve_generic_method_call,
     resolve_unqualified_variant_expr, resolved_to_type, type_chain_provides_mut_access,
-    type_expr_to_infer_with_generics, type_to_infer, typed_place_ty, unify,
+    type_expr_to_infer_in_scope, type_to_infer, typed_place_ty, unify,
     unqualified_variant_needs_annotation_error,
 };
+use crate::identity::TypeParamId;
 use crate::identity::symbols::SymbolId;
 
 /// Legality-25, first half: a `[&x]` capture is read-only, so writing it asks for `&var`.
@@ -1210,13 +1211,27 @@ pub(super) fn construct_expr(
                     .cloned()
                     .unwrap_or_default();
                 let mut local_subst = Substitution::new();
-                // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-                let mut generics_map: HashMap<String, TypeVar> = HashMap::new();
-                for (name, arg_ty) in aspect_generics.iter().zip(type_args.iter()) {
+                // The aspect's own parameters come first in the method's declared list; each
+                // takes the type argument at its position.
+                let mut generics_map: HashMap<TypeParamId, TypeVar> = HashMap::new();
+                let declared = ctx
+                    .identity
+                    .binding_spans
+                    .declared_type_params(&method_def.span);
+                for ((_, id), arg_ty) in declared
+                    .iter()
+                    .take(aspect_generics.len())
+                    .zip(type_args.iter())
+                {
                     let tv = ctx.type_var_gen.fresh();
-                    generics_map.insert(name.clone(), tv);
+                    generics_map.insert(*id, tv);
                     local_subst.bind(tv, type_to_infer(arg_ty));
                 }
+                let generic_scope = GenericScope::ById {
+                    spans: ctx.identity.binding_spans,
+                    vars: &generics_map,
+                    names: None,
+                };
 
                 let declared_params: Vec<&Param> = method_def
                     .params
@@ -1240,7 +1255,7 @@ pub(super) fn construct_expr(
                         .type_ann
                         .as_ref()
                         .map(|ann| {
-                            let infer_ty = type_expr_to_infer_with_generics(ann, &generics_map);
+                            let infer_ty = type_expr_to_infer_in_scope(ann, generic_scope);
                             resolved_to_type(&infer_ty, &local_subst, span)
                         })
                         .transpose()?;
@@ -1257,7 +1272,7 @@ pub(super) fn construct_expr(
                 // nothing here.
                 let ret_ty = match &method_def.return_type {
                     Some(rt) => {
-                        let infer_ty = type_expr_to_infer_with_generics(rt, &generics_map);
+                        let infer_ty = type_expr_to_infer_in_scope(rt, generic_scope);
                         resolved_to_type(&infer_ty, &local_subst, span)?
                     }
                     None => Type::Unit,

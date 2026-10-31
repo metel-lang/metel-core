@@ -24,8 +24,8 @@ use crate::pipeline::type_checking::type_engine::{
 use super::SchemeIds;
 use super::conversions::{
     AssocResolveCtx, GenericScope, infer_type_to_type, resolved_to_type,
-    type_expr_to_infer_by_identity, type_expr_to_infer_in_assoc_ctx,
-    type_expr_to_infer_with_generics, type_to_infer,
+    type_expr_to_infer_by_identity, type_expr_to_infer_in_assoc_ctx, type_expr_to_infer_in_scope,
+    type_to_infer,
 };
 use super::handoff::ResolvedInferenceFacts;
 

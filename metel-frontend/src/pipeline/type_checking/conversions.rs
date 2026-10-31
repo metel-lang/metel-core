@@ -635,6 +635,11 @@ pub(super) fn type_expr_to_infer_with_assoc_ctx(
     )
 }
 
+/// Convert `te` with the parameters in `scope` and nothing else resolved from context.
+pub(super) fn type_expr_to_infer_in_scope(te: &TypeExpr, scope: GenericScope<'_>) -> InferType {
+    type_expr_to_infer_in_context(te, Some(scope), None, None)
+}
+
 /// As [`type_expr_to_infer_with_assoc_ctx`] with no generic parameter in scope.
 pub(super) fn type_expr_to_infer_in_assoc_ctx(
     te: &TypeExpr,
