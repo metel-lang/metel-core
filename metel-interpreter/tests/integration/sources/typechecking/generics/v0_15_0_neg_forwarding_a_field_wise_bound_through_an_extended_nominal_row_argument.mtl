@@ -1,0 +1,10 @@
+// metel-core#1495: the same where the row argument is an extension of the parameter's row.
+record Req<record R> { data: { ..R } }
+
+fun id_of<record R>(r: Req<..{ id: i64, ..R }>) -> i64 where ..R: Copy { 1 }
+
+fun forward<record R>(r: Req<..{ id: i64, ..R }>) -> i64 {
+    id_of(r)
+}
+
+fun main() { }

@@ -153,6 +153,67 @@ fn check_forwarded_generic_bounds(
     span: &crate::data::ast::Span,
     ctx: &InferContext,
 ) -> Result<(), MetelError> {
+    // A parameter forwarded as a nominal's type or row argument (`Req<..R>`, `Pair<T, U>`) is
+    // forwarded all the same: pair the arguments up and judge each pair (metel-core#1495).
+    match (param_ty, arg_ty) {
+        (InferType::Named(param_name, param_args, _), InferType::Named(arg_name, arg_args, _))
+            if param_name == arg_name && param_args.len() == arg_args.len() =>
+        {
+            for (param_arg, arg_arg) in param_args.iter().zip(arg_args) {
+                check_forwarded_generic_bounds(
+                    callee_name,
+                    scheme,
+                    renaming,
+                    param_arg,
+                    arg_arg,
+                    span,
+                    ctx,
+                )?;
+            }
+            return Ok(());
+        }
+        (
+            InferType::RowExtend {
+                tail: param_tail, ..
+            },
+            InferType::RowExtend { tail: arg_tail, .. },
+        ) => {
+            return check_forwarded_generic_bounds(
+                callee_name,
+                scheme,
+                renaming,
+                param_tail,
+                arg_tail,
+                span,
+                ctx,
+            );
+        }
+        (InferType::RowView(param_inner), InferType::RowView(arg_inner)) => {
+            return check_forwarded_generic_bounds(
+                callee_name,
+                scheme,
+                renaming,
+                param_inner,
+                arg_inner,
+                span,
+                ctx,
+            );
+        }
+        _ => {}
+    }
+    check_forwarded_variable_bounds(callee_name, scheme, renaming, param_ty, arg_ty, span, ctx)
+}
+
+/// The bound check for one forwarded pair of variables.
+fn check_forwarded_variable_bounds(
+    callee_name: &str,
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    param_ty: &InferType,
+    arg_ty: &InferType,
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Result<(), MetelError> {
     let (InferType::Var(param_var), InferType::Var(arg_var)) = (param_ty, arg_ty) else {
         return Ok(());
     };
