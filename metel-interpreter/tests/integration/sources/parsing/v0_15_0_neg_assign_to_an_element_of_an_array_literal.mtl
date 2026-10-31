@@ -1,0 +1,4 @@
+// metel-core#1740: nor is an array literal the object of an index assignment.
+fun main() {
+    [1, 2][0] := 3;
+}

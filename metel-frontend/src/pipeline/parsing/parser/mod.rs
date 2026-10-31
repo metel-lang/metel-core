@@ -3044,7 +3044,38 @@ fn parse_assign_op(s: &str) -> AssignOp {
     }
 }
 
+/// Whether `expr` can be the object of a field, tuple-element or index assignment target: a name,
+/// a dereference, or a field, element or index chain rooted at one of those.
+fn is_assignable_place(expr: &Expr) -> bool {
+    match expr {
+        Expr::Ident(..) | Expr::UnaryOp(UnaryOp::Deref, ..) => true,
+        Expr::FieldAccess { object, .. }
+        | Expr::TupleAccess { object, .. }
+        | Expr::Index { object, .. } => is_assignable_place(object),
+        _ => false,
+    }
+}
+
+/// The error for an assignment target that is not a place, or whose object is not (metel-core#1591,
+/// metel-core#1740).
+fn not_an_assignment_target(expr: &Expr) -> MetelError {
+    MetelError::parse(
+        ParseErrorCode::P0001,
+        "cannot assign to this expression; an assignment target is a name, a field \
+         (`x.f`), a tuple element (`t.0`), an index (`a[i]`) or a dereference (`*p`), and \
+         the object of a field, element or index must itself be one of these",
+        expr.span(),
+    )
+}
+
 fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
+    if let Expr::FieldAccess { object, .. }
+    | Expr::TupleAccess { object, .. }
+    | Expr::Index { object, .. } = &expr
+        && !is_assignable_place(object)
+    {
+        return Err(not_an_assignment_target(object));
+    }
     match expr {
         Expr::Ident(name, span) => Ok(AssignTarget::Ident(name, span)),
         // RFC-0110: `*p = v`.
@@ -3076,12 +3107,7 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
             index,
             span,
         }),
-        other => Err(MetelError::parse(
-            ParseErrorCode::P0001,
-            "cannot assign to this expression; an assignment target is a name, a field \
-             (`x.f`), a tuple element (`t.0`), an index (`a[i]`) or a dereference (`*p`)",
-            other.span(),
-        )),
+        other => Err(not_an_assignment_target(&other)),
     }
 }
 
