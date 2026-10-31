@@ -1940,6 +1940,73 @@ fn shared_reference_root_in_lvalue_path(expr: &TypedExpr) -> Option<&Type> {
 }
 
 // arch-implements: ["arch.type-construction.requirement-7"]
+/// The inclusive range of values an integer type holds, or `None` for a type that is not an integer.
+fn integer_range(ty: &Type) -> Option<(i128, i128)> {
+    Some(match ty {
+        Type::I8 => (i128::from(i8::MIN), i128::from(i8::MAX)),
+        Type::I16 => (i128::from(i16::MIN), i128::from(i16::MAX)),
+        Type::I32 => (i128::from(i32::MIN), i128::from(i32::MAX)),
+        Type::I64 => (i128::from(i64::MIN), i128::from(i64::MAX)),
+        Type::U8 => (0, i128::from(u8::MAX)),
+        Type::U16 => (0, i128::from(u16::MAX)),
+        Type::U32 => (0, i128::from(u32::MAX)),
+        Type::U64 => (0, i128::from(u64::MAX)),
+        _ => return None,
+    })
+}
+
+/// An unsuffixed integer literal must fit the type inference gave it (metel-core#1482). `negated`
+/// is set for the operand of a unary minus, which is judged as the negative value it writes, so
+/// `-128` fits `i8` although `128` does not.
+fn check_integer_literal_fits(
+    value: i64,
+    negated: bool,
+    ty: &Type,
+    span: &Span,
+) -> Result<(), MetelError> {
+    let Some((min, max)) = integer_range(ty) else {
+        return Ok(());
+    };
+    let written = if negated {
+        -i128::from(value)
+    } else {
+        i128::from(value)
+    };
+    if (min..=max).contains(&written) {
+        return Ok(());
+    }
+    let sign = if negated { "-" } else { "" };
+    Err(MetelError::parse(
+        crate::data::error::ParseErrorCode::P0002,
+        format!("integer literal `{sign}{value}` does not fit `{ty}` ({min}..={max})"),
+        span,
+    ))
+}
+
+impl ConstructCtx<'_> {
+    /// Construct an unsuffixed or suffixed literal expression, range-checking an integer literal
+    /// against the type inference solved for it, falling back to the expected type.
+    fn construct_literal_expr(
+        &self,
+        lit: &Literal,
+        expected_ty: Option<&Type>,
+        span: &Span,
+        negated: bool,
+    ) -> Result<TypedExpr, MetelError> {
+        let ty = construct_literal_type(lit, expected_ty, span)?;
+        if let Literal::Int(value) = lit {
+            let inferred = self
+                .resolved_facts
+                .definition_expression_types()
+                .get(span)
+                .and_then(|inferred| resolved_to_type(inferred, self.subst, span).ok());
+            let judged = inferred.as_ref().filter(|t| integer_range(t).is_some());
+            check_integer_literal_fits(*value, negated, judged.unwrap_or(&ty), span)?;
+        }
+        Ok(TypedExpr::Literal(lit.clone(), ty, span.clone()))
+    }
+}
+
 fn construct_unaryop(
     op: &UnaryOp,
     operand: &Expr,
@@ -1947,7 +2014,12 @@ fn construct_unaryop(
     expected_ty: Option<&Type>,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
-    let operand = construct_expr(operand, expected_ty, ctx)?;
+    let operand = match (op, operand) {
+        (UnaryOp::Neg, Expr::Literal(lit @ Literal::Int(_), literal_span)) => {
+            ctx.construct_literal_expr(lit, expected_ty, literal_span, true)?
+        }
+        _ => construct_expr(operand, expected_ty, ctx)?,
+    };
     let ty = match op {
         UnaryOp::Neg => {
             let t = operand.ty();

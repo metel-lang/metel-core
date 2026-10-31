@@ -1,0 +1,4 @@
+// metel-core#1482: a negative literal does not fit an unsigned type.
+fun main() {
+    let a: u8 := -1;
+}

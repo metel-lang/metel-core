@@ -1,0 +1,5 @@
+// metel-core#1482: an unsuffixed operand adopts its sibling's type, and must fit it.
+fun main() {
+    let x: u8 := 5;
+    let y := x + 300;
+}

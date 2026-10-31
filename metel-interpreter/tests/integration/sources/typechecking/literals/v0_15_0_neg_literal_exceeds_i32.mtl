@@ -1,0 +1,4 @@
+// metel-core#1482: i32.
+fun main() {
+    let a: i32 := 3000000000;
+}

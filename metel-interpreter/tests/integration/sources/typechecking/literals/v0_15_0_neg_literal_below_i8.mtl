@@ -1,0 +1,4 @@
+// metel-core#1482: a negative literal is judged as the negative value it writes.
+fun main() {
+    let a: i8 := -129;
+}

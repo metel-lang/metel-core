@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.lexical.literals.legality-6"]
