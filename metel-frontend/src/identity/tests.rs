@@ -1055,3 +1055,30 @@ fn impl_aspect_parameter_types_are_declared_as_synthesised_parameters() {
     assert_eq!(names, ["_ImplT0", "_ImplT1"]);
     assert_ne!(declared[0].1, declared[1].1);
 }
+
+#[test]
+fn a_struct_and_an_enum_declare_their_generic_parameters_in_order() {
+    let source = "struct Pair<A, B> { first: A, second: B } enum Either<L, R> { Left { value: L }, Right { value: R } }";
+    let fixture = Fixture::build(source);
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let spans = &fixture.alloc.binding_spans;
+    let symbol = |name: &str| fixture.names.symbols[&(vec![], Namespace::Type, name.to_string())];
+    let pair = spans.type_decl_params(symbol("Pair"));
+    let either = spans.type_decl_params(symbol("Either"));
+    assert_eq!(
+        pair.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        ["A", "B"]
+    );
+    assert_eq!(
+        either.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(),
+        ["L", "R"]
+    );
+    assert_ne!(pair[0].1, either[0].1);
+    let crate::data::ast::Decl::Struct(decl) = &program.decls[0] else {
+        panic!("struct")
+    };
+    assert_eq!(
+        spans.type_param_at(&named_span(&decl.fields[1].type_ann)),
+        Some(pair[1].1)
+    );
+}
