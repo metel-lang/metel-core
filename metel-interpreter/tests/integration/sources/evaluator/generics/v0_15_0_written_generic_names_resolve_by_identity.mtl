@@ -1,0 +1,22 @@
+// metel-core#1612 (ADR-0067): a written generic name in a body annotation resolves to the parameter
+// it denotes: an annotation, a closure type and an `extends` parameter in a generic body, and a
+// nested function's own `T` beside an enclosing function's.
+fun outer<T>(x: T, n: i64) -> T {
+    let kept: T := x;
+    let f := [n] |m: i64| -> i64 { m + n };
+    assert(f(1) == n + 1);
+    kept
+}
+
+fun show_both(a: extends Display, b: extends Display) -> String {
+    a.to_string() + b.to_string()
+}
+
+fun main() {
+    fun twice<T>(y: T) -> (T, T) where T: Copy { (y, y) }
+    let pair := twice(3);
+    assert(pair.0 == pair.1);
+    assert(outer(7, 3) == 7);
+    assert(outer("s", 3) == "s");
+    assert(show_both(1, 2) == "12");
+}

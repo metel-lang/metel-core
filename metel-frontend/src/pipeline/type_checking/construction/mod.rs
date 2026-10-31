@@ -23,7 +23,8 @@ use crate::pipeline::type_checking::type_engine::{
 
 use super::SchemeIds;
 use super::conversions::{
-    AssocResolveCtx, infer_type_to_type, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
+    AssocResolveCtx, GenericScope, infer_type_to_type, resolved_to_type,
+    type_expr_to_infer_by_identity, type_expr_to_infer_in_assoc_ctx,
     type_expr_to_infer_with_generics, type_to_infer,
 };
 use super::handoff::ResolvedInferenceFacts;
@@ -135,8 +136,7 @@ struct ConstructCtx<'a> {
     loop_depth: usize,
     /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
-    // resolution-freeze-allow: the declared type-parameter names of the one definition being reconstructed; they are unique within it, and a type annotation in the body names them by that spelling.
-    generic_params: HashMap<String, TypeVar>,
+    generic_params: HashMap<crate::identity::TypeParamId, TypeVar>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's `SymbolId`.
@@ -897,9 +897,13 @@ impl<'a> ConstructCtx<'a> {
             current_aspect: None,
             local_types: &self.local_struct_ids,
         };
-        type_expr_to_infer_with_assoc_ctx(
+        type_expr_to_infer_by_identity(
             te,
-            &self.generic_params,
+            GenericScope::ById {
+                spans: self.identity.binding_spans,
+                vars: &self.generic_params,
+                names: None,
+            },
             self.current_self_type_name.as_deref(),
             &assoc_ctx,
         )
@@ -1198,15 +1202,14 @@ pub(super) fn construct_generic_body(
         identity,
     )?;
 
-    // Build name → fresh TypeVar mapping so type annotations like `T[]` in the body
-    // resolve to concrete types. scheme.param_names[i] corresponds to quantified_vars[i],
-    // and renaming maps original TypeVar → fresh TypeVar.
+    // Map each declared parameter's identity to its fresh TypeVar so type annotations like `T[]`
+    // in the body resolve to concrete types. `scheme.param_ids[i]` corresponds to
+    // `quantified_vars[i]`, and `renaming` maps original TypeVar → fresh TypeVar.
     if !scheme.param_names.is_empty() {
-        // resolution-freeze-allow: the declared type-parameter names of the one signature being converted; unique within it.
-        let mut gp: HashMap<String, TypeVar> = HashMap::new();
-        for (orig_var, name) in scheme.quantified_vars.iter().zip(scheme.param_names.iter()) {
-            if let Some(&fresh_var) = renaming.get(orig_var) {
-                gp.insert(name.clone(), fresh_var);
+        let mut gp: HashMap<crate::identity::TypeParamId, TypeVar> = HashMap::new();
+        for (orig_var, id) in scheme.quantified_vars.iter().zip(&scheme.param_ids) {
+            if let (Some(&fresh_var), Some(id)) = (renaming.get(orig_var), id) {
+                gp.insert(*id, fresh_var);
             }
         }
         ctx.generic_params = gp;
@@ -1393,7 +1396,7 @@ pub(super) use patterns::{resolve_bare_variant, resolve_struct_pattern};
 
 mod calls;
 use calls::{
-    check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
+    GenericArgs, check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
     check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_call,
     dispatch_for_resolved_method, instantiate_scheme_for_call, resolve_aspect_id,

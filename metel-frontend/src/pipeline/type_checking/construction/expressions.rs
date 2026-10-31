@@ -1,11 +1,12 @@
 use super::super::closure_uses::{capture_name, capture_span, collect_closure_body_uses};
 use super::{
-    AssignTarget, ConstructCtx, Expr, ForInit, HashMap, InferType, Literal, MetelError,
-    MethodDispatch, Param, Span, Stmt, Substitution, Type, TypeErrorCode, TypeVar, TypedBreakExpr,
-    TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl, TypedMutDecl,
-    TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp, assign_target_to_typed_place,
-    block_result_type, builtin_pattern_method_expr, check_fun_call_assoc_eq, check_fun_call_bounds,
-    check_fun_call_neg_bounds, check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
+    AssignTarget, ConstructCtx, Expr, ForInit, GenericArgs, HashMap, InferType, Literal,
+    MetelError, MethodDispatch, Param, Span, Stmt, Substitution, Type, TypeErrorCode, TypeVar,
+    TypedBreakExpr, TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl,
+    TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
+    assign_target_to_typed_place, block_result_type, builtin_pattern_method_expr,
+    check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
+    check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_binop,
     construct_block, construct_call, construct_enum_literal_ty, construct_literal_type,
     construct_match, construct_method_args, construct_propagate_error, construct_unaryop,
@@ -526,6 +527,7 @@ pub(super) fn construct_expr(
                                 span,
                                 ctx.registry,
                                 ctx.current_module,
+                                ctx.identity.binding_spans,
                             )?;
                             check_fun_call_assoc_eq(
                                 name,
@@ -556,6 +558,7 @@ pub(super) fn construct_expr(
                                 span,
                                 ctx.registry,
                                 ctx.current_module,
+                                ctx.identity.binding_spans,
                             )?;
                             return Ok(TypedExpr::Ident(
                                 name.clone(),
@@ -1597,14 +1600,14 @@ pub(super) fn construct_expr(
                         })
                         .collect::<Result<_, _>>()?;
                     // T0012: check each resolved type arg satisfies the declared bounds.
-                    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-                    let generic_types_by_name: HashMap<String, Type> = type_id
-                        .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
-                        .into_iter()
-                        .flatten()
-                        .cloned()
-                        .zip(type_args.iter().cloned())
-                        .collect();
+                    let generic_types_by_name = GenericArgs::by_name(
+                        type_id
+                            .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
+                            .into_iter()
+                            .flatten()
+                            .cloned()
+                            .zip(type_args.iter().cloned()),
+                    );
                     let record_kinds = type_id
                         .and_then(|id| ctx.registry.type_param_record_kinds_by_id(id))
                         .cloned()

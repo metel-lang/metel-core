@@ -1,5 +1,5 @@
 use super::{
-    ConstructCtx, EnumInfo, HashMap, InferType, Literal, MatchExpr, MetelError, Pattern, Span,
+    ConstructCtx, EnumInfo, GenericArgs, InferType, Literal, MatchExpr, MetelError, Pattern, Span,
     Substitution, Type, TypeErrorCode, TypedBlock, TypedDecl, TypedExpr, TypedMatchArm,
     TypedMatchExpr, TypedPattern, TypedStmt, VariantInfo, check_type_does_not_satisfy_bound,
     check_type_satisfies_bounds, construct_block, construct_expr, infer_type_to_type,
@@ -902,14 +902,14 @@ pub(super) fn construct_enum_literal_ty(
         .collect::<Result<_, _>>()?;
 
     // T0012: check each resolved type arg satisfies the enum's declared bounds.
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let generic_types_by_name: HashMap<String, Type> = enum_id
-        .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
-        .into_iter()
-        .flatten()
-        .cloned()
-        .zip(concrete_args.iter().cloned())
-        .collect();
+    let generic_types_by_name = GenericArgs::by_name(
+        enum_id
+            .and_then(|id| ctx.registry.struct_generic_names_by_id(id))
+            .into_iter()
+            .flatten()
+            .cloned()
+            .zip(concrete_args.iter().cloned()),
+    );
     let record_kinds = enum_id
         .and_then(|id| ctx.registry.type_param_record_kinds_by_id(id))
         .cloned()

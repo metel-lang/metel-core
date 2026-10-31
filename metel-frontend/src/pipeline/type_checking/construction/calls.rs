@@ -1,10 +1,12 @@
 use super::{
-    AssocResolveCtx, ConstructCtx, Expr, GenericBound, HashMap, InferType, MetelError,
-    MethodDispatch, RowConstraint, Span, Substitution, SymbolId, Type, TypeDefinitionRegistry,
-    TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypeVarGenerator, TypedExpr, construct_expr,
-    infer_type_to_type, maybe_dyn_coerce, reject_dynamic_array_where_sized_expected, type_engine,
-    type_expr_to_infer_with_assoc_ctx, type_to_infer, unify,
+    AssocResolveCtx, ConstructCtx, Expr, GenericBound, GenericScope, HashMap, InferType,
+    MetelError, MethodDispatch, RowConstraint, Span, Substitution, SymbolId, Type,
+    TypeDefinitionRegistry, TypeErrorCode, TypeExpr, TypeScheme, TypeVar, TypeVarGenerator,
+    TypedExpr, construct_expr, infer_type_to_type, maybe_dyn_coerce,
+    reject_dynamic_array_where_sized_expected, type_engine, type_expr_to_infer_by_identity,
+    type_to_infer, unify,
 };
+use crate::identity::{BindingSpans, TypeParamId};
 
 fn is_through_shared_reference(expr: &TypedExpr) -> bool {
     match expr {
@@ -181,6 +183,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(name, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_assoc_eq(
@@ -199,6 +202,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             let typed = TypedExpr::Ident(
                 name.clone(),
@@ -261,6 +265,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_assoc_eq(
@@ -279,6 +284,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             // metel-core#1093: identity only for the clean 2-segment shape
             // (`Type::member`), matching `expressions.rs`'s own boundary —
@@ -332,6 +338,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_assoc_eq(
@@ -350,6 +357,7 @@ pub(super) fn construct_call(
                 span,
                 ctx.registry,
                 ctx.current_module,
+                ctx.identity.binding_spans,
             )?;
             let typed = TypedExpr::Ident(
                 resolved.clone(),
@@ -502,8 +510,7 @@ pub(super) fn check_fun_call_bounds(
     let record_kinds = registry.fun_record_kinds_for(fun_name);
     let projection_tail_constraints = registry.fun_projection_tail_constraints_for(fun_name);
     let open_row_params = registry.fun_open_row_params_for(fun_name);
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let generic_types_by_name: HashMap<String, Type> = HashMap::new();
+    let generic_types_by_name = GenericArgs::none();
     for (tv, concrete) in var_to_type {
         let bounds = bounds_map
             .and_then(|map| map.get(tv))
@@ -688,6 +695,7 @@ pub(super) fn try_generic_method_scheme(
         span,
         ctx.registry,
         ctx.current_module,
+        ctx.identity.binding_spans,
     )?;
     check_scheme_neg_bounds(
         method,
@@ -696,6 +704,7 @@ pub(super) fn try_generic_method_scheme(
         span,
         ctx.registry,
         ctx.current_module,
+        ctx.identity.binding_spans,
     )?;
     check_scheme_assoc_eq(
         method,
@@ -793,14 +802,9 @@ pub(super) fn check_scheme_bounds(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
+    spans: &BindingSpans,
 ) -> Result<(), MetelError> {
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let generic_types_by_name: HashMap<String, Type> = scheme
-        .quantified_vars
-        .iter()
-        .zip(&scheme.param_names)
-        .filter_map(|(tv, name)| var_to_type.get(tv).cloned().map(|ty| (name.clone(), ty)))
-        .collect();
+    let generic_types_by_name = GenericArgs::from_scheme(scheme, var_to_type, spans);
     for (index, tv) in scheme.quantified_vars.iter().enumerate() {
         let bounds = scheme.bounds.get(index).map_or(&[][..], Vec::as_slice);
         let record_kind = scheme.record_kinds.get(index).copied().unwrap_or(false);
@@ -947,20 +951,77 @@ pub(super) fn check_scheme_assoc_eq(
     Ok(())
 }
 
+/// The concrete types a bound check resolves written generic names to (ADR-0067). A function's
+/// parameters resolve by the identity recorded at the written name; a struct's or enum's declared
+/// parameters still resolve by spelling until their headers have identities.
+pub(super) struct GenericArgs<'a> {
+    spans: Option<&'a BindingSpans>,
+    by_id: HashMap<TypeParamId, Type>,
+    // resolution-freeze-allow: the declared type-parameter names of the one struct or enum being constructed; they are unique within it. Goes with the struct/enum header identities (metel-core#1612).
+    by_name: HashMap<String, Type>,
+}
+
+impl<'a> GenericArgs<'a> {
+    /// No parameter is in scope.
+    pub(super) fn none() -> Self {
+        Self {
+            spans: None,
+            by_id: HashMap::new(),
+            by_name: HashMap::new(),
+        }
+    }
+
+    /// The parameters of a scheme, each with the type it was instantiated to.
+    pub(super) fn from_scheme(
+        scheme: &TypeScheme,
+        var_to_type: &HashMap<TypeVar, Type>,
+        spans: &'a BindingSpans,
+    ) -> Self {
+        let by_id = scheme
+            .quantified_vars
+            .iter()
+            .zip(&scheme.param_ids)
+            .filter_map(|(tv, id)| Some(((*id)?, var_to_type.get(tv)?.clone())))
+            .collect();
+        Self {
+            spans: Some(spans),
+            by_id,
+            by_name: HashMap::new(),
+        }
+    }
+
+    /// The declared parameters of a struct or enum, by the spelling they were declared with.
+    pub(super) fn by_name(declared: impl IntoIterator<Item = (String, Type)>) -> Self {
+        Self {
+            spans: None,
+            by_id: HashMap::new(),
+            by_name: declared.into_iter().collect(),
+        }
+    }
+}
+
 pub(super) fn resolve_row_field_type(
     ty: &TypeExpr,
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
 ) -> Result<Type, MetelError> {
-    let mut generic_map = HashMap::new();
+    let mut by_id = HashMap::new();
+    let mut by_name = HashMap::new();
     let mut subst = Substitution::new();
-    for (index, (name, concrete)) in generic_types_by_name.iter().enumerate() {
-        let tv = TypeVar(index.try_into().expect("generic map index fits in u32"));
-        generic_map.insert(name.clone(), tv);
+    let mut next = 0u32;
+    let mut fresh = |concrete: &Type| {
+        let tv = TypeVar(next);
+        next += 1;
         subst.bind(tv, type_to_infer(concrete));
+        tv
+    };
+    for (id, concrete) in &generic_types_by_name.by_id {
+        by_id.insert(*id, fresh(concrete));
+    }
+    for (name, concrete) in &generic_types_by_name.by_name {
+        by_name.insert(name.clone(), fresh(concrete));
     }
     let assoc_ctx = AssocResolveCtx {
         registry,
@@ -968,7 +1029,15 @@ pub(super) fn resolve_row_field_type(
         current_aspect: None,
         local_types: &[],
     };
-    let inferred = type_expr_to_infer_with_assoc_ctx(ty, &generic_map, None, &assoc_ctx);
+    let scope = match generic_types_by_name.spans {
+        Some(spans) => GenericScope::ById {
+            spans,
+            vars: &by_id,
+            names: Some(&by_name),
+        },
+        None => GenericScope::ByName(&by_name),
+    };
+    let inferred = type_expr_to_infer_by_identity(ty, scope, None, &assoc_ctx);
     infer_type_to_type(&subst.apply(&inferred), span)
 }
 
@@ -1111,8 +1180,7 @@ pub(super) fn check_positive_row_bound(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     let bound = GenericBound::Row(row.clone());
     let actual_labels: Vec<&str> = record_fields
@@ -1183,8 +1251,7 @@ pub(super) fn check_projection_tail_constraint(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     let actual_brand = match concrete {
         Type::Named(name, ..) => name.as_str(),
@@ -1228,8 +1295,7 @@ pub(super) fn check_negative_row_bound(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     let bound = GenericBound::Row(row.clone());
     for forbidden in &row.fields {
@@ -1312,8 +1378,7 @@ fn check_symbolic_row_entitlements(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     let Some(Type::SymbolicRow {
         field_aspects,
@@ -1374,8 +1439,7 @@ pub(super) fn check_type_satisfies_bounds(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     check_symbolic_row_entitlements(
         concrete,
@@ -1527,8 +1591,7 @@ pub(super) fn check_type_does_not_satisfy_bound(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    generic_types_by_name: &HashMap<String, Type>,
+    generic_types_by_name: &GenericArgs<'_>,
 ) -> Result<(), MetelError> {
     check_symbolic_row_entitlements(
         concrete,
@@ -1622,8 +1685,7 @@ pub(super) fn check_fun_call_neg_bounds(
 ) -> Result<(), MetelError> {
     let bounds_map = registry.neg_fun_bounds_for(fun_name);
     let record_kinds = registry.fun_record_kinds_for(fun_name);
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let generic_types_by_name: HashMap<String, Type> = HashMap::new();
+    let generic_types_by_name = GenericArgs::none();
     for (tv, concrete) in var_to_type {
         let bounds = bounds_map
             .and_then(|map| map.get(tv))
@@ -1659,14 +1721,9 @@ pub(super) fn check_scheme_neg_bounds(
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
+    spans: &BindingSpans,
 ) -> Result<(), MetelError> {
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let generic_types_by_name: HashMap<String, Type> = scheme
-        .quantified_vars
-        .iter()
-        .zip(&scheme.param_names)
-        .filter_map(|(tv, name)| var_to_type.get(tv).cloned().map(|ty| (name.clone(), ty)))
-        .collect();
+    let generic_types_by_name = GenericArgs::from_scheme(scheme, var_to_type, spans);
     for (index, tv) in scheme.quantified_vars.iter().enumerate() {
         let bounds = scheme.neg_bounds.get(index).map_or(&[][..], Vec::as_slice);
         let record_kind = scheme.record_kinds.get(index).copied().unwrap_or(false);
