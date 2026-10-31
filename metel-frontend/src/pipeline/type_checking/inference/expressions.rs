@@ -869,8 +869,8 @@ fn infer_expr_inner(
             // Legality-10: a `var` closure is not called through a shared reference, whether the
             // callee is itself a `&` to one or sits in a field, element or index reached through a
             // `&` binding. Construction reports the same, but a generic body is not constructed
-            // until it is instantiated (metel-core#1684); this sees the shapes whose root is a
-            // binding of reference type.
+            // until it is instantiated (metel-core#1684); this sees the shapes with a shared
+            // reference at any step of the chain.
             let peeled = match &solved_callee {
                 InferType::Reference(inner) | InferType::MutReference(inner) => inner.as_ref(),
                 other => other,
@@ -879,7 +879,7 @@ fn infer_expr_inner(
                 peeled,
                 InferType::Fun(.., crate::data::types::CallMutation::Mutating)
             ) && (matches!(solved_callee, InferType::Reference(_))
-                || callee_chain_root_is_shared_reference(callee, ctx)?)
+                || callee_chain_reaches_shared_reference(callee, ctx)?)
             {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0029,
@@ -3204,9 +3204,11 @@ fn closure_capture_write_violation(
         })
 }
 
-/// Whether a callee written as a field, element or index chain (`c.go`, `t.0`, `a[i]`) is rooted
-/// at a binding whose type is a shared `&` reference.
-fn callee_chain_root_is_shared_reference(
+/// Whether a callee written as a field, element or index chain (`c.go`, `t.0`, `a[i]`) is reached
+/// through a shared `&` reference: any step of the chain, from the root binding to the object the
+/// callee itself is a member of, has a shared reference type (metel-core#1703). A field that holds
+/// a `&` in the middle of the chain is as shared as a root binding of reference type.
+fn callee_chain_reaches_shared_reference(
     callee: &Expr,
     ctx: &mut InferContext,
 ) -> Result<bool, MetelError> {
@@ -3216,19 +3218,28 @@ fn callee_chain_root_is_shared_reference(
         | Expr::Index { object, .. } => object.as_ref(),
         _ => return Ok(false),
     };
-    while let Expr::FieldAccess { object: inner, .. }
-    | Expr::TupleAccess { object: inner, .. }
-    | Expr::Index { object: inner, .. } = object
-    {
-        object = inner.as_ref();
+    loop {
+        let recorded = ctx
+            .definition_expression_types()
+            .get(object.span())
+            .cloned();
+        let ty = match (recorded, object) {
+            (Some(ty), _) => Some(ty),
+            (None, Expr::Ident(name, _)) => ctx.lookup(name),
+            (None, _) => None,
+        };
+        if let Some(ty) = ty
+            && matches!(ctx.solve()?.apply(&ty), InferType::Reference(_))
+        {
+            return Ok(true);
+        }
+        match object {
+            Expr::FieldAccess { object: inner, .. }
+            | Expr::TupleAccess { object: inner, .. }
+            | Expr::Index { object: inner, .. } => object = inner.as_ref(),
+            _ => return Ok(false),
+        }
     }
-    let Expr::Ident(name, _) = object else {
-        return Ok(false);
-    };
-    Ok(match ctx.lookup(name) {
-        Some(ty) => matches!(ctx.solve()?.apply(&ty), InferType::Reference(_)),
-        None => false,
-    })
 }
 
 /// A closure literal passed as a call argument is checked against the parameter type, which may be

@@ -1,0 +1,16 @@
+// metel-core#1703 (RFC 0153, legality-10): the shared `&` is a step in the middle of the callee's
+// chain (a field that holds a `&`), not its root binding. Reported where the generic function is
+// written.
+struct Cell {
+    go: var || -> i64,
+}
+
+struct Handle {
+    cell: &Cell,
+}
+
+fun peek<T: Copy>(h: Handle, x: T) -> i64 {
+    (h.cell.go)() // error: `var` closure called through a shared reference
+}
+
+fun main() { }

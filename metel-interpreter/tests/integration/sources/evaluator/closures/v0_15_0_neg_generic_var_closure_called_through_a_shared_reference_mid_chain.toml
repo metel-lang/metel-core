@@ -1,0 +1,8 @@
+[options]
+error = ["T0029"]
+spec = ["spec.functions.closures.legality-10"]
+
+[expect]
+status = "typecheck_error"
+code = "T0029"
+contains = "shared reference"
