@@ -1,0 +1,4 @@
+// metel-core#1482: the type reaches the literal through an array annotation.
+fun main() {
+    let a: [u8; 2] := [1, 300];
+}

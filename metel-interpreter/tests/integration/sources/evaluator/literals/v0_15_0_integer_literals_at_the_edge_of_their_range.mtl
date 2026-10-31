@@ -1,0 +1,22 @@
+// metel-core#1482: the extreme values of every width are accepted, a negative literal is judged as
+// the negative value it writes (`-128` fits `i8`), and an explicit cast still wraps.
+fun main() {
+    let a: i8 := -128;
+    let b: i8 := 127;
+    let c: u8 := 255;
+    let d: u8 := 0;
+    let e: i32 := -2147483648;
+    let f: i32 := 2147483647;
+    let g: u16 := 65535;
+    let h: i64 := -9223372036854775807;
+    assert(a == -128);
+    assert(b == 127);
+    assert(c == 255);
+    assert(d == 0);
+    assert(e == -2147483648);
+    assert(f == 2147483647);
+    assert(g == 65535);
+    assert(h == -9223372036854775807);
+    let wrapped := 300 as u8;
+    assert(wrapped == 44);
+}

@@ -1,0 +1,6 @@
+// metel-core#1482: the type reaches the literal through a parameter.
+fun f(x: u8) -> u8 { x }
+
+fun main() {
+    let a := f(1000);
+}

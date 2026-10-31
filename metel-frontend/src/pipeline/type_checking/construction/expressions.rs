@@ -8,8 +8,8 @@ use super::{
     check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
     check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_binop,
-    construct_block, construct_call, construct_enum_literal_ty, construct_literal_type,
-    construct_match, construct_method_args, construct_propagate_error, construct_unaryop,
+    construct_block, construct_call, construct_enum_literal_ty, construct_match,
+    construct_method_args, construct_propagate_error, construct_unaryop,
     dispatch_for_resolved_method, find_loop_break_type, infer_type_to_type,
     instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_singleton_coerce,
     merge_branch_types, peel_type_references, resolve_expected_enum, resolve_generic_method_call,
@@ -436,10 +436,7 @@ pub(super) fn construct_expr(
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
     match expr {
-        Expr::Literal(lit, span) => {
-            let ty = construct_literal_type(lit, expected_ty, span)?;
-            Ok(TypedExpr::Literal(lit.clone(), ty, span.clone()))
-        }
+        Expr::Literal(lit, span) => ctx.construct_literal_expr(lit, expected_ty, span, false),
         Expr::Ident(name, span) => {
             if let Some(ty) = ctx.lookup_at(span).cloned() {
                 // RFC-0137 slice 2 (metel-core#858): a binding with a field moved

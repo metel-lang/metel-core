@@ -1,0 +1,6 @@
+// metel-core#1482: the type reaches the literal through the return type.
+fun g() -> u8 { 300 }
+
+fun main() {
+    let a := g();
+}

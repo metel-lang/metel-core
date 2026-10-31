@@ -1,0 +1,8 @@
+[options]
+error = ["P0002"]
+spec = ["spec.lexical.literals.legality-6"]
+
+[expect]
+status = "parse_error"
+code = "P0002"
+contains = "does not fit `i32`"

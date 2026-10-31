@@ -1,0 +1,4 @@
+// metel-core#1482: an unsuffixed integer literal must fit the type it adopts.
+fun main() {
+    let a: u8 := 300;
+}

@@ -1,0 +1,4 @@
+// metel-core#1482: the signed range is judged per width.
+fun main() {
+    let a: i8 := 200;
+}

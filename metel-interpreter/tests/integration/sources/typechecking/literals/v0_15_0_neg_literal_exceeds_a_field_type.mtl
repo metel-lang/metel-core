@@ -1,0 +1,6 @@
+// metel-core#1482: the type reaches the literal through a struct field.
+struct Pixel { r: u8 }
+
+fun main() {
+    let p := Pixel { r = 256 };
+}
