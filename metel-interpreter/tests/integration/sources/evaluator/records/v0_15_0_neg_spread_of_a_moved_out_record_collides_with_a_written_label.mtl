@@ -1,0 +1,9 @@
+// metel-core#1459: a label written next to the spread must be absent from the remaining row. The
+// error names the collision, not a missing absence fact.
+record Tok { value: String, id: i64, n: i64 }
+
+fun main() {
+    let b := Tok { value = "y".to_string(), id = 2, n = 3 };
+    let a := b.value;
+    let r := { id = 9, ..b };
+}
