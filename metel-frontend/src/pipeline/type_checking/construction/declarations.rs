@@ -1,11 +1,11 @@
 use super::patterns::{construct_pattern_bindings, lower_typed_pattern};
 use super::{
-    AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr, FunBody, FunDecl, HashMap, ImplBlock,
-    InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme, TypeVar,
+    AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr, FunBody, FunDecl, ImplBlock,
+    InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme,
     TypedAspectDecl, TypedDecl, TypedEnumDecl, TypedExpr, TypedFunDecl, TypedImplBlock,
     TypedLetDecl, TypedMutDecl, TypedStructDecl, construct_block, construct_expr, construct_stmt,
     fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce,
-    maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_with_assoc_ctx,
+    maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_in_assoc_ctx,
 };
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
@@ -839,17 +839,14 @@ pub(super) fn construct_impl_method(
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's
     // own `infer_impl_method`, this pass's Pass-1 counterpart.
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let empty_generics: HashMap<String, TypeVar> = HashMap::new();
     let assoc_ctx = AssocResolveCtx {
         registry: ctx.registry,
         current_module: ctx.current_module,
         current_aspect: None,
         local_types: &ctx.local_struct_ids,
     };
-    let te_to_infer = |te: &TypeExpr| {
-        type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
-    };
+    let te_to_infer =
+        |te: &TypeExpr| type_expr_to_infer_in_assoc_ctx(te, Some(target_name), &assoc_ctx);
     let param_types: Vec<Type> = method
         .params
         .iter()
@@ -939,17 +936,14 @@ pub(super) fn construct_default_aspect_method(
     // `AssocResolveCtx` (no registry access), which `Self.{ field }` needs to look
     // up the target struct's actual fields -- mirrors the same fix in inference.rs's
     // own `infer_impl_method`, this pass's Pass-1 counterpart.
-    // resolution-freeze-allow: generic parameter names of the one definition being checked; they are unique within it, so the name identifies the parameter (the bound check reads it back by the spelling it was declared with).
-    let empty_generics: HashMap<String, TypeVar> = HashMap::new();
     let assoc_ctx = AssocResolveCtx {
         registry: ctx.registry,
         current_module: ctx.current_module,
         current_aspect: None,
         local_types: &ctx.local_struct_ids,
     };
-    let te_to_infer = |te: &TypeExpr| {
-        type_expr_to_infer_with_assoc_ctx(te, &empty_generics, Some(target_name), &assoc_ctx)
-    };
+    let te_to_infer =
+        |te: &TypeExpr| type_expr_to_infer_in_assoc_ctx(te, Some(target_name), &assoc_ctx);
     let param_types: Vec<Type> = method
         .params
         .iter()

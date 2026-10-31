@@ -180,13 +180,45 @@ pub(crate) fn type_expr_has_anonymous_open_record(te: &TypeExpr) -> bool {
     find_anonymous_open_record_tail(te).is_some()
 }
 
+/// The generic parameters in scope for a type annotation, and how a written name finds its variable.
+///
+/// Inference declares its parameters by name and has no identities; construction runs after the
+/// identity pass, so a written name there resolves by the identity recorded at its span (ADR-0067).
+#[derive(Clone, Copy)]
+pub(crate) enum GenericScope<'a> {
+    ByName(&'a HashMap<String, TypeVar>),
+    ById {
+        spans: &'a crate::identity::BindingSpans,
+        vars: &'a HashMap<crate::identity::TypeParamId, TypeVar>,
+        /// Parameters not yet given an identity (a struct's or enum's declared ones), by spelling.
+        names: Option<&'a HashMap<String, TypeVar>>,
+    },
+}
+
+impl GenericScope<'_> {
+    fn var_for_name(&self, name: &str, span: &Span) -> Option<TypeVar> {
+        match self {
+            Self::ByName(map) => map.get(name).copied(),
+            Self::ById { spans, vars, names } => spans
+                .type_param_at(span)
+                .and_then(|id| vars.get(&id).copied())
+                .or_else(|| names.and_then(|map| map.get(name).copied())),
+        }
+    }
+
+    /// The variable a `..R` tail names, if it names one in scope.
+    fn var_for_tail(&self, tail: &crate::data::ast::RowTail) -> Option<TypeVar> {
+        self.var_for_name(tail.var.as_deref()?, &tail.span)
+    }
+}
+
 // Exhaustive match over every TypeExpr variant; splitting it up would scatter
 // one coherent dispatch table across many small functions with no real gain
 // in clarity.
 #[allow(clippy::too_many_lines)]
 fn type_expr_to_infer_in_context(
     te: &TypeExpr,
-    generics: Option<&HashMap<String, TypeVar>>,
+    generics: Option<GenericScope<'_>>,
     self_ty_name: Option<&str>,
     assoc_ctx: Option<&AssocResolveCtx<'_>>,
 ) -> InferType {
@@ -211,7 +243,7 @@ fn type_expr_to_infer_in_context(
                     return type_expr_to_infer_in_context(&proj, generics, self_ty_name, assoc_ctx);
                 }
                 if let Some(generics) = generics
-                    && let Some(&tv) = generics.get(name.as_str())
+                    && let Some(tv) = generics.var_for_name(name, &name_span.0)
                 {
                     return InferType::Var(tv);
                 }
@@ -445,29 +477,19 @@ fn type_expr_to_infer_in_context(
         // occurrences keep their structural row form here: `{ ..R }` is `R`,
         // while `{ x: T, ..R }` is a row extension.
         TypeExpr::OpenRecord(fields, tail)
-            if fields.is_empty()
-                && tail
-                    .var
-                    .as_deref()
-                    .is_some_and(|v| generics.is_some_and(|g| g.contains_key(v))) =>
+            if fields.is_empty() && generics.is_some_and(|g| g.var_for_tail(tail).is_some()) =>
         {
             InferType::RowView(Box::new(InferType::Var(
                 generics
-                    .and_then(|g| g.get(tail.var.as_deref()?))
-                    .copied()
+                    .and_then(|g| g.var_for_tail(tail))
                     .expect("guarded"),
             )))
         }
         TypeExpr::OpenRecord(fields, tail)
-            if !fields.is_empty()
-                && tail
-                    .var
-                    .as_deref()
-                    .is_some_and(|v| generics.is_some_and(|g| g.contains_key(v))) =>
+            if !fields.is_empty() && generics.is_some_and(|g| g.var_for_tail(tail).is_some()) =>
         {
             let tail_var = generics
-                .and_then(|g| g.get(tail.var.as_deref()?))
-                .copied()
+                .and_then(|g| g.var_for_tail(tail))
                 .expect("guarded");
             InferType::RowExtend {
                 fields: fields
@@ -548,20 +570,16 @@ fn type_expr_to_infer_in_context(
         // substitution, unification and field resolution need nothing new.
         // An anonymous `..` (or a name not in scope) stays a placeholder;
         // `projections::check` rejects both before inference runs.
-        TypeExpr::RowArg(tail) => tail
-            .var
-            .as_deref()
-            .and_then(|v| generics.and_then(|g| g.get(v)))
-            .map_or_else(
-                || {
-                    InferType::Named(
-                        ANONYMOUS_ROW_PLACEHOLDER.to_string(),
-                        vec![],
-                        crate::data::types::NominalId::NONE,
-                    )
-                },
-                |&tv| InferType::RowView(Box::new(InferType::Var(tv))),
-            ),
+        TypeExpr::RowArg(tail) => generics.and_then(|g| g.var_for_tail(tail)).map_or_else(
+            || {
+                InferType::Named(
+                    ANONYMOUS_ROW_PLACEHOLDER.to_string(),
+                    vec![],
+                    crate::data::types::NominalId::NONE,
+                )
+            },
+            |tv| InferType::RowView(Box::new(InferType::Var(tv))),
+        ),
     }
 }
 
@@ -572,7 +590,7 @@ pub(super) fn type_expr_to_infer_with_generics(
     te: &TypeExpr,
     generics: &HashMap<String, TypeVar>,
 ) -> InferType {
-    type_expr_to_infer_in_context(te, Some(generics), None, None)
+    type_expr_to_infer_in_context(te, Some(GenericScope::ByName(generics)), None, None)
 }
 
 pub(super) fn type_expr_to_infer_with_generics_and_self(
@@ -580,7 +598,12 @@ pub(super) fn type_expr_to_infer_with_generics_and_self(
     generics: &HashMap<String, TypeVar>,
     self_ty_name: &str,
 ) -> InferType {
-    type_expr_to_infer_in_context(te, Some(generics), Some(self_ty_name), None)
+    type_expr_to_infer_in_context(
+        te,
+        Some(GenericScope::ByName(generics)),
+        Some(self_ty_name),
+        None,
+    )
 }
 
 /// Convert a source-level `TypeExpr` to an `InferType` for use during inference.
@@ -604,7 +627,31 @@ pub(super) fn type_expr_to_infer_with_assoc_ctx(
     self_ty_name: Option<&str>,
     assoc_ctx: &AssocResolveCtx<'_>,
 ) -> InferType {
-    type_expr_to_infer_in_context(te, Some(generics), self_ty_name, Some(assoc_ctx))
+    type_expr_to_infer_in_context(
+        te,
+        Some(GenericScope::ByName(generics)),
+        self_ty_name,
+        Some(assoc_ctx),
+    )
+}
+
+/// As [`type_expr_to_infer_with_assoc_ctx`] with no generic parameter in scope.
+pub(super) fn type_expr_to_infer_in_assoc_ctx(
+    te: &TypeExpr,
+    self_ty_name: Option<&str>,
+    assoc_ctx: &AssocResolveCtx<'_>,
+) -> InferType {
+    type_expr_to_infer_in_context(te, None, self_ty_name, Some(assoc_ctx))
+}
+
+/// As [`type_expr_to_infer_with_assoc_ctx`], with the parameters in scope given by identity.
+pub(crate) fn type_expr_to_infer_by_identity(
+    te: &TypeExpr,
+    scope: GenericScope<'_>,
+    self_ty_name: Option<&str>,
+    assoc_ctx: &AssocResolveCtx<'_>,
+) -> InferType {
+    type_expr_to_infer_in_context(te, Some(scope), self_ty_name, Some(assoc_ctx))
 }
 
 /// Convert a fully-solved `InferType` to a concrete `Type`.

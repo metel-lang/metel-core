@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use crate::identity::symbols::Namespace;
 
 use crate::data::ast::{
-    AspectMethod, AssignTarget, Block, CaptureSpec, Decl, Expr, ForInit, FunDecl, GenericParam,
-    ImplBlock, MatchArm, Param, Pattern, Span, Stmt, TypeExpr,
+    AspectMethod, AssignTarget, Block, Bound, BoundHead, CaptureSpec, Decl, Expr, ForInit, FunDecl,
+    GenericParam, ImplBlock, MatchArm, Param, Pattern, RowTail, Span, Stmt, TypeExpr, WhereClause,
 };
 use crate::pipeline::name_resolution::name_resolver::{
     BindingKind, ModuleScope, ResolvedNames, canonical_path, impl_method_symbol_name,
@@ -149,6 +149,10 @@ struct SigTypes<'a> {
     return_type: Option<&'a TypeExpr>,
     /// The declaration's own span: the key its generic parameters are filed under.
     decl_span: Option<&'a Span>,
+    /// The function's own `<T: Bound>` lists and `where` clause: written types in them name its
+    /// parameters too.
+    own_generics: &'a [GenericParam],
+    where_clause: Option<&'a WhereClause>,
 }
 
 impl<'a> SigTypes<'a> {
@@ -157,6 +161,8 @@ impl<'a> SigTypes<'a> {
             generics: vec![(GenericLevel::Own, generic_names(&fun.generics))],
             return_type: fun.return_type.as_ref(),
             decl_span: Some(&fun.span),
+            own_generics: &fun.generics,
+            where_clause: fun.where_clause.as_ref(),
         }
     }
 
@@ -168,6 +174,8 @@ impl<'a> SigTypes<'a> {
             ],
             return_type: method.return_type.as_ref(),
             decl_span: Some(&method.span),
+            own_generics: &method.generics,
+            where_clause: method.where_clause.as_ref(),
         }
     }
 
@@ -182,6 +190,8 @@ impl<'a> SigTypes<'a> {
             ],
             return_type: method.return_type.as_ref(),
             decl_span: Some(&method.span),
+            own_generics: &method.generics,
+            where_clause: None,
         }
     }
 }
@@ -931,7 +941,53 @@ impl Walker<'_> {
         if let Some(ret) = sig.return_type {
             self.record_type_expr(ret);
         }
+        for generic in sig.own_generics {
+            for bound in &generic.bounds {
+                self.record_bound(bound);
+            }
+        }
+        if let Some(clause) = sig.where_clause {
+            for constraint in &clause.constraints {
+                for bound in &constraint.bounds {
+                    self.record_bound(bound);
+                }
+            }
+            for equation in &clause.row_equations {
+                for (_, ty) in &equation.fields {
+                    self.record_type_expr(ty);
+                }
+                self.record_row_tail(&equation.tail);
+            }
+            for constraint in &clause.field_wise {
+                for bound in &constraint.bounds {
+                    self.record_bound(bound);
+                }
+            }
+        }
         outer
+    }
+
+    fn record_bound(&mut self, bound: &Bound) {
+        match &bound.head {
+            BoundHead::Aspect(te) => self.record_type_expr(te),
+            BoundHead::Row(row) => {
+                for ty in row.fields.iter().filter_map(|field| field.ty.as_ref()) {
+                    self.record_type_expr(ty);
+                }
+            }
+        }
+        for (_, ty) in &bound.assoc_bindings {
+            self.record_type_expr(ty);
+        }
+    }
+
+    /// A `..R` tail names a row-kinded parameter by the span of the tail.
+    fn record_row_tail(&mut self, tail: &RowTail) {
+        if let Some(name) = &tail.var
+            && let Some(&id) = self.type_params.get(name)
+        {
+            self.acc.type_param_spans.insert(tail.span.clone(), id);
+        }
     }
 
     /// Record, for each written name in `te` that denotes a generic parameter in scope, the
@@ -954,7 +1010,14 @@ impl Walker<'_> {
                     self.record_type_expr(item);
                 }
             }
-            TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
+            TypeExpr::OpenRecord(fields, tail) => {
+                for (_, field) in fields {
+                    self.record_type_expr(field);
+                }
+                self.record_row_tail(tail);
+            }
+            TypeExpr::RowArg(tail) => self.record_row_tail(tail),
+            TypeExpr::Record(fields) => {
                 for (_, field) in fields {
                     self.record_type_expr(field);
                 }
