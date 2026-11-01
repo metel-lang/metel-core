@@ -1,0 +1,10 @@
+[options]
+error = ["T0019"]
+move_check = true
+spec = ["spec.ownership.values-move-by-default.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+line = 5
+contains = "use of moved value `a`"

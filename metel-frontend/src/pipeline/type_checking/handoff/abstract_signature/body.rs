@@ -1052,6 +1052,7 @@ impl BodyFreezer<'_, '_> {
                 }
             }
             Expr::Match(matched) => self.match_expression(matched, &ty)?,
+            Expr::PropagateError { expr, span } => self.propagate_error(expr, span)?,
             Expr::Return(_)
             | Expr::If { .. }
             | Expr::Loop { .. }
@@ -1196,6 +1197,136 @@ impl BodyFreezer<'_, '_> {
             scrutinee: Box::new(scrutinee),
             arms,
         })
+    }
+
+    /// `operand?` as the match it stands for: the success value, or an early return of the failure.
+    ///
+    /// `Option` and `Result` are the two core enums `?` accepts. Both arms bind through the one
+    /// identity the identity walk gave the `?` (they are exclusive), and the early return builds the
+    /// enclosing function's own failure value from what the arm bound. A `Result` whose error type
+    /// differs from the enclosing function's is converted through `From`, a dispatch this
+    /// translation does not retain yet, so that case stays unanalysed rather than guessed.
+    fn propagate_error(&self, operand: &Expr, span: &Span) -> Result<AbstractExprKind, String> {
+        use crate::identity::symbols::{SYM_TYPE_OPTION, SYM_TYPE_RESULT};
+        let scrutinee = self.expression(operand)?;
+        let arms = if core_arguments(&scrutinee.ty, SYM_TYPE_OPTION).is_some() {
+            self.propagate_option(&scrutinee.ty, span)?
+        } else if core_arguments(&scrutinee.ty, SYM_TYPE_RESULT).is_some() {
+            self.propagate_result(&scrutinee.ty, span)?
+        } else {
+            return Err("`?` operand is not a retained Result or Option".to_string());
+        };
+        Ok(AbstractExprKind::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+        })
+    }
+
+    /// The two arms of `?` on an `Option`: `Some { value }` yields it, `None` returns `None`.
+    fn propagate_option(
+        &self,
+        operand: &AbstractType,
+        span: &Span,
+    ) -> Result<PropagateArms, String> {
+        use crate::data::abstract_body::AbstractMatchPattern;
+        use crate::identity::symbols::SYM_TYPE_OPTION;
+        let members = self.identity.members;
+        core_arguments(self.return_type, SYM_TYPE_OPTION)
+            .ok_or("`?` on an Option needs the enclosing function to return an Option")?;
+        let Some([value]) = core_arguments(operand, SYM_TYPE_OPTION) else {
+            return Err("`?` operand has no retained Option argument".to_string());
+        };
+        let some = members
+            .variant(SYM_TYPE_OPTION, "Some")
+            .ok_or_else(propagate_incomplete)?;
+        let none = members
+            .variant(SYM_TYPE_OPTION, "None")
+            .ok_or_else(propagate_incomplete)?;
+        let value_field = members
+            .field(SYM_TYPE_OPTION, "Some::value")
+            .ok_or_else(propagate_incomplete)?;
+        let bound = self.binding("value", span, value.clone())?;
+        let failure_value = AbstractExpr {
+            ty: self.return_type.clone(),
+            kind: AbstractExprKind::UnitVariant(none),
+            span: span.clone(),
+        };
+        Ok(propagate_arms(
+            (
+                AbstractMatchPattern::Variant {
+                    identity: some,
+                    bindings: vec![(value_field, bound.clone())],
+                },
+                bound,
+            ),
+            AbstractMatchPattern::Variant {
+                identity: none,
+                bindings: Vec::new(),
+            },
+            failure_value,
+            span,
+        ))
+    }
+
+    /// The two arms of `?` on a `Result` whose error type is the enclosing function's own:
+    /// `Ok { value }` yields it, `Err { error }` returns `Err { error }`.
+    fn propagate_result(
+        &self,
+        operand: &AbstractType,
+        span: &Span,
+    ) -> Result<PropagateArms, String> {
+        use crate::data::abstract_body::AbstractMatchPattern;
+        use crate::identity::symbols::SYM_TYPE_RESULT;
+        let members = self.identity.members;
+        let target = core_arguments(self.return_type, SYM_TYPE_RESULT)
+            .ok_or("`?` on a Result needs the enclosing function to return a Result")?;
+        let Some([value, source_error]) = core_arguments(operand, SYM_TYPE_RESULT) else {
+            return Err("`?` operand has no retained Result arguments".to_string());
+        };
+        if target.get(1) != Some(source_error) {
+            return Err("`?` error conversion contracts are not yet retained".to_string());
+        }
+        let ok = members
+            .variant(SYM_TYPE_RESULT, "Ok")
+            .ok_or_else(propagate_incomplete)?;
+        let err = members
+            .variant(SYM_TYPE_RESULT, "Err")
+            .ok_or_else(propagate_incomplete)?;
+        let value_field = members
+            .field(SYM_TYPE_RESULT, "Ok::value")
+            .ok_or_else(propagate_incomplete)?;
+        let error_field = members
+            .field(SYM_TYPE_RESULT, "Err::error")
+            .ok_or_else(propagate_incomplete)?;
+        let bound = self.binding("value", span, value.clone())?;
+        let error_binding = self.binding("error", span, source_error.clone())?;
+        let error = AbstractExpr {
+            ty: source_error.clone(),
+            kind: AbstractExprKind::Binding(error_binding.identity),
+            span: span.clone(),
+        };
+        let failure_value = AbstractExpr {
+            ty: self.return_type.clone(),
+            kind: AbstractExprKind::StructLiteral {
+                fields: vec![("error".to_string(), error)],
+            },
+            span: span.clone(),
+        };
+        Ok(propagate_arms(
+            (
+                AbstractMatchPattern::Variant {
+                    identity: ok,
+                    bindings: vec![(value_field, bound.clone())],
+                },
+                bound,
+            ),
+            AbstractMatchPattern::Variant {
+                identity: err,
+                bindings: vec![(error_field, error_binding)],
+            },
+            failure_value,
+            span,
+        ))
     }
 
     fn finish_expression(
@@ -2344,6 +2475,66 @@ impl BodyFreezer<'_, '_> {
         }
         Ok(())
     }
+}
+
+/// The two arms of a `?` match, success first.
+type PropagateArms = Vec<(
+    crate::data::abstract_body::AbstractMatchPattern,
+    AbstractBlock,
+)>;
+
+/// The arguments of `ty` when it is the core enum `symbol`.
+fn core_arguments(
+    ty: &AbstractType,
+    symbol: crate::identity::symbols::SymbolId,
+) -> Option<&[AbstractType]> {
+    match ty {
+        AbstractType::Named {
+            arguments,
+            identity,
+            ..
+        } if identity.get() == Some(symbol) => Some(arguments.as_slice()),
+        _ => None,
+    }
+}
+
+fn propagate_incomplete() -> String {
+    "`?` variant and field identities are not retained".to_string()
+}
+
+/// Build the arms of a `?` match: the success pattern yields the binding it introduced, the
+/// failure pattern returns `failure_value` early.
+fn propagate_arms(
+    success: (
+        crate::data::abstract_body::AbstractMatchPattern,
+        AbstractBinding,
+    ),
+    failure: crate::data::abstract_body::AbstractMatchPattern,
+    failure_value: AbstractExpr,
+    span: &Span,
+) -> PropagateArms {
+    let (success_pattern, bound) = success;
+    let value = AbstractExpr {
+        ty: bound.ty.clone(),
+        kind: AbstractExprKind::Binding(bound.identity),
+        span: span.clone(),
+    };
+    let success_arm = AbstractBlock {
+        statements: Vec::new(),
+        tail: Some(Box::new(value)),
+        span: span.clone(),
+    };
+    let early_return = AbstractExpr {
+        ty: AbstractType::Never,
+        kind: AbstractExprKind::Return(Some(Box::new(failure_value))),
+        span: span.clone(),
+    };
+    let failure_arm = AbstractBlock {
+        statements: vec![AbstractStatement::Expr(early_return)],
+        tail: None,
+        span: span.clone(),
+    };
+    vec![(success_pattern, success_arm), (failure, failure_arm)]
 }
 
 fn peel_references(mut ty: &AbstractType) -> (&AbstractType, usize) {
