@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.expressions.unqualified-variant-constructors.legality-1"]
+
+[expect]
+status = "success"

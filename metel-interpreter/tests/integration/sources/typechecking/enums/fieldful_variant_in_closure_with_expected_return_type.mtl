@@ -1,0 +1,18 @@
+// metel-core#1757: where the closure's return type is known, a bare fieldful variant in its body
+// resolves: from a written `->`, from a function-typed binding, and from a function-typed parameter.
+fun apply(f: |i64| -> Option<i64>) -> Option<i64> {
+    return f(1);
+}
+
+fun unwrap(o: Option<i64>) -> i64 {
+    return match (o) { Some { value } => value, None => 0 };
+}
+
+fun main() {
+    let written := |a: i64| -> Option<i64> { Some { value = a } };
+    let bound: |i64| -> Option<i64> := |a: i64| { Some { value = a } };
+    let passed := apply(|a: i64| { Some { value = a } });
+    assert(unwrap(written(1)) == 1);
+    assert(unwrap(bound(2)) == 2);
+    assert(unwrap(passed) == 1);
+}
