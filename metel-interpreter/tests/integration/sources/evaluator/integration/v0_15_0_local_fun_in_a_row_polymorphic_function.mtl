@@ -1,0 +1,12 @@
+// RFC-0195 x RFC-0186: a local fun inside a function with a `record R` parameter, and a row
+// returned through a written open-record return type.
+fun total<record R>(r: { x: i64, ..R }) -> i64 {
+    fun plus(a: i64, b: i64) -> i64 { return a + b; }
+    return plus(r.x, 1);
+}
+fun keep<record R>(r: { x: i64, ..R }) -> { x: i64, ..R } { return r; }
+fun main() {
+    assert(total({ x = 1, y = 2 }) == 2);
+    let a := keep({ x = 1, y = 2 });
+    assert(a.y == 2);
+}

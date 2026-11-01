@@ -1,0 +1,7 @@
+// metel-core#1683 and #1221 x closures, #1482 and RFC-0186: module-qualified static methods and functions
+// used inside a closure, beside a u8 assignment, and as a row-polymorphic argument.
+public struct Counter { public n: i64 }
+extend Counter {
+    public fun with(n: i64) -> Counter { return Counter { n = n }; }
+}
+public fun double(x: i64) -> i64 { return x * 2; }
