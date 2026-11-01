@@ -1,0 +1,5 @@
+// metel-core#1757: a closure with no declared return type gives its body no expected type, so a
+// bare fieldful variant there is reported rather than resolved by searching enums for `Some`.
+fun main() {
+    let wrap := |a: i64| { Some { value = a } }; // ERROR[T0002]
+}

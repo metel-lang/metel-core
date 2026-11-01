@@ -1,0 +1,9 @@
+[options]
+error = ["T0002"]
+spec = ["spec.expressions.unqualified-variant-constructors.legality-4"]
+
+[expect]
+status = "typecheck_error"
+code = "T0002"
+line = 4
+contains = "there is no expected type"
