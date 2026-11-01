@@ -1,0 +1,11 @@
+// metel-core#1774: inside a generic function a literal stored to a narrow place is stored as i64.
+fun go<T: Copy>(x: T) -> T {
+    var a: [u8; 2] := [1, 2];
+    a[0] := 250;
+    assert(a[0] == 250);
+    return x;
+}
+
+fun main() {
+    assert(go(1) == 1);
+}

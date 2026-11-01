@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.lexical.literals.legality-6"]
+
+[expect]
+status = "success"

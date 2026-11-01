@@ -1,0 +1,34 @@
+// metel-core#1763 x aspects, closures, generic bodies and value use: a `root::` or `self::` type
+// path builds the same value the bare name does, wherever it is written.
+aspect Named {
+    fun name(&self) -> i64;
+}
+
+enum Kind { A, B { n: i64 } }
+struct Counter { n: i64 }
+extend Counter: Named {
+    fun name(&self) -> i64 { return self.n; }
+}
+extend Counter {
+    fun new() -> Counter { return Counter { n = 3 }; }
+}
+
+fun generic<T: Copy>(x: T) -> T {
+    let a := root::Counter::new();
+    let b := self::Counter::new();
+    return x;
+}
+
+fun main() {
+    assert(generic(2) == 2);
+    let c := root::Counter::new();
+    assert(c.name() == 3);
+    let make := root::Counter::new;
+    assert(make().n == 3);
+    let build := |k: i64| -> i64 { return root::Counter { n = k }.n; };
+    assert(build(5) == 5);
+    let a := root::Kind::A;
+    let b := root::Kind::B { n = 2 };
+    assert(match (a) { A => 1, B { n } => 0 } == 1);
+    assert(match (b) { A => 0, B { n } => n } == 2);
+}
