@@ -1,0 +1,9 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+error = ["T0010"]
+spec = ["spec.modules.visibility.legality-2"]
+[expect]
+status = "typecheck_error"
+code = "T0010"
+contains = "name a `record` or a type alias"

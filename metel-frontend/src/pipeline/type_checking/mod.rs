@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use serde::Serialize;
 
-use crate::data::ast::{Decl, Program, StructKind, Visibility};
+use crate::data::ast::{Decl, Expr, Program, StructKind, Visibility};
 use crate::data::error::MetelError;
 use crate::data::error::TypeErrorCode;
 use crate::data::typed_ast::{TypedDecl, TypedModule, TypedModuleGraph};
@@ -319,12 +319,21 @@ fn check_pub_annotations(loaded: &LoadedModule, names: &ResolvedNames) -> Result
                     continue;
                 }
                 if fd.return_type.is_none() {
+                    // A record literal has an anonymous type, which is the one a caller
+                    // cannot be expected to write out; point at the short spellings.
+                    let record_hint =
+                        matches!(fd.body.tail.as_deref(), Some(Expr::RecordLiteral { .. }))
+                            .then_some(
+                                "; the body is a record literal, so write its fields in full \
+                         (`-> { x: i64 }`), or name a `record` or a type alias for it",
+                            );
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0010,
                         format!(
                             "public declaration `{}` requires an explicit return type annotation; \
-                             add `-> <Type>` after the parameter list",
-                            fd.name
+                             add `-> <Type>` after the parameter list{}",
+                            fd.name,
+                            record_hint.unwrap_or_default()
                         ),
                         &fd.span,
                     ));
