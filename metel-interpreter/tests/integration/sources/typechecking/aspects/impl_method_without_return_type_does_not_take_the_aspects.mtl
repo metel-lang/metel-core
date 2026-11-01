@@ -1,0 +1,15 @@
+// metel-core#1756: an aspect impl method that omits its return type returns `()`; it does not take
+// the aspect's, so the signature does not match. The message says why.
+aspect Named {
+    fun name(&self) -> String;
+}
+
+struct Person {
+    label: String,
+}
+
+extend Person: Named {
+    fun name(&self) { self.label } // ERROR[T0012]
+}
+
+fun main() {}

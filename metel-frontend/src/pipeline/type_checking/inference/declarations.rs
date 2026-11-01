@@ -370,11 +370,24 @@ pub(super) fn infer_decl(
                                 )
                             })
                         {
+                            // An omitted return type is `()` (RFC-0193), never the aspect's.
+                            let omitted_return = (method.return_type.is_none()
+                                && declared_method
+                                    .is_some_and(|declared| declared.return_type.is_some()))
+                            .then(|| {
+                                format!(
+                                    ": `{}` has no return type, so it returns `()`, but the aspect declares one; write it after the parameter list",
+                                    method.name
+                                )
+                            });
                             return Err(MetelError::type_error(
                                 TypeErrorCode::T0012,
                                 format!(
-                                    "`{}::{}` does not match the signature declared by aspect `{}`",
-                                    target_name, method.name, aspect_name
+                                    "`{}::{}` does not match the signature declared by aspect `{}`{}",
+                                    target_name,
+                                    method.name,
+                                    aspect_name,
+                                    omitted_return.unwrap_or_default()
                                 ),
                                 &method.span,
                             ));
