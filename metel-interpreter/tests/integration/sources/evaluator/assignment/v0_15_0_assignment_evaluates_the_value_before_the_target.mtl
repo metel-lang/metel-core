@@ -1,0 +1,34 @@
+// metel-core#1431 (spec.expressions.assignment.dynamics-1): an assignment evaluates its right-hand
+// side first and the target's own sub-expressions after, and not at all when the right-hand side
+// exits control flow.
+fun value(mark: &var i64) -> i64 {
+    *mark := *mark * 10 + 1;
+    7
+}
+
+fun slot(mark: &var i64) -> u64 {
+    *mark := *mark * 10 + 2;
+    0u64
+}
+
+fun write(values: &var [i64; 1], mark: &var i64) {
+    values[slot(mark)] := value(mark);
+}
+
+fun write_or_leave(values: &var [i64; 1], mark: &var i64, leave: boolean) {
+    values[slot(mark)] := if (leave) { return } else { value(mark) };
+}
+
+fun main() {
+    var values := [0];
+    var mark := 0;
+    write(&var values, &var mark);
+    assert(mark == 12);          // the value (1), then the index (2)
+    assert(values[0u64] == 7);
+
+    var other := [0];
+    var untouched := 0;
+    write_or_leave(&var other, &var untouched, true);
+    assert(untouched == 0);      // the value left, so the index was never evaluated
+    assert(other[0u64] == 0);
+}

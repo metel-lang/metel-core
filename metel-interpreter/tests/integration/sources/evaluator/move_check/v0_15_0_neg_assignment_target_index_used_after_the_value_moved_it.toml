@@ -1,7 +1,7 @@
 [options]
 error = ["T0019"]
 move_check = true
-spec = ["spec.ownership.values-move-by-default.legality-1"]
+spec = ["spec.ownership.values-move-by-default.legality-1", "spec.expressions.assignment.dynamics-1"]
 
 [expect]
 status = "typecheck_error"
