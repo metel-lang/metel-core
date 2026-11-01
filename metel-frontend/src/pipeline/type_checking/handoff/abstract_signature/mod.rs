@@ -15,6 +15,54 @@ pub(super) struct SignatureFreezer<'a> {
     variables: HashMap<TypeVar, AbstractParameterId>,
     names: HashMap<&'a str, AbstractParameterId>,
     span: &'a Span,
+    /// Body-local type variables, when the freezer is freezing a body: a variable that is not one
+    /// of the signature's own (the instantiation of a polymorphic local closure, say) is an
+    /// unconstrained type of this body, not an internal error.
+    locals: Option<LocalParameters>,
+}
+
+/// The variables of a body that its signature does not quantify, numbered after the signature's own
+/// parameters. Shared by every freezer of the one body, including its closures'.
+#[derive(Clone)]
+pub(super) struct LocalParameters {
+    binder: BindingId,
+    first_index: usize,
+    variables: std::rc::Rc<std::cell::RefCell<Vec<TypeVar>>>,
+}
+
+impl LocalParameters {
+    pub(super) fn new(binder: BindingId, first_index: usize) -> Self {
+        Self {
+            binder,
+            first_index,
+            variables: std::rc::Rc::default(),
+        }
+    }
+
+    fn parameter(&self, variable: TypeVar) -> AbstractParameterId {
+        let mut variables = self.variables.borrow_mut();
+        let position = variables
+            .iter()
+            .position(|known| *known == variable)
+            .unwrap_or_else(|| {
+                variables.push(variable);
+                variables.len() - 1
+            });
+        AbstractParameterId {
+            binder: self.binder,
+            index: self.first_index + position,
+        }
+    }
+
+    /// The ids of the variables met so far, in numbering order.
+    pub(super) fn ids(&self) -> Vec<AbstractParameterId> {
+        (0..self.variables.borrow().len())
+            .map(|position| AbstractParameterId {
+                binder: self.binder,
+                index: self.first_index + position,
+            })
+            .collect()
+    }
 }
 
 /// The scheme is already solved/generalized. Freezing must not substitute a caller's
@@ -50,6 +98,7 @@ pub(in crate::pipeline::type_checking) fn freeze_signature(
             .filter_map(|parameter| parameter.name.as_deref().map(|name| (name, parameter.id)))
             .collect(),
         span,
+        locals: None,
     };
     let ty = freezer.freeze(&scheme.ty)?;
     Ok(AbstractSignature {
@@ -168,12 +217,16 @@ impl SignatureFreezer<'_> {
         Ok(match ty {
             InferType::Concrete(ty) => AbstractType::Concrete(ty.clone()),
             InferType::Var(var) => {
-                AbstractType::Parameter(self.variables.get(var).copied().ok_or_else(|| {
-                    MetelError::internal(format!(
-                        "abstract signature contains an unquantified variable at {}:{}:{}",
-                        self.span.filename, self.span.line, self.span.col
-                    ))
-                })?)
+                AbstractType::Parameter(match (self.variables.get(var), &self.locals) {
+                    (Some(id), _) => *id,
+                    (None, Some(locals)) => locals.parameter(*var),
+                    (None, None) => {
+                        return Err(MetelError::internal(format!(
+                            "abstract signature contains an unquantified variable at {}:{}:{}",
+                            self.span.filename, self.span.line, self.span.col
+                        )));
+                    }
+                })
             }
             InferType::Never => AbstractType::Never,
             InferType::Fun(parameters, result, call, usage, mutation) => AbstractType::Function {

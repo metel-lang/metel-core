@@ -1,0 +1,10 @@
+// metel-core#1766, #1749: a call to a polymorphic local callee moves a by-value argument, so a
+// second use of it is a use of a moved value, in a generic body.
+fun twice<T>(x: T) -> T {
+    fun pass<U>(u: U) -> U { return u; }
+    let first := pass(x);
+    let second := pass(x);
+    return first;
+}
+
+fun main() {}

@@ -2057,7 +2057,7 @@ fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial
         r#"
 struct Holder<T> { value: T }
 extend<T: Copy> Holder<T>: Copy;
-fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } nested(1); }
+fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } let pair := (|k: i64| -> i64 { k }, 1); }
 fun ownership<T>(value: T, holder: Holder<T>) {
     let first := value; let second := value; let held := holder;
 }
@@ -2079,7 +2079,7 @@ fun main() {}
     assert_eq!(fallbacks[0].stage, AbstractBodyFallbackStage::Preparation);
     assert_eq!(
         fallbacks[0].reason,
-        "local generic call target contract is not fully retained"
+        "aggregate closure ownership contracts are not yet retained"
     );
     assert_eq!(fallbacks[1].stage, AbstractBodyFallbackStage::Ownership);
     assert_eq!(

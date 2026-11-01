@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.functions.closures.legality-26", "spec.types.generics.open-rows.legality-5"]
+
+[expect]
+status = "success"

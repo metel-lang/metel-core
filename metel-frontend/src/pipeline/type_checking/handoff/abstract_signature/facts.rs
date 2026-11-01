@@ -51,6 +51,7 @@ pub(in crate::pipeline::type_checking) fn freeze_declaration_signature(
             .filter_map(|parameter| parameter.name.as_deref().map(|name| (name, parameter.id)))
             .collect(),
         span: &declaration.span,
+        locals: None,
     };
     let freezer = FactFreezer {
         types,
@@ -510,6 +511,7 @@ mod tests {
                 variables: HashMap::new(),
                 names: HashMap::from([("T", parameter)]),
                 span: &span,
+                locals: None,
             },
             registry: &registry,
             module: &[],

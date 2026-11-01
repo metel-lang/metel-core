@@ -94,6 +94,7 @@ fn freeze_body(
     let binding_names = RefCell::new(HashMap::new());
     let closure_types = RefCell::new(HashMap::new());
     let nominal_ownership = RefCell::new(Vec::new());
+    let locals = super::LocalParameters::new(signature.binder, signature.parameters.len());
     let freezer = BodyFreezer {
         types: SignatureFreezer {
             variables,
@@ -103,6 +104,7 @@ fn freeze_body(
                 .filter_map(|parameter| parameter.name.as_deref().map(|name| (name, parameter.id)))
                 .collect(),
             span: &declaration.span,
+            locals: Some(locals.clone()),
         },
         facts,
         signature,
@@ -131,6 +133,11 @@ fn freeze_body(
         parameters,
         binding_names: binding_names.into_inner(),
         nominal_ownership: nominal_ownership.into_inner(),
+        local_parameters: locals
+            .ids()
+            .into_iter()
+            .map(unconstrained_parameter)
+            .collect(),
         block,
     })
 }
@@ -2097,12 +2104,10 @@ impl BodyFreezer<'_, '_> {
                 Some(binding) => binding,
                 None => self.overloaded_callee(callee, parameters)?,
             };
-            // Name-keyed scheme lookup can find an outer generic even when a
-            // local callable shadows it. Without an expression fact tying the
-            // contract to that local binding, its ownership axes are unproven.
-            if !matches!(binding, crate::identity::BindingId::Global(_)) {
-                return Err("local generic call target contract is not fully retained".to_string());
-            }
+            // The contract was instantiated from the scheme of the innermost binding of the
+            // callee's name, which is the binding the identity walk resolved here (a local
+            // monomorphic binding shadows an outer generic in that lookup), so its ownership axes
+            // are the callee's own: a nested generic function or a polymorphic local closure.
             AbstractExpr {
                 ty: signature.clone(),
                 kind: AbstractExprKind::Binding(binding),
@@ -2535,6 +2540,27 @@ fn propagate_arms(
         span: span.clone(),
     };
     vec![(success_pattern, success_arm), (failure, failure_arm)]
+}
+
+/// What the body is known to hold of a type variable its signature does not quantify: nothing. It is
+/// no `Copy`, carries no bound and has no row or record kind, so the analysis treats a value of it
+/// as an owned value of an unknown type, which can only make it reject more.
+fn unconstrained_parameter(
+    parameter: crate::data::abstract_body::AbstractParameterId,
+) -> crate::data::abstract_body::AbstractParameterFacts {
+    crate::data::abstract_body::AbstractParameterFacts {
+        parameter,
+        record_kind: false,
+        row_kind: false,
+        open_row_parameter: false,
+        positive: Vec::new(),
+        negative: Vec::new(),
+        associated_equalities: Vec::new(),
+        projection: None,
+        projection_origins: Vec::new(),
+        opaque_return: None,
+        remainders: Vec::new(),
+    }
 }
 
 fn peel_references(mut ty: &AbstractType) -> (&AbstractType, usize) {
