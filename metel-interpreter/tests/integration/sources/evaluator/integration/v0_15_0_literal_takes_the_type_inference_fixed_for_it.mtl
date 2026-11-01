@@ -1,0 +1,34 @@
+// metel-core#1761: a literal whose position gives no expected type still takes the type inference
+// fixed for it, so the value stored has the field's, element's or variant field's own type. Floats
+// (`f32`), tuple elements, nested arrays and `Result` payloads follow the same path as `u8`.
+enum Shape { Dot { n: u8, w: f32 } }
+record Px { f: f32 }
+
+fun main() {
+    var s := Px { f = 0.5 };
+    s.f := 2.5;
+    assert(s.f == 2.5);
+
+    var t: (u8, i16) := (1, 2);
+    t.0 := 200;
+    t.1 := -5;
+    assert(t.0 == 200);
+    assert(t.1 == -5);
+
+    var grid: [[u8; 2]; 2] := [[1, 2], [3, 4]];
+    grid[1][0] := 250;
+    assert(grid[1][0] == 250);
+    grid[0][1] += 3;
+    assert(grid[0][1] == 5);
+
+    let dot := Shape::Dot { n = 5, w = 1.5 };
+    match (dot) {
+        Dot { n, w } => {
+            assert(n == 5);
+            assert(w == 1.5);
+        }
+    }
+
+    let failed: Result<u8, i16> := Result::Err { error = -3 };
+    assert(match (failed) { Ok { value } => false, Err { error } => error == -3 });
+}

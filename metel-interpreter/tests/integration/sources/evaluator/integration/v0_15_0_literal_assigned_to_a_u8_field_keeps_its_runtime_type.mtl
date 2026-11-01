@@ -1,4 +1,4 @@
-// metel-core#1761: an integer literal assigned to a u8 field is stored as i64.
+// metel-core#1761 (fixed): an integer literal assigned to a u8 field is stored as i64.
 struct S { g: u8 }
 fun main() {
     var s := S { g = 0 };
