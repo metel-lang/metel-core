@@ -1,4 +1,4 @@
-// metel-core#1761: an integer literal in a u8 enum variant field is stored as i64.
+// metel-core#1761 (fixed): an integer literal in a u8 enum variant field is stored as i64.
 fun main() {
     let a: Option<u8> := Option::Some { value = 255 };
     assert(match (a) { Some { value } => value == 255, None => false });

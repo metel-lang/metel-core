@@ -1406,6 +1406,28 @@ use calls::{
 #[cfg(test)]
 mod tests;
 
+/// Whether `ty` is a type an unsuffixed literal can take: any integer or float type for an integer
+/// literal, either float type for a float literal.
+fn literal_can_take(lit: &Literal, ty: &Type) -> bool {
+    match lit {
+        Literal::Int(_) => integer_range(ty).is_some() || matches!(ty, Type::F32 | Type::F64),
+        Literal::Float(_) => matches!(ty, Type::F32 | Type::F64),
+        _ => false,
+    }
+}
+
+/// Whether the position's expected type already decides the literal's type, so that
+/// `construct_literal_type` did not fall through to its `i64` / `f64` default.
+fn expected_fixes_literal(lit: &Literal, expected: Option<&Type>) -> bool {
+    match (lit, expected) {
+        (Literal::Int(_), Some(t)) => {
+            integer_range(t).is_some() || matches!(t, Type::F32 | Type::F64)
+        }
+        (Literal::Float(_), Some(t)) => matches!(t, Type::F32 | Type::F64),
+        _ => false,
+    }
+}
+
 fn construct_literal_type(
     lit: &Literal,
     expected_ty: Option<&Type>,
@@ -1992,13 +2014,22 @@ impl ConstructCtx<'_> {
         span: &Span,
         negated: bool,
     ) -> Result<TypedExpr, MetelError> {
-        let ty = construct_literal_type(lit, expected_ty, span)?;
+        let mut ty = construct_literal_type(lit, expected_ty, span)?;
+        let inferred = self
+            .resolved_facts
+            .definition_expression_types()
+            .get(span)
+            .and_then(|inferred| resolved_to_type(inferred, self.subst, span).ok());
+        // The expected type is only a hint from the position the literal sits in. Where the position
+        // gives none (the right-hand side of an assignment to a field or element, a variant field,
+        // a sibling operand), inference has still fixed the literal's type, and the run-time value
+        // must be of that type or the next operation on it sees an `i64` where it expects a `u8`.
+        if let Some(fixed) = inferred.as_ref().filter(|t| literal_can_take(lit, t))
+            && !expected_fixes_literal(lit, expected_ty)
+        {
+            ty = fixed.clone();
+        }
         if let Literal::Int(value) = lit {
-            let inferred = self
-                .resolved_facts
-                .definition_expression_types()
-                .get(span)
-                .and_then(|inferred| resolved_to_type(inferred, self.subst, span).ok());
             let judged = inferred.as_ref().filter(|t| integer_range(t).is_some());
             check_integer_literal_fits(*value, negated, judged.unwrap_or(&ty), span)?;
         }

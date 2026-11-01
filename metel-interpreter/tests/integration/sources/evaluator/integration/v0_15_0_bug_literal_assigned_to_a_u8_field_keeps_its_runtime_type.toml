@@ -1,5 +1,0 @@
-[options]
-skip = "pending: #1761"
-
-[expect]
-status = "success"
