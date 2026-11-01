@@ -3170,7 +3170,7 @@ fn infer_qualified_type_member(
         .method_type_by_id(owner, member_name)
         .cloned()
     {
-        ctx.record_definition_static_path(span, type_name, member_name);
+        ctx.record_definition_static_path_of(span, owner, member_name);
         return Ok(fun_ty);
     }
     if let Some(scheme) = ctx
@@ -3178,7 +3178,7 @@ fn infer_qualified_type_member(
         .method_scheme_by_id(owner, member_name)
         .map(|(scheme, _)| scheme.clone())
     {
-        ctx.record_definition_static_path(span, type_name, member_name);
+        ctx.record_definition_static_path_of(span, owner, member_name);
         return Ok(ctx.instantiate(&scheme));
     }
     if let Some(info) = ctx.registry().enum_info_by_id(owner)

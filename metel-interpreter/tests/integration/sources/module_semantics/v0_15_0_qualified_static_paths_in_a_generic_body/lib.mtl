@@ -1,0 +1,10 @@
+public enum Kind { A, B { public n: i64 } }
+public struct Counter { public n: i64 }
+extend Counter {
+    public fun with(n: i64) -> Counter { return Counter { n = n }; }
+    public fun zero() -> Counter { return Counter { n = 0 }; }
+}
+extend Kind {
+    public fun make(n: i64) -> Kind { return Kind::B { n = n }; }
+}
+public fun double(x: i64) -> i64 { return x * 2; }

@@ -8977,14 +8977,25 @@ impl InferContext {
             self.registry
                 .resolve_type_id(&self.current_module_path, owner)
         }) {
-            self.record_definition_path(
-                span.clone(),
-                DefinitionPathFact::StaticMember {
-                    owner,
-                    member: member.to_string(),
-                },
-            );
+            self.record_definition_static_path_of(span, owner, member);
         }
+    }
+
+    /// Record a static member path whose owner is already known by identity, as for a type named
+    /// through its module (`lib::Type::member`), which may not be in scope here by its own name.
+    pub(crate) fn record_definition_static_path_of(
+        &mut self,
+        span: &Span,
+        owner: crate::identity::symbols::SymbolId,
+        member: &str,
+    ) {
+        self.record_definition_path(
+            span.clone(),
+            DefinitionPathFact::StaticMember {
+                owner,
+                member: member.to_string(),
+            },
+        );
     }
 
     pub(crate) fn record_definition_nominal_field(

@@ -1,0 +1,22 @@
+import lib::double;
+
+// metel-core#1767: a module-qualified static method is analysed in a generic body by the type its
+// module prefix names, whether or not that type is in scope here: called, taken as a value, on an
+// enum, and inside a closure.
+fun go<T: Copy>(x: T) -> T {
+    let counter := lib::Counter::with(3);
+    let make := lib::Counter::with;
+    let other := make(4);
+    let zero := lib::Counter::zero();
+    let kind := lib::Kind::make(2);
+    let unit := lib::Kind::A;
+    let sum := counter.n + other.n + zero.n;
+    let twice := |k: i64| -> i64 { return lib::Counter::with(k).n; };
+    let _ := twice(sum);
+    return x;
+}
+
+fun main() {
+    assert(go(5) == 5);
+    assert(double(lib::Counter::with(4).n) == 8);
+}

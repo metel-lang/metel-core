@@ -903,13 +903,37 @@ impl Checker<'_> {
                 }
                 self.observe_abstract_expr(operand, env, state)
             }
-            AbstractExprKind::Binding(_)
-            | AbstractExprKind::TupleAccess { .. }
-            | AbstractExprKind::FieldAccess { .. } => {
+            AbstractExprKind::TupleAccess { .. } | AbstractExprKind::FieldAccess { .. } => {
+                self.observe_temporary_projection(expr, env, state)
+            }
+            AbstractExprKind::Binding(_) => {
                 Err("abstract projection base is not a retained place".to_string())
             }
             _ => Err("abstract operation has no ownership consumer".to_string()),
         }
+    }
+
+    /// `f(x).field`, `(a, b).0`, `make().inner.n`: the base is a temporary with no retained place,
+    /// evaluated once and consumed whole; reading a copy of the selected field out of it leaves
+    /// nothing to move. A chain of projections reads through the one temporary at its root.
+    /// Selecting a non-`Copy` field would move it out of a temporary whose remaining fields are
+    /// dropped, which this does not model yet.
+    fn observe_temporary_projection(
+        &mut self,
+        expr: &AbstractExpr,
+        env: &mut Environment<'_>,
+        state: &mut FlowState,
+    ) -> Result<(), String> {
+        if !self.abstract_is_copy(&expr.ty, env)? {
+            return Err("temporary projection ownership contract is not yet retained".to_string());
+        }
+        let mut root = expr;
+        while let AbstractExprKind::TupleAccess { object, .. }
+        | AbstractExprKind::FieldAccess { object, .. } = &root.kind
+        {
+            root = object;
+        }
+        self.consume_abstract_expr(root, env, state, MoveCause::Other)
     }
 
     fn check_abstract_for_in(
