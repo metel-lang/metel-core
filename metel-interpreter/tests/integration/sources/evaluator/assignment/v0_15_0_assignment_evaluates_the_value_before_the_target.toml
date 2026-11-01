@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.expressions.assignment.dynamics-1"]
