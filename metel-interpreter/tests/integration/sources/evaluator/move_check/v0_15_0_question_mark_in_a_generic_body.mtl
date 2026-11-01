@@ -1,0 +1,37 @@
+// metel-core#1764: `?` in a generic body is analysed as the match it stands for. The operand is
+// consumed, the success value is owned by its binding, and the early return builds the enclosing
+// function's own failure value. Option and Result, in a function and in a closure inside it.
+fun first<T: Copy>(a: Option<T>) -> Option<T> {
+    let x := a?;
+    return Option::Some { value = x };
+}
+
+fun chain<T: Copy>(a: Result<T, String>, b: Result<T, String>) -> Result<T, String> {
+    let x := a?;
+    let y := b?;
+    let _ := y;
+    return Result::Ok { value = x };
+}
+
+fun through_closure<T: Copy>(a: Option<T>) -> Option<T> {
+    let step := |o: Option<T>| -> Option<T> {
+        let q := o?;
+        return Option::Some { value = q };
+    };
+    return step(a);
+}
+
+fun main() {
+    let some: Option<i64> := Option::Some { value = 1 };
+    assert(match (first(some)) { Some { value } => value == 1, None => false });
+    let none: Option<i64> := Option::None;
+    assert(match (first(none)) { Some { value } => false, None => true });
+    let ok: Result<i64, String> := Result::Ok { value = 2 };
+    let ok2: Result<i64, String> := Result::Ok { value = 3 };
+    assert(match (chain(ok, ok2)) { Ok { value } => value == 2, Err { error } => false });
+    let bad: Result<i64, String> := Result::Err { error = "no" };
+    let ok3: Result<i64, String> := Result::Ok { value = 4 };
+    assert(match (chain(ok3, bad)) { Ok { value } => false, Err { error } => error.len() == 2 });
+    let again: Option<i64> := Option::Some { value = 5 };
+    assert(match (through_closure(again)) { Some { value } => value == 5, None => false });
+}

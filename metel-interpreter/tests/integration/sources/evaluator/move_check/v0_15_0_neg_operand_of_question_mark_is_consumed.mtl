@@ -1,0 +1,9 @@
+// metel-core#1764: the operand of `?` is moved by it, so using the operand afterwards is a use of a
+// moved value, in a generic body as in a concrete one.
+fun again<T>(a: Option<T>) -> Option<T> {
+    let x := a?;
+    let y := a;
+    return Option::Some { value = x };
+}
+
+fun main() {}
