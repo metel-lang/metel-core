@@ -1,0 +1,11 @@
+// metel-core#1763: a child module names a sibling's type through `root::` and `super::`.
+public fun probe() -> i64 {
+    let a := root::shared::Counter::new();
+    let b := super::shared::Counter::new();
+    let c := root::shared::Counter { n = 10 };
+    let d := root::shared::Kind::B { n = 20 };
+    let from_variant := match (d) { A => 0, B { n } => n };
+    let e := root::shared::Kind::A;
+    let unit := match (e) { A => 1, B { n } => 0 };
+    return a.n + b.n + c.n + from_variant + unit;
+}

@@ -1,0 +1,10 @@
+runner = "full_pipeline"
+prelude = "default"
+[options]
+error = ["P0001"]
+spec = ["spec.modules.paths.legality-1"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "circular module dependency"

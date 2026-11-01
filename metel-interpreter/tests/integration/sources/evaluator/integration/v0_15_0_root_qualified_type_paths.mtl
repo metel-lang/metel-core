@@ -1,0 +1,22 @@
+// metel-core#1763: `root::` and `self::` before a type name resolve in the current module, for a
+// static method (called, or taken as a value), a struct literal, and unit and fieldful variants.
+enum Kind { A, B { n: i64 } }
+struct Counter { n: i64 }
+extend Counter {
+    fun new() -> Counter { return Counter { n = 7 }; }
+    fun kind() -> i64 { return 3; }
+}
+
+fun main() {
+    assert(root::Counter::new().n == 7);
+    assert(root::Counter::kind() == 3);
+    assert(self::Counter::new().n == 7);
+    let make := root::Counter::new;
+    assert(make().n == 7);
+    let c := root::Counter { n = 2 };
+    assert(c.n == 2);
+    let k := root::Kind::A;
+    assert(match (k) { A => true, B { n } => false });
+    let b := root::Kind::B { n = 5 };
+    assert(match (b) { A => false, B { n } => n == 5 });
+}
