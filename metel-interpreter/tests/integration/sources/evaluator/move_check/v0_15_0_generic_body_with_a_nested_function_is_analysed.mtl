@@ -1,0 +1,14 @@
+// metel-core#1732 (ADR-0068): a function declared in a generic body is analysed on its own, and the
+// enclosing body, which it neither captures from nor affects, is analysed without it.
+fun scale<T>(x: T) -> T {
+    fun double(n: i64) -> i64 { n + n }
+    fun label(s: String) -> String { s }
+    assert(double(2) == 4);
+    let name := label("a".to_string());
+    assert(name == "a");
+    x
+}
+
+fun main() {
+    assert(scale(7) == 7);
+}

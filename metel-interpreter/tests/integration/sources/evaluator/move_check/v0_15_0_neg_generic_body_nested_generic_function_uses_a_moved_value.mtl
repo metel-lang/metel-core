@@ -1,0 +1,9 @@
+// metel-core#1732: a nested function that is itself generic is analysed against its own parameters.
+fun run<T>(x: T) -> T {
+    fun pair<U>(u: U) -> (U, U) { (u, u) }
+    x
+}
+
+fun main() {
+    run(1);
+}

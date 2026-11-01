@@ -24,6 +24,7 @@ fn method_fun_decl(
         body,
         abstract_signature: None,
         abstract_body: None,
+        nested_definitions: Vec::new(),
         local_id: None,
         symbol_id: None,
         def_id: None,
@@ -82,6 +83,11 @@ fn closure_definition(
             ctx.overloads,
         )
     });
+    let nested_definitions = if abstract_body.is_some() {
+        prepare_nested_definitions(&fun.body, ctx)
+    } else {
+        Vec::new()
+    };
     Ok(Some(Box::new(TypedFunDecl {
         name: fun.name,
         generics: fun.generics,
@@ -91,6 +97,7 @@ fn closure_definition(
         body: FunBody::Generic(fun.body),
         abstract_signature,
         abstract_body,
+        nested_definitions,
         local_id: ctx.local_binding_at(&ld.span),
         symbol_id: None,
         def_id: None,
@@ -313,6 +320,7 @@ pub(super) fn construct_fun_decl(
             body: FunBody::Native(key),
             abstract_signature: None,
             abstract_body: None,
+            nested_definitions: Vec::new(),
             local_id: ctx.local_binding_at(&fun.span),
             symbol_id,
             def_id: None,
@@ -491,6 +499,11 @@ pub(super) fn construct_fun_decl(
             ctx.overloads,
         )
     });
+    let nested_definitions = if abstract_body.is_some() {
+        prepare_nested_definitions(&fun.body, ctx)
+    } else {
+        Vec::new()
+    };
     Ok(TypedDecl::Fun(TypedFunDecl {
         name: fun.name.clone(),
         generics: fun.generics.clone(),
@@ -500,6 +513,7 @@ pub(super) fn construct_fun_decl(
         body,
         abstract_signature,
         abstract_body,
+        nested_definitions,
         local_id: ctx.local_binding_at(&fun.span),
         symbol_id: overload_entry.map(|e| e.symbol_id),
         def_id: None,
@@ -715,6 +729,7 @@ fn retain_abstract_method(
         ctx.overloads,
     ));
     typed.abstract_signature = Some(signature);
+    typed.nested_definitions = prepare_nested_definitions(&definition.body, ctx);
     Ok(())
 }
 
@@ -992,6 +1007,7 @@ pub(super) fn construct_default_aspect_method(
         body: FunBody::Typed(typed_block),
         abstract_signature: None,
         abstract_body: None,
+        nested_definitions: Vec::new(),
         local_id: None,
         symbol_id: None,
         def_id: None,
@@ -1121,4 +1137,66 @@ fn row_guard_for_generic(
             .extend(eq.fields.iter().map(|(l, t)| (l.clone(), Some(t.clone()))));
     }
     guard
+}
+
+/// The functions declared in a generic definition's body, each prepared as a definition of its own
+/// (ADR-0068). They are not constructed with the body, which is not constructed ahead of time, so
+/// this is where ownership analysis gets to see them. A nested function that cannot be prepared
+/// carries no abstract body, which the move check reports as unanalysed rather than passing it.
+fn prepare_nested_definitions(
+    body: &crate::data::ast::Block,
+    ctx: &ConstructCtx,
+) -> Vec<TypedFunDecl> {
+    super::super::handoff::nested_functions(body)
+        .into_iter()
+        .map(|nested| nested_definition(nested, ctx))
+        .collect()
+}
+
+fn nested_definition(nested: &FunDecl, ctx: &ConstructCtx) -> TypedFunDecl {
+    let scheme = ctx.scheme_at(&nested.span).cloned();
+    let abstract_signature = scheme
+        .as_ref()
+        .zip(ctx.definition_binder_at(&nested.span))
+        .and_then(|(scheme, binder)| {
+            super::super::handoff::freeze_declaration_signature(
+                scheme,
+                binder,
+                nested,
+                ctx.registry,
+                ctx.current_module,
+                ctx.resolved_facts.definition_aspect_arguments(&nested.span),
+            )
+            .ok()
+        });
+    let abstract_body =
+        abstract_signature
+            .as_ref()
+            .zip(scheme.as_ref())
+            .map(|(signature, scheme)| {
+                super::super::handoff::prepare_abstract_body(
+                    signature,
+                    scheme,
+                    nested,
+                    ctx.resolved_facts,
+                    ctx.identity,
+                    ctx.registry,
+                    ctx.overloads,
+                )
+            });
+    TypedFunDecl {
+        name: nested.name.clone(),
+        generics: nested.generics.clone(),
+        params: nested.params.clone(),
+        param_ids: ctx.param_local_ids(&nested.params),
+        return_type: nested.return_type.clone(),
+        body: FunBody::Generic(nested.body.clone()),
+        abstract_signature,
+        abstract_body,
+        nested_definitions: Vec::new(),
+        local_id: ctx.local_binding_at(&nested.span),
+        symbol_id: None,
+        def_id: None,
+        span: nested.span.clone(),
+    }
 }

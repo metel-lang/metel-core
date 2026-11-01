@@ -1,0 +1,10 @@
+// metel-core#1732: the enclosing body is still analysed with a nested function present.
+fun run<T>(x: T) -> (T, T) {
+    fun id(n: i64) -> i64 { n }
+    id(1);
+    (x, x)
+}
+
+fun main() {
+    run(1);
+}

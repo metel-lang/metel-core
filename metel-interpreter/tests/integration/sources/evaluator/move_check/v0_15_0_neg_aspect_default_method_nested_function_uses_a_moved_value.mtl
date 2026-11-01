@@ -1,0 +1,20 @@
+// metel-core#1732: the default method of an aspect.
+aspect Go {
+    fun go(&self) -> i64 {
+        fun twice(s: String) -> i64 {
+            let a := s;
+            let b := s;
+            0
+        }
+        1
+    }
+}
+
+struct S { }
+
+extend S: Go { }
+
+fun main() {
+    let s := S { };
+    s.go();
+}

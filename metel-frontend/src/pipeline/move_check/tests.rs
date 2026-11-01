@@ -2057,7 +2057,7 @@ fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial
         r#"
 struct Holder<T> { value: T }
 extend<T: Copy> Holder<T>: Copy;
-fun preparation<T>(value: T) { fun nested() -> i64 { 1 } }
+fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } nested(1); }
 fun ownership<T>(value: T, holder: Holder<T>) {
     let first := value; let second := value; let held := holder;
 }
@@ -2079,7 +2079,7 @@ fun main() {}
     assert_eq!(fallbacks[0].stage, AbstractBodyFallbackStage::Preparation);
     assert_eq!(
         fallbacks[0].reason,
-        "nested declarations and patterns are not yet retained in abstract bodies"
+        "local generic call target contract is not fully retained"
     );
     assert_eq!(fallbacks[1].stage, AbstractBodyFallbackStage::Ownership);
     assert_eq!(
@@ -2087,9 +2087,10 @@ fun main() {}
         "abstract conditional nominal aspect entailment is not yet retained"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
+    // `completed`, and the function declared inside `preparation`, which is a definition of its own.
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        1,
+        2,
         "{report:#?}"
     );
     assert_eq!(report.skipped_generic_bodies_user, 2, "{report:#?}");
