@@ -1,0 +1,51 @@
+// metel-core#1761 x arrays, records, tuples, enums, Option and casts: a literal stored to a narrow
+// integer or float place keeps that place's type, and the value then behaves as that type.
+enum Level { On { v: u8 }, Off }
+struct Gauge { g: u8, h: i16, f: f32 }
+
+fun total(xs: [u8; 2]) -> u16 {
+    return xs[0] as u16 + xs[1] as u16;
+}
+
+fun main() {
+    var zeros: [u8; 3] := [0; 3];
+    zeros[1] := 200;
+    zeros[2] += 5;
+    assert(zeros[1] == 200);
+    assert(zeros[2] == 5);
+
+    var gauge := Gauge { g = 1, h = 2, f = 0.5 };
+    gauge.g += 250;
+    gauge.h := -300;
+    gauge.f := gauge.f + 1.5;
+    assert(gauge.g == 251);
+    assert(gauge.h == -300);
+    assert(gauge.f == 2.0);
+
+    var nested: (u8, (i16, f32)) := (1, (2, 0.5));
+    nested.1.0 := -7;
+    nested.1.1 := 2.5;
+    nested.0 := 9;
+    assert(nested.1.0 == -7);
+    assert(nested.1.1 == 2.5);
+    assert(nested.0 == 9);
+
+    var level := Level::On { v = 1 };
+    level := Level::On { v = 255 };
+    match (level) {
+        On { v } => {
+            assert(v == 255);
+            assert(v as i64 == 255);
+        },
+        Off => {},
+    }
+
+    var maybe: Option<u8> := Option::None;
+    maybe := Option::Some { value = 7 };
+    assert(match (maybe) { Some { value } => value == 7, None => false });
+
+    var pair: [u8; 2] := [0, 0];
+    pair[0] := 200;
+    pair[1] := 100;
+    assert(total(pair) == 300);
+}

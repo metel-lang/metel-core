@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.functions.local-functions.legality-1"]
+
+[expect]
+status = "success"

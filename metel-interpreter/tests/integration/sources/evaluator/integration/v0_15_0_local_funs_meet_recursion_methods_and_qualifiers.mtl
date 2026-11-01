@@ -1,0 +1,46 @@
+// metel-core#1762 x recursion, closures inside closures, methods, `once` and `var` closures and
+// copy captures: a local fun is an item every one of these may name.
+struct Holder { n: i64 }
+extend Holder {
+    fun run(&self) -> i64 {
+        fun twice(v: i64) -> i64 { return v * 2; }
+        var acc := 0;
+        let n := self.n;
+        let go := [&var acc, n] var |k: i64| { acc += twice(k) + n; };
+        go(1);
+        return acc;
+    }
+}
+
+fun main() {
+    fun fact(n: i64) -> i64 {
+        if (n <= 1) { return 1; }
+        return n * fact(n - 1);
+    }
+    var total := 0;
+    let accumulate := [&var total] var |k: i64| { total += fact(k); };
+    accumulate(4);
+    assert(total == 24);
+
+    fun one() -> i64 { return 1; }
+    var seen := 0;
+    let outer := [&var seen] var || {
+        let inner := [] || { one() };
+        seen += inner();
+    };
+    outer();
+    assert(seen == 1);
+
+    fun twice(v: i64) -> i64 { return v * 2; }
+    var doubled := 0;
+    let single := [&var doubled] once var |k: i64| { doubled += twice(k); };
+    single(2);
+    assert(doubled == 4);
+
+    let label := "x";
+    let pure := [label] |k: i64| -> i64 { return twice(k) + label.len() as i64; };
+    assert(pure(1) == 3);
+    assert(pure(2) == 5);
+
+    assert(Holder { n = 1 }.run() == 3);
+}
