@@ -1895,6 +1895,10 @@ pub struct Environment {
     /// its declaration line runs. Keyed by the nested function's structural
     /// [`LocalId`] (metel-core#1052b).
     pending_funs: Vec<HashMap<LocalId, Rc<crate::data::typed_ast::TypedFunDecl>>>,
+    /// The hoisted local `fun`s of the enclosing blocks, by the cell each lives in. A local function
+    /// is an item, not a captured value (RFC-0195), so a closure with a capture list still sees
+    /// them: its environment is otherwise only the listed captures.
+    local_funs: HashMap<LocalId, Rc<RefCell<Value>>>,
     /// Type context for construction-at-call-time of generic closures. Set once per module
     /// in `run_passes`; shared via `Rc` so cloning the environment is cheap.
     pub type_ctx: Option<std::rc::Rc<TypeCtx>>,
@@ -1912,6 +1916,7 @@ impl Environment {
         Self {
             frame: HashMap::new(),
             pending_funs: vec![HashMap::new()],
+            local_funs: HashMap::new(),
             type_ctx: None,
         }
     }
@@ -2044,7 +2049,23 @@ impl Environment {
             // AST reference data, immutable once produced — sharing the `Rc`s
             // across this snapshot is fine.
             pending_funs: self.pending_funs.clone(),
+            local_funs: self.local_funs.clone(),
             type_ctx: self.type_ctx.clone(),
+        }
+    }
+
+    /// Record that the binding `id` (already defined) holds a hoisted local `fun`.
+    pub fn register_local_fun(&mut self, id: LocalId) {
+        if let Some(cell) = self.get_local_rc(id) {
+            self.local_funs.insert(id, cell);
+        }
+    }
+
+    /// Make the local functions of the enclosing blocks visible in this environment.
+    fn install_local_funs_from(&mut self, outer: &Self) {
+        for (id, cell) in &outer.local_funs {
+            self.frame.entry(*id).or_insert_with(|| Rc::clone(cell));
+            self.local_funs.insert(*id, Rc::clone(cell));
         }
     }
 
@@ -2089,6 +2110,7 @@ impl Environment {
                 }
             }
         }
+        copied.install_local_funs_from(self);
         copied
     }
 
@@ -2143,6 +2165,7 @@ impl Environment {
                 }
             }
         }
+        closure_environment.install_local_funs_from(self);
         Ok(closure_environment)
     }
 }
@@ -2846,6 +2869,9 @@ fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), M
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
             env.define_binding(f.local_id, Value::Unit);
+            if let Some(id) = f.local_id {
+                env.register_local_fun(id);
+            }
         }
     }
     let safe_to_build_eagerly = !decls

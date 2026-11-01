@@ -1,0 +1,37 @@
+// metel-core#1762: a hoisted local `fun` is an item, so a closure with a capture list can name it
+// without listing it, however the closure is placed: in a generic function, inside another
+// closure with a list, calling a chain of local functions, or calling a local generic function.
+fun generic_body<T: Copy>(x: T) -> T {
+    fun twice(v: i64) -> i64 { return v * 2; }
+    var acc := 0;
+    let g := [&var acc] var |k: i64| { acc += twice(k); };
+    g(2);
+    assert(acc == 4);
+    return x;
+}
+
+fun main() {
+    assert(generic_body(7) == 7);
+
+    fun inc(v: i64) -> i64 { return v + 1; }
+    var acc := 0;
+    let outer := [&var acc] var |k: i64| {
+        let inner := [k] |z: i64| { inc(z) + k };
+        acc += inner(1);
+    };
+    outer(2);
+    assert(acc == 4);
+
+    fun a(v: i64) -> i64 { return v + 1; }
+    fun b(v: i64) -> i64 { return a(v) * 2; }
+    var chain := 0;
+    let through := [&var chain] var |k: i64| { chain += b(k); };
+    through(2);
+    assert(chain == 6);
+
+    fun id<T>(x: T) -> T { return x; }
+    var sum := 0;
+    let generic := [&var sum] var |t: String| { sum += id(t).len() as i64; };
+    generic("ab");
+    assert(sum == 2);
+}
