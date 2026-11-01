@@ -1,0 +1,12 @@
+// #1732 x #1459: a generic body with a nested fun and a spread after a field was moved out.
+record Pair { a: String, b: i64 }
+fun keep<T>(x: T) -> T {
+    fun id(p: Pair) -> Pair { return p; }
+    let p := Pair { a = "s", b = 2 };
+    let moved := p.a;
+    let rest := { ..p };
+    let _ := moved;
+    let _ := rest;
+    return x;
+}
+fun main() { assert(keep(3) == 3); }

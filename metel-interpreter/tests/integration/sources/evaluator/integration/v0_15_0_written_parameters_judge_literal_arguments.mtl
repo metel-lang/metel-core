@@ -1,0 +1,7 @@
+// RFC-0193 x RFC-0195 x #1482: written parameter types decide whether a literal argument fits.
+fun lvl(x: u8) -> u8 { return x; }
+fun main() {
+    assert(lvl(255) == 255);
+    fun inner(y: i8) -> i8 { return y; }
+    assert(inner(-128) == -128);
+}

@@ -1,0 +1,5 @@
+[options]
+skip = "pending: #1762"
+
+[expect]
+status = "success"

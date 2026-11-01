@@ -1,0 +1,10 @@
+// #1459 x Option: a record is spread after a field moved out, and the rest travels in an Option.
+record Item { name: String, qty: i64 }
+fun main() {
+    let item := Item { name = "a", qty = 2 };
+    let n := item.name;
+    let rest := { ..item };
+    let o: Option<i64> := Option::Some { value = rest.qty };
+    assert(match (o) { Some { value } => value == 2, None => false });
+    assert(n.len() == 1);
+}

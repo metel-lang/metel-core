@@ -1,0 +1,11 @@
+// #1732 x RFC-0185 x closures: a block-local struct, an explicit `*r`, and a closure in a generic body.
+fun run<T: Copy>(x: T) -> T {
+    struct Box { v: i64 }
+    let b := Box { v = 3 };
+    let r: &Box := &b;
+    let n: i64 := (*r).v;
+    let f := |k: i64| { k + n };
+    let _ := f(1);
+    return x;
+}
+fun main() { assert(run(5) == 5); }

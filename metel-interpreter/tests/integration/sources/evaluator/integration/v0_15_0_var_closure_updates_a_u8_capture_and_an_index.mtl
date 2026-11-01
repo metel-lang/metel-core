@@ -1,0 +1,12 @@
+// #1482 literal range x var closures x assignment order (#1431): the index expression runs first.
+fun main() {
+    var level: u8 := 250;
+    let raise := [&var level] var |by: u8| { level := level + by; };
+    raise(5);
+    assert(level == 255);
+    var xs := [1, 2, 3];
+    var i: i64 := 0;
+    let step := [&var i] var || -> i64 { i += 1; return i; };
+    xs[step() as u64] := 10;
+    assert(xs[1] == 10);
+}

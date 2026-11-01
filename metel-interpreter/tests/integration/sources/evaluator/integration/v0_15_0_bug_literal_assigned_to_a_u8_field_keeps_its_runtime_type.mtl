@@ -1,0 +1,7 @@
+// metel-core#1761: an integer literal assigned to a u8 field is stored as i64.
+struct S { g: u8 }
+fun main() {
+    var s := S { g = 0 };
+    s.g := 7;
+    assert(s.g == 7);
+}

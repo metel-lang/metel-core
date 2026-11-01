@@ -1,0 +1,7 @@
+// #1690 x #1693 x RFC-0196: a many closure over a Copy capture, passed twice through a generic helper.
+fun apply<T: Copy>(x: T, f: |T| -> T) -> T { return f(x); }
+fun twice<T: Copy>(x: T) -> T {
+    let g := [x] |v: T| -> T { return v; };
+    return apply(apply(x, g), g);
+}
+fun main() { assert(twice(4) == 4); }
