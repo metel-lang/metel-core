@@ -155,6 +155,11 @@ pub struct TypedFunDecl {
     /// migrated; ownership analysis must not treat this alone as a checked body.
     pub abstract_signature: Option<crate::data::abstract_body::AbstractSignature>,
     pub abstract_body: Option<crate::data::abstract_body::AbstractBodyPreparation>,
+    /// The functions declared inside this definition's body, each prepared as a definition of its
+    /// own (ADR-0068). Only a definition whose body is not constructed ahead of time (a generic one)
+    /// has them: a nested function inside a constructed body is a typed declaration of that body.
+    /// Flat: a function nested in a nested function follows it here.
+    pub nested_definitions: Vec<TypedFunDecl>,
     /// Lexical identity of a **nested** function's own binding (ADR-0054 /
     /// metel-core#1052). `Some` for a `fun` declared inside another body — the
     /// evaluator keys its deferred-build slot and its references by this id;

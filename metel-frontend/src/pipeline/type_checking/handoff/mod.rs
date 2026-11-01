@@ -11,7 +11,7 @@ use super::conversions::infer_type_to_type;
 
 mod abstract_signature;
 pub(super) use abstract_signature::freeze_declaration_signature;
-pub(super) use abstract_signature::prepare_abstract_body;
+pub(super) use abstract_signature::{nested_functions, prepare_abstract_body};
 
 /// Resolve a per-span table of closure types under `subst`. A type that keeps variables (a
 /// generalized closure, retained and reconstructed per call site) has no one concrete fact to hand

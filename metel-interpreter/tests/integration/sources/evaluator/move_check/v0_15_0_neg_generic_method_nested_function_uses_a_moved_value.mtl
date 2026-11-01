@@ -1,0 +1,18 @@
+// metel-core#1732: a method of a generic type.
+struct Wrap<T> { value: T }
+
+extend<T> Wrap<T> {
+    fun get(self) -> T {
+        fun twice(s: String) -> i64 {
+            let a := s;
+            let b := s;
+            0
+        }
+        self.value
+    }
+}
+
+fun main() {
+    let w := Wrap { value = 3 };
+    w.get();
+}

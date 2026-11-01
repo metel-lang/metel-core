@@ -64,14 +64,18 @@ impl Checker<'_> {
     /// rather than passing on a partial result (ADR-0063).
     // arch-implements: ["arch.move-check.requirement-6", "arch.move-check.requirement-10"]
     pub(super) fn analyze_generic_definition(&mut self, fun: &TypedFunDecl, module: &[String]) {
-        if self.check_retained_abstract_body(fun, module) {
-            return;
+        if !self.check_retained_abstract_body(fun, module) {
+            let reason = self.report.abstract_body_fallbacks.last().map_or_else(
+                || "abstract analysis did not complete".to_string(),
+                |fallback| fallback.reason.clone(),
+            );
+            self.record_skipped_generic_body(&fun.span, reason);
         }
-        let reason = self.report.abstract_body_fallbacks.last().map_or_else(
-            || "abstract analysis did not complete".to_string(),
-            |fallback| fallback.reason.clone(),
-        );
-        self.record_skipped_generic_body(&fun.span, reason);
+        // A function declared in the body sees none of the enclosing bindings (RFC-0195), so each is
+        // analysed on its own, whether or not the enclosing body could be (ADR-0068).
+        for nested in &fun.nested_definitions {
+            self.analyze_generic_definition(nested, module);
+        }
     }
 
     pub(super) fn check_retained_abstract_body(

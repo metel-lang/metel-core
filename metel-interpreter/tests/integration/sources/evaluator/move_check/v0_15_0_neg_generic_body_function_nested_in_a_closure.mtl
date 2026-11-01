@@ -1,0 +1,16 @@
+// metel-core#1732: a function declared inside a closure inside a generic body is found too.
+fun run<T>(x: T) -> T {
+    let make := || {
+        fun twice(s: String) -> i64 {
+            let a := s;
+            let b := s;
+            0
+        }
+        twice("a".to_string())
+    };
+    x
+}
+
+fun main() {
+    run(1);
+}

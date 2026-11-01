@@ -242,9 +242,13 @@ impl BodyFreezer<'_, '_> {
     }
 
     fn block(&self, block: &crate::data::ast::Block) -> Result<AbstractBlock, String> {
+        // A nested `fun` binds no value of this body: it sees none of the enclosing function's
+        // bindings or type parameters (RFC-0195). It is prepared and analysed as a definition of its
+        // own (ADR-0068), so it is not a statement of this block.
         let statements = block
             .stmts
             .iter()
+            .filter(|statement| !matches!(statement, Decl::Fun(_)))
             .map(|statement| self.statement(statement))
             .collect::<Result<_, _>>()?;
         let tail = block

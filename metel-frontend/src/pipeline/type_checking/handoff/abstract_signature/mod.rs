@@ -239,3 +239,6 @@ pub(in crate::pipeline::type_checking) use facts::freeze_declaration_signature;
 
 mod body;
 pub(in crate::pipeline::type_checking) use body::prepare_abstract_body;
+
+mod nested;
+pub(in crate::pipeline::type_checking) use nested::nested_functions;
