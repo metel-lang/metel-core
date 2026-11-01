@@ -6647,6 +6647,7 @@ impl TypeDefinitionRegistry {
     /// (synthetic ids the name resolver never saw) stay `None`. A `None`
     /// `members` is required: every checking entry point carries an identity context.
     pub fn stamp_member_ids(&mut self, members: &MemberTable) {
+        // (module-level types; see `stamp_local_member_ids` for block-local ones)
         for (&owner, fields) in &mut self.struct_env {
             for field in fields.iter_mut() {
                 field.id = members.field(owner, &field.name);
@@ -6659,6 +6660,35 @@ impl TypeDefinitionRegistry {
                     // Variant fields are interned variant-qualified on the enum
                     // owner (see `identity::collect_members`).
                     field.id = members.field(owner, &format!("{}::{}", variant.name, field.name));
+                }
+            }
+        }
+    }
+}
+
+impl TypeDefinitionRegistry {
+    /// Stamp the entries of the block-local type `owner` with the ids interned for the members of the
+    /// declaration it was registered from (ADR-0068). `stamp_member_ids` cannot: a block-local type
+    /// has no name-resolver symbol, and is registered after it has run.
+    pub fn stamp_local_member_ids(
+        &mut self,
+        owner: SymbolId,
+        members: &crate::identity::LocalMembers,
+    ) {
+        let Some(declaration) = self.local_type_decl_spans.get(&owner).cloned() else {
+            return;
+        };
+        if let Some(fields) = self.struct_env.get_mut(&owner) {
+            for field in fields.iter_mut() {
+                field.id = members.field(&declaration, &field.name);
+            }
+        }
+        if let Some(info) = self.enum_env.get_mut(&owner) {
+            for variant in &mut info.variants {
+                variant.id = members.variant(&declaration, &variant.name);
+                for field in &mut variant.fields {
+                    field.id =
+                        members.field(&declaration, &format!("{}::{}", variant.name, field.name));
                 }
             }
         }
@@ -6881,6 +6911,9 @@ pub struct InferContext {
     definition_record_shapes: HashMap<Span, InferType>,
     definition_templates: HashMap<Span, (TypeScheme, Vec<crate::data::ast::GenericParam>)>,
     definition_snapshot_sites: HashSet<Span>,
+    /// The members of the block-local types of the program, to stamp each as it is registered
+    /// (ADR-0068).
+    local_members: std::rc::Rc<crate::identity::LocalMembers>,
     definition_snapshots: HashMap<Span, Box<super::handoff::ResolvedInferenceFacts>>,
     definition_break_targets: HashSet<TypeVar>,
     definition_diverging_loops: HashSet<Span>,
@@ -7009,6 +7042,7 @@ impl InferContext {
             definition_record_shapes: HashMap::new(),
             definition_templates: HashMap::new(),
             definition_snapshot_sites: HashSet::new(),
+            local_members: std::rc::Rc::default(),
             definition_snapshots: HashMap::new(),
             definition_break_targets: HashSet::new(),
             definition_diverging_loops: HashSet::new(),
@@ -7118,6 +7152,8 @@ impl InferContext {
             sd.kind == StructKind::Record,
             sd.span.clone(),
         );
+        self.registry
+            .stamp_local_member_ids(owner, &self.local_members);
         if !sd.generics.is_empty() {
             super::registry::register_struct_generic_metadata(
                 &mut self.registry,
@@ -7230,6 +7266,8 @@ impl InferContext {
             self.current_module_path.clone(),
             ed.span.clone(),
         );
+        self.registry
+            .stamp_local_member_ids(owner, &self.local_members);
         if !ed.generics.is_empty() {
             super::registry::register_enum_generic_metadata(
                 &mut self.registry,
@@ -8934,10 +8972,11 @@ impl InferContext {
     }
 
     pub(crate) fn record_definition_static_path(&mut self, span: &Span, owner: &str, member: &str) {
-        if let Some(owner) = self
-            .registry
-            .resolve_type_id(&self.current_module_path, owner)
-        {
+        // A block-local type in scope shadows a module-level one of the same name.
+        if let Some(owner) = self.registry.scoped_local_type_id(owner).or_else(|| {
+            self.registry
+                .resolve_type_id(&self.current_module_path, owner)
+        }) {
             self.record_definition_path(
                 span.clone(),
                 DefinitionPathFact::StaticMember {
@@ -9092,6 +9131,14 @@ impl InferContext {
 
     pub(super) fn set_definition_snapshot_sites(&mut self, sites: HashSet<Span>) {
         self.definition_snapshot_sites = sites;
+    }
+
+    /// The members of the program's block-local types, to stamp each as it is registered.
+    pub(super) fn set_local_members(
+        &mut self,
+        members: std::rc::Rc<crate::identity::LocalMembers>,
+    ) {
+        self.local_members = members;
     }
 
     pub(super) fn retain_definition_snapshot(&mut self, span: &Span) -> Result<(), MetelError> {

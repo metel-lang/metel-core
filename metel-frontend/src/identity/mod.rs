@@ -60,7 +60,9 @@ mod position;
 pub use position::{PositionHit, PositionIndex};
 
 mod member;
-pub use member::{MemberInfo, MemberTable, collect_members, collect_members_for_graph};
+pub use member::{
+    LocalMembers, MemberInfo, MemberTable, collect_members, collect_members_for_graph,
+};
 
 /// The frozen-identity context the typed-AST construction pass consumes
 /// (ADR-0054). Bundled so the `check_graph` → `construct_program` signature

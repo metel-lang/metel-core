@@ -112,3 +112,40 @@ fn absent_members_report_none_not_a_fabricated_id() {
     assert!(t.field(p, "nonesuch").is_none());
     assert!(t.variant(p, "Nope").is_none());
 }
+
+#[test]
+fn block_local_members_are_interned_by_their_declaration_span() {
+    let source = "fun f() {\n    struct P { a: i64 }\n    enum E { A, B { v: i64 } }\n    if (true) {\n        struct P { b: i64 }\n    }\n}\n";
+    let (t, _) = members(source);
+    let program = crate::pipeline::parsing::parser::parse(source, "test.mtl").expect("parse");
+    let crate::data::ast::Decl::Fun(function) = &program.decls[0] else {
+        panic!("function")
+    };
+    let local = t.local_members();
+    let crate::data::ast::Decl::Struct(outer) = &function.body.stmts[0] else {
+        panic!("struct")
+    };
+    let crate::data::ast::Decl::Enum(choice) = &function.body.stmts[1] else {
+        panic!("enum")
+    };
+    let a = local.field(&outer.span, "a").expect("P.a");
+    assert!(local.field(&outer.span, "missing").is_none());
+    // A same-named type in an inner block is a different declaration, so its field is another id.
+    let Some(tail) = function.body.tail.as_deref() else {
+        panic!("if tail")
+    };
+    let crate::data::ast::Expr::If { then_branch, .. } = tail else {
+        panic!("if")
+    };
+    let crate::data::ast::Decl::Struct(inner) = &then_branch.stmts[0] else {
+        panic!("inner struct")
+    };
+    let b = local.field(&inner.span, "b").expect("inner P.b");
+    assert_ne!(a, b);
+    // Variants and the fields of a fieldful one, qualified by the variant.
+    assert!(local.variant(&choice.span, "A").is_some());
+    assert!(local.variant(&choice.span, "B").is_some());
+    assert!(local.field(&choice.span, "B::v").is_some());
+    // The ids continue the module-level counters, so no module-level member shares one.
+    assert_eq!(t.field_count(), 0);
+}
