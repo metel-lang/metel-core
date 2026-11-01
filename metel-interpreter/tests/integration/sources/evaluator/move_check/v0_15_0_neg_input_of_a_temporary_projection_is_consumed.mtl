@@ -1,0 +1,15 @@
+// metel-core#1767: the temporary a projection reads from consumes its inputs, so using one
+// afterwards is a use of a moved value.
+struct Item { n: i64, label: String }
+
+fun pass(item: Item) -> Item {
+    return item;
+}
+
+fun read<T>(x: T, item: Item) -> T {
+    let n := pass(item).n;
+    let again := item.n;
+    return x;
+}
+
+fun main() {}

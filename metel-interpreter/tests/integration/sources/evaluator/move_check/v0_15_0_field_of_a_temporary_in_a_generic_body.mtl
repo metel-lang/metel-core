@@ -1,0 +1,24 @@
+// metel-core#1767: a `Copy` field read out of a temporary (a call result, a tuple) is analysed in a
+// generic body: the temporary is evaluated once and its inputs are consumed, a chain of projections
+// reads through the one temporary, and it works inside a closure too.
+struct Inner { n: i64 }
+struct Outer { inner: Inner, tag: i64 }
+
+fun make(n: i64) -> Outer {
+    return Outer { inner = Inner { n = n }, tag = n };
+}
+
+fun read<T: Copy>(x: T) -> T {
+    let a := make(1).tag;
+    let b := make(2).inner.n;
+    let c := (make(3), make(4)).1.inner.n;
+    let d := (1, 2).0;
+    let twice := |k: i64| -> i64 { return make(k).inner.n; };
+    let e := twice(a + b + c + d);
+    let _ := e;
+    return x;
+}
+
+fun main() {
+    assert(read(7) == 7);
+}
