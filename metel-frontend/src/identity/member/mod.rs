@@ -19,6 +19,7 @@
 //! [`SymbolId`]: super::SymbolId
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use crate::data::ast::Span;
 
@@ -52,6 +53,37 @@ pub struct MemberTable {
     variant_info: HashMap<VariantId, MemberInfo>,
     next_field: u32,
     next_variant: u32,
+    /// The members of block-local types (ADR-0068), shared so inference can stamp a block-local type
+    /// as it registers it, without holding the whole table.
+    local: Rc<LocalMembers>,
+}
+
+/// The fields and variants of the `struct`s and `enum`s declared inside function bodies, keyed by
+/// `(declaration span, member name)`. A block-local type has no name-resolver `SymbolId`, and the
+/// registry numbers it in the order inference meets it; its declaration span is the same on every
+/// compilation and in every reconstruction of a generic body, so the ids are stable.
+#[derive(Debug, Clone, Default)]
+pub struct LocalMembers {
+    fields: HashMap<(Span, String), FieldId>,
+    variants: HashMap<(Span, String), VariantId>,
+}
+
+impl LocalMembers {
+    /// The id of the field `name` of the block-local type declared at `declaration`.
+    #[must_use]
+    pub fn field(&self, declaration: &Span, name: &str) -> Option<FieldId> {
+        self.fields
+            .get(&(declaration.clone(), name.to_string()))
+            .copied()
+    }
+
+    /// The id of the variant `name` of the block-local enum declared at `declaration`.
+    #[must_use]
+    pub fn variant(&self, declaration: &Span, name: &str) -> Option<VariantId> {
+        self.variants
+            .get(&(declaration.clone(), name.to_string()))
+            .copied()
+    }
 }
 
 impl MemberTable {
@@ -113,6 +145,36 @@ impl MemberTable {
         id
     }
 
+    /// Intern a field of the block-local type declared at `declaration`.
+    pub fn intern_local_field(&mut self, declaration: &Span, name: &str) -> FieldId {
+        let key = (declaration.clone(), name.to_string());
+        if let Some(&id) = self.local.fields.get(&key) {
+            return id;
+        }
+        let id = FieldId(self.next_field);
+        self.next_field += 1;
+        Rc::make_mut(&mut self.local).fields.insert(key, id);
+        id
+    }
+
+    /// Intern a variant of the block-local enum declared at `declaration`.
+    pub fn intern_local_variant(&mut self, declaration: &Span, name: &str) -> VariantId {
+        let key = (declaration.clone(), name.to_string());
+        if let Some(&id) = self.local.variants.get(&key) {
+            return id;
+        }
+        let id = VariantId(self.next_variant);
+        self.next_variant += 1;
+        Rc::make_mut(&mut self.local).variants.insert(key, id);
+        id
+    }
+
+    /// The members of block-local types, to stamp a block-local type when it is registered.
+    #[must_use]
+    pub fn local_members(&self) -> Rc<LocalMembers> {
+        Rc::clone(&self.local)
+    }
+
     /// The id a field was interned under, if any.
     #[must_use]
     pub fn field(&self, owner: SymbolId, name: &str) -> Option<FieldId> {
@@ -165,6 +227,7 @@ pub fn collect_members(
     let mut table = MemberTable::new();
     for (module_path, decls) in modules {
         for decl in *decls {
+            intern_local_members_in(decl, &mut table);
             match decl {
                 Decl::Struct(sd) => {
                     let Some(&owner) =
@@ -202,6 +265,58 @@ pub fn collect_members(
         }
     }
     table
+}
+
+/// Intern the members of the block-local `struct`s and `enum`s written inside the body of `decl`.
+fn intern_local_members_in(decl: &crate::data::ast::Decl, table: &mut MemberTable) {
+    use crate::data::ast::Decl;
+    use crate::data::decl_walk::{for_each_declaration, for_each_declaration_in_expr};
+
+    let mut intern = |declaration: &Decl| match declaration {
+        Decl::Struct(sd) => {
+            for field in &sd.fields {
+                table.intern_local_field(&sd.span, &field.name);
+            }
+        }
+        Decl::Enum(ed) => {
+            for variant in &ed.variants {
+                table.intern_local_variant(&ed.span, &variant.name);
+                for field in &variant.fields {
+                    let qualified = format!("{}::{}", variant.name, field.name);
+                    table.intern_local_field(&ed.span, &qualified);
+                }
+            }
+        }
+        _ => {}
+    };
+    match decl {
+        Decl::Fun(function) => for_each_declaration(&function.body, &mut intern),
+        Decl::Impl(block) => {
+            for method in &block.methods {
+                for_each_declaration(&method.body, &mut intern);
+            }
+        }
+        Decl::Aspect(aspect) => {
+            for method in &aspect.methods {
+                if let Some(body) = &method.default_body {
+                    for_each_declaration(body, &mut intern);
+                }
+            }
+        }
+        Decl::Let(binding) => for_each_declaration_in_expr(&binding.value, &mut intern),
+        Decl::Mut(binding) => for_each_declaration_in_expr(&binding.value, &mut intern),
+        Decl::LetPattern(binding) => for_each_declaration_in_expr(&binding.value, &mut intern),
+        Decl::Stmt(statement) => {
+            // A bare top-level statement is a block's worth of code too.
+            let block = crate::data::ast::Block {
+                stmts: vec![Decl::Stmt(statement.clone())],
+                tail: None,
+                span: crate::data::ast::Span::new(0, 0, ""),
+            };
+            for_each_declaration(&block, &mut intern);
+        }
+        Decl::Struct(_) | Decl::Enum(_) | Decl::TypeAlias(_) => {}
+    }
 }
 
 /// Convenience wrapper around [`collect_members`] that takes a loaded

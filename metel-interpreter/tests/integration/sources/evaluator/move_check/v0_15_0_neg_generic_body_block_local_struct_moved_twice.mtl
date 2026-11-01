@@ -1,0 +1,12 @@
+// metel-core#1732: a block-local struct is not Copy; using it after it moved is rejected.
+fun run<T>(x: T) -> T {
+    struct Pair { name: String }
+    let pair := Pair { name = "a".to_string() };
+    let first := pair;
+    let second := pair;
+    x
+}
+
+fun main() {
+    run(1);
+}

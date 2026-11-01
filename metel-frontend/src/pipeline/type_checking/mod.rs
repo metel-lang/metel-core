@@ -1518,6 +1518,7 @@ fn check_impl_with_report(
         current_module_path.to_vec(),
     );
     ctx.set_definition_snapshot_sites(snapshot_sites);
+    ctx.set_local_members(identity.members.local_members());
     ctx.seed_glob_conflicts(deferred_conflicts);
     ctx.set_closure_rewrite_candidates(signature_advice::closure_rewrite_candidates(program));
 

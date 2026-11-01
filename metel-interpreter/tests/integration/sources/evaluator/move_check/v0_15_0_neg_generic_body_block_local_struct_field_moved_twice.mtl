@@ -1,0 +1,12 @@
+// metel-core#1732: a field of a block-local struct moved out of twice.
+fun run<T>(x: T) -> T {
+    struct Pair { name: String }
+    let pair := Pair { name = "a".to_string() };
+    let first := pair.name;
+    let second := pair.name;
+    x
+}
+
+fun main() {
+    run(1);
+}

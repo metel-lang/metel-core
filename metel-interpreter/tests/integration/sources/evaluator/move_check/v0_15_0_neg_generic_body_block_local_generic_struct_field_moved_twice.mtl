@@ -1,0 +1,12 @@
+// metel-core#1732: a field of a generic block-local struct, whose type is the function's parameter.
+fun run<T>(x: T) -> (T, T) {
+    struct Holder<U> { item: U }
+    let holder := Holder { item = x };
+    let first := holder.item;
+    let second := holder.item;
+    (first, second)
+}
+
+fun main() {
+    run(1);
+}

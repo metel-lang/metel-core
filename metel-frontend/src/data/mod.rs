@@ -3,6 +3,7 @@
 
 pub mod abstract_body;
 pub mod ast;
+pub mod decl_walk;
 pub mod error;
 pub mod typed_ast;
 pub mod types;

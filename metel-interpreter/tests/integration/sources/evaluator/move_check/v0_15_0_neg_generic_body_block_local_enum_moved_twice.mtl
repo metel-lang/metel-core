@@ -1,0 +1,12 @@
+// metel-core#1732: nor is a block-local enum.
+fun run<T>(x: T) -> T {
+    enum Shape { Dot, Line { length: i64 } }
+    let shape := Shape::Dot;
+    let first := shape;
+    let second := shape;
+    x
+}
+
+fun main() {
+    run(1);
+}

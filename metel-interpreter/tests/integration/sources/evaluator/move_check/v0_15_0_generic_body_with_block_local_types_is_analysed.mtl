@@ -1,0 +1,40 @@
+// metel-core#1732 (ADR-0068): a struct and an enum declared in a generic body, their fields read,
+// moved out of and matched on; a generic local struct; and two same-named local types in sibling
+// blocks, which are different types.
+fun run<T>(x: T) -> T {
+    struct Pair { name: String, count: i64 }
+    enum Shape { Dot, Line { length: i64 } }
+    struct Holder<U> { item: U }
+
+    let pair := Pair { name = "a".to_string(), count = 2 };
+    let count := pair.count;
+    let name := pair.name;
+    assert(count == 2);
+    assert(name == "a");
+
+    let shape := Shape::Line { length = 5 };
+    match (shape) {
+        Shape::Dot => { assert(false); },
+        Shape::Line { length } => { assert(length == 5); },
+    }
+
+    let holder := Holder { item = x };
+    let item := holder.item;
+
+    if (true) {
+        struct Tag { id: i64 }
+        let tag := Tag { id = 1 };
+        assert(tag.id == 1);
+    }
+    if (true) {
+        struct Tag { label: String }
+        let tag := Tag { label = "t".to_string() };
+        let label := tag.label;
+        assert(label == "t");
+    }
+    item
+}
+
+fun main() {
+    assert(run(7) == 7);
+}
