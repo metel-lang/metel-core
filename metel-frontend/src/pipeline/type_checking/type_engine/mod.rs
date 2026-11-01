@@ -8588,11 +8588,22 @@ impl InferContext {
     /// Used for checking opaque return metadata without instantiating.
     #[must_use]
     pub fn poly_scheme(&self, name: &str) -> Option<TypeScheme> {
-        self.poly_env
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(name))
-            .cloned()
+        // The innermost binding of the name decides, whichever environment holds it: a local
+        // monomorphic `let` shadows an outer generic of the same name, as in `lookup` (#1578), and
+        // a call to it must not be typed against the outer scheme.
+        for level in (0..self.poly_env.len().max(self.mono_env.len())).rev() {
+            if let Some(scheme) = self.poly_env.get(level).and_then(|scope| scope.get(name)) {
+                return Some(scheme.clone());
+            }
+            if self
+                .mono_env
+                .get(level)
+                .is_some_and(|scope| scope.contains_key(name))
+            {
+                return None;
+            }
+        }
+        None
     }
 
     /// Look up a name's type regardless of its mutability, or `None` if it isn't bound.

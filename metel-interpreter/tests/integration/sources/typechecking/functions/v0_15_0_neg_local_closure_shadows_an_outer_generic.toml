@@ -1,0 +1,9 @@
+[options]
+error = ["T0001"]
+spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+line = 10
+contains = "one type"

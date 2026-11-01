@@ -913,9 +913,20 @@ fun main() {}
         panic!("call return stored in temporary")
     };
     assert!(matches!(temporary.kind, AbstractExprKind::Call(_)));
-    assert!(
-        matches!(&find("shadow").abstract_body, Some(AbstractBodyPreparation::Pending { reason }) if reason.contains("local generic call target"))
-    );
+    // A local binding shadows the generic `recursive`: the call is typed by the local `f`, a `once`
+    // callable, not by the outer scheme.
+    let shadow = tail_call("shadow");
+    assert!(matches!(
+        shadow.callee.kind,
+        AbstractExprKind::Binding(BindingId::Local(_))
+    ));
+    assert!(matches!(
+        shadow.signature,
+        AbstractType::Function {
+            call: CallMultiplicity::Once,
+            ..
+        }
+    ));
 }
 
 #[test]

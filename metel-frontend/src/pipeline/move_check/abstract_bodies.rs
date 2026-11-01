@@ -114,6 +114,17 @@ impl Checker<'_> {
                 "definition has no retained abstract fact environment".to_string(),
             );
         };
+        let combined: Vec<AbstractParameterFacts>;
+        let facts = if body.local_parameters.is_empty() {
+            facts
+        } else {
+            combined = facts
+                .iter()
+                .chain(&body.local_parameters)
+                .cloned()
+                .collect();
+            &combined
+        };
         let mut env = Environment {
             facts,
             nominal_ownership: &body.nominal_ownership,

@@ -1,0 +1,47 @@
+// metel-core#1766, #1749: a call to a callee that is polymorphic and local to the body is analysed
+// by the contract of that call. The callee is a let-bound closure with an open-record parameter
+// (implicit row, or the enclosing function's own `record R`), or a nested generic function, in a
+// generic function and in a non-generic function with an implicit row parameter.
+fun implicit_row(r: { x: i64, .. }) -> i64 {
+    let f := |p: { x: i64, .. }| -> i64 { return p.x + 1; };
+    return f(r);
+}
+
+fun declared_row<record R>(r: { x: i64, ..R }) -> i64 {
+    let f := |p: { x: i64, ..R }| -> i64 { return p.x + 1; };
+    return f(r);
+}
+
+fun generic_caller<T: Copy>(t: T) -> i64 {
+    let f := |p: { x: i64, .. }| -> i64 { return p.x + 1; };
+    let row := { x = 1, y = t };
+    return f(row);
+}
+
+fun nested_generic<T: Copy>(x: T) -> T {
+    fun pass<U>(u: U) -> U { return u; }
+    let y := pass(x);
+    return pass(y);
+}
+
+fun twice<U>(u: U) -> U {
+    return u;
+}
+
+// A nested generic function shadows a module-level generic of the same name: the call is typed by
+// the nested one, which takes a second argument.
+fun shadowing<T: Copy>(x: T) -> T {
+    fun twice<V>(u: V, extra: i64) -> V {
+        return u;
+    }
+    return twice(x, 1);
+}
+
+fun main() {
+    assert(twice(7) == 7);
+    assert(shadowing(2) == 2);
+    assert(implicit_row({ x = 1 }) == 2);
+    assert(declared_row({ x = 1, y = 2 }) == 2);
+    assert(generic_caller(5) == 2);
+    assert(nested_generic(3) == 3);
+}

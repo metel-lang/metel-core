@@ -1,0 +1,11 @@
+// metel-core#1766: a local binding shadows an outer generic function of the same name, so a call
+// to it is typed by the local binding, not by the outer scheme. The call below used to be accepted
+// and fail at run time with an internal error.
+fun f<T>(x: T) -> T {
+    return x;
+}
+
+fun main() {
+    let f := |x: i64| -> i64 { return x + 1; };
+    let s := f("a");
+}

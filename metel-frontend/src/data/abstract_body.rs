@@ -180,6 +180,9 @@ pub struct AbstractBody {
     /// Source spelling is presentation metadata; consumers key state by identity.
     pub binding_names: std::collections::HashMap<BindingId, String>,
     pub nominal_ownership: Vec<AbstractNominalOwnership>,
+    /// The facts of the type variables the body mentions that its signature does not quantify, such
+    /// as the instantiation of a polymorphic local closure. They bound nothing.
+    pub local_parameters: Vec<AbstractParameterFacts>,
     pub block: AbstractBlock,
 }
 
