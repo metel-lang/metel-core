@@ -2964,7 +2964,10 @@ impl fmt::Display for GenericBound {
 
         match self {
             Self::Aspect(name) => f.write_str(name),
-            Self::AllFields { aspects, .. } => write!(f, "all: {}", aspects.join(" + ")),
+            // The field-wise bound `where ..R: A` (the old `all R: A` spelling was removed).
+            Self::AllFields { aspects, .. } => {
+                write!(f, "every field: {}", aspects.join(" + "))
+            }
             Self::Row(row) => {
                 f.write_str("{ ")?;
                 for (index, field) in row.fields.iter().enumerate() {
