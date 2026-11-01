@@ -1,0 +1,13 @@
+// RFC-0193 x RFC-0182: a function with no return type returns (), another writes Option and uses `?`.
+fun parse(s: String) -> Option<i64> {
+    return if (s.len() > 0) { Option::Some { value = s.len() } } else { Option::None };
+}
+fun twice(s: String) -> Option<i64> {
+    let a := parse(s)?;
+    return Option::Some { value = a * 2 };
+}
+fun log(n: i64) { let _ := n; }
+fun main() {
+    log(1);
+    assert(match (twice("abc")) { Some { value } => value == 6, None => false });
+}

@@ -1,0 +1,5 @@
+// RFC-0193 x RFC-0195 x #1482: a local fun's written i8 parameter rejects -129.
+fun main() {
+    fun inner(y: i8) -> i8 { return y; }
+    let a := inner(-129);
+}

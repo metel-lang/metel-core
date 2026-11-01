@@ -1,0 +1,7 @@
+// records x #1482: narrow integer fields survive initialisation and a spread.
+record Px { r: u8, g: u8 }
+fun main() {
+    let p := Px { r = 255, g = 0 };
+    let q := { ..p };
+    assert(q.r == 255);
+}

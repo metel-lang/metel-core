@@ -1,0 +1,8 @@
+// metel-core#1763: root::Type::method() is T0003 although Type::method() resolves.
+struct Counter { n: i64 }
+extend Counter {
+    fun new() -> Counter { return Counter { n = 7 }; }
+}
+fun main() {
+    assert(root::Counter::new().n == 7);
+}

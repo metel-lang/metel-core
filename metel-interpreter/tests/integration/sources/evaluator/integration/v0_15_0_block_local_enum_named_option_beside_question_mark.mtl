@@ -1,0 +1,12 @@
+// #1615 x RFC-0184 x RFC-0182: a block-local enum named Option shadows the core one in its block only.
+fun go() -> Option<i64> {
+    let o: Option<i64> := Option::Some { value = 3 };
+    let v := o?;
+    return Option::Some { value = v };
+}
+fun main() {
+    enum Option { Mine, Other }
+    let m := Option::Mine;
+    assert(match (m) { Mine => true, Other => false });
+    assert(match (go()) { Some { value } => value == 3, None => false });
+}

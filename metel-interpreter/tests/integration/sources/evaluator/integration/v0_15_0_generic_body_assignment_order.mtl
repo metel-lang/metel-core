@@ -1,0 +1,9 @@
+// #1431 x generic bodies under --move-check: the index is evaluated before the right-hand side runs.
+fun fill<T>(x: T, xs: [i64; 3]) -> T {
+    var out := xs;
+    var i: i64 := 0;
+    out[i as u64] := 4;
+    i := 1;
+    return x;
+}
+fun main() { assert(fill(9, [0, 0, 0]) == 9); }

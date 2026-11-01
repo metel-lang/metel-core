@@ -1,0 +1,8 @@
+// metel-core#1762: T0026 for a local fun named in a closure that has a capture list.
+fun main() {
+    fun twice(v: i64) -> i64 { return v * 2; }
+    var acc := 0;
+    let g := [&var acc] var |k: i64| { acc += twice(k); };
+    g(2);
+    assert(acc == 4);
+}
