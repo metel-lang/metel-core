@@ -34,7 +34,8 @@ fn check_explicit_closure_captures(
     // Generic bodies defer construction, so capture-list completeness must not
     // depend on reaching construction with a particular caller's type arguments.
     for name in reads.union(&writes) {
-        if ctx.has_local_binding(name)
+        // A hoisted local `fun` is an item, not a local value (RFC-0195): naming it captures nothing.
+        if ctx.is_enclosing_local_value(name)
             && !captures.iter().any(|capture| capture_name(capture) == name)
         {
             return Err(MetelError::type_error(

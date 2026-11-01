@@ -1,4 +1,4 @@
-// metel-core#1762: T0026 for a local fun named in a closure that has a capture list.
+// metel-core#1762 (fixed): a local fun is an item, so a closure with a capture list may name it; it was T0026 for a local fun named in a closure that has a capture list.
 fun main() {
     fun twice(v: i64) -> i64 { return v * 2; }
     var acc := 0;

@@ -1,0 +1,8 @@
+// metel-core#1762: naming a local fun needs no list entry, but a value of the enclosing function
+// still does, and the error names the value, not the function.
+fun main() {
+    fun twice(v: i64) -> i64 { return v * 2; }
+    var acc := 0;
+    let other := 1;
+    let g := [&var acc] var |k: i64| { acc += twice(k) + other; };
+}

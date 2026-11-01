@@ -1,0 +1,9 @@
+[options]
+error = ["T0026"]
+spec = ["spec.functions.closures.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0026"
+line = 7
+contains = "`other` is captured but not listed"
