@@ -512,10 +512,16 @@ fn normalize_expr(
             ..
         } => {
             if let Some((local_path, type_id)) =
-                try_normalize_struct_path(path, scope, module_names, symbols)
+                try_normalize_struct_path(path, scope, current_module, module_names, symbols)
             {
                 *path = local_path;
                 *symbol_id = type_id;
+            } else if let Some(message) = symbols.cycle.borrow_mut().take() {
+                return Err(MetelError::parse(
+                    crate::data::error::ParseErrorCode::P0001,
+                    message,
+                    expr.span(),
+                ));
             } else if let [only] = path.as_mut_slice() {
                 // A single-segment path can still be an alias (#667): `import
                 // lexer::Token as Tok;` then `Tok { .. }` needs to construct the
@@ -692,15 +698,7 @@ fn try_resolve_path(
         {
             // Modules are checked in dependency order, so the item's module must not itself
             // depend on this one: `parser` cannot name `root::helper` while `root` imports `parser`.
-            if module_depends_on(&symbols.deps, &target, current_module) {
-                *symbols.cycle.borrow_mut() = Some(format!(
-                    "circular module dependency: `{}` names `{}`, declared in `{}`, which depends \
-                     on `{}`",
-                    module_display(current_module),
-                    segments.join("::"),
-                    module_display(&target),
-                    module_display(current_module),
-                ));
+            if report_module_cycle(symbols, current_module, &target, segments) {
                 return None;
             }
             let alias = segments.join("::");
@@ -773,6 +771,55 @@ fn try_resolve_path(
     Some((declared_name.clone(), None))
 }
 
+/// Record a circular-module-dependency error when `target`, the module a keyword-rooted path
+/// names, depends on the current module: modules are checked in dependency order, so the item is
+/// not yet known when this one is checked. Returns whether it did.
+fn report_module_cycle(
+    symbols: &PathSymbols<'_>,
+    current_module: &[String],
+    target: &[String],
+    segments: &[String],
+) -> bool {
+    if target == current_module || !module_depends_on(&symbols.deps, target, current_module) {
+        return false;
+    }
+    *symbols.cycle.borrow_mut() = Some(format!(
+        "circular module dependency: `{}` names `{}`, declared in `{}`, which depends on `{}`",
+        module_display(current_module),
+        segments.join("::"),
+        module_display(target),
+        module_display(current_module),
+    ));
+    true
+}
+
+/// The module a path's module prefix names when it begins with `root`, `self` or `super` (each
+/// `super` climbs one level), or `None` for a prefix that is not keyword-rooted. The prefix of a
+/// type- or member-qualified path (`root::Counter::new`, `super::Kind::A`) is a module like any
+/// other, but is written relative to the current one.
+fn keyword_module(prefix: &[String], current_module: &[String]) -> Option<Vec<String>> {
+    use crate::data::ast::PathRoot;
+    let first = prefix.first()?;
+    let mut module = match first.as_str() {
+        "root" => PathRoot::Root.resolve(current_module),
+        "self" => PathRoot::Self_.resolve(current_module),
+        "super" => PathRoot::Super.resolve(current_module),
+        _ => return None,
+    };
+    let mut rest = &prefix[1..];
+    if first == "super" {
+        while let Some((next, tail)) = rest.split_first() {
+            if next != "super" {
+                break;
+            }
+            module = PathRoot::Super.resolve(&module);
+            rest = tail;
+        }
+    }
+    module.extend_from_slice(rest);
+    Some(module)
+}
+
 /// A module-qualified path to a unit variant used as a value (`lib::Kind::A`,
 /// `std::core::Option::None`), as the fieldless variant literal `Kind::A {}` stamped with the id of
 /// the enum its module prefix names (metel-core#1680).
@@ -793,16 +840,22 @@ fn try_normalize_unit_variant_path(
     }
     let (variant, rest) = segments.split_last()?;
     let (enum_name, module) = rest.split_last()?;
+    let keyword_rooted = keyword_module(module, current_module);
+    let keyword_rooted_prefix = keyword_rooted.is_some();
+    let module = &keyword_rooted.unwrap_or_else(|| module.to_vec());
     let public =
         *symbols
             .unit_variants
-            .get(&(module.to_vec(), enum_name.clone(), variant.clone()))?;
+            .get(&(module.clone(), enum_name.clone(), variant.clone()))?;
     if !public && module != current_module {
         return None;
     }
     let enum_id = *symbols
         .map
-        .get(&(module.to_vec(), Namespace::Type, enum_name.clone()))?;
+        .get(&(module.clone(), Namespace::Type, enum_name.clone()))?;
+    if keyword_rooted_prefix && report_module_cycle(symbols, current_module, module, segments) {
+        return None;
+    }
     Some((vec![enum_name.clone(), variant.clone()], enum_id))
 }
 
@@ -826,14 +879,20 @@ fn try_normalize_static_member_path(
     }
     let (member, rest) = segments.split_last()?;
     let (type_name, module) = rest.split_last()?;
+    let keyword_rooted = keyword_module(module, current_module);
+    let keyword_rooted_prefix = keyword_rooted.is_some();
+    let module = &keyword_rooted.unwrap_or_else(|| module.to_vec());
     let type_id = *symbols
         .map
-        .get(&(module.to_vec(), Namespace::Type, type_name.clone()))?;
+        .get(&(module.clone(), Namespace::Type, type_name.clone()))?;
     if module != current_module
         && !symbols
             .public_types
-            .contains(&(module.to_vec(), type_name.clone()))
+            .contains(&(module.clone(), type_name.clone()))
     {
+        return None;
+    }
+    if keyword_rooted_prefix && report_module_cycle(symbols, current_module, module, segments) {
         return None;
     }
     let spans = if seg_spans.len() == segments.len() {
@@ -851,6 +910,7 @@ fn try_normalize_static_member_path(
 fn try_normalize_struct_path(
     path: &[String],
     scope: Option<&ModuleScope>,
+    current_module: &[String],
     module_names: &HashSet<String>,
     symbols: &PathSymbols<'_>,
 ) -> Option<(Vec<String>, Option<crate::identity::symbols::SymbolId>)> {
@@ -858,6 +918,23 @@ fn try_normalize_struct_path(
         return None;
     }
     let first = &path[0];
+    // `root::`, `self::` and `super::` name a module relative to this one: the type is the first
+    // segment after a module prefix that declares it, and a type of another module must be public.
+    if matches!(first.as_str(), "root" | "self" | "super") {
+        return (1..path.len()).rev().find_map(|split| {
+            let module = keyword_module(&path[..split], current_module)?;
+            let type_name = &path[split];
+            let id = *symbols
+                .map
+                .get(&(module.clone(), Namespace::Type, type_name.clone()))?;
+            if report_module_cycle(symbols, current_module, &module, path) {
+                return None;
+            }
+            let nameable = module == current_module
+                || symbols.public_types.contains(&(module, type_name.clone()));
+            nameable.then(|| (path[split..].to_vec(), Some(id)))
+        });
+    }
     // Only process if the first segment looks like a module, not a type.
     let is_known_prefix = module_names.contains(first.as_str())
         || scope.is_some_and(|s| {

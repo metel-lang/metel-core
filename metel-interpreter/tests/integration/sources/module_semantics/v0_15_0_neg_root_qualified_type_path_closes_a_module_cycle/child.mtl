@@ -1,0 +1,6 @@
+// metel-core#1763: `root` imports this module, so a type path into `root` is a cycle, reported
+// as one, not as an undefined name.
+public fun probe() -> i64 {
+    let c := root::Counter::new();
+    return c.n + 10;
+}

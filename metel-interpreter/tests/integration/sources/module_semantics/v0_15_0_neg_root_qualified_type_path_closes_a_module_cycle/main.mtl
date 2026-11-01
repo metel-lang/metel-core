@@ -1,0 +1,10 @@
+import child::probe;
+
+public struct Counter { public n: i64 }
+extend Counter {
+    public fun new() -> Counter { return Counter { n = 1 }; }
+}
+
+fun main() {
+    assert(probe() == 11);
+}

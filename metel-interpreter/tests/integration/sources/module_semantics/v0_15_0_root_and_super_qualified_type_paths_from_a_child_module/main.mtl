@@ -1,0 +1,6 @@
+import shared::Counter;
+import parser::probe;
+
+fun main() {
+    assert(probe() == 33);
+}
