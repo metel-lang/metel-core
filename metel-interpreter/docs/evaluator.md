@@ -115,6 +115,8 @@ Each binding is stored as an `Rc<RefCell<Value>>`. This has two consequences:
    and its definition scope no longer implicitly share a `RefCell` for a bare capture —
    sharing is opt-in via `&`/`&var` in the list. The intended semantics RFC-0006 called
    for are now settled and implemented (RFC-0050 / RFC-0153 / RFC-0157; ADR-0052).
+   A function declared in an enclosing block is an item, not a capture, so a closure's environment also
+   carries the block's hoisted local functions (`Environment::local_funs`), sharing their cells (#1762).
 
 Lexical `Environment` storage is intentionally separate from runtime metadata. Module-owned runtime values, type-owned methods, and aspect impl methods live in a shared `RuntimeRegistry`, not as synthetic bindings inside the lexical scope stack. Type-owned method entries now also carry receiver and lightweight signature metadata so static-style callables and receiver methods are structurally distinct at runtime. Closures capture only lexical environment state; they do not capture runtime dispatch tables.
 
