@@ -75,7 +75,7 @@ Bugs are not planned work, so they are not scheduled into themes.
 The numbered list is the priority order: each theme comes after the ones it lists in its
 milestone description (`After:`). The tag is its horizon, how near it is.
 
-1. **v0.16.0** [now]: The shape of the Copy/Clone model is decided (RFC-0162, with RFC-0158 `Share` and RFC-0135 settled alongside it) and its follow-ups are built, and the generic-body, module-path and website defects the v0.15.0 integration session left open are fixed or moved on.
+1. **v0.16.0** [now]: The shape of the Copy/Clone model is decided (RFC-0162, with RFC-0206 `Clone`, RFC-0207 header and auto aspects and RFC-0158 `Share` settled alongside it; RFC-0135 is refused) and its follow-ups are built, and the generic-body, module-path and website defects the v0.15.0 integration session left open are fixed or moved on.
 2. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) and its closure rules (RFC-0194: a closure that captures a linear value is linear) are settled, so exactly-once consumption is available to effects and capabilities.
 3. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
 4. **Move check default-on** [next]: The move check runs by default on every program.
