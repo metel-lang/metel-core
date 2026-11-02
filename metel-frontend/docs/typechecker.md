@@ -807,6 +807,36 @@ Construction no longer finds a module-level value, or the scheme of a generic fu
 
 ---
 
+### Written type names, nested declarations and abstract bodies (v0.15.0)
+
+- **A written generic-parameter name resolves by identity** (ADR-0067, #1612). `TypeExpr::Named` carries the span
+  of the written name (`NameSpan`, whose `Debug` prints no position, because row-bound entailment compares
+  annotations by their rendering). The identity pass resolves a name to a `TypeParamId` keyed by the declaring
+  item, the list it was written in and its position; `TypeScheme.param_ids` is index-aligned with `param_names`,
+  and construction resolves through a `GenericScope` and an id-keyed `GenericArgs`. Block-local type names are
+  still read by spelling (`written_type_id`, #1735).
+- **A function nested in a generic body is a definition of its own** (ADR-0068, #1732). `TypedFunDecl` carries
+  `nested_definitions`, prepared at the three abstract-body sites and analysed by `--move-check` with a fresh
+  flow state. A block-local `struct` or `enum` has member ids keyed by `(declaration span, member name)`
+  (`MemberTable::LocalMembers`), stamped on the registry entry by `stamp_local_member_ids`. The shared declaration
+  walk is `data::decl_walk`.
+- **Abstract bodies grew** (#1764, #1766, #1767). `?` on `Option` and on a `Result` with a matching error type
+  is translated to the match it stands for (`propagate_error`); a type variable the signature does not
+  quantify is a body-local, unconstrained parameter (`LocalParameters`, `AbstractBody::local_parameters`); a
+  call to a polymorphic local callee is analysed by the contract of that call; a `Copy` field read out of a
+  temporary is analysed (`observe_temporary_projection`); a qualified static path is recorded by owner identity
+  (`record_definition_static_path_of`).
+- **`poly_scheme` is shadow-aware** (#1766). The innermost binding of a name decides across both environments,
+  so a local monomorphic binding is never typed against an outer generic of the same name.
+- **A literal takes the type inference fixed for it** (#1761). `construct_literal_expr` prefers the
+  expression-type fact over a missing expected type. A generic body is reconstructed without those facts, so
+  this does not reach it yet (#1774, #1704).
+- **Keyword-rooted type paths** (#1763). `root`, `self` and `super` before a type name resolve through
+  `keyword_module` in the path normalizer, for static members, unit variants and struct or variant literals;
+  a path into a module that depends on the current one is the circular-dependency error.
+
+---
+
 ### Symbolic rows in ownership analysis
 
 Destructuring declarations observe a place initializer, then let the pattern
