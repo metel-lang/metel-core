@@ -75,7 +75,7 @@ Bugs are not planned work, so they are not scheduled into themes.
 The numbered list is the priority order: each theme comes after the ones it lists in its
 milestone description (`After:`). The tag is its horizon, how near it is.
 
-1. **v0.15.0** [now]: The language-surface RFCs drafted 2026-10-24 are settled and, where accepted, integrated.
+1. **v0.16.0** [now]: The defects the v0.15.0 integration session left open are fixed or moved on, and the operation flow diagrams on the website are styled, linked and uncropped.
 2. **Copy/Clone settlement** [next]: The Copy/Clone model is decided, so ownership work has a stable target.
 3. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) and its closure rules (RFC-0194: a closure that captures a linear value is linear) are settled, so exactly-once consumption is available to effects and capabilities.
 4. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
