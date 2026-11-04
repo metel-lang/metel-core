@@ -146,7 +146,8 @@ than sharing one writable target directory concurrently.
 
 GitHub Issues are the task source of truth (`PROC-WORK-001`). The lowest numbered milestone is
 the release in progress; while it is a patch the next minor may also be numbered, but its
-language-visible work does not merge to `develop` until the patch is tagged. Later work sits in
+language-visible work does not merge to `develop` until the patch is tagged. A release may be staged: theme milestones whose description says `Part of: vX.Y.Z` belong to
+that release and are read with it (`ROADMAP.md`). Later work sits in
 unnumbered theme milestones, and a version is chosen at the release cut (`PROC-WORK-004`,
 `ROADMAP.md`). Dependencies are written as `Blocked by #N` /
 `Blocks #N` in issue bodies.

@@ -39,8 +39,15 @@ That range is what this release ships. Read it — it is the input to every gate
 ## Step 1 — Milestone is actually complete
 
 ```bash
+# the release milestone, then every stage that declares `Part of: $ARGUMENTS` (ROADMAP.md)
 gh issue list --milestone "$ARGUMENTS" --state open
+gh api repos/metel-lang/metel-core/milestones --paginate \
+  | jq -r --arg v "$ARGUMENTS" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
+  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
 ```
+
+A staged release is complete when the numbered milestone and every stage have no open issue.
+After the tag, close the stage milestones.
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
 must be **re-milestoned to a later version** — not left silently attached to this one.

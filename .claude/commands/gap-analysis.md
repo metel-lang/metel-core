@@ -18,7 +18,11 @@ analyse, and no cycle object anywhere.
 ## Step 1 — Load milestone context
 
 ```bash
+# the release milestone, then every stage that declares `Part of: $ARGUMENTS` (ROADMAP.md)
 gh issue list --milestone "$ARGUMENTS" --state open
+gh api repos/metel-lang/metel-core/milestones --paginate \
+  | jq -r --arg v "$ARGUMENTS" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
+  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
 ```
 
 Bugs live in the `Backlog` milestone, not in themes (`ROADMAP.md` § Bugs). Also list
