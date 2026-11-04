@@ -102,41 +102,42 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 5. **Move check default-on** [next]: The move check runs by default on every program.
 6. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
 7. **Structural kinds after comptime** [later]: Arrays, the native record `Clone` hook and the remaining structural kinds become std impls, so the compiler rules that v0.16.0 keeps for them are deleted.
-8. **Runtime value semantics** [next]: The evaluator stops deep-cloning and follows ownership.
-9. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
-10. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
-11. **Effects design settlement** [next]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
-12. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
-13. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
-14. **Storage contract** [next]: The roles of `T[N]`, `T[]` and `List<T>` (inline fixed storage, borrowed contiguous view, owning runtime-sized buffer) are settled before the core surface freezes.
-15. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
-16. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
-17. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
-18. **Core surface freeze** [later]: The core surface is frozen after effects validation and the storage contract, with user-declared `native`, the std API and slice validity rules not frozen; package design and a conformance corpus exist.
-19. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
-20. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
-21. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references, including `T[]` slices (RFC-0124 slice half).
-22. **Storage identity** [later]: Storage identity and brand types are settled.
-23. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
-24. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
-25. **Allocator foundation** [later]: Allocator-selected handles and placement.
-26. **Views and projections** [later]: Views and open projections work in every type position.
-27. **Metel-backed List** [later]: A runtime-sized buffer.
-28. **Tracing GC (experimental)** [later]: Local tracing GC.
-29. **Compiler expansion** [later]: Broad end-to-end code generation.
-30. **Compiler MVP** [later]: Standalone multi-module compilation.
-31. **Standard library redesign** [later]: A usable, separately versioned std API.
-32. **Concurrency** [later]: The concurrency model (RFC-0003) is settled.
-33. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std.
-34. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
-35. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
-36. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
-37. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
-38. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
-39. **Playground and interactive docs** [parallel]: Run Metel in the browser.
-40. **Website content and experience** [parallel]: The website and tutorials are current.
-41. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
-42. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
+8. **Abstract ownership solver** [later]: Generic bodies are checked on a real obligation solver (nested applications, field-wise templates, derivation conditions, signed closure, witnesses carried to elaboration), and the v0.16.0 fallback (an unprovable abstract ownership is a move) is lifted for what it proves.
+9. **Runtime value semantics** [next]: The evaluator stops deep-cloning and follows ownership.
+10. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
+11. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
+12. **Effects design settlement** [next]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
+13. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
+14. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
+15. **Storage contract** [next]: The roles of `T[N]`, `T[]` and `List<T>` (inline fixed storage, borrowed contiguous view, owning runtime-sized buffer) are settled before the core surface freezes.
+16. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
+17. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
+18. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
+19. **Core surface freeze** [later]: The core surface is frozen after effects validation and the storage contract, with user-declared `native`, the std API and slice validity rules not frozen; package design and a conformance corpus exist.
+20. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
+21. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
+22. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references, including `T[]` slices (RFC-0124 slice half).
+23. **Storage identity** [later]: Storage identity and brand types are settled.
+24. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
+25. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
+26. **Allocator foundation** [later]: Allocator-selected handles and placement.
+27. **Views and projections** [later]: Views and open projections work in every type position.
+28. **Metel-backed List** [later]: A runtime-sized buffer.
+29. **Tracing GC (experimental)** [later]: Local tracing GC.
+30. **Compiler expansion** [later]: Broad end-to-end code generation.
+31. **Compiler MVP** [later]: Standalone multi-module compilation.
+32. **Standard library redesign** [later]: A usable, separately versioned std API.
+33. **Concurrency** [later]: The concurrency model (RFC-0003) is settled.
+34. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std.
+35. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
+36. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
+37. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
+38. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
+39. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
+40. **Playground and interactive docs** [parallel]: Run Metel in the browser.
+41. **Website content and experience** [parallel]: The website and tutorials are current.
+42. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
+43. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
 
 Dependencies behind this order:
 
