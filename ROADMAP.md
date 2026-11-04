@@ -18,6 +18,24 @@ changes the language. Until then nothing refers to a future number.
   reaches the pinned docs commit, until the patch tag is pushed. Meanwhile: gap analysis,
   issue rewriting, RFC lifecycle changes, and branches and draft pull requests. When the patch
   is tagged the minor becomes the release in progress and its held pull requests merge.
+- **A release may be staged.** A large release can be built from several stage milestones and still
+  be one release. A stage is a theme (no version number) whose description has the line
+  `Part of: vX.Y.Z` after its `Horizon:` line, then its outcome and exit test. The numbered milestone
+  holds the release-level issues (decisions, reconciliation, tracking); the stages hold the
+  implementation. The release in progress is the numbered milestone together with its stages:
+  `/gap-analysis`, the integration session and `/cut-release` read the whole set, and the tag waits
+  for all of it. A stage that slips leaves the release when its `Part of:` line is deleted; it stays
+  a theme. At the cut the stages are closed. Stages do not count toward the limit on numbered
+  milestones. To list a release's open issues:
+
+```bash
+# the release milestone, then every stage that declares `Part of: vX.Y.Z` (ROADMAP.md)
+gh issue list --milestone "vX.Y.Z" --state open
+gh api repos/metel-lang/metel-core/milestones --paginate \
+  | jq -r --arg v "vX.Y.Z" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
+  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
+```
+
 - **Every other milestone is a theme**, named for the capability it delivers and carrying no
   version number. The first line of its description is `Horizon: next`, `later` or
   `parallel`, then the outcome, the exit test (`Exit:`), what it must come `After:`, and
@@ -61,12 +79,14 @@ Bugs are not planned work, so they are not scheduled into themes.
   fixed ahead of other bugs of the same severity.
 - **Entering a release.** A bug moves from Backlog into a numbered milestone only when we
   commit to fixing it in that release. With a patch and a minor both numbered, it goes to the
-  patch only if the fix changes no accepted program (Release type, below); otherwise to the
-  minor. A soundness bug or a regression introduced since the
+  patch when the fix makes the implementation follow the unchanged spec (Release type, below);
+  otherwise to the minor. A soundness bug or a regression introduced since the
   last tag is committed by default. Deferring one moves it back to Backlog, never to a theme.
-- **Release type.** A fix that changes only diagnostics or internals can ship in a patch. A
-  fix that changes which programs are accepted is language-visible and follows the versioning
-  rule above.
+- **Release type.** A fix can ship in a patch when it makes the implementation follow the
+  unchanged spec, including when it changes which programs are accepted (a spurious rejection
+  removed, or a program the spec forbids now rejected). A fix that needs a spec change, or where
+  the spec is silent or contradicts itself, is not a bug fix: the spec question is decided first
+  (an RFC where one is required) and the change ships in a minor.
 - **Findings from `/milestone-integration-test`** are filed as bugs with a severity and go to
   Backlog, except soundness bugs and regressions, which go to the release in progress.
 
