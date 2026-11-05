@@ -151,9 +151,22 @@ impl BodyFreezer<'_, '_> {
                 ..
             } => {
                 let mut retained = self.nominal_ownership.borrow_mut();
-                if !retained.iter().any(|fact| &fact.ty == ty) {
+                if !retained
+                    .iter()
+                    .any(|fact| self.registry.abstract_types_identical(&fact.ty, ty))
+                {
                     retained.push(crate::data::abstract_body::AbstractNominalOwnership {
                         ty: ty.clone(),
+                        copy_witness: match self.registry.solve_abstract_aspect(
+                            ty,
+                            "Copy",
+                            self.signature.facts.as_deref().unwrap_or_default(),
+                        ) {
+                            crate::data::abstract_body::ObligationResult::Yes(witness) => {
+                                Some(witness)
+                            }
+                            _ => None,
+                        },
                         copy: self
                             .registry
                             .abstract_nominal_aspect(

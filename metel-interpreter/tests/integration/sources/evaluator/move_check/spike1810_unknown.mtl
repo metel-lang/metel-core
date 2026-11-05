@@ -1,0 +1,4 @@
+struct Wrapper<T> { value: T }
+extend<T: Copy> Wrapper<T>: Copy;
+fun reuse<T>(x: Wrapper<T>) { let a := x; let b := x; }
+fun main() {}

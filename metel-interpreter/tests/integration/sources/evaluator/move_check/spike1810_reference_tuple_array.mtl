@@ -1,0 +1,6 @@
+struct Wrapper<T> { value: T }
+extend<T: Copy> Wrapper<T>: Copy;
+fun refs<T>(x: Wrapper<&T>) { let a := x; let b := x; }
+fun tupled<T: Copy>(x: Wrapper<(T, i64)>) { let a := x; let b := x; }
+fun arrays<T: Copy>(x: Wrapper<[T; 2]>) { let a := x; let b := x; }
+fun main() { let n := 1; refs(Wrapper { value = &n }); tupled(Wrapper { value = (1, 2) }); arrays(Wrapper { value = [1, 2] }); }

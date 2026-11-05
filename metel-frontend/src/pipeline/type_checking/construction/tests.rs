@@ -2058,3 +2058,50 @@ fn toplevel_bare_statement_reference_carries_a_symbol_id() {
         "w's reference in the top-level statement should carry a real BindingId, not None"
     );
 }
+
+#[test]
+fn spike1810_clone_obligation_retains_nested_impl_witnesses() {
+    use crate::data::abstract_body::{AbstractType, ObligationResult, WitnessSource};
+    let typed = typecheck_source(
+        "clone_probe.mtl",
+        r#"
+struct Wrapper<T> { value: T }
+extend<T: Clone> Wrapper<T>: Clone {
+    fun clone(&self) -> Self { Wrapper { value = self.value.clone() } }
+}
+fun probe<T: Clone>(x: Wrapper<Wrapper<T>>) {}
+fun main() {}
+"#,
+    )
+    .report;
+    let probe = typed
+        .graph
+        .modules
+        .iter()
+        .flat_map(|m| &m.decls)
+        .find_map(|decl| match decl {
+            TypedDecl::Fun(f) if f.name == "probe" => Some(f),
+            _ => None,
+        })
+        .unwrap();
+    let signature = probe.abstract_signature.as_ref().unwrap();
+    let AbstractType::Function { parameters, .. } = &signature.ty else {
+        panic!("signature")
+    };
+    let ObligationResult::Yes(witness) = typed.graph.type_registry.solve_abstract_aspect(
+        &parameters[0],
+        "Clone",
+        signature.facts.as_deref().unwrap(),
+    ) else {
+        panic!("nested Clone proof missing")
+    };
+    assert!(matches!(witness.source, WitnessSource::Impl { .. }));
+    assert!(matches!(
+        witness.children[0].source,
+        WitnessSource::Impl { .. }
+    ));
+    assert!(matches!(
+        witness.children[0].children[0].source,
+        WitnessSource::Assumption
+    ));
+}

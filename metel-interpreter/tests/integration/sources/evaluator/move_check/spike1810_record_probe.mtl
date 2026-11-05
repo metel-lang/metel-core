@@ -1,0 +1,3 @@
+record R<T> { value: T }
+fun reuse<T: Copy>(r: R<T>) { let a := r; let b := r; }
+fun main() {}

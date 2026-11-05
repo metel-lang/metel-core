@@ -1,0 +1,9 @@
+struct Wrapper<T> { value: T }
+extend<T: Copy> Wrapper<T>: Copy;
+struct Pair<A, B> { first: A, second: B }
+extend<A, B> Pair<A, B>: Copy where A: Copy, B: Copy;
+fun reuse<T: Copy>(x: Pair<Wrapper<T>, i64>) {
+    let a := x;
+    let b := x;
+}
+fun main() { reuse(Pair { first = Wrapper { value = 7 }, second = 1 }); }

@@ -192,6 +192,7 @@ pub struct AbstractBody {
 pub struct AbstractNominalOwnership {
     pub ty: AbstractType,
     pub copy: AbstractNominalAspect,
+    pub copy_witness: Option<ObligationWitness>,
     pub drop: AbstractNominalAspect,
 }
 
@@ -561,4 +562,28 @@ impl AbstractExpr {
             _ => None,
         }
     }
+}
+
+/// SPIKE: proof identities are registry-local candidate indices, not callable IDs.
+#[derive(Debug, Clone)]
+pub enum WitnessSource {
+    Assumption,
+    Concrete,
+    Compiler,
+    Impl {
+        target: SymbolId,
+        aspect: SymbolId,
+        index: usize,
+    },
+}
+#[derive(Debug, Clone)]
+pub struct ObligationWitness {
+    pub source: WitnessSource,
+    pub children: Vec<Self>,
+}
+#[derive(Debug, Clone)]
+pub enum ObligationResult {
+    Yes(ObligationWitness),
+    No,
+    Unknown,
 }

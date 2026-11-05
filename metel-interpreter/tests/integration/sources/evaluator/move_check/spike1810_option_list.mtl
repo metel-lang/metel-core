@@ -1,0 +1,2 @@
+fun reuse<T: Copy>(x: Option<List<T>>) { let a := x; let b := x; }
+fun main() {}

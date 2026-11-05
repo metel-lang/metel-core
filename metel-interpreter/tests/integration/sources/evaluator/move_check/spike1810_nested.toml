@@ -1,0 +1,5 @@
+[options]
+move_check = true
+
+[expect]
+status = "success"
