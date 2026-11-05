@@ -1,0 +1,4 @@
+struct Wrapper<T>: Copy when T: Copy { value: T }
+struct Pair<A, B>: Copy when A: Copy, B: Copy { a: A, b: B }
+struct Outer<T>: Copy when T: Copy { p: Pair<Wrapper<T>, i64> }
+fun main() {}

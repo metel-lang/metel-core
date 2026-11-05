@@ -286,7 +286,70 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
             .map(Decl::Impl)
             .collect());
     }
-    Ok(vec![parse_single_decl(inner, filename)?])
+    // spike1815: lower header entries before name resolution and coherence.
+    // Keep the ordinary nominal AST and emit ordinary bodyless impl AST nodes.
+    let headers = inner
+        .clone()
+        .into_inner()
+        .find(|p| p.as_rule() == Rule::header_markers);
+    let declaration = parse_single_decl(inner, filename)?;
+    let mut implementations = vec![];
+    if let Some(headers) = headers {
+        let (name, generics, declaration_where, span) = match &declaration {
+            Decl::Struct(s) => (&s.name, &s.generics, &s.where_clause, &s.span),
+            Decl::Enum(e) => (&e.name, &e.generics, &e.where_clause, &e.span),
+            _ => unreachable!(),
+        };
+        for entry in headers.into_inner() {
+            let entry_span = Span::of(&entry, filename);
+            let mut parts = entry.into_inner();
+            let aspect_name = parts.next().unwrap().as_str().to_string();
+            let mut condition = declaration_where.clone();
+            if let Some(when) = parts.next() {
+                let parsed = parse_where_clause(when, filename)?;
+                // The spike limits conditions to the type's own parameters.
+                if !parsed.row_equations.is_empty()
+                    || !parsed.field_wise.is_empty()
+                    || parsed
+                        .constraints
+                        .iter()
+                        .any(|c| c.is_record || !generics.iter().any(|g| g.name == c.name))
+                {
+                    return Err(MetelError::parse(
+                        ParseErrorCode::P0001,
+                        "header conditions must constrain the type's own parameters",
+                        &entry_span,
+                    ));
+                }
+                if let Some(existing) = &mut condition {
+                    existing.constraints.extend(parsed.constraints);
+                } else {
+                    condition = Some(parsed);
+                }
+            }
+            implementations.push(Decl::Impl(ImplBlock {
+                polarity: Polarity::Positive,
+                generics: generics.clone(),
+                aspect_name: Some(aspect_name),
+                aspect_type_args: vec![],
+                target_type: TypeExpr::Named(
+                    name.clone(),
+                    generics
+                        .iter()
+                        .map(|g| TypeExpr::Named(g.name.clone(), vec![], span.clone().into()))
+                        .collect(),
+                    span.clone().into(),
+                ),
+                where_clause: condition,
+                assoc_type_defs: vec![],
+                methods: vec![],
+                span: entry_span,
+            }));
+        }
+    }
+    let mut result = vec![declaration];
+    result.extend(implementations);
+    Ok(result)
 }
 
 fn parse_single_decl(
@@ -4343,5 +4406,51 @@ mod architecture_evidence_tests {
             "{} defines an interpolation node; interpolation must lower during parsing",
             path.display()
         );
+    }
+}
+
+#[cfg(test)]
+mod spike1815_tests {
+    use super::*;
+
+    #[test]
+    fn spike1815_header_lowers_to_bounded_impl() {
+        let p = parse("struct Wrapper<T>: Copy when T: Copy { value: T }", "spike").unwrap();
+        assert_eq!(p.decls.len(), 2);
+        let Decl::Impl(ib) = &p.decls[1] else {
+            panic!("missing generated impl")
+        };
+        assert_eq!(ib.aspect_name.as_deref(), Some("Copy"));
+        assert!(ib.generics[0].bounds.is_empty());
+        assert_eq!(ib.where_clause.as_ref().unwrap().constraints[0].name, "T");
+    }
+
+    #[test]
+    fn spike1815_multiple_entries_and_constraints() {
+        let p = parse("struct Pair<A, B>: Copy when A: Copy, B: Copy, Send when A: Send where B: Send { a: A, b: B }", "spike").unwrap();
+        assert_eq!(p.decls.len(), 3);
+        let Decl::Impl(copy) = &p.decls[1] else {
+            panic!()
+        };
+        assert_eq!(copy.where_clause.as_ref().unwrap().constraints.len(), 3);
+        let Decl::Impl(send) = &p.decls[2] else {
+            panic!()
+        };
+        assert_eq!(send.where_clause.as_ref().unwrap().constraints.len(), 2);
+    }
+
+    #[test]
+    fn spike1815_enum_and_contextual_when() {
+        let p = parse(
+            "enum E<T>: Copy when T: Copy { A { value: T }, B } fun when() {}",
+            "spike",
+        )
+        .unwrap();
+        assert_eq!(p.decls.len(), 3);
+    }
+
+    #[test]
+    fn spike1815_reject_foreign_condition_parameter() {
+        assert!(parse("struct S<T>: Copy when U: Copy { x: T }", "spike").is_err());
     }
 }

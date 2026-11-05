@@ -1,0 +1,3 @@
+struct Wrapper<T>: Copy when T: Copy { value: T }
+fun f<T: Copy>(w: Wrapper<T>) { let a := w; let b := w; }
+fun main() {}

@@ -80,7 +80,7 @@ native_attr = { "native" ~ "(" ~ "@" ~ native_path ~ ")" }
 native_path = @{ native_seg ~ ("." ~ native_seg)* }
 native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
-struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
+struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ header_markers? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }
 // RFC-0121 item 2: a field's type may be a tail-only open record (`{ ..R }`),
 // i.e. the struct's own `row`-kinded parameter `R` (any fixed-field open
@@ -92,7 +92,7 @@ struct_field  = { pub_kw? ~ ident ~ ":" ~ (open_record_type | type_expr) }
 // semantic distinction the type checker enforces, not the grammar.
 record_decl = { pub_kw? ~ "record" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 
-enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ enum_variants ~ "}" }
+enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ header_markers? ~ where_clause? ~ "{" ~ enum_variants ~ "}" }
 enum_variants = { (enum_variant ~ ",")* ~ enum_variant? }
 enum_variant  = { ident ~ ("{" ~ struct_fields ~ "}")? }
 
@@ -498,3 +498,8 @@ keyword = @{
      "where" | "while")
     ~ !(ASCII_ALPHANUMERIC | "_")
 }
+
+// spike1815: comma separates entries; a condition consumes only name:bounds pairs.
+header_markers = { ":" ~ header_marker ~ ("," ~ header_marker)* }
+header_marker = { ident ~ header_condition? }
+header_condition = { "when" ~ where_constraint ~ ("," ~ where_constraint)* }

@@ -1,0 +1,3 @@
+struct Id<T>: Copy when T: !Drop { x: i64 }
+fun f<T>(x: Id<T>) { let a := x; let b := x; }
+fun main() {}

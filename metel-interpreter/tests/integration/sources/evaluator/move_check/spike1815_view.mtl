@@ -1,0 +1,3 @@
+struct View<T>: Copy { r: &T }
+fun f<T>(w: View<T>) { let a := w; let b := w; }
+fun main() {}

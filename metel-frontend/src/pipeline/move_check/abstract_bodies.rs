@@ -1147,6 +1147,23 @@ impl Checker<'_> {
         env: &Environment<'_>,
         active: &mut HashSet<AbstractParameterId>,
     ) -> Result<bool, String> {
+        if matches!(ty, AbstractType::Named { .. }) {
+            // Preserve definition-local proofs: the merged registry need not
+            // preserve a unique candidate for an unconditional implementation.
+            if let Some(crate::data::abstract_body::AbstractNominalAspect::Proven(value)) = env
+                .nominal_ownership
+                .iter()
+                .find(|fact| self.registry.abstract_types_identical(&fact.ty, ty))
+                .map(|fact| fact.copy)
+            {
+                return Ok(value);
+            }
+            // SPIKE: Unknown is a move, never permission to duplicate.
+            return Ok(matches!(
+                self.registry.solve_abstract_aspect(ty, "Copy", env.facts),
+                crate::data::abstract_body::ObligationResult::Yes(_)
+            ));
+        }
         match ty {
             AbstractType::Closure { owned_captures, .. } => {
                 self.abstract_items_copy(owned_captures.iter(), env, active)

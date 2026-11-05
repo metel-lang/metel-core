@@ -1,0 +1,3 @@
+struct Node<T>: Copy { next: &Node<T>, value: &T }
+fun f<T>(w: Node<T>) { let a := w; let b := w; }
+fun main() {}

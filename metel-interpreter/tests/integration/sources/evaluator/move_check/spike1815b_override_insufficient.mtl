@@ -1,0 +1,3 @@
+aspect Marker {}
+struct Id<T>: Copy when T: Marker { x: T }
+fun main() {}

@@ -1,0 +1,2 @@
+enum Tree: Copy { Leaf, Node { children: List<Tree> } }
+fun main() {}

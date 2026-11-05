@@ -1,0 +1,6 @@
+[expect]
+status = "typecheck_error"
+code = "T0001"
+
+[options]
+move_check = true

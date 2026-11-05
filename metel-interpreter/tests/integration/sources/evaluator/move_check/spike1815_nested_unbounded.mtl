@@ -1,0 +1,4 @@
+struct Wrapper<T>: Copy when T: Copy { value: T }
+struct Pair<A, B>: Copy when A: Copy, B: Copy { a: A, b: B }
+fun f<T>(w: Pair<Wrapper<T>, i64>) { let a := w; let b := w; }
+fun main() {}
