@@ -102,7 +102,7 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 5. **Move check default-on** [next]: The move check runs by default on every program.
 6. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
 7. **Structural kinds after comptime** [later]: Arrays, the native record `Clone` hook and the remaining structural kinds become std impls, so the compiler rules that v0.16.0 keeps for them are deleted.
-8. **Abstract ownership solver** [later]: Generic bodies are checked on a real obligation solver (nested applications, field-wise templates, derivation conditions, signed closure, witnesses carried to elaboration), and the v0.16.0 fallback (an unprovable abstract ownership is a move) is lifted for what it proves.
+8. **Abstract ownership solver** [later]: Generic bodies are checked on a real obligation solver (nested applications, field-wise templates, derivation conditions, signed closure, witnesses carried to elaboration), and the v0.16.0 limitation (an undecided abstract ownership is a diagnostic in generic bodies) is lifted for what it proves.
 9. **Runtime value semantics** [next]: The evaluator stops deep-cloning and follows ownership.
 10. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
 11. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
