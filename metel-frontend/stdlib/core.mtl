@@ -203,7 +203,7 @@ public aspect Eq {
 }
 
 public aspect From<S> {
-    fun from(x: S) -> Self;
+    fun from(value: S) -> Self;
 }
 
 public aspect Iterable<T> {
@@ -528,372 +528,372 @@ extend<T: Eq> [T]: Eq {
 // carried by the runtime value, so each target's impls share one key.
 
 extend i8: From<i16> {
-    native(@std.core.i8_from) fun from(x: i16) -> i8;
+    native(@std.core.i8_from) fun from(value: i16) -> i8;
 }
 
 extend i8: From<i32> {
-    native(@std.core.i8_from) fun from(x: i32) -> i8;
+    native(@std.core.i8_from) fun from(value: i32) -> i8;
 }
 
 extend i8: From<i64> {
-    native(@std.core.i8_from) fun from(x: i64) -> i8;
+    native(@std.core.i8_from) fun from(value: i64) -> i8;
 }
 
 extend i8: From<u8> {
-    native(@std.core.i8_from) fun from(x: u8) -> i8;
+    native(@std.core.i8_from) fun from(value: u8) -> i8;
 }
 
 extend i8: From<u16> {
-    native(@std.core.i8_from) fun from(x: u16) -> i8;
+    native(@std.core.i8_from) fun from(value: u16) -> i8;
 }
 
 extend i8: From<u32> {
-    native(@std.core.i8_from) fun from(x: u32) -> i8;
+    native(@std.core.i8_from) fun from(value: u32) -> i8;
 }
 
 extend i8: From<u64> {
-    native(@std.core.i8_from) fun from(x: u64) -> i8;
+    native(@std.core.i8_from) fun from(value: u64) -> i8;
 }
 
 extend i8: From<f32> {
-    native(@std.core.i8_from) fun from(x: f32) -> i8;
+    native(@std.core.i8_from) fun from(value: f32) -> i8;
 }
 
 extend i8: From<f64> {
-    native(@std.core.i8_from) fun from(x: f64) -> i8;
+    native(@std.core.i8_from) fun from(value: f64) -> i8;
 }
 
 extend i16: From<i8> {
-    native(@std.core.i16_from) fun from(x: i8) -> i16;
+    native(@std.core.i16_from) fun from(value: i8) -> i16;
 }
 
 extend i16: From<i32> {
-    native(@std.core.i16_from) fun from(x: i32) -> i16;
+    native(@std.core.i16_from) fun from(value: i32) -> i16;
 }
 
 extend i16: From<i64> {
-    native(@std.core.i16_from) fun from(x: i64) -> i16;
+    native(@std.core.i16_from) fun from(value: i64) -> i16;
 }
 
 extend i16: From<u8> {
-    native(@std.core.i16_from) fun from(x: u8) -> i16;
+    native(@std.core.i16_from) fun from(value: u8) -> i16;
 }
 
 extend i16: From<u16> {
-    native(@std.core.i16_from) fun from(x: u16) -> i16;
+    native(@std.core.i16_from) fun from(value: u16) -> i16;
 }
 
 extend i16: From<u32> {
-    native(@std.core.i16_from) fun from(x: u32) -> i16;
+    native(@std.core.i16_from) fun from(value: u32) -> i16;
 }
 
 extend i16: From<u64> {
-    native(@std.core.i16_from) fun from(x: u64) -> i16;
+    native(@std.core.i16_from) fun from(value: u64) -> i16;
 }
 
 extend i16: From<f32> {
-    native(@std.core.i16_from) fun from(x: f32) -> i16;
+    native(@std.core.i16_from) fun from(value: f32) -> i16;
 }
 
 extend i16: From<f64> {
-    native(@std.core.i16_from) fun from(x: f64) -> i16;
+    native(@std.core.i16_from) fun from(value: f64) -> i16;
 }
 
 extend i32: From<i8> {
-    native(@std.core.i32_from) fun from(x: i8) -> i32;
+    native(@std.core.i32_from) fun from(value: i8) -> i32;
 }
 
 extend i32: From<i16> {
-    native(@std.core.i32_from) fun from(x: i16) -> i32;
+    native(@std.core.i32_from) fun from(value: i16) -> i32;
 }
 
 extend i32: From<i64> {
-    native(@std.core.i32_from) fun from(x: i64) -> i32;
+    native(@std.core.i32_from) fun from(value: i64) -> i32;
 }
 
 extend i32: From<u8> {
-    native(@std.core.i32_from) fun from(x: u8) -> i32;
+    native(@std.core.i32_from) fun from(value: u8) -> i32;
 }
 
 extend i32: From<u16> {
-    native(@std.core.i32_from) fun from(x: u16) -> i32;
+    native(@std.core.i32_from) fun from(value: u16) -> i32;
 }
 
 extend i32: From<u32> {
-    native(@std.core.i32_from) fun from(x: u32) -> i32;
+    native(@std.core.i32_from) fun from(value: u32) -> i32;
 }
 
 extend i32: From<u64> {
-    native(@std.core.i32_from) fun from(x: u64) -> i32;
+    native(@std.core.i32_from) fun from(value: u64) -> i32;
 }
 
 extend i32: From<f32> {
-    native(@std.core.i32_from) fun from(x: f32) -> i32;
+    native(@std.core.i32_from) fun from(value: f32) -> i32;
 }
 
 extend i32: From<f64> {
-    native(@std.core.i32_from) fun from(x: f64) -> i32;
+    native(@std.core.i32_from) fun from(value: f64) -> i32;
 }
 
 extend i64: From<i8> {
-    native(@std.core.i64_from) fun from(x: i8) -> i64;
+    native(@std.core.i64_from) fun from(value: i8) -> i64;
 }
 
 extend i64: From<i16> {
-    native(@std.core.i64_from) fun from(x: i16) -> i64;
+    native(@std.core.i64_from) fun from(value: i16) -> i64;
 }
 
 extend i64: From<i32> {
-    native(@std.core.i64_from) fun from(x: i32) -> i64;
+    native(@std.core.i64_from) fun from(value: i32) -> i64;
 }
 
 extend i64: From<u8> {
-    native(@std.core.i64_from) fun from(x: u8) -> i64;
+    native(@std.core.i64_from) fun from(value: u8) -> i64;
 }
 
 extend i64: From<u16> {
-    native(@std.core.i64_from) fun from(x: u16) -> i64;
+    native(@std.core.i64_from) fun from(value: u16) -> i64;
 }
 
 extend i64: From<u32> {
-    native(@std.core.i64_from) fun from(x: u32) -> i64;
+    native(@std.core.i64_from) fun from(value: u32) -> i64;
 }
 
 extend i64: From<u64> {
-    native(@std.core.i64_from) fun from(x: u64) -> i64;
+    native(@std.core.i64_from) fun from(value: u64) -> i64;
 }
 
 extend i64: From<f32> {
-    native(@std.core.i64_from) fun from(x: f32) -> i64;
+    native(@std.core.i64_from) fun from(value: f32) -> i64;
 }
 
 extend i64: From<f64> {
-    native(@std.core.i64_from) fun from(x: f64) -> i64;
+    native(@std.core.i64_from) fun from(value: f64) -> i64;
 }
 
 extend u8: From<i8> {
-    native(@std.core.u8_from) fun from(x: i8) -> u8;
+    native(@std.core.u8_from) fun from(value: i8) -> u8;
 }
 
 extend u8: From<i16> {
-    native(@std.core.u8_from) fun from(x: i16) -> u8;
+    native(@std.core.u8_from) fun from(value: i16) -> u8;
 }
 
 extend u8: From<i32> {
-    native(@std.core.u8_from) fun from(x: i32) -> u8;
+    native(@std.core.u8_from) fun from(value: i32) -> u8;
 }
 
 extend u8: From<i64> {
-    native(@std.core.u8_from) fun from(x: i64) -> u8;
+    native(@std.core.u8_from) fun from(value: i64) -> u8;
 }
 
 extend u8: From<u16> {
-    native(@std.core.u8_from) fun from(x: u16) -> u8;
+    native(@std.core.u8_from) fun from(value: u16) -> u8;
 }
 
 extend u8: From<u32> {
-    native(@std.core.u8_from) fun from(x: u32) -> u8;
+    native(@std.core.u8_from) fun from(value: u32) -> u8;
 }
 
 extend u8: From<u64> {
-    native(@std.core.u8_from) fun from(x: u64) -> u8;
+    native(@std.core.u8_from) fun from(value: u64) -> u8;
 }
 
 extend u8: From<f32> {
-    native(@std.core.u8_from) fun from(x: f32) -> u8;
+    native(@std.core.u8_from) fun from(value: f32) -> u8;
 }
 
 extend u8: From<f64> {
-    native(@std.core.u8_from) fun from(x: f64) -> u8;
+    native(@std.core.u8_from) fun from(value: f64) -> u8;
 }
 
 extend u16: From<i8> {
-    native(@std.core.u16_from) fun from(x: i8) -> u16;
+    native(@std.core.u16_from) fun from(value: i8) -> u16;
 }
 
 extend u16: From<i16> {
-    native(@std.core.u16_from) fun from(x: i16) -> u16;
+    native(@std.core.u16_from) fun from(value: i16) -> u16;
 }
 
 extend u16: From<i32> {
-    native(@std.core.u16_from) fun from(x: i32) -> u16;
+    native(@std.core.u16_from) fun from(value: i32) -> u16;
 }
 
 extend u16: From<i64> {
-    native(@std.core.u16_from) fun from(x: i64) -> u16;
+    native(@std.core.u16_from) fun from(value: i64) -> u16;
 }
 
 extend u16: From<u8> {
-    native(@std.core.u16_from) fun from(x: u8) -> u16;
+    native(@std.core.u16_from) fun from(value: u8) -> u16;
 }
 
 extend u16: From<u32> {
-    native(@std.core.u16_from) fun from(x: u32) -> u16;
+    native(@std.core.u16_from) fun from(value: u32) -> u16;
 }
 
 extend u16: From<u64> {
-    native(@std.core.u16_from) fun from(x: u64) -> u16;
+    native(@std.core.u16_from) fun from(value: u64) -> u16;
 }
 
 extend u16: From<f32> {
-    native(@std.core.u16_from) fun from(x: f32) -> u16;
+    native(@std.core.u16_from) fun from(value: f32) -> u16;
 }
 
 extend u16: From<f64> {
-    native(@std.core.u16_from) fun from(x: f64) -> u16;
+    native(@std.core.u16_from) fun from(value: f64) -> u16;
 }
 
 extend u32: From<i8> {
-    native(@std.core.u32_from) fun from(x: i8) -> u32;
+    native(@std.core.u32_from) fun from(value: i8) -> u32;
 }
 
 extend u32: From<i16> {
-    native(@std.core.u32_from) fun from(x: i16) -> u32;
+    native(@std.core.u32_from) fun from(value: i16) -> u32;
 }
 
 extend u32: From<i32> {
-    native(@std.core.u32_from) fun from(x: i32) -> u32;
+    native(@std.core.u32_from) fun from(value: i32) -> u32;
 }
 
 extend u32: From<i64> {
-    native(@std.core.u32_from) fun from(x: i64) -> u32;
+    native(@std.core.u32_from) fun from(value: i64) -> u32;
 }
 
 extend u32: From<u8> {
-    native(@std.core.u32_from) fun from(x: u8) -> u32;
+    native(@std.core.u32_from) fun from(value: u8) -> u32;
 }
 
 extend u32: From<u16> {
-    native(@std.core.u32_from) fun from(x: u16) -> u32;
+    native(@std.core.u32_from) fun from(value: u16) -> u32;
 }
 
 extend u32: From<u64> {
-    native(@std.core.u32_from) fun from(x: u64) -> u32;
+    native(@std.core.u32_from) fun from(value: u64) -> u32;
 }
 
 extend u32: From<f32> {
-    native(@std.core.u32_from) fun from(x: f32) -> u32;
+    native(@std.core.u32_from) fun from(value: f32) -> u32;
 }
 
 extend u32: From<f64> {
-    native(@std.core.u32_from) fun from(x: f64) -> u32;
+    native(@std.core.u32_from) fun from(value: f64) -> u32;
 }
 
 extend u64: From<i8> {
-    native(@std.core.u64_from) fun from(x: i8) -> u64;
+    native(@std.core.u64_from) fun from(value: i8) -> u64;
 }
 
 extend u64: From<i16> {
-    native(@std.core.u64_from) fun from(x: i16) -> u64;
+    native(@std.core.u64_from) fun from(value: i16) -> u64;
 }
 
 extend u64: From<i32> {
-    native(@std.core.u64_from) fun from(x: i32) -> u64;
+    native(@std.core.u64_from) fun from(value: i32) -> u64;
 }
 
 extend u64: From<i64> {
-    native(@std.core.u64_from) fun from(x: i64) -> u64;
+    native(@std.core.u64_from) fun from(value: i64) -> u64;
 }
 
 extend u64: From<u8> {
-    native(@std.core.u64_from) fun from(x: u8) -> u64;
+    native(@std.core.u64_from) fun from(value: u8) -> u64;
 }
 
 extend u64: From<u16> {
-    native(@std.core.u64_from) fun from(x: u16) -> u64;
+    native(@std.core.u64_from) fun from(value: u16) -> u64;
 }
 
 extend u64: From<u32> {
-    native(@std.core.u64_from) fun from(x: u32) -> u64;
+    native(@std.core.u64_from) fun from(value: u32) -> u64;
 }
 
 extend u64: From<f32> {
-    native(@std.core.u64_from) fun from(x: f32) -> u64;
+    native(@std.core.u64_from) fun from(value: f32) -> u64;
 }
 
 extend u64: From<f64> {
-    native(@std.core.u64_from) fun from(x: f64) -> u64;
+    native(@std.core.u64_from) fun from(value: f64) -> u64;
 }
 
 extend f32: From<i8> {
-    native(@std.core.f32_from) fun from(x: i8) -> f32;
+    native(@std.core.f32_from) fun from(value: i8) -> f32;
 }
 
 extend f32: From<i16> {
-    native(@std.core.f32_from) fun from(x: i16) -> f32;
+    native(@std.core.f32_from) fun from(value: i16) -> f32;
 }
 
 extend f32: From<i32> {
-    native(@std.core.f32_from) fun from(x: i32) -> f32;
+    native(@std.core.f32_from) fun from(value: i32) -> f32;
 }
 
 extend f32: From<i64> {
-    native(@std.core.f32_from) fun from(x: i64) -> f32;
+    native(@std.core.f32_from) fun from(value: i64) -> f32;
 }
 
 extend f32: From<u8> {
-    native(@std.core.f32_from) fun from(x: u8) -> f32;
+    native(@std.core.f32_from) fun from(value: u8) -> f32;
 }
 
 extend f32: From<u16> {
-    native(@std.core.f32_from) fun from(x: u16) -> f32;
+    native(@std.core.f32_from) fun from(value: u16) -> f32;
 }
 
 extend f32: From<u32> {
-    native(@std.core.f32_from) fun from(x: u32) -> f32;
+    native(@std.core.f32_from) fun from(value: u32) -> f32;
 }
 
 extend f32: From<u64> {
-    native(@std.core.f32_from) fun from(x: u64) -> f32;
+    native(@std.core.f32_from) fun from(value: u64) -> f32;
 }
 
 extend f32: From<f64> {
-    native(@std.core.f32_from) fun from(x: f64) -> f32;
+    native(@std.core.f32_from) fun from(value: f64) -> f32;
 }
 
 extend f64: From<i8> {
-    native(@std.core.f64_from) fun from(x: i8) -> f64;
+    native(@std.core.f64_from) fun from(value: i8) -> f64;
 }
 
 extend f64: From<i16> {
-    native(@std.core.f64_from) fun from(x: i16) -> f64;
+    native(@std.core.f64_from) fun from(value: i16) -> f64;
 }
 
 extend f64: From<i32> {
-    native(@std.core.f64_from) fun from(x: i32) -> f64;
+    native(@std.core.f64_from) fun from(value: i32) -> f64;
 }
 
 extend f64: From<i64> {
-    native(@std.core.f64_from) fun from(x: i64) -> f64;
+    native(@std.core.f64_from) fun from(value: i64) -> f64;
 }
 
 extend f64: From<u8> {
-    native(@std.core.f64_from) fun from(x: u8) -> f64;
+    native(@std.core.f64_from) fun from(value: u8) -> f64;
 }
 
 extend f64: From<u16> {
-    native(@std.core.f64_from) fun from(x: u16) -> f64;
+    native(@std.core.f64_from) fun from(value: u16) -> f64;
 }
 
 extend f64: From<u32> {
-    native(@std.core.f64_from) fun from(x: u32) -> f64;
+    native(@std.core.f64_from) fun from(value: u32) -> f64;
 }
 
 extend f64: From<u64> {
-    native(@std.core.f64_from) fun from(x: u64) -> f64;
+    native(@std.core.f64_from) fun from(value: u64) -> f64;
 }
 
 extend f64: From<f32> {
-    native(@std.core.f64_from) fun from(x: f32) -> f64;
+    native(@std.core.f64_from) fun from(value: f32) -> f64;
 }
 
 // ── Char ↔ u32 (Unicode code point) conversions ────────────────────────────
 
 extend u32: From<Char> {
-    native(@std.core.u32_from) fun from(x: Char) -> u32;
+    native(@std.core.u32_from) fun from(value: Char) -> u32;
 }
 
 extend Char: From<u32> {
     // Panics (R0009) when the code point is not a valid Unicode scalar.
-    native(@std.core.char_from) fun from(x: u32) -> Char;
+    native(@std.core.char_from) fun from(value: u32) -> Char;
 }
