@@ -679,6 +679,9 @@ pub struct BreakExpr {
 
 // ── Expressions ───────────────────────────────────────────────────────────────
 
+/// The name of a spread argument `..value` in a call, carried by an [`Expr::NamedArg`] (RFC-0100 section 7).
+pub const SPREAD_ARG: &str = "..";
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal, Span),
@@ -725,6 +728,9 @@ pub enum Expr {
     /// A keyword argument `name = value` (RFC-0223). It occurs only as an element of a call's `args`;
     /// the parser builds it for `keyword_arg`, and binding it to a parameter belongs to the checker
     /// (metel-core#1858). Anywhere else it is an internal error.
+    ///
+    /// A spread argument `..value` (RFC-0100 section 7, `Type(..r)`) is a `NamedArg` whose name is
+    /// [`SPREAD_ARG`]; only a construction call accepts it.
     NamedArg {
         name: String,
         value: Box<Expr>,

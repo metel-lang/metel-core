@@ -1,0 +1,20 @@
+// RFC-0100 sections 1 and 7 (metel-core#1860): an enum struct-variant is built by `Enum::Variant(args)`,
+// and `Type(..r)` builds a struct from a record binding of exactly its row.
+enum Shape { Circle { r: i64 }, Rect { w: i64, h: i64 } }
+struct Point { x: i64, y: i64 }
+
+fun area(s: Shape) -> i64 {
+    match (s) {
+        Shape::Circle { r } => r * r * 3,
+        Shape::Rect { w, h } => w * h,
+    }
+}
+
+fun main() {
+    assert(area(Shape::Rect(w = 2, h = 3)) == 6);
+    assert(area(Shape::Rect(2, 3)) == 6);
+    assert(area(Shape::Circle(2)) == 12);
+    let row := { x = 1, y = 2 };
+    let p := Point(..row);
+    assert(p.x == 1 && p.y == 2);
+}

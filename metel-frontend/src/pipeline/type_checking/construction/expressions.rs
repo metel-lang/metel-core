@@ -791,6 +791,20 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
+        } if construction_field_names(callee, ctx).is_some() => {
+            // RFC-0100: construct the struct literal the construction call is equivalent to.
+            let names = construction_field_names(callee, ctx)
+                .ok_or_else(|| MetelError::internal("construction call lost its type"))?;
+            let literal = super::super::construction_call::literal_for(
+                callee, type_args, args, span, &names,
+            )?;
+            construct_expr(&literal, expected_ty, ctx)
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } if super::super::keyword_binding::has_keyword(args)
             && !super::super::overload::callee_name(callee)
                 .is_some_and(|name| ctx.overloads.contains_key(name)) =>
@@ -2453,4 +2467,68 @@ fn keyword_argument_local(call_span: &Span, written: usize) -> crate::identity::
     "metel.identity.keyword-argument-temporary".hash(&mut hasher);
     (&call_span.filename, call_span.start, call_span.end, written).hash(&mut hasher);
     crate::identity::LocalId(hasher.finish())
+}
+
+/// The declared field names of the struct or struct-like variant a call's callee names, when it names
+/// one and no value of that name shadows it (RFC-0100): the call is then a construction call.
+fn construction_field_names(callee: &Expr, ctx: &ConstructCtx) -> Option<Vec<String>> {
+    use super::super::construction_call::{Target, callee_symbol, target_of};
+    let id = callee_symbol(callee);
+    match target_of(callee)? {
+        Target::Struct(_) if id.is_some() => ctx
+            .registry
+            .raw_struct_env()
+            .get(&id?)
+            .map(|fields| fields.iter().map(|field| field.name.clone()).collect()),
+        Target::Variant(..) if id.is_some() => {
+            let (_, variant) = match callee {
+                Expr::ResolvedPath { resolved, .. } => resolved.split_once("::")?,
+                _ => return None,
+            };
+            let info = ctx.registry.enum_info_by_id(id?)?;
+            let variant = info.variants.iter().find(|v| v.name == variant)?;
+            (!variant.fields.is_empty()).then(|| {
+                variant
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect()
+            })
+        }
+        Target::Struct(name) => {
+            // A value of that name, visible or not, makes the call an ordinary call of it.
+            let names_a_function = ctx
+                .binding_id_at(callee.span())
+                .and_then(crate::identity::BindingId::as_global)
+                .is_some_and(|symbol| ctx.identity.binding_spans.callee_params(symbol).is_some());
+            if names_a_function
+                || ctx.lookup_at(callee.span()).is_some()
+                || ctx.scheme_at(callee.span()).is_some()
+                || ctx.overloads.contains_key(name)
+            {
+                return None;
+            }
+            if let Some(fields) = ctx.get_struct_fields(name) {
+                return Some(fields.iter().map(|(field, ..)| field.clone()).collect());
+            }
+            // A generic struct has no concrete fields in scope; its declared ones name them.
+            let id = ctx.written_type_id(name)?;
+            ctx.registry
+                .raw_struct_env()
+                .get(&id)
+                .map(|fields| fields.iter().map(|field| field.name.clone()).collect())
+        }
+        Target::Variant(enum_name, variant) => {
+            let id = ctx.written_type_id(enum_name)?;
+            let info = ctx.registry.enum_info_by_id(id)?;
+            let variant = info.variants.iter().find(|v| v.name == variant)?;
+            (!variant.fields.is_empty()).then(|| {
+                variant
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect()
+            })
+        }
+    }
 }

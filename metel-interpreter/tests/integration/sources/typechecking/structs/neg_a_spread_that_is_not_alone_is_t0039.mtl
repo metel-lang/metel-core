@@ -1,0 +1,6 @@
+struct Point { x: i64, y: i64 }
+
+fun main() {
+    let row := { x = 1, y = 2 };
+    let p := Point(..row, x = 5);
+}

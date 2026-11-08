@@ -252,7 +252,9 @@ postfix          = {
 // RFC-0223: keyword arguments at every call. `keyword_arg` is tried before `expr` (keyword-first is
 // mandatory once `=` is an assignment expression, and harmless today: assignment is spelled `:=`).
 arg_list    = { call_arg ~ ("," ~ call_arg)* ~ ","? }
-call_arg    = { keyword_arg | expr }
+call_arg    = { keyword_arg | spread_arg | expr }
+// RFC-0100 section 7: `Type(..r)` builds a struct from a record of exactly its row.
+spread_arg  = { ".." ~ expr }
 keyword_arg = { ident ~ "=" ~ !"=" ~ expr }
 
 primary_expr = {

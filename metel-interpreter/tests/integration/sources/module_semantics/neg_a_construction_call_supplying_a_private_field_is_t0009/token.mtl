@@ -1,0 +1,1 @@
+pub struct Token { pub kind: i64, secret: i64 }
