@@ -106,8 +106,8 @@ aspect Echo {
     fun echo<V>(self, value: V) -> V { identity(value) }
     fun duplicate<V>(self, value: V) { let first := value; let second := value; }
 }
-struct Box<T> { public value: T }
-struct Other<T> { public value: T }
+struct Box<T> { pub value: T }
+struct Other<T> { pub value: T }
 extend<T> Box<T>: Echo {}
 extend<T> Other<T>: Echo {}
 extend<record R> { ..R }: Echo {}

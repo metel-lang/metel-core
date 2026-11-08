@@ -1,4 +1,4 @@
-public struct Box<T> { public value: T }
+pub struct Box<T> { pub value: T }
 extend<T> Box<T> {
-    public fun consume(self) -> Box<T> { self }
+    pub fun consume(self) -> Box<T> { self }
 }

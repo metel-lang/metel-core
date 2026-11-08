@@ -1,4 +1,4 @@
 import math::add;         
-public fun make_adder(n: i64) -> |i64| -> i64 {         
+pub fun make_adder(n: i64) -> |i64| -> i64 {         
     return |x: i64| -> i64 { return add(x, n); };         
 }

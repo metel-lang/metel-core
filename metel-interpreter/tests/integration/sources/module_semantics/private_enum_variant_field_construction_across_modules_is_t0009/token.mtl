@@ -1,1 +1,1 @@
-public enum Token { Inner { public kind: i64, offset: i64 } }
+pub enum Token { Inner { pub kind: i64, offset: i64 } }

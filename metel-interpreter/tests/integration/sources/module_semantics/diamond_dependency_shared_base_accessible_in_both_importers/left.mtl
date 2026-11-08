@@ -1,2 +1,2 @@
 import base::shared;
-public fun left_answer() -> i64 { return shared(); }
+pub fun left_answer() -> i64 { return shared(); }

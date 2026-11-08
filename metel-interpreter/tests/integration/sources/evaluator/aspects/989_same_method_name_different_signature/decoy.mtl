@@ -3,7 +3,7 @@
 // safety wasn't guaranteed before the per-module rekey: if `dyn Metric` dispatch
 // picked decoy's aspect, `v` below would be typed i64 and the f64 arithmetic
 // would fail.
-public aspect Metric {
+pub aspect Metric {
     fun value(&self) -> i64;
 }
-public fun marker() -> i64 { 0 }
+pub fun marker() -> i64 { 0 }

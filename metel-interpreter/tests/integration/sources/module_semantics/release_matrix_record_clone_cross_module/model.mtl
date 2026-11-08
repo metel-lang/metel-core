@@ -1,1 +1,1 @@
-public record Packet { id: i64, name: String }
+pub record Packet { id: i64, name: String }

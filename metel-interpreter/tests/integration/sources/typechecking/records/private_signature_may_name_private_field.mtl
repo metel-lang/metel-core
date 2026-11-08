@@ -1,10 +1,10 @@
 // metel-core#1488: only public signatures are restricted. A private function and a public
 // signature that names only public fields are both fine.
-public struct Ticket { public id: i64, secret: String }
+pub struct Ticket { pub id: i64, secret: String }
 
 fun hide(t: Ticket) -> Ticket.{ secret } { t.{ secret } }
 
-public fun ids(t: Ticket) -> Ticket.{ id } { t.{ id } }
+pub fun ids(t: Ticket) -> Ticket.{ id } { t.{ id } }
 
 fun main() {
     let u := Ticket { id = 2, secret = "u".to_string() };

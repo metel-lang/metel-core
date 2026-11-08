@@ -1,6 +1,6 @@
-// `Secret` is not `public` — re-exporting it must fail.
+// `Secret` is not `pub` — re-exporting it must fail.
 type Secret := i64;
 
-public fun make() -> i64 {
+pub fun make() -> i64 {
     1
 }

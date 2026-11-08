@@ -1,5 +1,5 @@
 // A foreign aspect, declared away from both `main.mtl` and `widget.mtl`.
 
-public aspect Greet {
+pub aspect Greet {
     fun greet(self) -> String;
 }

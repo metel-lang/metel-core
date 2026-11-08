@@ -1,2 +1,2 @@
-public fun pub_fn() -> i64 { return 1; }
+pub fun pub_fn() -> i64 { return 1; }
 fun private_fn() -> i64 { return 2; }

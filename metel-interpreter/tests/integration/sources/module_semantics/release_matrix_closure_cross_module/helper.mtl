@@ -1,5 +1,5 @@
-public type MessageCallback := once || -> String;
+pub type MessageCallback := once || -> String;
 
-public fun make_message(message: String) -> MessageCallback {
+pub fun make_message(message: String) -> MessageCallback {
     [message] once || { message }
 }

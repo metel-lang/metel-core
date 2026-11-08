@@ -1009,8 +1009,8 @@ fn abstract_field_selection_preserves_equal_spelled_cross_module_owners() {
         AbstractBodyPreparation, AbstractExprKind, AbstractFieldSelection,
     };
     let typed = typecheck_sources("abstract_modules/main.mtl", "import alpha::take_alpha; import beta::take_beta; fun main() {}", &[
-        ("alpha.mtl", "public struct Box<T> { public value: T } public fun take_alpha<T>(value: Box<T>) -> T { value.value }"),
-        ("beta.mtl", "public struct Box<T> { public value: T } public fun take_beta<T>(value: Box<T>) -> T { value.value }"),
+        ("alpha.mtl", "pub struct Box<T> { pub value: T } pub fun take_alpha<T>(value: Box<T>) -> T { value.value }"),
+        ("beta.mtl", "pub struct Box<T> { pub value: T } pub fun take_beta<T>(value: Box<T>) -> T { value.value }"),
     ]).report;
     let selected = |name: &str| {
         let function = typed

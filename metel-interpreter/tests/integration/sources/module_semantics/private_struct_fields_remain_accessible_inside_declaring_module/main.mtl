@@ -1,3 +1,3 @@
-public struct Token { public kind: i64, offset: i64 }
+pub struct Token { pub kind: i64, offset: i64 }
          fun offset_of(t: Token) -> i64 { return t.offset; }
          fun main() -> i64 { let t := Token { kind = 3, offset = 9 }; return offset_of(t); }

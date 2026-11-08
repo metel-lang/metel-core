@@ -1,2 +1,2 @@
-public fun pub_b() -> i64 { return 2; }
+pub fun pub_b() -> i64 { return 2; }
 fun helper() -> i64 { return 20; }

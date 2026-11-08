@@ -1,4 +1,4 @@
-// RFC-0160: a `public type` alias crosses module boundaries — imported by name,
+// RFC-0160: a `pub type` alias crosses module boundaries — imported by name,
 // under a local rename, and referenced with a qualified path. All three spell
 // the same erased type, interchangeable with its expansion.
 import geometry::{Vec2, Transform};

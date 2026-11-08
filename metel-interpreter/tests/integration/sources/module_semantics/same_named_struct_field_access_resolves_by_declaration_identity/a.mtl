@@ -1,2 +1,2 @@
-public struct Item { public x: i64 }
-public fun make() -> Item { Item { x = 1 } }
+pub struct Item { pub x: i64 }
+pub fun make() -> Item { Item { x = 1 } }

@@ -1,6 +1,6 @@
 // metel-core#1488: the parameter position is a public signature too.
-public struct Ticket { public id: i64, secret: String }
+pub struct Ticket { pub id: i64, secret: String }
 
-public fun read(t: Ticket.{ secret }) -> () {} // ERROR[T0009]
+pub fun read(t: Ticket.{ secret }) -> () {} // ERROR[T0009]
 
 fun main() {}

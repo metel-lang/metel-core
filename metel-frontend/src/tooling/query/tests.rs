@@ -126,7 +126,7 @@ fn identity_queries_return_none_off_a_name() {
 
 #[test]
 fn definition_resolves_an_explicitly_imported_name_to_its_declaring_module() {
-    let alpha_src = "public fun helper() -> i64 { 42 }";
+    let alpha_src = "pub fun helper() -> i64 { 42 }";
     let root_src = "import alpha::helper;\nfun main() -> i64 { helper() }";
     let analysis = multi_module_analysis(&[("alpha", alpha_src), ("root", root_src)]);
 
@@ -152,7 +152,7 @@ fn definition_resolves_an_explicitly_imported_name_to_its_declaring_module() {
 
 #[test]
 fn definition_resolves_a_module_path_segment_to_the_module_not_the_item() {
-    let alpha_src = "public fun connect() -> i64 { 1 }";
+    let alpha_src = "pub fun connect() -> i64 { 1 }";
     let root_src = "import alpha::*;\nfun main() -> i64 { alpha::connect() }";
     let analysis = multi_module_analysis(&[("alpha", alpha_src), ("root", root_src)]);
 

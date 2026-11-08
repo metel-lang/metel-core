@@ -1,1 +1,1 @@
-public fun right_val() -> i64 { return 10; }
+pub fun right_val() -> i64 { return 10; }

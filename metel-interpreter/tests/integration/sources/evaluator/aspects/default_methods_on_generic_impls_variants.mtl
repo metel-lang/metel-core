@@ -22,9 +22,9 @@ aspect Reader {
     fun read_plus(&self, n: i64) -> i64 { self.read() + n }
 }
 
-struct Box<U> { public v: U }
-struct Cell<U> { public n: i64, public w: U }
-struct Held<U> { public v: U }
+struct Box<U> { pub v: U }
+struct Cell<U> { pub n: i64, pub w: U }
+struct Held<U> { pub v: U }
 
 // `twice` is overridden, `quad` and `pick` are inherited; `quad` calls the *override*
 extend<U> Box<U>: Describe {

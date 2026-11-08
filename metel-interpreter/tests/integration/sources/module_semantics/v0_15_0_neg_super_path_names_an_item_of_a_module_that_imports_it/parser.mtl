@@ -1,1 +1,1 @@
-public fun make() -> i64 { super::helper() + 1 }
+pub fun make() -> i64 { super::helper() + 1 }

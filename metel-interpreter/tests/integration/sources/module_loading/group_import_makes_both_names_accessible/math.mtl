@@ -1,2 +1,2 @@
-public fun add(a: i64, b: i64) -> i64 { return a + b; }
-public fun mul(a: i64, b: i64) -> i64 { return a * b; }
+pub fun add(a: i64, b: i64) -> i64 { return a + b; }
+pub fun mul(a: i64, b: i64) -> i64 { return a * b; }

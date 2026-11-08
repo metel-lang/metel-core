@@ -1,7 +1,7 @@
 // metel-core#1322: a method defined twice in one `extend` block. The later definition
 // used to replace the earlier one silently at dispatch.
 
-struct Foo { public v: i64 }
+struct Foo { pub v: i64 }
 
 extend Foo {
     fun f(self) -> i64 { 1 }

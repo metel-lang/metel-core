@@ -1,5 +1,5 @@
 // metel-core#1763: a child module names a sibling's type through `root::` and `super::`.
-public fun probe() -> i64 {
+pub fun probe() -> i64 {
     let a := root::shared::Counter::new();
     let b := super::shared::Counter::new();
     let c := root::shared::Counter { n = 10 };

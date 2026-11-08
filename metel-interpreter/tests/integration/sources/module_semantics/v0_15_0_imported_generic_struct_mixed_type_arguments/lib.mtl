@@ -1,8 +1,8 @@
-public struct Pair<A, B> {
-    public first: A,
-    public second: B,
+pub struct Pair<A, B> {
+    pub first: A,
+    pub second: B,
 }
 
-public fun swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
+pub fun swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
     Pair { first = p.second, second = p.first }
 }

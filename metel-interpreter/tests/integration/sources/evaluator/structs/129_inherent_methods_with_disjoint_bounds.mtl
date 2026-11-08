@@ -4,7 +4,7 @@
 
 aspect Tag { fun tag(self) -> i64; }
 
-struct Box<T> { public v: T }
+struct Box<T> { pub v: T }
 
 extend i64: Tag { fun tag(self) -> i64 { 7 } }
 
@@ -17,7 +17,7 @@ extend<T: !Tag> Box<T> {
 }
 
 // Different instantiations reuse a name too, and must keep dispatching by type argument.
-struct W<T> { public v: T }
+struct W<T> { pub v: T }
 
 extend W<i64> { fun which(self) -> i64 { 10 } }
 extend W<String> { fun which(self) -> i64 { 20 } }

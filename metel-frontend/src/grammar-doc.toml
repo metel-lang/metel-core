@@ -836,7 +836,7 @@ mode = "inline"
 [[rule]]
 pest = "pub_kw"
 mode = "literal"
-values = ["public"]
+values = ["pub"]
 [[rule]]
 pest = "mut_kw"
 mode = "literal"

@@ -7,13 +7,13 @@ aspect Source {
     fun first_again(self) -> Item { self.first() }
 }
 
-struct Box<U> { public v: U }
+struct Box<U> { pub v: U }
 extend<U> Box<U>: Source {
     type Item := i64;
     fun first(self) -> i64 { 9 }
 }
 
-struct Plain { public v: i64 }
+struct Plain { pub v: i64 }
 extend Plain: Source {
     type Item := String;
     fun first(self) -> String { "p".to_string() }

@@ -1,0 +1,4 @@
+// RFC-0218: `public` stays reserved after the rename, so it cannot name a binding either.
+fun main() {
+    let public := 1;
+}

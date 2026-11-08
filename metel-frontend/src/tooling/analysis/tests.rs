@@ -757,9 +757,9 @@ fn a_broken_sibling_file_does_not_sink_the_rest_of_the_project() {
         "editor.mtl",
         "import a::helper;\nimport b::broken;\nfun main() -> i64 { helper() }\n",
     )
-    .with_file("a.mtl", "public fun helper() -> i64 { 42 }\n")
+    .with_file("a.mtl", "pub fun helper() -> i64 { 42 }\n")
     // Missing closing paren -- a genuine parse error, not a semantic one.
-    .with_file("b.mtl", "public fun broken( -> i64 { 1 }\n");
+    .with_file("b.mtl", "pub fun broken( -> i64 { 1 }\n");
 
     let report =
         analyze_virtual_root_with_diagnostics("editor.mtl", &provider, AnalysisOptions::default());
@@ -817,11 +817,11 @@ fn an_independent_type_error_does_not_sink_unrelated_modules() {
         "editor.mtl",
         "import b::ok_fn;\nimport c::uses_a;\nfun main() -> i64 { ok_fn() }\n",
     )
-    .with_file("a.mtl", "public fun bad() -> i64 { \"oops\" }\n")
-    .with_file("b.mtl", "public fun ok_fn() -> i64 { 1 }\n")
+    .with_file("a.mtl", "pub fun bad() -> i64 { \"oops\" }\n")
+    .with_file("b.mtl", "pub fun ok_fn() -> i64 { 1 }\n")
     .with_file(
         "c.mtl",
-        "import a::bad;\npublic fun uses_a() -> i64 { bad() }\n",
+        "import a::bad;\npub fun uses_a() -> i64 { bad() }\n",
     );
 
     let report =
@@ -880,7 +880,7 @@ fn an_independent_type_error_does_not_sink_unrelated_modules() {
     // are not -- hover/goto-def degrade only for the affected subgraph.
     // The offset targets the body's `1` (a typed expression); the
     // function name itself has no expression node to hover.
-    const B_SOURCE: &str = "public fun ok_fn() -> i64 { 1 }\n";
+    const B_SOURCE: &str = "pub fun ok_fn() -> i64 { 1 }\n";
     let body_offset = B_SOURCE.rfind('1').expect("b.mtl's body is `1`");
     assert!(
         analysis.hover_at("b.mtl", body_offset).is_some(),

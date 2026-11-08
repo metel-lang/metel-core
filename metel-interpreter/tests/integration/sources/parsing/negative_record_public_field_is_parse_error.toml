@@ -7,4 +7,4 @@ status = "parse_error"
 code = "P0001"
 line = 6
 col = 5
-contains = "`public` is not written on field `fd` of `record Handle`"
+contains = "`pub` is not written on field `fd` of `record Handle`"

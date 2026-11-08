@@ -1,5 +1,5 @@
-public struct Token {
+pub struct Token {
     value: i64,
 }
 
-public aspect Marker;
+pub aspect Marker;

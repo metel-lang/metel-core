@@ -1,1 +1,1 @@
-public fun print(x: i64) -> i64 { return x + 1; }
+pub fun print(x: i64) -> i64 { return x + 1; }

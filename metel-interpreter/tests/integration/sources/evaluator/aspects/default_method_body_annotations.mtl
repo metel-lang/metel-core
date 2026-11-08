@@ -15,12 +15,12 @@ aspect Source {
     fun qualified(self) -> Self::Item { let x: Self::Item := self.first(); x }
 }
 
-struct Box { public v: i64 }
+struct Box { pub v: i64 }
 extend Box: Conv<i64> {
     fun get(self) -> i64 { 3 }
 }
 
-struct Wrap<U> { public v: U }
+struct Wrap<U> { pub v: U }
 extend<U> Wrap<U>: Source {
     type Item := i64;
     fun first(self) -> i64 { 9 }

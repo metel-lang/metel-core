@@ -2,8 +2,8 @@ aspect NonCopyTake {
     fun describe(self) -> String;
 }
 
-public struct Box<T> {
-    public value: T,
+pub struct Box<T> {
+    pub value: T,
 }
 
 extend<T: !Copy> Box<T>: NonCopyTake {

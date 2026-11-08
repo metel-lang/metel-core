@@ -2,9 +2,9 @@
 // List<T> + fixed-size arrays working together in a numeric processing pipeline.
 
 struct Sample {
-    public raw: i16,
-    public scaled: f32,
-    public bucket: u8,
+    pub raw: i16,
+    pub scaled: f32,
+    pub bucket: u8,
 }
 
 fun scale(v: i16, factor: f32) -> f32 {

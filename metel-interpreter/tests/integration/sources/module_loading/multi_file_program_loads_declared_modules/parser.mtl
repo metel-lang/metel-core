@@ -1,1 +1,1 @@
-public struct Token { public value: i64 }
+pub struct Token { pub value: i64 }

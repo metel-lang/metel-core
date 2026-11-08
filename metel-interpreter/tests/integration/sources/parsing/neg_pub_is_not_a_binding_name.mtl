@@ -1,0 +1,4 @@
+// RFC-0218: `pub` is a reserved word, so it cannot name a binding.
+fun main() {
+    let pub := 1;
+}

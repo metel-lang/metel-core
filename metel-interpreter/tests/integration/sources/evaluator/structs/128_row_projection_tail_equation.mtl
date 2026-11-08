@@ -3,7 +3,7 @@
 // as it does on a record tail, and they count as kept by the width-subtyping check
 // (so a non-`Copy` field the equation names is not "forgotten").
 
-struct Handle { public fd: i64, public extra: String }
+struct Handle { pub fd: i64, pub extra: String }
 
 fun use_it<record R, record Rest>(h: Handle.{ fd, ..R }) -> i64
 where R = { extra: String, ..Rest } {

@@ -1,0 +1,7 @@
+// RFC-0218: `pub` is a keyword only as a whole word; longer identifiers that begin with it are ordinary.
+fun main() {
+    let publish := 1;
+    let pub_key := 2;
+    let pubs := 3;
+    assert(publish + pub_key + pubs == 6);
+}

@@ -1,4 +1,4 @@
-// RFC-0160: referencing another module's non-`public` alias is a visibility
+// RFC-0160: referencing another module's non-`pub` alias is a visibility
 // error, the same as any other private item.
 import secrets::Secret;
 

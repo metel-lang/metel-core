@@ -1,5 +1,5 @@
 // A module whose public surface is entirely type aliases. RFC-0160: a `public
 // type` is importable like any other item; the alias itself is erased, so this
 // module contributes no runtime declarations.
-public type Vec2 := (f64, f64);
-public type Transform := |Vec2| -> Vec2;
+pub type Vec2 := (f64, f64);
+pub type Transform := |Vec2| -> Vec2;

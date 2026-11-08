@@ -1,6 +1,6 @@
 // metel-core#1322: the same method name in two inherent `extend` blocks of one type.
 
-struct Foo { public v: i64 }
+struct Foo { pub v: i64 }
 
 extend Foo {
     fun f(self) -> i64 { 1 }

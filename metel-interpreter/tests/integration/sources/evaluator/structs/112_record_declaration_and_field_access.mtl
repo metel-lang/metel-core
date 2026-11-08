@@ -1,7 +1,7 @@
 // RFC-0120 (metel-core#1300): `record X { ... }` is legal everywhere
 // `struct X { ... }` is -- identical declaration grammar (generics, zero-field
 // forms), construction syntax (shorthand field init included), and field
-// access. Every field of a record must be `public` (checked separately,
+// access. Every field of a record must be `pub` (checked separately,
 // 113_record_private_field_is_parse_error).
 
 record Handle {

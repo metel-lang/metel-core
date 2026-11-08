@@ -1,5 +1,5 @@
 struct Thing {
-    public value: i64,
+    pub value: i64,
 }
 
 fun main() {

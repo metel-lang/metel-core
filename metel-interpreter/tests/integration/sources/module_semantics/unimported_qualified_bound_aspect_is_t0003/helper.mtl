@@ -1,2 +1,2 @@
-public aspect Marker { }
-public fun ping() -> () { }
+pub aspect Marker { }
+pub fun ping() -> () { }

@@ -1,1 +1,1 @@
-public fun answer() -> i64 { return 7; }
+pub fun answer() -> i64 { return 7; }

@@ -3,7 +3,7 @@
 // default through the registry rather than from this module's own declarations.
 import lib::*;
 
-struct Box<U> { public v: U }
+struct Box<U> { pub v: U }
 
 extend<U> Box<U>: Describe { fun describe(self) -> i64 { 4 } }
 

@@ -1,6 +1,6 @@
 import base::Point;
 
-public aspect Shower {
+pub aspect Shower {
     fun show(self) -> String;
 }
 

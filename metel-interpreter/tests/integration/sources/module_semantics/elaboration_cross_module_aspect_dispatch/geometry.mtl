@@ -1,16 +1,16 @@
 // Aspect and struct defined in a dependency module.
 // The elaboration pass must resolve method dispatch using the declaring module's SymbolId.
 
-public aspect Describable {
+pub aspect Describable {
     fun describe(self) -> String;
 }
 
-public aspect Scalable {
+pub aspect Scalable {
     fun scale(self, factor: i64) -> i64;
 }
 
-public struct Circle { public radius: i64 }
-public struct Rectangle { public width: i64, public height: i64 }
+pub struct Circle { pub radius: i64 }
+pub struct Rectangle { pub width: i64, pub height: i64 }
 
 extend Circle: Describable {
     fun describe(self) -> String {

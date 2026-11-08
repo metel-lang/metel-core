@@ -1,6 +1,6 @@
 // The rule applies to a generic record too, whatever the field's type (metel-core#1440).
 record Box<record R> {
-    public data: { ..R },
+    pub data: { ..R },
 }
 
 fun main() {}

@@ -6,7 +6,7 @@ aspect Describe {
     fun pick<V>(self, x: V) -> V { x }
 }
 
-struct Box { public v: i64 }
+struct Box { pub v: i64 }
 extend Box: Describe {
     fun describe(self) -> i64 { 1 }
 }

@@ -1,4 +1,4 @@
-public aspect Describe {
+pub aspect Describe {
     fun describe(&self) -> String;
 }
 

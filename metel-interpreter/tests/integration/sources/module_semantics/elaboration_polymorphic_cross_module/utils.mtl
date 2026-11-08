@@ -1,7 +1,7 @@
 // Generic utilities imported by main — tests that polymorphic calls survive elaboration.
 
-public fun identity<T>(x: T) -> T { x }
+pub fun identity<T>(x: T) -> T { x }
 
-public fun first<T>(a: T, b: T) -> T { a }
+pub fun first<T>(a: T, b: T) -> T { a }
 
-public fun apply<T>(f: |T| -> T, x: T) -> T { f(x) }
+pub fun apply<T>(f: |T| -> T, x: T) -> T { f(x) }

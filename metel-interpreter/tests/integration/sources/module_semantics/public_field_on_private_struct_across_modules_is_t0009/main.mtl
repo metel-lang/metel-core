@@ -1,5 +1,5 @@
-// #776: `public` on a field is conditional on the enclosing struct's own
-// visibility, not an independent grant. `Secret` is not `public`, so its
+// #776: `pub` on a field is conditional on the enclosing struct's own
+// visibility, not an independent grant. `Secret` is not `pub`, so its
 // `public value: i64` field must stay unreachable across a module boundary
 // even once a `Secret` is obtained via `make()`, a public function that
 // never names `Secret` itself.

@@ -1,18 +1,18 @@
-public record Packet<record R> { id: i64, data: { ..R } }
-public type EmptyPacket := Packet<{}>;
-public type Callback := once || -> i64;
+pub record Packet<record R> { id: i64, data: { ..R } }
+pub type EmptyPacket := Packet<{}>;
+pub type Callback := once || -> i64;
 
-public fun make<record R>(id: i64, data: { ..R }) -> Packet<..R> {
+pub fun make<record R>(id: i64, data: { ..R }) -> Packet<..R> {
     Packet { id = id, data = data }
 }
 
-public fun strip<record R, record Rest>(packet: Packet<..R>) -> Packet<..Rest>
+pub fun strip<record R, record Rest>(packet: Packet<..R>) -> Packet<..Rest>
 where R = { token: String, ..Rest } {
     let { id, data } := packet;
     let { token: _, ..rest } := data;
     Packet { id = id, data = rest }
 }
 
-public fun callback(packet: EmptyPacket) -> Callback {
+pub fun callback(packet: EmptyPacket) -> Callback {
     [packet] once || -> i64 { packet.id }
 }

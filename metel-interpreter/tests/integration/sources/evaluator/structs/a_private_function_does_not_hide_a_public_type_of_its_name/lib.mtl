@@ -1,7 +1,7 @@
 // metel-core#1571: `Foo` is public as a type and private as a function. Importing `Foo` brings
 // in the type; the private function is not importable but does not make the import fail.
-public struct Foo {
-    public x: i64,
+pub struct Foo {
+    pub x: i64,
 }
 
 fun Foo() -> i64 {

@@ -1,2 +1,2 @@
-struct Secret { public value: i64 }
-public fun make() -> Secret { return Secret { value = 42 }; }
+struct Secret { pub value: i64 }
+pub fun make() -> Secret { return Secret { value = 42 }; }

@@ -1,1 +1,1 @@
-public fun g() -> i64 { 5 }
+pub fun g() -> i64 { 5 }

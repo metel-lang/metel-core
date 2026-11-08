@@ -1,1 +1,1 @@
-public record Packet<record R> { data: { ..R } }
+pub record Packet<record R> { data: { ..R } }

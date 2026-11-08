@@ -1,1 +1,1 @@
-public fun tokenize() -> i64 { return 1; }
+pub fun tokenize() -> i64 { return 1; }

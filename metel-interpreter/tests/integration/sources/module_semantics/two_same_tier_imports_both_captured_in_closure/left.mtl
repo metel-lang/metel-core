@@ -1,1 +1,1 @@
-public fun left_val() -> i64 { return 6; }
+pub fun left_val() -> i64 { return 6; }

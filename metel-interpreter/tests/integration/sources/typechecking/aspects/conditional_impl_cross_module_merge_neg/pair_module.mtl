@@ -1,9 +1,9 @@
-public struct Pair<A, B> {
-    public first: A,
-    public second: B,
+pub struct Pair<A, B> {
+    pub first: A,
+    pub second: B,
 }
 
-public aspect Greet {
+pub aspect Greet {
     fun greet(&self) -> String;
 }
 
