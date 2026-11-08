@@ -154,7 +154,7 @@ pub(super) fn to_positional(
     if !binding.is_identity() && non_literal > 1 {
         return Err(MetelError::not_implemented(format!(
             "keyword arguments to `{callee}` written in a different order than its parameters, with \
-             more than one non-literal argument (evaluation-order temporaries, RFC-0223, metel-core#1858)"
+             more than one non-literal argument (evaluation-order temporaries, RFC-0223, metel-core#1873)"
         )));
     }
     Ok(binding
