@@ -853,6 +853,11 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             Expr::BinOp(Box::new(go(l)), op.clone(), Box::new(go(r)), s.clone())
         }
         Expr::UnaryOp(op, e, s) => Expr::UnaryOp(op.clone(), Box::new(go(e)), s.clone()),
+        Expr::NamedArg { name, value, span } => Expr::NamedArg {
+            name: name.clone(),
+            value: Box::new(go(value)),
+            span: span.clone(),
+        },
         Expr::Assign {
             target,
             op,

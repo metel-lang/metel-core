@@ -363,6 +363,7 @@ impl Walker<'_, '_> {
             Expr::UnaryOp(_, operand, _) => self.resolve_expr(operand),
             Expr::Cast { expr, .. }
             | Expr::Ascribe { expr, .. }
+            | Expr::NamedArg { value: expr, .. }
             | Expr::PropagateError { expr, .. } => self.resolve_expr(expr),
             Expr::Assign { target, value, .. } => {
                 self.resolve_assign_target(target);

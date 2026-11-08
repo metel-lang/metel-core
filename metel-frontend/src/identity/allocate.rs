@@ -1432,6 +1432,7 @@ impl Walker<'_> {
             }
             Expr::RepeatArray(x, _, _)
             | Expr::UnaryOp(_, x, _)
+            | Expr::NamedArg { value: x, .. }
             | Expr::FieldAccess { object: x, .. }
             | Expr::TupleAccess { object: x, .. }
             | Expr::Cast { expr: x, .. }

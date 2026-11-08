@@ -449,7 +449,9 @@ fn normalize_expr(
         Expr::UnaryOp(_, operand, _) => {
             normalize_expr(operand, scope, current_module, module_names, symbols)
         }
-        Expr::Cast { expr: inner, .. } | Expr::Ascribe { expr: inner, .. } => {
+        Expr::Cast { expr: inner, .. }
+        | Expr::Ascribe { expr: inner, .. }
+        | Expr::NamedArg { value: inner, .. } => {
             normalize_expr(inner, scope, current_module, module_names, symbols)
         }
         Expr::Assign { value, .. } => {

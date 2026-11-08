@@ -454,6 +454,16 @@ mode = "named"
 name = "Arguments"
 section = "Expressions"
 [[rule]]
+pest = "call_arg"
+mode = "named"
+name = "Argument"
+section = "Expressions"
+[[rule]]
+pest = "keyword_arg"
+mode = "named"
+name = "KeywordArgument"
+section = "Expressions"
+[[rule]]
 pest = "primary_expr"
 mode = "named"
 name = "PrimaryExpression"
