@@ -22,6 +22,7 @@ mod construction;
 mod conversions;
 mod handoff;
 mod inference;
+mod keyword_binding;
 pub(crate) use inference::impl_aspect_param_name;
 mod object_safety;
 mod overload;
