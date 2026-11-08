@@ -4,7 +4,7 @@
 
 record Builder<record R> { name: String, data: { ..R } }
 
-struct Tagged<T, record R> { public v: T, public extra: { ..R } }
+struct Tagged<T, record R> { pub v: T, pub extra: { ..R } }
 
 fun describe<record R>(b: Builder<..R>) -> String { b.name }
 

@@ -1,2 +1,2 @@
-public fun get_val() -> i64 { 42 }
-public struct Token { public value: i64 }
+pub fun get_val() -> i64 { 42 }
+pub struct Token { pub value: i64 }

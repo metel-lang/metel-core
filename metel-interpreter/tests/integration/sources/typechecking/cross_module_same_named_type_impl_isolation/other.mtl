@@ -1,11 +1,11 @@
 // A different module's own `Item`, with its own `Labelled` impl. Shares a name
 // with main.mtl's `Item` (below) but is otherwise unrelated.
 
-public struct Item {
+pub struct Item {
     y: i64,
 }
 
-public aspect Labelled {
+pub aspect Labelled {
     fun label(self) -> String;
 }
 

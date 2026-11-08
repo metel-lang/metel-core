@@ -1,4 +1,4 @@
-public aspect Shape {
+pub aspect Shape {
     fun area(&self) -> f64;
 }
-public fun marker() -> i64 { 0 }
+pub fun marker() -> i64 { 0 }

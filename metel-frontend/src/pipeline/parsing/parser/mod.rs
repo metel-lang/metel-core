@@ -51,7 +51,7 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
                         || e.variant.to_string(),
                         |keyword| {
                             format!(
-                                "`public` is not valid on `{keyword}`: top-level bindings are private; to export a function, write `public fun` with its parameter and return types"
+                                "`pub` is not valid on `{keyword}`: top-level bindings are private; to export a function, write `pub fun` with its parameter and return types"
                             )
                         },
                     )
@@ -70,20 +70,30 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
     parse_program(&mut pairs, filename)
 }
 
-/// RFC-0193 §3: `public` is valid on `struct`, `enum`, `fun` and `aspect` only. At the grammar's
-/// error site, `public let` / `public var` is named for what it is, with the fix, instead of the
+/// RFC-0193 §3: `pub` is valid on `struct`, `enum`, `fun` and `aspect` only. At the grammar's
+/// error site, `pub let` / `pub var` is named for what it is, with the fix, instead of the
 /// bare list of tokens the grammar expected.
 fn public_binding_keyword(source: &str, offset: usize) -> Option<&'static str> {
-    let before = source.get(..offset)?.trim_end();
-    let word_start = before.rfind(|ch: char| !(ch.is_alphanumeric() || ch == '_'));
-    let word = &before[word_start.map_or(0, |i| i + 1)..];
-    if word != "public" {
-        return None;
-    }
+    let is_word = |ch: char| ch.is_alphanumeric() || ch == '_';
+    // The failure sits either at the `pub` token (nothing after it could continue the declaration)
+    // or just after it; either way the binding keyword is the next word.
     let rest = source.get(offset..)?;
+    let after_pub = if let Some(after) = rest.strip_prefix("pub")
+        && !after.starts_with(is_word)
+    {
+        after
+    } else {
+        let before = source.get(..offset)?.trim_end();
+        let word_start = before.rfind(|ch: char| !is_word(ch));
+        if &before[word_start.map_or(0, |i| i + 1)..] != "pub" {
+            return None;
+        }
+        rest
+    };
+    let rest = after_pub.trim_start();
     for keyword in ["let", "var"] {
         if let Some(after) = rest.strip_prefix(keyword)
-            && !after.starts_with(|ch: char| ch.is_alphanumeric() || ch == '_')
+            && !after.starts_with(is_word)
         {
             return Some(keyword);
         }
@@ -479,7 +489,7 @@ fn parse_fun_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("fun_decl: expected name after public"))?
+            .ok_or_else(|| MetelError::internal("fun_decl: expected name after pub"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -560,7 +570,7 @@ fn parse_struct_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("struct_decl: expected name after public"))?
+            .ok_or_else(|| MetelError::internal("struct_decl: expected name after pub"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -581,20 +591,20 @@ fn parse_struct_decl(
     }
     // RFC-0120 §5: a `record`'s declared row is its public interface, so every field
     // is public by construction and carries no visibility modifier. A field is
-    // `Public` here only if `public` was written (the unmarked default is `Private`),
+    // `Public` here only if `pub` was written (the unmarked default is `Private`),
     // which is the one thing a record rejects; then the default is applied.
     if kind == StructKind::Record {
         if let Some(field) = fields.iter().find(|f| f.visibility == Visibility::Public) {
             // The modifier is the field's first token, so its span is the field's own
             // start, as wide as the keyword.
             let mut modifier = field.span.clone();
-            modifier.end = modifier.start + "public".len();
+            modifier.end = modifier.start + "pub".len();
             return Err(MetelError::parse(
                 ParseErrorCode::P0001,
                 format!(
-                    "`public` is not written on field `{}` of `record {name}`: every \
+                    "`pub` is not written on field `{}` of `record {name}`: every \
                      field of a record is public, so a record field takes no visibility \
-                     modifier -- remove `public` (declare a `struct` instead if `{}` \
+                     modifier -- remove `pub` (declare a `struct` instead if `{}` \
                      should stay private)",
                     field.name, field.name
                 ),
@@ -628,7 +638,7 @@ fn parse_enum_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("enum_decl: expected name after public"))?
+            .ok_or_else(|| MetelError::internal("enum_decl: expected name after pub"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)
@@ -955,7 +965,7 @@ fn parse_struct_fields(
                 (
                     Visibility::Public,
                     it.next().ok_or_else(|| {
-                        MetelError::internal("struct_field: expected name after public")
+                        MetelError::internal("struct_field: expected name after pub")
                     })?,
                 )
             } else {
@@ -4015,7 +4025,7 @@ fn parse_aspect_decl(
     let (visibility, name) = if first.as_rule() == Rule::pub_kw {
         let n = inner
             .next()
-            .ok_or_else(|| MetelError::internal("aspect_decl: expected name after public"))?
+            .ok_or_else(|| MetelError::internal("aspect_decl: expected name after pub"))?
             .as_str()
             .to_string();
         (Visibility::Public, n)

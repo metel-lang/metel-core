@@ -1,8 +1,8 @@
 // helper::Metric::value returns f64.
-public aspect Metric {
+pub aspect Metric {
     fun value(&self) -> f64;
 }
-public struct Gauge { public reading: f64 }
+pub struct Gauge { pub reading: f64 }
 extend Gauge: Metric {
     fun value(&self) -> f64 { self.reading * 2.0 }
 }

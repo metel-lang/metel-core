@@ -6,7 +6,7 @@
 aspect Tag { fun tag(self) -> i64; }
 aspect Describe { fun describe(self) -> i64; }
 
-struct Box<T> { public v: T }
+struct Box<T> { pub v: T }
 
 extend i64: Tag { fun tag(self) -> i64 { 7 } }
 

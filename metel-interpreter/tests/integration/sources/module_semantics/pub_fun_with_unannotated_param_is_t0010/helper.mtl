@@ -1,1 +1,1 @@
-public fun double(x) -> i64 { return x * 2; }
+pub fun double(x) -> i64 { return x * 2; }

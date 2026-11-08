@@ -1,3 +1,3 @@
-public aspect Greet {
+pub aspect Greet {
     fun greet(self) -> String;
 }

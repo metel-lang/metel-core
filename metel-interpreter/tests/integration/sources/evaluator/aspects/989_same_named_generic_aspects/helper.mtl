@@ -1,3 +1,3 @@
-public aspect Box<T> { fun get(&self) -> T; }
-public struct IntBox { public n: i64 }
+pub aspect Box<T> { fun get(&self) -> T; }
+pub struct IntBox { pub n: i64 }
 extend IntBox: Box<i64> { fun get(&self) -> i64 { self.n } }

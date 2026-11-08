@@ -3,4 +3,4 @@ struct Box { value: i64 }
 extend Box: ShownTwo {
     fun show_two(&self) -> String { "module2-box" }
 }
-public fun make2() -> extends ShownTwo { Box { value = 2 } }
+pub fun make2() -> extends ShownTwo { Box { value = 2 } }

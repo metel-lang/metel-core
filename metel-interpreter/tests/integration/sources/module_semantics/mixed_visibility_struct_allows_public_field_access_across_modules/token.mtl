@@ -1,2 +1,2 @@
-public struct Token { public kind: i64, offset: i64 }
-public fun make() -> Token { return Token { kind = 11, offset = 7 }; }
+pub struct Token { pub kind: i64, offset: i64 }
+pub fun make() -> Token { return Token { kind = 11, offset = 7 }; }

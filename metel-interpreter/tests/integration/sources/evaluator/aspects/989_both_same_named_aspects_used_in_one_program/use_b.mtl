@@ -1,6 +1,6 @@
 import shapes_b::Kind;
 import shapes_b::B;
-public fun run_b() -> i64 {
+pub fun run_b() -> i64 {
     let y: dyn Kind := B { };
     y.code()
 }

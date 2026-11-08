@@ -1,1 +1,1 @@
-public enum Shape { Circle { public r: f64 } }
+pub enum Shape { Circle { pub r: f64 } }

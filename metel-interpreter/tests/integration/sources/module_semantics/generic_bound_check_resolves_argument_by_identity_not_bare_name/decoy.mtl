@@ -2,4 +2,4 @@
 // to prove the bound check below resolves `data::Box` by its own identity
 // rather than guessing from the bare name "Box" across the whole program
 // (metel-core#1129/#1120's sibling collision class).
-public struct Box { public n: i64 }
+pub struct Box { pub n: i64 }

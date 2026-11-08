@@ -55,7 +55,7 @@ fn multi_file_source_provider_resolves_an_import() {
         "editor.mtl",
         "import alpha::helper;\nfun main() -> i64 { helper() }\n",
     )
-    .with_file("alpha.mtl", "public fun helper() -> i64 { 42 }\n");
+    .with_file("alpha.mtl", "pub fun helper() -> i64 { 42 }\n");
 
     let graph = load_virtual_root_with("editor.mtl", &provider)
         .expect("the import should resolve through the provider, not the filesystem");
@@ -79,9 +79,9 @@ fn modules_load_in_dependency_order() {
     )
     .with_file(
         "b.mtl",
-        "import c::from_c;\npublic fun from_b() -> i64 { from_c() }\n",
+        "import c::from_c;\npub fun from_b() -> i64 { from_c() }\n",
     )
-    .with_file("c.mtl", "public fun from_c() -> i64 { 1 }\n");
+    .with_file("c.mtl", "pub fun from_c() -> i64 { 1 }\n");
     let graph = load_virtual_root_with("editor.mtl", &provider).expect("graph loads");
     let position = |name: &str| {
         graph
@@ -105,8 +105,8 @@ fn modules_load_in_dependency_order() {
 fn a_cycle_is_reported_with_its_full_chain() {
     let provider =
         MultiFileSourceProvider::new("editor.mtl", "import a::fa;\nfun main() -> i64 { fa() }\n")
-            .with_file("a.mtl", "import b::fb;\npublic fun fa() -> i64 { fb() }\n")
-            .with_file("b.mtl", "import a::fa;\npublic fun fb() -> i64 { fa() }\n");
+            .with_file("a.mtl", "import b::fb;\npub fun fa() -> i64 { fb() }\n")
+            .with_file("b.mtl", "import a::fa;\npub fun fb() -> i64 { fa() }\n");
     let err = load_virtual_root_with("editor.mtl", &provider).expect_err("cycle must be rejected");
     let message = err.to_string();
     assert!(

@@ -1,5 +1,5 @@
 // Negative (RFC-0173 D2): a declared parameter with no row bound grants no field.
-struct P { public x: i64 }
+struct P { pub x: i64 }
 
 fun gx<T>(a: T) -> i64 { a.x } // ERROR[T0035]
 

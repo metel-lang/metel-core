@@ -2,7 +2,7 @@
 // does not have, so no `Handle` can be passed. This used to be accepted: the equation
 // was silently ignored on a residual-projection tail.
 
-struct Handle { public fd: i64, public other: i64 }
+struct Handle { pub fd: i64, pub other: i64 }
 
 fun use_it<record R, record Rest>(h: Handle.{ fd, ..R }) -> i64
 where R = { extra: i64, ..Rest } {

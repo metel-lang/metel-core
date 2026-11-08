@@ -3,7 +3,7 @@
 aspect Mark { fun mark(&self) -> i64; }
 extend<record R> { ..R }: Mark { fun mark(&self) -> i64 { 1 } }
 
-struct V { public v: i64 }
+struct V { pub v: i64 }
 
 fun main() {
     let v := V { v = 1 };

@@ -1,9 +1,9 @@
 // Regression test for v0.5.0: public annotations on declarations must be valid
 // in single-file programs (grammar change from sprint 9 / RFC-0030).
 
-public struct Point { x: i64, y: i64 }
-public enum Direction { North, South, East, West }
-public fun distance(p: Point) -> i64 { return p.x + p.y; }
+pub struct Point { x: i64, y: i64 }
+pub enum Direction { North, South, East, West }
+pub fun distance(p: Point) -> i64 { return p.x + p.y; }
 
 fun classify(d: Direction) -> i64 {
     match (d) {
@@ -14,7 +14,7 @@ fun classify(d: Direction) -> i64 {
     }
 }
 
-public fun main() -> () {
+pub fun main() -> () {
     let p := Point { x = 3, y = 4 };
     assert(distance(p) == 7);
 

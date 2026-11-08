@@ -4,8 +4,8 @@
 // pull `decoy` into the compiled module graph. Before the registry was keyed per
 // declaring module, this entry clobbered `helper::Shape`'s and `c.area()` below
 // failed to typecheck ("no method `area` on `dyn Shape`").
-public aspect Shape {
+pub aspect Shape {
     fun perimeter(&self) -> f64;
 }
 
-public fun marker() -> i64 { 0 }
+pub fun marker() -> i64 { 0 }

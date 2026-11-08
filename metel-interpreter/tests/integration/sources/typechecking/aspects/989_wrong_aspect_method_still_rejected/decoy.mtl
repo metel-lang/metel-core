@@ -1,6 +1,6 @@
 // decoy::Shape has `perimeter`. Never named from main, only pulled into the
 // graph by the unrelated `marker` import.
-public aspect Shape {
+pub aspect Shape {
     fun perimeter(&self) -> f64;
 }
-public fun marker() -> i64 { 0 }
+pub fun marker() -> i64 { 0 }

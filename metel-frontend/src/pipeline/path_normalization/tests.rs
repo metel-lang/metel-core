@@ -75,7 +75,7 @@ fn glob_imported_qualified_call_carries_a_symbol_id() {
                 "main.mtl",
                 "import helper::*;\nfun main() -> i64 { helper::answer() }\n",
             ),
-            ("helper.mtl", "public fun answer() -> i64 { 42 }\n"),
+            ("helper.mtl", "pub fun answer() -> i64 { 42 }\n"),
         ],
     );
     assert!(
@@ -98,7 +98,7 @@ fn explicitly_imported_qualified_call_carries_the_same_symbol_id() {
                 "main.mtl",
                 "import helper::answer;\nfun main() -> i64 { helper::answer() }\n",
             ),
-            ("helper.mtl", "public fun answer() -> i64 { 42 }\n"),
+            ("helper.mtl", "pub fun answer() -> i64 { 42 }\n"),
         ],
     );
     let glob = resolved_path_symbol_id(
@@ -108,7 +108,7 @@ fn explicitly_imported_qualified_call_carries_the_same_symbol_id() {
                 "main.mtl",
                 "import helper::*;\nfun main() -> i64 { helper::answer() }\n",
             ),
-            ("helper.mtl", "public fun answer() -> i64 { 42 }\n"),
+            ("helper.mtl", "pub fun answer() -> i64 { 42 }\n"),
         ],
     );
     assert!(explicit.is_some(), "explicit import carries a SymbolId");

@@ -7,19 +7,19 @@
 // Streaming pipes, background processes, and shell helpers are deferred.
 
 // The captured result of a finished subprocess.
-public struct ProcessOutput {
+pub struct ProcessOutput {
     // The exit status code (-1 if the process was terminated by a signal).
-    public status: i64,
+    pub status: i64,
     // Everything the process wrote to standard output.
-    public stdout: String,
+    pub stdout: String,
     // Everything the process wrote to standard error.
-    public stderr: String,
+    pub stderr: String,
 }
 
 // The process command-line arguments (the full argv, including the interpreter
 // and script path for the first cut).
-native(@std.process.args) public fun args() -> [String];
+native(@std.process.args) pub fun args() -> [String];
 
 // Run `command` with `args` to completion and capture its output. The command
 // is executed directly, not through a shell.
-native(@std.process.run) public fun run(command: String, args: [String]) -> Result<ProcessOutput, OsError>;
+native(@std.process.run) pub fun run(command: String, args: [String]) -> Result<ProcessOutput, OsError>;

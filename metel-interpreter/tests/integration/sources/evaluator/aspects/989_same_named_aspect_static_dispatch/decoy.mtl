@@ -1,2 +1,2 @@
-public aspect Shape { fun area(&self) -> String; }
-public fun marker() -> i64 { 0 }
+pub aspect Shape { fun area(&self) -> String; }
+pub fun marker() -> i64 { 0 }

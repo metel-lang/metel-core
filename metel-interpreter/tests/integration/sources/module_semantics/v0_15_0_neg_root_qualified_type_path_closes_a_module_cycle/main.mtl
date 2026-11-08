@@ -1,8 +1,8 @@
 import child::probe;
 
-public struct Counter { public n: i64 }
+pub struct Counter { pub n: i64 }
 extend Counter {
-    public fun new() -> Counter { return Counter { n = 1 }; }
+    pub fun new() -> Counter { return Counter { n = 1 }; }
 }
 
 fun main() {

@@ -1,4 +1,4 @@
 // Same short name `Kind`, unrelated module, different method.
-public aspect Kind { fun code(&self) -> i64; }
-public struct B { }
+pub aspect Kind { fun code(&self) -> i64; }
+pub struct B { }
 extend B: Kind { fun code(&self) -> i64 { 7 } }

@@ -1,6 +1,6 @@
 import base::Point;
 
-public aspect Debugger {
+pub aspect Debugger {
     fun dbg(self) -> String;
 }
 

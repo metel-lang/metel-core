@@ -1,16 +1,16 @@
 
-public enum Priority { High, Medium, Low }
-public enum Status { Open, InProgress, Done }
-public struct Task { public title: String, public priority: Priority, public status: Status, public effort: i64 }
-public struct ValidationError { public message: String }
+pub enum Priority { High, Medium, Low }
+pub enum Status { Open, InProgress, Done }
+pub struct Task { pub title: String, pub priority: Priority, pub status: Status, pub effort: i64 }
+pub struct ValidationError { pub message: String }
 
 // Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
 // moved out of it -- #329 enforces that. utils.mtl indexes and uses explicit clone callbacks
 // so filter/find results own their elements. These helpers are scaffolding, not part of what
 // this fixture tests; they go away once `Clone` has stdlib coverage (#335, #328).
-public fun clone_i64(value: &i64) -> i64 { *value }
+pub fun clone_i64(value: &i64) -> i64 { *value }
 
-public fun clone_priority(value: &Priority) -> Priority {
+pub fun clone_priority(value: &Priority) -> Priority {
     match (value) {
         Priority::High => Priority::High,
         Priority::Medium => Priority::Medium,
@@ -18,7 +18,7 @@ public fun clone_priority(value: &Priority) -> Priority {
     }
 }
 
-public fun clone_status(value: &Status) -> Status {
+pub fun clone_status(value: &Status) -> Status {
     match (value) {
         Status::Open => Status::Open,
         Status::InProgress => Status::InProgress,
@@ -26,7 +26,7 @@ public fun clone_status(value: &Status) -> Status {
     }
 }
 
-public fun clone_task(value: &Task) -> Task {
+pub fun clone_task(value: &Task) -> Task {
     Task {
         title = (*value).title.substring(0, (*value).title.len()),
         priority = clone_priority(&(*value).priority),

@@ -7,4 +7,4 @@ status = "parse_error"
 code = "P0001"
 line = 3
 col = 5
-contains = "`public` is not written on field `data` of `record Box`"
+contains = "`pub` is not written on field `data` of `record Box`"

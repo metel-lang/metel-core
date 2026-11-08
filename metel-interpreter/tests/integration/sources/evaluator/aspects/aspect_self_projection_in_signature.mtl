@@ -7,7 +7,7 @@ aspect Source {
     fun again(self) -> Item { self.first() }
 }
 
-struct Box { public v: i64 }
+struct Box { pub v: i64 }
 extend Box: Source {
     type Item := i64;
     fun first(self) -> i64 { 9 }

@@ -1,2 +1,2 @@
-public struct Token { value: i64 }
-public aspect Marker;
+pub struct Token { value: i64 }
+pub aspect Marker;

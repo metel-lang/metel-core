@@ -1,1 +1,1 @@
-public fun shared() -> i64 { return 42; }
+pub fun shared() -> i64 { return 42; }

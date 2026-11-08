@@ -1,3 +1,3 @@
-public struct Widget {
+pub struct Widget {
     value: i64,
 }

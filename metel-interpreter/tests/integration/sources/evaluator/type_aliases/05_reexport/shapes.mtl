@@ -1,3 +1,3 @@
 // The declaring module.
-public type Vec2 := (f64, f64);
-public type Transform := |Vec2| -> Vec2;
+pub type Vec2 := (f64, f64);
+pub type Transform := |Vec2| -> Vec2;

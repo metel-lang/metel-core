@@ -1,2 +1,2 @@
 import root::helper::*;
-public fun parse() -> i64 { return helper_fn(); }
+pub fun parse() -> i64 { return helper_fn(); }

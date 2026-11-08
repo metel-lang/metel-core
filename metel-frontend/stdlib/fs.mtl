@@ -6,31 +6,31 @@
 // `Result<_, OsError>` (OsError lives in std::core).
 
 // Read an entire file into a string.
-native(@std.fs.read_to_string) public fun read_to_string(path: String) -> Result<String, OsError>;
+native(@std.fs.read_to_string) pub fun read_to_string(path: String) -> Result<String, OsError>;
 
 // Write `contents` to `path`, replacing any existing file.
-native(@std.fs.write_string) public fun write_string(path: String, contents: String) -> Result<(), OsError>;
+native(@std.fs.write_string) pub fun write_string(path: String, contents: String) -> Result<(), OsError>;
 
 // Append `contents` to `path`, creating it if it does not exist.
-native(@std.fs.append_string) public fun append_string(path: String, contents: String) -> Result<(), OsError>;
+native(@std.fs.append_string) pub fun append_string(path: String, contents: String) -> Result<(), OsError>;
 
 // Whether a file or directory exists at `path`.
-native(@std.fs.exists) public fun exists(path: String) -> boolean;
+native(@std.fs.exists) pub fun exists(path: String) -> boolean;
 
 // The entry names (not full paths) directly within directory `path`.
-native(@std.fs.read_dir) public fun read_dir(path: String) -> Result<[String], OsError>;
+native(@std.fs.read_dir) pub fun read_dir(path: String) -> Result<[String], OsError>;
 
 // Create a single directory; errors if the parent does not exist.
-native(@std.fs.create_dir) public fun create_dir(path: String) -> Result<(), OsError>;
+native(@std.fs.create_dir) pub fun create_dir(path: String) -> Result<(), OsError>;
 
 // Create a directory and all missing parents.
-native(@std.fs.create_dir_all) public fun create_dir_all(path: String) -> Result<(), OsError>;
+native(@std.fs.create_dir_all) pub fun create_dir_all(path: String) -> Result<(), OsError>;
 
 // Remove a file.
-native(@std.fs.remove_file) public fun remove_file(path: String) -> Result<(), OsError>;
+native(@std.fs.remove_file) pub fun remove_file(path: String) -> Result<(), OsError>;
 
 // Remove an empty directory.
-native(@std.fs.remove_dir) public fun remove_dir(path: String) -> Result<(), OsError>;
+native(@std.fs.remove_dir) pub fun remove_dir(path: String) -> Result<(), OsError>;
 
 // Remove a directory and all of its contents.
-native(@std.fs.remove_dir_all) public fun remove_dir_all(path: String) -> Result<(), OsError>;
+native(@std.fs.remove_dir_all) pub fun remove_dir_all(path: String) -> Result<(), OsError>;

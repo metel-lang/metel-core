@@ -8,4 +8,4 @@ struct Box { value: i64 }
 extend Box: ShownOne {
     fun show_one(&self) -> String { "module1-box" }
 }
-public fun make1() -> extends ShownOne { Box { value = 1 } }
+pub fun make1() -> extends ShownOne { Box { value = 1 } }

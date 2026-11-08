@@ -1,1 +1,1 @@
-public fun answer() { return 42; }
+pub fun answer() { return 42; }

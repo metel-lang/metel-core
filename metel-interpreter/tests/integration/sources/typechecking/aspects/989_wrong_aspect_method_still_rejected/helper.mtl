@@ -1,8 +1,8 @@
 // helper::Shape has `area`, not `perimeter`.
-public aspect Shape {
+pub aspect Shape {
     fun area(&self) -> f64;
 }
-public struct Circle { public radius: f64 }
+pub struct Circle { pub radius: f64 }
 extend Circle: Shape {
     fun area(&self) -> f64 { 3.14159 * self.radius * self.radius }
 }

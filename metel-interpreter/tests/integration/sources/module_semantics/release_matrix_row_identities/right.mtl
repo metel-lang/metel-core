@@ -1,9 +1,9 @@
-public record RightPacket<record R> { data: { ..R } }
-public aspect RightRead { fun read(&self) -> i64; }
+pub record RightPacket<record R> { data: { ..R } }
+pub aspect RightRead { fun read(&self) -> i64; }
 extend<record R: { count: i64, .. }> RightPacket<..R>: RightRead {
     fun read(&self) -> i64 { self.data.count + 100 }
 }
-public fun inspect_right<record R: { count: i64, .. }>(packet: &RightPacket<..R>) -> i64 {
+pub fun inspect_right<record R: { count: i64, .. }>(packet: &RightPacket<..R>) -> i64 {
     packet.read()
 }
-public fun identity_right<record R>(packet: RightPacket<..R>) -> RightPacket<..R> { packet }
+pub fun identity_right<record R>(packet: RightPacket<..R>) -> RightPacket<..R> { packet }

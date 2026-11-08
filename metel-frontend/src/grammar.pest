@@ -476,7 +476,7 @@ char_escape_seq = _{ "u" ~ "{" ~ ASCII_HEX_DIGIT{1, 6} ~ "}" | "n" | "t" | "r" |
 bool_lit  = @{ ("true" | "false") ~ !(ASCII_ALPHANUMERIC | "_") }
 unit_lit  = @{ "()" }
 
-pub_kw   = @{ "public" ~ !(ASCII_ALPHANUMERIC | "_") }
+pub_kw   = @{ "pub" ~ !(ASCII_ALPHANUMERIC | "_") }
 mut_kw   = @{ "var" ~ !(ASCII_ALPHANUMERIC | "_") }
 once_kw  = @{ "once" ~ !(ASCII_ALPHANUMERIC | "_") }
 clone_kw = @{ "clone" ~ !(ASCII_ALPHANUMERIC | "_") }
@@ -496,8 +496,8 @@ ident = @{
 keyword = @{
     ("and" | "as" | "aspect" | "break" | "continue" | "dyn" | "else" | "enum" |
      "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
-     "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "pub" |
-     "public" | "return" | "root" | "self" | "std" | "struct" | "super" |
+     "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "public" |
+     "pub" | "return" | "root" | "self" | "std" | "struct" | "super" |
      "true" | "var" | "record" |
      "where" | "while")
     ~ !(ASCII_ALPHANUMERIC | "_")

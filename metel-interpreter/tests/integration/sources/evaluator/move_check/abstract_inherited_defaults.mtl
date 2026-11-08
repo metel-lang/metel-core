@@ -6,8 +6,8 @@ aspect Echo {
 aspect Repeat<A> {
     fun repeat(self, value: A) { let first := value; let second := value; }
 }
-struct Box<T> { public value: T }
-struct Other<T> { public value: T }
+struct Box<T> { pub value: T }
+struct Other<T> { pub value: T }
 extend<T> Box<T>: Echo {}
 extend<T> Other<T>: Echo {}
 extend<record R> { ..R }: Echo {}

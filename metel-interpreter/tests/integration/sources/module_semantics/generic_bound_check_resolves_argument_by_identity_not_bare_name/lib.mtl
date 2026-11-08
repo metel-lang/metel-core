@@ -1,6 +1,6 @@
-public aspect Mark {
+pub aspect Mark {
     fun mark(self) -> i64;
 }
-public fun use_it<T: Mark>(x: T) -> i64 {
+pub fun use_it<T: Mark>(x: T) -> i64 {
     x.mark()
 }

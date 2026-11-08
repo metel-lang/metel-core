@@ -1,1 +1,1 @@
-public fun compute() -> i64 { return 10; }
+pub fun compute() -> i64 { return 10; }

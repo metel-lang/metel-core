@@ -1,2 +1,2 @@
-public fun answer() -> i64 { return 1; }
-public fun other() -> i64 { return 2; }
+pub fun answer() -> i64 { return 1; }
+pub fun other() -> i64 { return 2; }

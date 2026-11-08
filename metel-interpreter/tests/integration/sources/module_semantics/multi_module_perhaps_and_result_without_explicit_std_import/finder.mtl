@@ -1,4 +1,4 @@
-public fun find_first_positive(arr: [i64]) -> Option<i64> {         
+pub fun find_first_positive(arr: [i64]) -> Option<i64> {         
     var i := 0;         
     while (i < arr.len()) {         
         if (arr[i as u64] > 0) { return Option::Some { value = arr[i as u64] }; }         

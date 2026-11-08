@@ -1,0 +1,5 @@
+// RFC-0218 rule 2: `public` is reserved and is not the visibility keyword; it is an ordinary
+// reserved-word parse error with no tailored fix-it.
+public fun helper() -> i64 { 1 }
+
+fun main() {}

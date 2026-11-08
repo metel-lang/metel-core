@@ -10,9 +10,9 @@ aspect Describe {
     fun twice(self) -> i64 { self.describe() * 2 }
 }
 
-struct Box<T> { public v: T }
-struct Pair<T> { public v: T }
-struct Fixed<T> { public v: T }
+struct Box<T> { pub v: T }
+struct Pair<T> { pub v: T }
+struct Fixed<T> { pub v: T }
 
 // a generic impl
 extend<T> Pair<T>: Describe { fun describe(self) -> i64 { 10 } }

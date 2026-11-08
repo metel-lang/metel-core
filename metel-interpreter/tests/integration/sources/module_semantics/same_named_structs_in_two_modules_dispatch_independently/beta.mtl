@@ -1,4 +1,4 @@
-public struct Widget { public id: i64 }
+pub struct Widget { pub id: i64 }
 extend Widget {
-    public fun kind(self) -> String { "beta" }
+    pub fun kind(self) -> String { "beta" }
 }

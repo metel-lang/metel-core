@@ -1,7 +1,7 @@
 // metel-core#1488: a public signature may not name a private field in a residual type.
-public struct Ticket { public id: i64, secret: String }
+pub struct Ticket { pub id: i64, secret: String }
 
-public fun narrow(t: Ticket) -> Ticket.{ secret } { // ERROR[T0009]
+pub fun narrow(t: Ticket) -> Ticket.{ secret } { // ERROR[T0009]
     t.{ secret }
 }
 

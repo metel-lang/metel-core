@@ -98,7 +98,7 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::write(
         dir.join("helper.mtl"),
-        "public fun from_helper() -> i64 {\n    record Handle { pad: i64, fd: i64 }\n    let h := Handle { pad = 100, fd = 3 };\n    h.fd\n}\n",
+        "pub fun from_helper() -> i64 {\n    record Handle { pad: i64, fd: i64 }\n    let h := Handle { pad = 100, fd = 3 };\n    h.fd\n}\n",
     )
     .expect("write helper");
     std::fs::write(
@@ -215,7 +215,7 @@ fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
     let program_a = [
         (
             "helper.mtl",
-            "public fun render(x: i64) -> i64 { x }\npublic fun render(x: String) -> i64 { 0 }\n",
+            "pub fun render(x: i64) -> i64 { x }\npub fun render(x: String) -> i64 { 0 }\n",
         ),
         (
             "main.mtl",

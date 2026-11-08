@@ -17,7 +17,7 @@ extend MyFloat: Display {
 	}
 }
 
-public fun make_float() -> extends Display {
+pub fun make_float() -> extends Display {
 	MyFloat { value = 3.14 }
 }
 

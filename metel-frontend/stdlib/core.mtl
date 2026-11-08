@@ -16,49 +16,49 @@
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
-public enum Option<T> {
-    Some { public value: T },
+pub enum Option<T> {
+    Some { pub value: T },
     None,
 }
 
 extend Option<T> {
     // True when this is `Some`.
-    public fun is_some(&self) -> boolean {
+    pub fun is_some(&self) -> boolean {
         match (self) {
             Option::Some { value } => true,
             _ => false,
         }
     }
     // True when this is `None`.
-    public fun is_none(&self) -> boolean {
+    pub fun is_none(&self) -> boolean {
         match (self) {
             Option::Some { value } => false,
             _ => true,
         }
     }
     // Transform the contained value, leaving `None` untouched.
-    public fun map<U>(self, f: |T| -> U) -> Option<U> {
+    pub fun map<U>(self, f: |T| -> U) -> Option<U> {
         match (self) {
             Option::Some { value } => Option::Some { value = f(value) },
             _ => Option::None,
         }
     }
     // Chain a computation that itself returns a `Option`.
-    public fun and_then<U>(self, f: |T| -> Option<U>) -> Option<U> {
+    pub fun and_then<U>(self, f: |T| -> Option<U>) -> Option<U> {
         match (self) {
             Option::Some { value } => f(value),
             _ => Option::None,
         }
     }
     // The contained value, or `fallback` when `None`.
-    public fun unwrap_or(self, fallback: T) -> T {
+    pub fun unwrap_or(self, fallback: T) -> T {
         match (self) {
             Option::Some { value } => value,
             _ => fallback,
         }
     }
     // The contained value, or the result of `f()` when `None`.
-    public fun unwrap_or_else(self, f: || -> T) -> T {
+    pub fun unwrap_or_else(self, f: || -> T) -> T {
         match (self) {
             Option::Some { value } => value,
             _ => f(),
@@ -67,7 +67,7 @@ extend Option<T> {
     // The contained value, or panics on `None`. Use only when `None` represents a
     // logic error that should never occur in correct code — prefer `match` or
     // `.unwrap_or`/`.unwrap_or_else` for expected absence.
-    public fun yolo(self) -> T {
+    pub fun yolo(self) -> T {
         match (self) {
             Option::Some { value } => value,
             _ => yolo_none(),
@@ -75,7 +75,7 @@ extend Option<T> {
     }
     // Converts to `Result<T, E>`: `Some { value }` becomes `Ok { value }`; `None`
     // becomes `Err { error }`.
-    public fun ok_or<E>(self, error: E) -> Result<T, E> {
+    pub fun ok_or<E>(self, error: E) -> Result<T, E> {
         match (self) {
             Option::Some { value } => Result::Ok { value = value },
             _ => Result::Err { error = error },
@@ -83,49 +83,49 @@ extend Option<T> {
     }
 }
 
-public enum Result<T, E> {
-    Ok { public value: T },
-    Err { public error: E },
+pub enum Result<T, E> {
+    Ok { pub value: T },
+    Err { pub error: E },
 }
 
 extend Result<T, E> {
     // True when this is `Ok`.
-    public fun is_ok(&self) -> boolean {
+    pub fun is_ok(&self) -> boolean {
         match (self) {
             Result::Ok { value } => true,
             _ => false,
         }
     }
     // True when this is `Err`.
-    public fun is_err(&self) -> boolean {
+    pub fun is_err(&self) -> boolean {
         match (self) {
             Result::Ok { value } => false,
             _ => true,
         }
     }
     // Transform the success value, leaving `Err` untouched.
-    public fun map<U>(self, f: |T| -> U) -> Result<U, E> {
+    pub fun map<U>(self, f: |T| -> U) -> Result<U, E> {
         match (self) {
             Result::Ok { value } => Result::Ok { value = f(value) },
             Result::Err { error } => Result::Err { error = error },
         }
     }
     // Chain a computation that itself returns a `Result`.
-    public fun and_then<U>(self, f: |T| -> Result<U, E>) -> Result<U, E> {
+    pub fun and_then<U>(self, f: |T| -> Result<U, E>) -> Result<U, E> {
         match (self) {
             Result::Ok { value } => f(value),
             Result::Err { error } => Result::Err { error = error },
         }
     }
     // The success value, or `fallback` when `Err`.
-    public fun unwrap_or(self, fallback: T) -> T {
+    pub fun unwrap_or(self, fallback: T) -> T {
         match (self) {
             Result::Ok { value } => value,
             _ => fallback,
         }
     }
     // The success value, or the result of `f()` when `Err`.
-    public fun unwrap_or_else(self, f: || -> T) -> T {
+    pub fun unwrap_or_else(self, f: || -> T) -> T {
         match (self) {
             Result::Ok { value } => value,
             _ => f(),
@@ -134,7 +134,7 @@ extend Result<T, E> {
     // The success value, or panics on `Err`, including the error's debug
     // representation in the panic message. Use only when `Err` represents a
     // logic error — propagate expected errors with `?` or handle with `match`.
-    public fun yolo(self) -> T {
+    pub fun yolo(self) -> T {
         match (self) {
             Result::Ok { value } => value,
             Result::Err { error } => yolo_err(error),
@@ -142,7 +142,7 @@ extend Result<T, E> {
     }
     // Applies `f` to the `Err` value, leaving `Ok` unchanged. Useful for
     // converting between error types.
-    public fun map_err<F>(self, f: |E| -> F) -> Result<T, F> {
+    pub fun map_err<F>(self, f: |E| -> F) -> Result<T, F> {
         match (self) {
             Result::Ok { value } => Result::Ok { value = value },
             Result::Err { error } => Result::Err { error = f(error) },
@@ -150,7 +150,7 @@ extend Result<T, E> {
     }
     // Converts to `Option<T>`: `Ok { value }` becomes `Some { value }`; `Err`
     // becomes `None`. The error value is discarded.
-    public fun ok(self) -> Option<T> {
+    pub fun ok(self) -> Option<T> {
         match (self) {
             Result::Ok { value } => Option::Some { value = value },
             _ => Option::None,
@@ -164,13 +164,13 @@ extend Result<T, E> {
 // structured fields are a deliberate future extension (RFC-0057). It lives in
 // std::core so every host module returns the same `Result<T, OsError>`.
 
-public struct OsError {
+pub struct OsError {
     message: String,
 }
 
 extend OsError {
     // The human-readable description of the error.
-    public fun message(&self) -> String {
+    pub fun message(&self) -> String {
         self.message
     }
 }
@@ -183,30 +183,30 @@ extend OsError: Display {
 
 // ── Core aspects ────────────────────────────────────────────────────────────
 
-public aspect Display {
+pub aspect Display {
     fun to_string(&self) -> String;
 }
 
-public aspect Clone {
+pub aspect Clone {
     fun clone(&self) -> Self;
 }
 
-public aspect Copy {
+pub aspect Copy {
 }
 
-public aspect Drop {
+pub aspect Drop {
     fun drop(&var self);
 }
 
-public aspect Eq {
+pub aspect Eq {
     fun eq(&self, other: &Self) -> boolean;
 }
 
-public aspect From<S> {
+pub aspect From<S> {
     fun from(value: S) -> Self;
 }
 
-public aspect Iterable<T> {
+pub aspect Iterable<T> {
     fun next(&var self) -> Option<T>;
 }
 
@@ -231,7 +231,7 @@ fun __eq_array_item<T: Eq>(left: T, right: T) -> boolean {
 // The growable collection type. `inner` is private: the backing array is an
 // implementation detail of the host representation.
 
-public struct List<T> {
+pub struct List<T> {
     inner: [T],
     cursor: i64,
 }
@@ -254,7 +254,7 @@ extend List<T> {
     // iterator architecture.
 
     // Apply `f` to each element, collecting the results into a new list.
-    public fun map<U>(&self, f: |T| -> U) -> List<U> {
+    pub fun map<U>(&self, f: |T| -> U) -> List<U> {
         var out: List<U> := List::new();
         for (x in self.as_slice()) {
             out.push(f(x));
@@ -262,7 +262,7 @@ extend List<T> {
         out
     }
     // Keep only the elements for which `pred` holds.
-    public fun filter(&self, pred: |T| -> boolean) -> List<T> {
+    pub fun filter(&self, pred: |T| -> boolean) -> List<T> {
         var out: List<T> := List::new();
         for (x in self.as_slice()) {
             if (pred(x)) {
@@ -272,7 +272,7 @@ extend List<T> {
         out
     }
     // Reduce the list to a single value, left to right.
-    public fun fold<A>(&self, init: A, f: |A, T| -> A) -> A {
+    pub fun fold<A>(&self, init: A, f: |A, T| -> A) -> A {
         var acc := init;
         for (x in self.as_slice()) {
             acc := f(acc, x);
@@ -280,7 +280,7 @@ extend List<T> {
         acc
     }
     // The first element satisfying `pred`, or `None`.
-    public fun find(&self, pred: |T| -> boolean) -> Option<T> {
+    pub fun find(&self, pred: |T| -> boolean) -> Option<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
                 return Option::Some { value = x };
@@ -289,7 +289,7 @@ extend List<T> {
         Option::None
     }
     // A new list with this list's elements followed by `other`'s.
-    public fun concat(&self, other: &List<T>) -> List<T> {
+    pub fun concat(&self, other: &List<T>) -> List<T> {
         var out: List<T> := List::new();
         for (x in self.as_slice()) {
             out.push(x);
@@ -363,19 +363,19 @@ extend String {
 native(@std.core.print)      fun print_str(s: String);
 native(@std.core.println)    fun println_str(s: String);
 
-public fun print<T: Display>(x: T) -> () {
+pub fun print<T: Display>(x: T) -> () {
     print_str(x.to_string());
 }
 
-public fun println<T: Display>(x: T) -> () {
+pub fun println<T: Display>(x: T) -> () {
     println_str(x.to_string());
 }
 
-native(@std.core.dbg)        public fun dbg<T>(x: T) -> T;
+native(@std.core.dbg)        pub fun dbg<T>(x: T) -> T;
 // assert is overloaded: with and without a panic message.
-native(@std.core.assert)     public fun assert(cond: boolean);
-native(@std.core.assert_msg) public fun assert(cond: boolean, msg: String);
-native(@std.core.clock)      public fun clock() -> i64;
+native(@std.core.assert)     pub fun assert(cond: boolean);
+native(@std.core.assert_msg) pub fun assert(cond: boolean, msg: String);
+native(@std.core.clock)      pub fun clock() -> i64;
 
 // `.yolo()`'s two panicking arms (issue #232). Both always panic — there is no
 // well-typed "success" case — so `T` is inferred from the enclosing function's
@@ -386,7 +386,7 @@ native(@std.core.yolo_err)  fun yolo_err<T, E>(error: E) -> T;
 
 // RFC-0078: `panic(msg)` always panics, and so has type `!` — it coerces to
 // whatever type its calling context expects (the bottom-type subtyping rule).
-native(@std.core.panic) public fun panic(msg: String) -> !;
+native(@std.core.panic) pub fun panic(msg: String) -> !;
 
 // ── Display impls for the primitive types ──────────────────────────────────
 // One shared host implementation formats any displayable value, so every

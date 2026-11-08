@@ -8,12 +8,12 @@ aspect Conv<T> {
     fun pair(self, other: T) -> T { other }
 }
 
-struct Box { public v: i64 }
+struct Box { pub v: i64 }
 extend Box: Conv<i64> {
     fun get(self) -> i64 { 3 }
 }
 
-struct G<U> { public u: U }
+struct G<U> { pub u: U }
 extend<U> G<U>: Conv<String> {
     fun get(self) -> String { "g".to_string() }
 }

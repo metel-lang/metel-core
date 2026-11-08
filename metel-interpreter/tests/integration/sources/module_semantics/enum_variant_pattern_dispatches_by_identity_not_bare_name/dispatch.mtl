@@ -3,7 +3,7 @@
 // declaration.
 import alpha::*;
 
-public fun radius(v: Shape) -> f64 {
+pub fun radius(v: Shape) -> f64 {
     match (v) {
         Shape::Circle { r } => r,
     }
