@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.functions.keyword-arguments.legality-1"]

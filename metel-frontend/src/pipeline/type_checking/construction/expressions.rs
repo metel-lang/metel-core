@@ -792,6 +792,32 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
+        } if super::super::keyword_binding::has_keyword(args) => {
+            // RFC-0223: construct the ordinary positional call the keyword call is equivalent to.
+            let overloaded = super::super::overload::callee_name(callee)
+                .is_some_and(|name| ctx.overloads.contains_key(name));
+            let names = ctx
+                .identity
+                .binding_spans
+                .get(callee.span())
+                .and_then(crate::identity::BindingId::as_global)
+                .and_then(|symbol| ctx.identity.binding_spans.callee_params(symbol));
+            let positional = super::super::keyword_binding::positional_for_call(
+                callee, args, span, overloaded, names,
+            )?;
+            let call = construct_call(callee, type_args, &positional, span, expected_ty, ctx)?;
+            if let TypedExpr::Call { args, .. } = &call {
+                for arg in args {
+                    ctx.note_consumed(arg);
+                }
+            }
+            Ok(call)
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } => {
             let call = construct_call(callee, type_args, args, span, expected_ty, ctx)?;
             // RFC-0137 slice 2: a by-value argument that is a partial move of a

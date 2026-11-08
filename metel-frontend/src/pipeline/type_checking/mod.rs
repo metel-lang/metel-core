@@ -1528,7 +1528,7 @@ fn check_impl_with_report(
         current_module_path.to_vec(),
     );
     ctx.set_definition_snapshot_sites(snapshot_sites);
-    ctx.set_local_members(identity.members.local_members());
+    seed_identity(&mut ctx, program, identity);
     ctx.seed_glob_conflicts(deferred_conflicts);
     ctx.set_closure_rewrite_candidates(signature_advice::closure_rewrite_candidates(program));
 
@@ -1851,6 +1851,21 @@ fn build_module_scheme_env(
         }
     }
     (scheme_env, scheme_ids)
+}
+
+/// Hand inference the frozen identity it reads: the block-local members, and the declared parameter
+/// names of every function this module references, so a call
+/// that names some of its arguments binds against them (RFC-0223, metel-core#1858).
+fn seed_identity(ctx: &mut InferContext, program: &Program, identity: FrozenIdentity<'_>) {
+    ctx.set_local_members(identity.members.local_members());
+    let module_file = program.decls.iter().find_map(|decl| match decl {
+        Decl::Fun(function) => Some(function.span.filename.as_str()),
+        Decl::Let(binding) => Some(binding.span.filename.as_str()),
+        _ => None,
+    });
+    if let Some(filename) = module_file {
+        ctx.set_callee_params(identity.binding_spans.callee_params_in_file(filename));
+    }
 }
 
 /// The identity of each of a scheme's parameters, given the parameters its declaration introduces

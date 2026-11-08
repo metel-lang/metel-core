@@ -1,0 +1,4 @@
+fun main() {
+    let g := |x: i64| { x };
+    let _ := g(x = 1);
+}

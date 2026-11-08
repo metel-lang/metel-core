@@ -1,0 +1,12 @@
+// RFC-0223 (metel-core#1858): keyword arguments bind the parameters the positional ones leave, in
+// any order, and a purely positional call is unchanged.
+fun connect(host: i64, port: i64, timeout: i64) -> i64 {
+    host * 10000 + port * 100 + timeout
+}
+
+fun main() {
+    assert(connect(1, 2, 3) == 10203);
+    assert(connect(1, port = 2, timeout = 3) == 10203);
+    assert(connect(1, timeout = 3, port = 2) == 10203);
+    assert(connect(timeout = 3, port = 2, host = 1) == 10203);
+}

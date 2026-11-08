@@ -1,0 +1,9 @@
+// RFC-0223 dynamics-1: a keyword argument never reorders evaluation. One non-literal argument among
+// literals has no observable order, so it may be written anywhere.
+fun pair(a: i64, b: i64) -> i64 { a * 10 + b }
+fun three() -> i64 { 3 }
+
+fun main() {
+    assert(pair(b = 2, a = three()) == 32);
+    assert(pair(a = three(), b = 2) == 32);
+}
