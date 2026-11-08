@@ -1,0 +1,20 @@
+struct Left {
+    n: i64,
+}
+
+struct Right {
+    n: i64,
+}
+
+extend Left {
+    fun put(&self, value: i64) -> i64 { self.n + value }
+}
+
+extend Right {
+    fun put(&self, item: i64) -> i64 { self.n + item }
+}
+
+fun main() {
+    let right := Right { n = 100 };
+    let _ := right.put(value = 5);
+}

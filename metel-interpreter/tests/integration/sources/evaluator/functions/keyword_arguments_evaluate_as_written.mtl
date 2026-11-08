@@ -1,9 +1,31 @@
-// RFC-0223 dynamics-1: a keyword argument never reorders evaluation. One non-literal argument among
-// literals has no observable order, so it may be written anywhere.
+// RFC-0223 dynamics-1 (metel-core#1873): a keyword argument never reorders evaluation. Arguments run
+// strictly as written, whichever parameter each one fills, so `b` here is evaluated before `a`.
+struct Counter {
+    n: i64,
+}
+
+extend Counter {
+    fun next(&var self) -> i64 {
+        self.n := self.n + 1;
+        self.n
+    }
+}
+
 fun pair(a: i64, b: i64) -> i64 { a * 10 + b }
-fun three() -> i64 { 3 }
+
+extend Counter {
+    fun both(self, first: i64, second: i64) -> i64 { first * 10 + second }
+}
 
 fun main() {
-    assert(pair(b = 2, a = three()) == 32);
-    assert(pair(a = three(), b = 2) == 32);
+    var c := Counter { n = 0 };
+    // b is written first, so it is 1 and a is 2.
+    assert(pair(b = c.next(), a = c.next()) == 21);
+
+    var d := Counter { n = 0 };
+    let probe := Counter { n = 0 };
+    assert(probe.both(second = d.next(), first = d.next()) == 21);
+
+    // One non-literal argument among literals has no observable order.
+    assert(pair(b = 2, a = c.next()) == 32);
 }

@@ -1,0 +1,26 @@
+// RFC-0223 legality-1 and legality-2 (metel-core#1858): methods of one name on different types may
+// declare different parameter names, so a keyword call binds by the receiver's type.
+struct Left {
+    n: i64,
+}
+
+struct Right {
+    n: i64,
+}
+
+extend Left {
+    fun put(&self, value: i64, extra: i64) -> i64 { self.n + value * 10 + extra }
+}
+
+extend Right {
+    fun put(&self, item: i64) -> i64 { self.n + item }
+}
+
+fun main() {
+    let left := Left { n = 1 };
+    let right := Right { n = 100 };
+    assert(left.put(extra = 3, value = 2) == 24);
+    assert(right.put(item = 5) == 105);
+    let through := &right;
+    assert(through.put(item = 6) == 106);
+}

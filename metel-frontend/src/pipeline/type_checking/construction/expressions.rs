@@ -608,10 +608,9 @@ pub(super) fn construct_expr(
             ))
         }
         Expr::BinOp(lhs, op, rhs, span) => construct_binop(lhs, op, rhs, span, ctx),
-        // RFC-0223: parsed, not yet bound to parameters (metel-core#1858).
-        Expr::NamedArg { name, .. } => Err(MetelError::not_implemented(format!(
-            "keyword argument `{name}` (RFC-0223, metel-core#1858)"
-        ))),
+        // RFC-0223: a keyword argument has the type of its value; the call that holds it binds it to
+        // a parameter (an overloaded call constructs its arguments as written to select a candidate).
+        Expr::NamedArg { value, .. } => construct_expr(value, expected_ty, ctx),
         Expr::UnaryOp(op, operand, span) => {
             // For negation, propagate expected_ty to the operand so `-100` in
             // `let x: i8 = -100` resolves to i8. Unsigned targets are excluded:
@@ -792,11 +791,11 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
-        } if super::super::keyword_binding::has_keyword(args) => {
+        } if super::super::keyword_binding::has_keyword(args)
+            && !super::super::overload::callee_name(callee)
+                .is_some_and(|name| ctx.overloads.contains_key(name)) =>
+        {
             // RFC-0223: construct the ordinary positional call the keyword call is equivalent to.
-            let overloads = super::super::overload::callee_name(callee)
-                .and_then(|name| ctx.overloads.get(name))
-                .map(Vec::as_slice);
             let names = ctx
                 .identity
                 .binding_spans
@@ -805,15 +804,18 @@ pub(super) fn construct_expr(
                 .and_then(|symbol| ctx.identity.binding_spans.callee_params(symbol));
             let methods = ctx.identity.binding_spans.method_params();
             let positional = super::super::keyword_binding::positional_for_call(
-                callee, args, span, overloads, names, &methods,
+                callee, args, span, names, &methods,
             )?;
-            let call = construct_call(callee, type_args, &positional, span, expected_ty, ctx)?;
+            let call = construct_call(callee, type_args, &positional.args, span, expected_ty, ctx)?;
             if let TypedExpr::Call { args, .. } = &call {
                 for arg in args {
                     ctx.note_consumed(arg);
                 }
             }
-            Ok(call)
+            Ok(in_written_order(
+                call,
+                positional.written_to_param.as_deref(),
+            ))
         }
         Expr::Call {
             callee,
@@ -1066,19 +1068,40 @@ pub(super) fn construct_expr(
         } if super::super::keyword_binding::has_keyword(args) => {
             // RFC-0223: construct the ordinary positional method call the keyword call is equivalent to.
             let methods = ctx.identity.binding_spans.method_params();
-            let positional =
-                super::super::keyword_binding::positional_for_method(method, args, span, &methods)?;
-            construct_expr(
+            // Methods of one name that declare different names are told apart by the receiver's type.
+            let head = if super::super::keyword_binding::method_needs_receiver(method, &methods) {
+                let typed_receiver = construct_expr(receiver, None, ctx)?;
+                let receiver_ty = peel_type_references(typed_receiver.ty());
+                let named = match receiver_ty {
+                    Type::Named(name, ..) => Some(name.as_str()),
+                    _ => None,
+                };
+                super::super::keyword_binding::receiver_head(named, &receiver_ty.to_string())
+            } else {
+                None
+            };
+            let positional = super::super::keyword_binding::positional_for_method(
+                method,
+                args,
+                span,
+                &methods,
+                head.as_deref(),
+            )?;
+            let call = construct_expr(
                 &Expr::MethodCall {
                     receiver: receiver.clone(),
                     method: method.clone(),
                     type_args: type_args.clone(),
-                    args: positional,
+                    args: positional.args,
                     span: span.clone(),
                 },
                 expected_ty,
                 ctx,
-            )
+            )?;
+            Ok(in_written_order(
+                call,
+                positional.written_to_param.as_deref(),
+            ))
         }
         Expr::MethodCall {
             receiver,
@@ -2354,4 +2377,80 @@ fn construct_record_method_call(
         dispatch,
         span: span.clone(),
     })
+}
+
+/// Evaluate a keyword call's arguments strictly as written (RFC-0223 dynamics-1), then call.
+///
+/// The call was constructed with its arguments in declaration order. When `written_to_param` says the
+/// written order is observable, each non-literal argument is bound to a temporary in written order and
+/// the call takes the temporaries, so no argument runs earlier or later than it was written. The typed
+/// AST has no block expression, so the temporaries sit in an always-taken `if` block.
+pub(super) fn in_written_order(call: TypedExpr, written_to_param: Option<&[usize]>) -> TypedExpr {
+    use crate::data::typed_ast::{TypedBlock, TypedDecl, TypedLetDecl};
+    let Some(written_to_param) = written_to_param else {
+        return call;
+    };
+    let (args, ty, span) = match &call {
+        TypedExpr::Call { args, ty, span, .. } | TypedExpr::MethodCall { args, ty, span, .. } => {
+            (args.clone(), ty.clone(), span.clone())
+        }
+        _ => return call,
+    };
+    let mut taken = args;
+    let mut stmts = Vec::new();
+    for (written, &param) in written_to_param.iter().enumerate() {
+        let value = taken[param].clone();
+        if matches!(value, TypedExpr::Literal(..)) {
+            continue;
+        }
+        let name = format!("__keyword_argument_{written}");
+        let id = keyword_argument_local(&span, written);
+        let arg_span = value.span().clone();
+        let arg_ty = value.ty().clone();
+        stmts.push(TypedDecl::Let(TypedLetDecl {
+            name: name.clone(),
+            type_ann: None,
+            value,
+            def_id: None,
+            local_id: Some(id),
+            span: arg_span.clone(),
+        }));
+        taken[param] = TypedExpr::Ident(
+            name,
+            Some(crate::identity::BindingId::Local(id)),
+            arg_ty,
+            arg_span,
+        );
+    }
+    let mut call = call;
+    match &mut call {
+        TypedExpr::Call { args, .. } | TypedExpr::MethodCall { args, .. } => *args = taken,
+        _ => unreachable!("matched a call above"),
+    }
+    TypedExpr::If {
+        condition: Box::new(TypedExpr::Literal(
+            Literal::Boolean(true),
+            Type::Boolean,
+            span.clone(),
+        )),
+        then_branch: TypedBlock {
+            stmts,
+            tail: Some(Box::new(call)),
+            span: span.clone(),
+        },
+        else_branch: None,
+        ty,
+        span,
+    }
+}
+
+/// The identity of the temporary holding the `written`-th argument of the keyword call at `call_span`.
+/// The call's own span and the argument's position make it unique among all temporaries, and no source
+/// binding can collide with it because the hash is salted with a name no program can write.
+fn keyword_argument_local(call_span: &Span, written: usize) -> crate::identity::LocalId {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    "metel.identity.keyword-argument-temporary".hash(&mut hasher);
+    (&call_span.filename, call_span.start, call_span.end, written).hash(&mut hasher);
+    crate::identity::LocalId(hasher.finish())
 }

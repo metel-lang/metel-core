@@ -602,10 +602,10 @@ fn infer_expr_inner(
         Expr::UnaryOp(op, operand, span) => {
             infer_unaryop(op, operand, span, ctx, fun_generalizations)
         }
-        // RFC-0223: parsed, not yet bound to parameters (metel-core#1858).
-        Expr::NamedArg { name, .. } => Err(MetelError::not_implemented(format!(
-            "keyword argument `{name}` (RFC-0223, metel-core#1858)"
-        ))),
+        // RFC-0223: a keyword argument has the type of its value. Binding it to a parameter is the
+        // call's business (`keyword_binding`); an overloaded call infers its arguments as written
+        // before it can select a candidate.
+        Expr::NamedArg { value, .. } => infer_expr(value, ctx, fun_generalizations),
         Expr::Tuple(elems, _) => {
             let elem_tys: Vec<InferType> = elems
                 .iter()
@@ -730,7 +730,10 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
-        } if super::super::keyword_binding::has_keyword(args) => {
+        } if super::super::keyword_binding::has_keyword(args)
+            && !super::super::overload::callee_name(callee)
+                .is_some_and(|name| ctx.is_overloaded(name)) =>
+        {
             // RFC-0223: bind the keywords against the callee's declared names, then type the call as
             // the ordinary positional call it is equivalent to.
             let positional = keyword_call_positional(callee, args, span, ctx)?;
@@ -817,8 +820,21 @@ fn infer_expr_inner(
                     }
                 };
                 let entries = ctx.overload_candidates(name).unwrap();
-                let entry = if let Some(entry) = super::super::overload::select(entries, &arg_types)
-                {
+                // RFC-0223 legality-5: a keyword call selects the candidate whose own parameters its
+                // keywords name, and its arguments reach the parameters in that candidate's order.
+                let mut binding_order: Option<Vec<usize>> = None;
+                let selected = if super::super::keyword_binding::has_keyword(args) {
+                    super::super::keyword_binding::select_overload(
+                        name, entries, args, &arg_types, span,
+                    )?
+                    .map(|(entry, binding)| {
+                        binding_order = Some(binding.arg_for_param);
+                        entry
+                    })
+                } else {
+                    super::super::overload::select(entries, &arg_types)
+                };
+                let entry = if let Some(entry) = selected {
                     entry.clone()
                 } else {
                     if ctx.has_binding(name) {
@@ -832,6 +848,10 @@ fn infer_expr_inner(
                 // Commit the selection: constrain each argument to the chosen
                 // candidate's parameter type so defaulted literal vars resolve
                 // to what selection assumed.
+                let arg_infer: Vec<InferType> = match binding_order {
+                    Some(order) => order.iter().map(|&w| arg_infer[w].clone()).collect(),
+                    None => arg_infer,
+                };
                 for (arg_ty, param) in arg_infer.iter().zip(&entry.params) {
                     ctx.add_expected_constraint(arg_ty.clone(), type_to_infer(param), span.clone());
                 }
@@ -1423,12 +1443,30 @@ fn infer_expr_inner(
         } if super::super::keyword_binding::has_keyword(args) => {
             // RFC-0223: bind the keywords against the method's declared names, then type the call as
             // the ordinary positional method call it is equivalent to.
+            // Methods of one name that declare different names are told apart by the receiver's type.
+            let head = if super::super::keyword_binding::method_needs_receiver(
+                method,
+                ctx.method_params(),
+            ) {
+                let recv_ty = infer_expr(receiver, ctx, fun_generalizations)?;
+                let solved = ctx.solve()?;
+                let recv_ty = peel_all_references(&solved.apply(&recv_ty));
+                let named = match &recv_ty {
+                    InferType::Named(name, ..) => Some(name.as_str()),
+                    _ => None,
+                };
+                super::super::keyword_binding::receiver_head(named, &recv_ty.to_string())
+            } else {
+                None
+            };
             let positional = super::super::keyword_binding::positional_for_method(
                 method,
                 args,
                 span,
                 ctx.method_params(),
-            )?;
+                head.as_deref(),
+            )?
+            .args;
             infer_expr(
                 &Expr::MethodCall {
                     receiver: receiver.clone(),
@@ -3382,15 +3420,13 @@ fn keyword_call_positional(
     span: &crate::data::ast::Span,
     ctx: &InferContext,
 ) -> Result<Vec<Expr>, MetelError> {
-    let overloads =
-        super::super::overload::callee_name(callee).and_then(|n| ctx.overload_candidates(n));
     let names = ctx.callee_params_at(callee.span());
     super::super::keyword_binding::positional_for_call(
         callee,
         args,
         span,
-        overloads,
         names.as_deref(),
         ctx.method_params(),
     )
+    .map(|positional| positional.args)
 }

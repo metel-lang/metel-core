@@ -51,7 +51,29 @@ pub(super) fn construct_call(
             .collect::<Result<_, _>>()?;
         let arg_types: Vec<Type> = typed_args.iter().map(|a| a.ty().clone()).collect();
         let entries = &ctx.overloads[name];
-        match super::super::overload::select(entries, &arg_types) {
+        // RFC-0223 legality-5: a keyword call selects by the candidates' own parameter names, and its
+        // arguments reach the parameters in the selected candidate's declaration order.
+        let mut typed_args = typed_args;
+        let mut written_to_param = None;
+        let selected = if super::super::keyword_binding::has_keyword(args) {
+            match super::super::keyword_binding::select_overload(
+                name, entries, args, &arg_types, span,
+            )? {
+                Some((entry, binding)) => {
+                    written_to_param = binding.written_to_param(args);
+                    typed_args = binding
+                        .arg_for_param
+                        .iter()
+                        .map(|&written| typed_args[written].clone())
+                        .collect();
+                    Some(entry)
+                }
+                None => None,
+            }
+        } else {
+            super::super::overload::select(entries, &arg_types)
+        };
+        match selected {
             Some(entry) => {
                 let fun_ty =
                     crate::data::types::default_fun_type(entry.params.clone(), entry.ret.clone());
@@ -61,13 +83,17 @@ pub(super) fn construct_call(
                     fun_ty,
                     callee.span().clone(),
                 );
-                return Ok(TypedExpr::Call {
+                let call = TypedExpr::Call {
                     callee: Box::new(typed_callee),
                     args: typed_args,
                     ty: entry.ret.clone(),
                     callee_id: Some(entry.symbol_id),
                     span: span.clone(),
-                });
+                };
+                return Ok(super::expressions::in_written_order(
+                    call,
+                    written_to_param.as_deref(),
+                ));
             }
             // No exact match: fall back to a non-overload binding of the
             // same name (prelude/imports), mirroring the inference pass.
