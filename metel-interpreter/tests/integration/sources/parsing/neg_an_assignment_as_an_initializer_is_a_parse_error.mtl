@@ -1,0 +1,5 @@
+// RFC-0183: assignment is a statement and cannot initialize a binding.
+fun main() {
+    var x := 0;
+    let y := (x = 1);
+}

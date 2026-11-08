@@ -3,5 +3,5 @@
 struct Holder { pair: (i64, i64) }
 
 fun set(h: &Holder) {
-    h.pair.0 := 9; // ERROR[T0006]
+    h.pair.0 = 9; // ERROR[T0006]
 }

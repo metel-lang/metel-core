@@ -16,7 +16,7 @@ fun main() {
     assert(f == 9);
 
     var h := f;
-    h := h + 1;
+    h = h + 1;
     assert(h == 10);
 
     // A parameter shadows the function too, and the function is intact elsewhere.

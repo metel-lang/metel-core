@@ -9,7 +9,7 @@ extend S {
 
 fun run<T: Copy>(s: S, x: T) {
     var v := x;
-    s.each(|| { v := x; }); // the parameter is not `var`
+    s.each(|| { v = x; }); // the parameter is not `var`
 }
 
 fun main() { }

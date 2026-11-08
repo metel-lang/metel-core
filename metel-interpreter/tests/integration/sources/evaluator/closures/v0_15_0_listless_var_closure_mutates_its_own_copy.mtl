@@ -3,7 +3,7 @@
 // its own captured copy across calls; the outer binding is unchanged.
 fun main() {
     var count := 0;
-    var bump := var || { count := count + 1; count };
+    var bump := var || { count = count + 1; count };
     assert(bump() == 1);
     assert(bump() == 2);
     assert(count == 0);

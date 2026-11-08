@@ -17,6 +17,6 @@ fun main() {
 fun extend_ok() {
     let g: Grid := [4, 5, 6];
     var total := 0;
-    for (x in g) { total := total + x; }
+    for (x in g) { total = total + x; }
     assert(total == 15);
 }

@@ -24,7 +24,7 @@ extend Counter {
     }
 
     fun reset(&var self) {
-        self.value := 0;
+        self.value = 0;
     }
 }
 

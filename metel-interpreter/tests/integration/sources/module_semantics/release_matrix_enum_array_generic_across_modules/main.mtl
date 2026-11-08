@@ -1,7 +1,7 @@
 import lib::{Event, events, weight, Doc, make, first_generic};
 fun main() {
     var total := 0;
-    for (e in events()) { total := total + weight(e); }
+    for (e in events()) { total = total + weight(e); }
     assert(total == 10);
     let d := make();
     let title := d.title;

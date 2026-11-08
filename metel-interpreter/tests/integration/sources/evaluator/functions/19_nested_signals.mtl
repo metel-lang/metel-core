@@ -3,7 +3,7 @@ fun main() {
     var outer_ran := 0;
     loop {
         while (true) { break; }
-        outer_ran := 1;
+        outer_ran = 1;
         break;
     }
     assert(outer_ran == 1);

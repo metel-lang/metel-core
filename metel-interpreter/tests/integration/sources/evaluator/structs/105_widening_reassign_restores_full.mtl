@@ -12,7 +12,7 @@ fun wants_full(h: Handle) -> i64 { h.fd }
 fun main() {
     var h := Handle { fd = 5, name = "x" };
     let taken := h.name;               // h : Handle.{ fd }
-    h.name := "y";                     // widens back: h : Handle
+    h.name = "y";                     // widens back: h : Handle
     assert(h.name == "y");             // sibling readable at the widened type
     assert(wants_full(h) == 5);        // whole `Handle` moved in, once
     println(taken);

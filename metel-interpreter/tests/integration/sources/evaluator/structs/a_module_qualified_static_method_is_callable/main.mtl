@@ -11,6 +11,6 @@ fun main() {
     let make := lib::Counter::with;
     assert(make(7).get() == 7);
     var s := 0;
-    match (lib::Kind::first()) { Kind::A => { s := 1; }, Kind::B => { s := 2; }, }
+    match (lib::Kind::first()) { Kind::A => { s = 1; }, Kind::B => { s = 2; }, }
     assert(s == 1);
 }

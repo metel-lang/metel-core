@@ -15,8 +15,8 @@ extend Point {
     }
 
     fun scale(&var self, factor: f64) {
-        self.x := self.x * factor;
-        self.y := self.y * factor;
+        self.x = self.x * factor;
+        self.y = self.y * factor;
     }
 }
 
@@ -48,7 +48,7 @@ extend Counter {
     }
 
     fun reset(&var self) {
-        self.value := 0;
+        self.value = 0;
     }
 }
 

@@ -1,15 +1,15 @@
 fun rhs<T>(value: T, mark: &var i64) -> T {
-    *mark := *mark * 10 + 1;
+    *mark = *mark * 10 + 1;
     value
 }
 
 fun index(mark: &var i64) -> u64 {
-    *mark := *mark * 10 + 2;
+    *mark = *mark * 10 + 2;
     0u64
 }
 
 fun write<T>(values: &var [T; 1], value: T, mark: &var i64) {
-    values[index(mark)] := rhs(value, mark);
+    values[index(mark)] = rhs(value, mark);
 }
 
 fun main() {

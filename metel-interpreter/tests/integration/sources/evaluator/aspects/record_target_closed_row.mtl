@@ -10,7 +10,7 @@ aspect Scale {
 
 extend { n: i64 }: Scale {
     fun scaled(&self, k: i64) -> i64 { self.n * k }
-    fun bump(&var self) { self.n := self.n + 1; }
+    fun bump(&var self) { self.n = self.n + 1; }
 }
 
 fun twice<T: Scale>(x: &T) -> i64 { x.scaled(2) }

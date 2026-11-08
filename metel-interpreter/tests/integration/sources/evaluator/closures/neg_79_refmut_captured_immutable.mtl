@@ -5,7 +5,7 @@ fun main() {
     let x := 10;
     let f := || {
         let p: &var i64 := &var x;
-        p := 42;
+        p = 42;
     };
     f();
 }

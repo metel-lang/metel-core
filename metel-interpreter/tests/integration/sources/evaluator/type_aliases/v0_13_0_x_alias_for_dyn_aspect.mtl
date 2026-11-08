@@ -29,7 +29,7 @@ fun main() {
     glyphs.push(Dash { weight = 4 });
     var total := 0;
     for (g in glyphs.as_slice()) {
-        total := total + g.ink();
+        total = total + g.ink();
     }
     // Dot 1  +  Dash 4*3  =  1 + 12 = 13
     assert(total == 13);

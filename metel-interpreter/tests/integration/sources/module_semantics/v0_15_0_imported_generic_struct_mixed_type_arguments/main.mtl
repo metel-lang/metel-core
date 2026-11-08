@@ -16,6 +16,6 @@ fun main() {
     assert(flipped.first == "hello");
     assert(flipped.second == 5);
 
-    p.first := 6;
+    p.first = 6;
     assert(p.first == 6);
 }

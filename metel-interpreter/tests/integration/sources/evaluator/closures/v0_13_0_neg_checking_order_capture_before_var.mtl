@@ -6,6 +6,6 @@
 //
 fun main() {
     var msg := "hi";
-    let f := || { msg := "bye"; }; // no capture list; `msg` is a free non-Copy local
+    let f := || { msg = "bye"; }; // no capture list; `msg` is a free non-Copy local
     f();
 }

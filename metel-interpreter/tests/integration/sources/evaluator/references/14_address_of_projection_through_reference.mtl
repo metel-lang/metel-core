@@ -58,7 +58,7 @@ fun mutable_projection_through_mut_reference() {
     let r: &var Cell := &var c;
 
     let implicit: &var i64 := &var r.value;
-    *implicit := 2;
+    *implicit = 2;
     assert(c.value == 2);
 
     let explicit: &var i64 := &var (*r).value;

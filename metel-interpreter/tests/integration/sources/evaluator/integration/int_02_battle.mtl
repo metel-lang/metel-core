@@ -190,7 +190,7 @@ fun best_attacker_idx(party: [Fighter]) -> Option<i64> {
     var best := 0;
     for (var i := 1; i < n; i += 1) {
         if (party[i as u64].attack > party[best as u64].attack) {
-            best := i;
+            best = i;
         }
     }
     Option::Some { value = best }
@@ -210,8 +210,8 @@ fun simulate_rounds(
     while (i < n) {
         let a  := action_fn(&f1, &f2);
         let r  := resolve(a, &f1, &f2);
-        f1 := r.0;
-        f2 := r.1;
+        f1 = r.0;
+        f2 = r.1;
         i += 1;
     }
     (f1, f2)
@@ -236,16 +236,16 @@ fun battle(
         // Fighter 1 acts.
         let a1 := s1(&f1, &f2);
         let r1 := resolve(a1, &f1, &f2);
-        f1 := r1.0;
-        f2 := r1.1;
+        f1 = r1.0;
+        f2 = r1.1;
         if (!(&f2).is_alive()) {
             return Option::Some { value = f1.name };
         } else {
             // Fighter 2 acts.
             let a2 := s2(&f2, &f1);
             let r2 := resolve(a2, &f2, &f1);
-            f2 := r2.0;
-            f1 := r2.1;
+            f2 = r2.0;
+            f1 = r2.1;
             if (!(&f1).is_alive()) {
                 return Option::Some { value = f2.name };
             }
@@ -466,7 +466,7 @@ fun main() {
     var cur_goblin := Fighter { name = "Goblin", hp = 30, max_hp = 30, attack = 8, defense = 2 };
     for (var k := 0; k < 4; k += 1) {
         let rd := resolve(Action::Defend, &cur_goblin, &knight);
-        cur_goblin := rd.0;
+        cur_goblin = rd.0;
     }
     assert(cur_goblin.defense == 14);
 

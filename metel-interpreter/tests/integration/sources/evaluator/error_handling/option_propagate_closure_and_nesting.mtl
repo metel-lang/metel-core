@@ -7,7 +7,7 @@ fun first_even(xs: List<i64>) -> Option<i64> {
         if (x % 2 == 0) {
             return Some { value = x };
         }
-        i := i + 1;
+        i = i + 1;
     }
 }
 

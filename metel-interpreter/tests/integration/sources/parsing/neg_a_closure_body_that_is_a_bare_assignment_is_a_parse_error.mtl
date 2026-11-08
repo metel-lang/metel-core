@@ -1,0 +1,7 @@
+// RFC-0183 section 1: a closure body is a block, so a reassignment closure is written with braces and a
+// `;`, `|v| { total = v; }`, never `|v| total = v`.
+fun main() {
+    var total := 0;
+    let set := |v: i64| total = v;
+    set(1);
+}

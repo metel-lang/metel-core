@@ -1,0 +1,15 @@
+// RFC-0183: a guard is an expression, so `n if n > 0 => ...` never attempts an assignment parse even
+// though `=>` begins with `=`.
+fun classify(n: i64) -> i64 {
+    match (n) {
+        m if m > 0 => 1,
+        m if m == 0 => 0,
+        _ => 0 - 1,
+    }
+}
+
+fun main() {
+    assert(classify(5) == 1);
+    assert(classify(0) == 0);
+    assert(classify(0 - 5) == 0 - 1);
+}

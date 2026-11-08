@@ -1,7 +1,7 @@
 fun main() {
     // Plain assignment overwrites.
     var x := 1;
-    x := 99;
+    x = 99;
     assert(x == 99);
     // Compound integer operators.
     var n := 20;

@@ -1,10 +1,10 @@
 fun index<T>(value: T, mark: &var i64) -> i64 {
-    *mark := *mark + 1;
+    *mark = *mark + 1;
     1
 }
 
 fun write<T>(values: &var [T; 2], value: T, mark: &var i64) {
-    values[index(0, mark) as u64] := value;
+    values[index(0, mark) as u64] = value;
 }
 
 fun read<T: Copy>(values: &[T; 2], mark: &var i64) -> T {

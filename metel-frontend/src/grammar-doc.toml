@@ -365,6 +365,11 @@ section = "Expressions"
 pest = "interp_expr_entry"
 mode = "omit"
 [[rule]]
+pest = "stmt_expr"
+mode = "named"
+name = "StatementExpression"
+section = "Expressions"
+[[rule]]
 pest = "assign_expr"
 mode = "named"
 name = "AssignmentExpression"

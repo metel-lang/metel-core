@@ -1,0 +1,6 @@
+// RFC-0183: assignment is a statement, so `if (x = 1)` is a syntax error (it was a type error only
+// because `()` is not a boolean).
+fun main() {
+    var x := 0;
+    if (x = 1) { }
+}

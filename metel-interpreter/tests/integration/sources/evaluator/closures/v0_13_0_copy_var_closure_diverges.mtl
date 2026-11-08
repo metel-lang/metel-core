@@ -3,7 +3,7 @@
 //
 fun main() {
     let n := 0;
-    var c := [n] var || { n := n + 1; n };
+    var c := [n] var || { n = n + 1; n };
     var d := c; // `n: i64` is Copy => `c` is Copy; `d` gets an independent env
     assert(c() == 1);
     assert(c() == 2);

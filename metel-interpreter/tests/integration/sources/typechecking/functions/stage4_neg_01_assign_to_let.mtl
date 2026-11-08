@@ -1,3 +1,3 @@
 // Stage 4 negative: assigning to a let binding is T0006
 let x := 5;
-x := 10; // ERROR[T0006]
+x = 10; // ERROR[T0006]

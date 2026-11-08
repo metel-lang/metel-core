@@ -1,0 +1,7 @@
+// RFC-0183 section 1 (tail assignments): an assignment is a statement and needs its `;`, so a block
+// whose last item is `x = 1` without one is not that block: `{ x = 1 }` is an anonymous record, and a
+// record is not the unit an `if` without `else` needs. The block is written `{ x = 1; }`.
+fun main() {
+    var x := 0;
+    if (true) { x = 1 }
+}

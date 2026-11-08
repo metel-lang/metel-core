@@ -2,4 +2,4 @@
 // internal error. The binding must be `var` — on a `let` the immutability check (T0006)
 // fires first and this would not exercise the range check at all.
 var t: (i64, i64) := (1, 2);
-t.5 := 1; // ERROR[T0003]
+t.5 = 1; // ERROR[T0003]

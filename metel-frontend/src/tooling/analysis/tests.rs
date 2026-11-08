@@ -415,7 +415,7 @@ mod member_ids_on_typed_ir {
         let analysis = analyze(
             "fun sum(xs: [i64]) -> i64 {\n\
              \tvar acc: i64 := 0;\n\
-             \tfor (x in xs) { acc := acc + x; }\n\
+             \tfor (x in xs) { acc = acc + x; }\n\
              \tacc\n\
              }\n",
         );
@@ -631,7 +631,7 @@ mod member_ids_on_typed_ir {
         use crate::data::typed_ast::{TypedPlace, TypedStmt};
         let analysis = analyze(
             "var counter: i64 := 0;\n\
-             fun bump() { counter := counter + 1; }\n",
+             fun bump() { counter = counter + 1; }\n",
         );
         let root = analysis
             .graph
@@ -663,7 +663,7 @@ mod member_ids_on_typed_ir {
                 },
                 _ => None,
             })
-            .expect("a `counter := …` assignment");
+            .expect("a `counter = …` assignment");
         assert!(
             matches!(target_binding, Some(crate::identity::BindingId::Global(_))),
             "a top-level `var` assignment target resolves to its SymbolId: {target_binding:?}"
@@ -676,7 +676,7 @@ mod member_ids_on_typed_ir {
         let analysis = analyze(
             "fun bump() -> i64 {\n\
              \tvar n := 1;\n\
-             \tn := n + 1;\n\
+             \tn = n + 1;\n\
              \tn\n\
              }\n",
         );
@@ -718,7 +718,7 @@ mod member_ids_on_typed_ir {
                 },
                 _ => None,
             })
-            .expect("an `n := …` assignment");
+            .expect("an `n = …` assignment");
         assert_eq!(
             target_binding,
             Some(crate::identity::BindingId::Local(decl_id)),

@@ -1,0 +1,28 @@
+// RFC-0183: plain `=` and the compound operators assign in a block statement, a match arm and a `for`
+// header's update clause; `:=` introduces names and is unchanged; `f(x = 1)` is a keyword argument.
+fun scale(by: i64) -> i64 { by * 2 }
+
+fun main() {
+    var n := 10;
+    n = n + 1;
+    n += 1;
+    n -= 2;
+    n *= 3;
+    n /= 2;
+    n %= 7;
+    assert(n == 1);
+
+    var xs := [0, 0, 0];
+    xs[1] = 5;
+    assert(xs[1] == 5);
+
+    var sum := 0;
+    for (var i := 0; i < 4; i = i + 1) { sum += i; }
+    assert(sum == 6);
+    for (var j := 0; j < 4; j += 2) { sum += 1; }
+    assert(sum == 8);
+
+    assert(scale(by = 3) == 6);
+    let local := 4;
+    assert(local == 4);
+}

@@ -4,6 +4,6 @@
 // -- `[...] var |...| { ... }` -- not the parenthesized form that RFC removed.
 fun main() {
     var count := 0;
-    let bump := [&var count] || { count := count + 1; }; // missing `var` qualifier
+    let bump := [&var count] || { count = count + 1; }; // missing `var` qualifier
     bump();
 }

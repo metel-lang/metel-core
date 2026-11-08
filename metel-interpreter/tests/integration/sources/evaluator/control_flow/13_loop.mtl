@@ -7,9 +7,9 @@ fun main() {
     var i := 0;
     loop {
         if (i >= 5) { break; }
-        i := i + 1;
+        i = i + 1;
         if (i == 3) { continue; }
-        count := count + 1;
+        count = count + 1;
     }
     assert(count == 4);
     // Assignments inside the loop are visible in subsequent iterations.

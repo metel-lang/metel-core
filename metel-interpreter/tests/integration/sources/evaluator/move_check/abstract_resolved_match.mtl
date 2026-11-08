@@ -30,7 +30,7 @@ fun whole<T>(value: T) -> T {
 }
 
 fun make<T>(value: T, mark: &var i64) -> Option<T> {
-    *mark := *mark + 1;
+    *mark = *mark + 1;
     Option::Some { value = value }
 }
 

@@ -32,7 +32,7 @@ fun scaled(n: i64) -> i64 {
 
 // Reads and mutates a module-level `var` from function bodies.
 fun bump() {
-    counter := counter + 1;
+    counter = counter + 1;
 }
 
 fun current() -> i64 {
@@ -62,6 +62,6 @@ fun main() {
     bump();
     assert(current() == 2);
     assert(counter == 2);
-    counter := 5;
+    counter = 5;
     assert(current() == 5);
 }

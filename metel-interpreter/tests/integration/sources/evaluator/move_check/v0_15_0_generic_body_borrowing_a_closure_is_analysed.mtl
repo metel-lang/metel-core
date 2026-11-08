@@ -10,7 +10,7 @@ fun shared<T: Copy>(x: T) {
 
 fun exclusive<T: Copy>(x: T) {
     var n := 0;
-    var g := [&var n] var || { n := 1; };
+    var g := [&var n] var || { n = 1; };
     let r := &var g;
     r();
 }

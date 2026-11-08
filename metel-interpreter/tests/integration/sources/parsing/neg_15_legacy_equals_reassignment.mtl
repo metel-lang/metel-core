@@ -1,5 +1,6 @@
-// RFC-0136: plain reassignment uses `:=`. Old `x = e` is a parse error.
+// RFC-0183: `:=` only introduces a name, so it is not reassignment. `x := 1;` where `x` is not being
+// declared is an ordinary parse error, with no tailored message.
 fun main() {
     var x := 0;
-    x = 1;
+    x := 1;
 }

@@ -3,7 +3,7 @@ struct Counter {
 }
 
 fun bump(r: &var Counter) {
-    r.value := r.value + 1;
+    r.value = r.value + 1;
 }
 
 fun main() {

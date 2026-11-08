@@ -8,7 +8,7 @@ fun main() {
         i += 1;
         let moved := s;
         seen += consume(moved);
-        s := "again";
+        s = "again";
         if (i == 3) { break; }
     }
     assert(seen == 3);

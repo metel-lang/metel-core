@@ -19,7 +19,7 @@ fun main() {
     assert(r5 == 99);
     // Condition evaluated at runtime (not constant-folded).
     var flag := false;
-    flag := true;
+    flag = true;
     let r6 := loop { if (flag) { break 7; } };
     assert(r6 == 7);
 }

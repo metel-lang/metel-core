@@ -6,5 +6,5 @@ fun slot(s: &String) -> u64 { 0 }
 fun main() {
     var a := [1, 2];
     let s := "x".to_string();
-    a[slot(&s)] := take(s);
+    a[slot(&s)] = take(s);
 }

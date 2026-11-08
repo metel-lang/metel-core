@@ -30,7 +30,7 @@ extend<T: Clone> Wrapper<T>: Iterable<T> {
         if (self.used) {
             return None;
         }
-        self.used := true;
+        self.used = true;
         return Option::Some { value = self.value.clone() };
     }
 }

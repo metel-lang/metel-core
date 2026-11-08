@@ -7,7 +7,7 @@ fun main() {
     assert(a.y == "s");
 
     var b: { x: i64, .. } := { x = 1, y = 2 };
-    b.x := 9;
+    b.x = 9;
     assert(b.x == 9 && b.y == 2);
 
     // the annotation's fixed fields still type the initializer: `x` is a `u8`, not an `i64`

@@ -6,7 +6,7 @@ fun main() {
     // Computed index assignment.
     var arr: [i64; 5] := [10, 20, 30, 40, 50];
     let i := 1;
-    arr[(i + 1) as u64] := 99;
+    arr[(i + 1) as u64] = 99;
     assert(arr[2] == 99);
 
     // Compound assignment with computed index.
@@ -21,13 +21,13 @@ fun main() {
 
     // Simple variable index.
     let j := 0;
-    arr[j as u64] := 7;
+    arr[j as u64] = 7;
     assert(arr[0] == 7);
 
     // Field chain then computed index assignment.
     var s := S { data = [1, 2, 3] };
-    s.data[i as u64] := 42;
+    s.data[i as u64] = 42;
     assert(s.data[1] == 42);
-    s.data[(i + 1) as u64] := 55;
+    s.data[(i + 1) as u64] = 55;
     assert(s.data[2] == 55);
 }

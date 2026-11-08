@@ -3,5 +3,5 @@ struct Point { x: i64 }
 fun main() {
     var p := Point { x = 1 };
     let r: &i64 := &p.x;
-    *r := 5; // ERROR[T0002]
+    *r = 5; // ERROR[T0002]
 }

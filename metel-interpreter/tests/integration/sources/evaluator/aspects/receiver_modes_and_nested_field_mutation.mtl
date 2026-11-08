@@ -11,7 +11,7 @@ struct Outer {
 
 extend Outer {
     fun bump(&var self) {
-        self.inner.n := self.inner.n + 1;
+        self.inner.n = self.inner.n + 1;
     }
 
     fun peek(&self) -> i64 {

@@ -2,6 +2,6 @@
 struct S { g: u8 }
 fun main() {
     var s := S { g = 0 };
-    s.g := 7;
+    s.g = 7;
     assert(s.g == 7);
 }

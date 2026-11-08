@@ -79,7 +79,7 @@ fun main() {
     var i := 0;
     while (i < 100) {
         if (i * i > 50) {
-            found := i;
+            found = i;
             break;
         }
         i += 1;

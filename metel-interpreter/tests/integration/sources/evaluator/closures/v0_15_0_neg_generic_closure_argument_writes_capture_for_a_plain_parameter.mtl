@@ -5,7 +5,7 @@ fun apply(f: || -> ()) { f(); }
 
 fun run<T: Copy>(x: T) {
     var v := x;
-    apply(|| { v := x; }); // the parameter is not `var`
+    apply(|| { v = x; }); // the parameter is not `var`
 }
 
 fun main() { }

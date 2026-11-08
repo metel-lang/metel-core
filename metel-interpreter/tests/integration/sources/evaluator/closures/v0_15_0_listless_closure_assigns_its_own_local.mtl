@@ -3,7 +3,7 @@
 fun main() {
     let total := |xs: [i64]| {
         var sum := 0;
-        for (x in xs) { sum := sum + x; }
+        for (x in xs) { sum = sum + x; }
         sum
     };
     assert(total([1, 2, 3]) == 6);

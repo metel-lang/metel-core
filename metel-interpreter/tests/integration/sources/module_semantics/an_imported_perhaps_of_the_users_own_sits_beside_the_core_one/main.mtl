@@ -3,7 +3,7 @@ import lib::Option;
 fun main() {
     let m := Option::Maybe;
     var s := 0;
-    match (m) { Option::Maybe => { s := 1; }, Option::Not => { s := 2; }, }
+    match (m) { Option::Maybe => { s = 1; }, Option::Not => { s = 2; }, }
     assert(s == 1);
     let c: std::core::Option<i64> := None;
     assert(c.is_none());

@@ -24,8 +24,8 @@ fun main() {
     let r := R { a = 4 };
     var s := 0;
     match (E::B) {
-        E::A => { s := 1; },
-        E::B => { s := 2; },
+        E::A => { s = 1; },
+        E::B => { s = 2; },
     }
     assert(p.x == 2);
     assert(r.a == 4);

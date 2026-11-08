@@ -11,7 +11,7 @@ fun main() {
     fun limit() -> i64 { LIMIT } // a module-level binding is not a local of `main`
     var total := 0;
     fun add(t: i64, v: i64) -> i64 { t + v }
-    total := add(total, twice(1));
+    total = add(total, twice(1));
     assert(total == 3);
     assert(is_even(10) && is_odd(7));
     assert(limit() == 10);

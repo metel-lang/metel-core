@@ -1,6 +1,6 @@
 // metel-core#1641 (RFC 0153 legality-25): taking `&var` of a by-value capture
 // mutates the capture, so the closure needs `var` (listed capture).
-fun bump(r: &var i64) { *r := *r + 1; }
+fun bump(r: &var i64) { *r = *r + 1; }
 
 fun main() {
     var count := 0;

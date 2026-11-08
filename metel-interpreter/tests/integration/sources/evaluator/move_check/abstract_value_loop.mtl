@@ -10,9 +10,9 @@ fun nested<T>(value: T) -> T {
 }
 
 fun returning<T>(value: T, mark: &var i64) {
-    *mark := 1;
+    *mark = 1;
     let result: () := loop { break if (true) { return; } else { return; }; };
-    *mark := 2;
+    *mark = 2;
 }
 
 fun main() {

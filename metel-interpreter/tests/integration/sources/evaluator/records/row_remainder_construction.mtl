@@ -2,8 +2,8 @@ fun take_id<record R, record Rest>(r: { id: i64, ..R }) -> i64
 where R = { extra: i64, ..Rest }
 {
     let var { id, ..rest } := r;
-    id := id + 1;
-    rest.extra := rest.extra + 1;
+    id = id + 1;
+    rest.extra = rest.extra + 1;
     id + rest.extra
 }
 

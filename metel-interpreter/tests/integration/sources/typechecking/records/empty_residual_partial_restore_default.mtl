@@ -3,6 +3,6 @@ fun main() {
     var p := Pair { left = "l", right = "r" };
     let l := p.left;
     let r := p.right;
-    p.left := "back";
+    p.left = "back";
     let missing := p.right; // ERROR[T0019]
 }

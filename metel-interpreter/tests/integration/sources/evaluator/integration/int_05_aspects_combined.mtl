@@ -71,7 +71,7 @@ extend Countdown: Iterable<i64> {
     fun next(&var self) -> Option<i64> {
         if (self.current > 0) {
             let v := self.current;
-            self.current := self.current - 1;
+            self.current = self.current - 1;
             Option::Some { value = v }
         } else {
             None
@@ -121,7 +121,7 @@ fun main() {
 
     // Empty countdown
     var ran := false;
-    for (_v in Countdown::new(0)) { ran := true; }
+    for (_v in Countdown::new(0)) { ran = true; }
     assert(!ran);
 
     // break inside for-in: stop after first even number
@@ -129,7 +129,7 @@ fun main() {
     for (v in Countdown::new(10)) {
         let rem := v - (v / 2 * 2);
         if (rem == 0) {
-            first_even := v;
+            first_even = v;
             break;
         }
     }

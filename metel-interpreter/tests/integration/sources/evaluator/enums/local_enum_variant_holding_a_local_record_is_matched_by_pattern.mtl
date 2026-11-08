@@ -7,9 +7,9 @@ fun main() {
     var sum := 0;
     match (s) {
         Shape::At { p } => {
-            match (p) { Pt { x, y } => { sum := x + y; }, }
+            match (p) { Pt { x, y } => { sum = x + y; }, }
         },
-        Shape::Nowhere => { sum := 0; },
+        Shape::Nowhere => { sum = 0; },
     }
     assert(sum == 3);
 }
