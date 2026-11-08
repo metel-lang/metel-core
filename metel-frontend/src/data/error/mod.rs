@@ -58,6 +58,10 @@ pub enum TypeErrorCode {
     T0036, // By-value open-row parameter over a `Drop` brand would drop a narrowed residual (RFC-0179, #949)
     T0037, // Duplicate top-level declaration in one namespace (#1560)
     T0038, // A type declared with the name of an intrinsic type (#1582)
+    T0039, // A keyword argument binds no free parameter: unknown, repeated or already bound (RFC-0223, #1858)
+    T0040, // A positional argument after a keyword argument (RFC-0223, #1858)
+    T0041, // A keyword argument in a call through a function value (RFC-0223, #1858)
+    T0042, // An impl method's parameter name differs from the aspect's (RFC-0223, #1858)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
