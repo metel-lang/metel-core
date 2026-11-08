@@ -253,10 +253,34 @@ pub struct Edit {
     pub insert: &'static str,
 }
 
-/// The edits that migrate every assignment in `src`, sorted by offset. `Err` for a source that does
-/// not parse as a program under the old grammar, and for an assignment the new grammar would
+/// The edits that migrate every assignment in `src`, sorted by offset. A source that is not a whole
+/// program (a documentation fragment of statements) is parsed inside a wrapping `fun main`, and the
+/// wrapper's own tail gets no `;`: a fragment's last line is left as the author wrote it. `Err` for a
+/// source that parses neither way under the old grammar, and for an assignment the new grammar would
 /// reject that needs a hand rewrite.
 pub fn edits_to_apply(src: &str) -> Result<Vec<Edit>, String> {
+    match edits_for(src) {
+        Ok(edits) => Ok(edits),
+        Err(program_error) => {
+            const PREFIX: &str = "fun main() {\n";
+            let wrapped = format!("{PREFIX}{src}\n}}\n");
+            let end = src.trim_end().len();
+            match edits_for(&wrapped) {
+                Ok(edits) => Ok(edits
+                    .into_iter()
+                    .filter(|e| !(e.insert == ";" && e.len == 0 && e.start - PREFIX.len() >= end))
+                    .map(|e| Edit {
+                        start: e.start - PREFIX.len(),
+                        ..e
+                    })
+                    .collect()),
+                Err(_) => Err(program_error),
+            }
+        }
+    }
+}
+
+fn edits_for(src: &str) -> Result<Vec<Edit>, String> {
     let pairs = MetelParser::parse(Rule::program, src).map_err(|e| e.to_string())?;
     let mut edits = Vec::new();
     let mut manual = Vec::new();
