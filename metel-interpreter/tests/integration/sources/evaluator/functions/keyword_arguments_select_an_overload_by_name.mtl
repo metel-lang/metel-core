@@ -1,0 +1,10 @@
+// RFC-0223 legality-5 (metel-core#1858): a candidate takes a keyword call only if the keywords name its
+// own parameters, so the names choose between overloads of different parameter lists.
+fun area(width: i64, height: i64) -> i64 { width * height }
+fun area(radius: i64) -> i64 { radius * radius * 3 }
+
+fun main() {
+    assert(area(radius = 2) == 12);
+    assert(area(height = 3, width = 2) == 6);
+    assert(area(2, height = 3) == 6);
+}

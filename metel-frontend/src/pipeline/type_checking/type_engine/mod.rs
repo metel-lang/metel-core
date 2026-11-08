@@ -6969,6 +6969,9 @@ pub struct SolveStats {
 #[derive(Debug, Clone)]
 pub struct OverloadEntry {
     pub params: Vec<Type>,
+    /// The declared value-parameter names, in order: how a call that names some of its arguments
+    /// finds the candidates it can bind to (RFC-0223 legality-5).
+    pub param_names: std::sync::Arc<[String]>,
     pub ret: Type,
     /// Stable identity for this definition. Typed call sites carry the selected
     /// candidate's id (`TypedExpr::Call::callee_id`) and the evaluator

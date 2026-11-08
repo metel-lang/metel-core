@@ -229,6 +229,7 @@ fn build_table_from_decls(
             }
             entries.push(OverloadEntry {
                 params,
+                param_names: f.params.iter().map(|p| p.name.clone()).collect(),
                 ret,
                 symbol_id: ids.id_for(name, ordinal, &f.span)?,
             });
