@@ -730,6 +730,22 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
+        } if construction_field_names(callee, ctx).is_some() => {
+            // RFC-0100: `Type(args)` builds the struct or variant directly; check the literal it is
+            // equivalent to, and keep the field names for the abstract-body builder.
+            let names = construction_field_names(callee, ctx)
+                .ok_or_else(|| MetelError::internal("construction call lost its type"))?;
+            let literal = super::super::construction_call::literal_for(
+                callee, type_args, args, span, &names,
+            )?;
+            ctx.record_definition_construction(span.clone(), names);
+            infer_expr(&literal, ctx, fun_generalizations)
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } if super::super::keyword_binding::has_keyword(args)
             && !super::super::overload::callee_name(callee)
                 .is_some_and(|name| ctx.is_overloaded(name)) =>
@@ -3429,4 +3445,55 @@ fn keyword_call_positional(
         ctx.method_params(),
     )
     .map(|positional| positional.args)
+}
+
+/// The declared field names of the struct or struct-like variant a call's callee names, when it names
+/// one and no value of that name shadows it (RFC-0100): the call is then a construction call.
+fn construction_field_names(callee: &Expr, ctx: &mut InferContext) -> Option<Vec<String>> {
+    use super::super::construction_call::{Target, callee_symbol, target_of};
+    let id = callee_symbol(callee);
+    match target_of(callee)? {
+        Target::Struct(_) if id.is_some() => ctx
+            .registry()
+            .struct_fields_by_id(id?)
+            .map(|fields| fields.iter().map(|field| field.name.clone()).collect()),
+        Target::Variant(..) if id.is_some() => {
+            let (_, variant) = match callee {
+                Expr::ResolvedPath { resolved, .. } => resolved.split_once("::")?,
+                _ => return None,
+            };
+            let info = ctx.registry().enum_info_by_id(id?)?;
+            let variant = info.variants.iter().find(|v| v.name == variant)?;
+            (!variant.fields.is_empty()).then(|| {
+                variant
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect()
+            })
+        }
+        Target::Struct(name) => {
+            // A value of that name, visible or not, makes the call an ordinary call of it.
+            if ctx.callee_params_at(callee.span()).is_some()
+                || ctx.lookup(name).is_some()
+                || ctx.poly_scheme(name).is_some()
+                || ctx.is_overloaded(name)
+            {
+                return None;
+            }
+            ctx.get_struct_fields(name)
+                .map(|fields| fields.iter().map(|field| field.name.clone()).collect())
+        }
+        Target::Variant(enum_name, variant) => {
+            let info = ctx.get_enum(enum_name)?;
+            let variant = info.variants.iter().find(|v| v.name == variant)?;
+            (!variant.fields.is_empty()).then(|| {
+                variant
+                    .fields
+                    .iter()
+                    .map(|field| field.name.clone())
+                    .collect()
+            })
+        }
+    }
 }

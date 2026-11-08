@@ -464,6 +464,11 @@ mode = "named"
 name = "Argument"
 section = "Expressions"
 [[rule]]
+pest = "spread_arg"
+mode = "named"
+name = "SpreadArgument"
+section = "Expressions"
+[[rule]]
 pest = "keyword_arg"
 mode = "named"
 name = "KeywordArgument"

@@ -49,6 +49,9 @@ pub(super) struct ResolvedInferenceFacts {
     definition_call_types: HashMap<Span, InferType>,
     definition_paths: HashMap<Span, super::type_engine::DefinitionPathFact>,
     definition_array_lengths: std::collections::HashSet<Span>,
+    /// Construction calls `Type(args)` by call-span, with the declared field names of the built type
+    /// (RFC-0100, metel-core#1860): the abstract-body builder rewrites the call to its literal.
+    definition_constructions: HashMap<Span, Vec<String>>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
     definition_method_facts: HashMap<Span, DefinitionMethodFact>,
     definition_capture_types: HashMap<Span, InferType>,
@@ -79,6 +82,7 @@ impl ResolvedInferenceFacts {
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
             definition_array_lengths: std::collections::HashSet::new(),
+            definition_constructions: HashMap::new(),
             definition_nominal_fields: HashMap::new(),
             definition_method_facts: HashMap::new(),
             definition_capture_types: HashMap::new(),
@@ -199,6 +203,7 @@ impl ResolvedInferenceFacts {
                 .collect(),
             definition_paths: Self::resolve_paths(ctx, subst),
             definition_array_lengths: ctx.definition_array_lengths().clone(),
+            definition_constructions: ctx.definition_constructions().clone(),
         })
     }
 
@@ -303,6 +308,10 @@ impl ResolvedInferenceFacts {
         span: &Span,
     ) -> Option<&super::type_engine::DefinitionPathFact> {
         self.definition_paths.get(span)
+    }
+
+    pub(super) fn definition_construction(&self, span: &Span) -> Option<&[String]> {
+        self.definition_constructions.get(span).map(Vec::as_slice)
     }
 
     pub(super) fn definition_array_length(&self, span: &Span) -> bool {

@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.enums.instantiation.legality-1", "spec.declarations.structs.instantiation-and-field-access.legality-1"]

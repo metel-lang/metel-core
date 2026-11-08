@@ -6900,6 +6900,7 @@ pub struct InferContext {
     definition_call_types: HashMap<Span, InferType>,
     definition_paths: HashMap<Span, DefinitionPathFact>,
     definition_array_lengths: HashSet<Span>,
+    definition_constructions: HashMap<Span, Vec<String>>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
     definition_method_facts: HashMap<Span, DefinitionMethodFact>,
     definition_capture_types: HashMap<Span, InferType>,
@@ -7039,6 +7040,7 @@ impl InferContext {
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
             definition_array_lengths: HashSet::new(),
+            definition_constructions: HashMap::new(),
             definition_nominal_fields: HashMap::new(),
             definition_method_facts: HashMap::new(),
             definition_capture_types: HashMap::new(),
@@ -8986,6 +8988,14 @@ impl InferContext {
 
     pub(crate) fn record_definition_array_length(&mut self, span: Span) {
         self.definition_array_lengths.insert(span);
+    }
+
+    pub(crate) fn record_definition_construction(&mut self, span: Span, names: Vec<String>) {
+        self.definition_constructions.insert(span, names);
+    }
+
+    pub(crate) fn definition_constructions(&self) -> &HashMap<Span, Vec<String>> {
+        &self.definition_constructions
     }
 
     pub(crate) fn definition_array_lengths(&self) -> &HashSet<Span> {
