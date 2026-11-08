@@ -4260,6 +4260,57 @@ mod path_segment_span_tests {
 }
 
 #[cfg(test)]
+mod keyword_reservation_tests {
+    //! Every word in the grammar's `keyword` rule is reserved. PEG ordered choice commits to the first
+    //! matching alternative, so a keyword listed after one of its own prefixes (`as` before `aspect`)
+    //! silently stopped being reserved; this test reads the rule and checks each word.
+
+    use super::parse;
+
+    fn keywords() -> Vec<String> {
+        let grammar = include_str!("../../../grammar.pest");
+        let start = grammar.find("keyword = @{").expect("keyword rule");
+        let body = &grammar[start..];
+        let end = body
+            .find("~ !(ASCII_ALPHANUMERIC")
+            .expect("keyword rule end");
+        let mut words = Vec::new();
+        let mut rest = &body[..end];
+        while let Some(open) = rest.find('"') {
+            let after = &rest[open + 1..];
+            let close = after.find('"').expect("closing quote");
+            words.push(after[..close].to_string());
+            rest = &after[close + 1..];
+        }
+        words
+    }
+
+    #[test]
+    fn every_keyword_is_reserved() {
+        let words = keywords();
+        assert!(words.len() > 30, "found only {} keywords", words.len());
+        for word in &words {
+            let source = format!("fun main() {{ let {word} := 1; }}\n");
+            assert!(
+                parse(&source, "t.mtl").is_err(),
+                "`{word}` parses as a binding name, so it is not reserved"
+            );
+        }
+    }
+
+    #[test]
+    fn identifiers_that_begin_with_a_keyword_are_not_reserved() {
+        for word in keywords() {
+            let source = format!("fun main() {{ let {word}_value := 1; let {word}2 := 2; }}\n");
+            assert!(
+                parse(&source, "t.mtl").is_ok(),
+                "`{word}_value` or `{word}2` was rejected as an identifier"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod keyword_argument_tests {
     //! RFC-0223 section 3 (metel-core#1857): `call_arg = { keyword_arg | expr }`. These are the grammar cases of the
     //! prototype, kept as parse-level tests. Binding a keyword to a parameter is the checker's (metel-core#1858).

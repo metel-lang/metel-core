@@ -492,10 +492,14 @@ ident = @{
     !keyword ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")*
 }
 
+// PEG ordered choice commits to the first alternative that matches, so a word that is a prefix of
+// another must come after it: with `as` first, `aspect` matched `as`, failed the word-boundary
+// check below and was never treated as reserved. `every_keyword_is_reserved` in the parser tests
+// guards the ordering.
 // arch-implements: ["arch.parsing.requirement-5"]
 keyword = @{
-    ("and" | "as" | "aspect" | "break" | "continue" | "dyn" | "else" | "enum" |
-     "export" | "extend" | "extends" | "false" | "for" | "fun" | "if" | "impl" |
+    ("and" | "aspect" | "as" | "break" | "continue" | "dyn" | "else" | "enum" |
+     "export" | "extends" | "extend" | "false" | "for" | "fun" | "if" | "impl" |
      "import" | "let" | "loop" | "match" | "mut" | "once" | "or" | "public" |
      "pub" | "return" | "root" | "self" | "std" | "struct" | "super" |
      "true" | "var" | "record" |
