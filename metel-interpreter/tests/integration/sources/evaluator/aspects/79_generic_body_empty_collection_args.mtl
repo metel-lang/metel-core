@@ -92,7 +92,7 @@ extend<T: Show> [T]: Show {
     fun show(&self) -> String {
         var out := "";
         for (e in self) {
-            out := out + render(&e);
+            out = out + render(&e);
         }
         return out;
     }

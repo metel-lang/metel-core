@@ -41,12 +41,12 @@ fun main() {
 
     // Whole-value mutation through a `var` binding.
     var p := { x = 1, y = 1 };
-    p := { x = 5, y = 6 };
+    p = { x = 5, y = 6 };
     assert(p.x == 5);
     assert(p.y == 6);
 
     // Field mutation.
-    p.y := 9;
+    p.y = 9;
     assert(p.y == 9);
 
     // Multi-field projection of a nominal type's row.

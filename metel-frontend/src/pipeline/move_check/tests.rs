@@ -851,7 +851,7 @@ fun returned<T>(condition: boolean, value: T) {
 fun restored<T>(condition: boolean, original: T, replacement: T) -> T {
     var value := original;
     let moved := value;
-    match (condition) { true => { value := replacement; }, _ => { value := replacement; } }
+    match (condition) { true => { value = replacement; }, _ => { value = replacement; } }
     value
 }
 fun consumed<T>(value: T) -> boolean { true }
@@ -1083,7 +1083,7 @@ fun read<T>(values: &[T; 2], value: T) {
     value;
 }
 fun write<T>(values: &var [T; 2], value: T, spare: T) {
-    values[choose(value) as u64] := spare;
+    values[choose(value) as u64] = spare;
     value;
 }
 fun numeric<T>(value: T, number: i64) -> f64 { number as f64 }
@@ -1149,7 +1149,7 @@ fun nested<T>(value: T) -> T {
 }
 fun statement_loops<T>(value: T) -> T {
     while (true) { break; }
-    for (var i := 0; i < 1; i := i + 1) { break; }
+    for (var i := 0; i < 1; i = i + 1) { break; }
     for (item in [1, 2]) { break; }
     loop { break value; }
 }
@@ -1181,7 +1181,7 @@ fn abstract_ownership_stops_assignment_inputs_after_return() {
         r#"
 fun stopped<record T: { idx: u64, .. }>(values: &var [[i64; 2]; 2], value: T) {
     let moved := value;
-    values[loop { return; break 0u64; }][value.idx] := 1;
+    values[loop { return; break 0u64; }][value.idx] = 1;
 }
 fun main() {}
 "#,
@@ -1205,10 +1205,10 @@ fn abstract_ownership_checks_assignment_rhs_before_index_inputs() {
         r#"
 fun choose<T>(first: T, second: T) -> u64 { 0u64 }
 fun ordered<T>(slots: &var [T; 2], value: T, spare: T) {
-    slots[choose(value, spare)] := value;
+    slots[choose(value, spare)] = value;
 }
 fun divergent<T>(slots: &var [T; 2], value: T) {
-    slots[choose(value, value)] := if (true) { return; } else { return; };
+    slots[choose(value, value)] = if (true) { return; } else { return; };
 }
 fun main() {}
 "#,
@@ -1238,7 +1238,7 @@ fn abstract_ownership_keeps_assignment_storage_contracts_pending() {
     let report = move_report_for_source_with(
         r#"
 fun stored<T>(slots: &var [once || -> T; 2], value: T) {
-    slots[0u64] := [value] once || { value };
+    slots[0u64] = [value] once || { value };
 }
 fun main() {}
 "#,
@@ -1266,21 +1266,21 @@ fn abstract_ownership_evaluates_indexed_assignment_inputs_once() {
     let report = move_report_for_source_with(
         r#"
 fun choose<T>(value: T) -> u64 { 0u64 }
-fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] := value; }
+fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] = value; }
 fun field_write<T>(values: &var [{ x: i64 }; 2], value: T) {
-    values[choose(value)].x := 1;
+    values[choose(value)].x = 1;
     let again := value;
 }
 fun tuple_write<T>(values: &var [(i64, i64); 2], value: T) {
-    values[choose(value)].0 := 1;
+    values[choose(value)].0 = 1;
     let again := value;
 }
 fun nested<T>(values: &var [[i64; 2]; 2], first: T, second: T) {
-    values[choose(first)][choose(second)] := 1;
+    values[choose(first)][choose(second)] = 1;
     let again_first := first; let again_second := second;
 }
 fun rhs<T>(values: &var [T; 2], value: T, index: u64) {
-    values[index] := value; let again := value;
+    values[index] = value; let again := value;
 }
 fun main() {}
 "#,
@@ -1314,7 +1314,7 @@ fun eat<T>(value: T) -> i64 { 0 }
 fun restored<T>(value: T, replacement: T) {
     var slot := value;
     let first := slot;
-    for (; true; eat(slot)) { slot := replacement; continue; }
+    for (; true; eat(slot)) { slot = replacement; continue; }
 }
 fun main() {}
 "#,
@@ -1373,7 +1373,7 @@ fun init_once<T>(value: T) {
     for (let held: T := value; false; ) { let seen := &held; }
 }
 fun copied<T: Copy>(value: T) {
-    for (var i: i64 := 0; i < 2; i := i + 1) { let first := value; }
+    for (var i: i64 := 0; i < 2; i = i + 1) { let first := value; }
 }
 fun step_move<T>(value: T) {
     for (; true; eat(value)) { continue; }
@@ -1962,7 +1962,7 @@ fn abstract_ownership_restores_projected_places_and_keeps_shadowed_identities_di
 fun restore<T>(initial: T, replacement: T) -> T {
     var pair := (initial, 0);
     let first := pair.0;
-    pair.0 := replacement;
+    pair.0 = replacement;
     pair.0
 }
 fun shadow<T>(value: T, other: T) {
@@ -2374,7 +2374,7 @@ fn abstract_ownership_checks_exact_local_annotations_without_reconstruction() {
         r#"
 fun repeated<T>(value: T) { let first: T := value; let second: T := first; let third := first; }
 fun copied<T: Copy>(value: T) { let first: T := value; let second: T := first; let third := first; }
-fun restored<T>(value: T, replacement: T) { var local: T := value; let first := local; local := replacement; let second: T := local; }
+fun restored<T>(value: T, replacement: T) { var local: T := value; let first := local; local = replacement; let second: T := local; }
 fun main() {}
 "#,
         |graph| {
@@ -3013,14 +3013,14 @@ fn abstract_ownership_separates_index_coercions_from_retained_operations() {
         r#"
 fun coerced<T: Copy>(values: [T; 2]) { let first := values[0]; }
 fun temporary<T: Copy>(value: T, index: u64) { let first := [value, value][index]; }
-fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] := value; }
+fun assigned<T: Copy>(values: &var [T; 2], value: T, index: u64) { values[index] = value; }
 fun choose<T>(value: T) -> u64 { 0u64 }
 fun field_write<T>(values: &var [{ x: i64 }; 2], value: T) {
-    values[choose(value)].x := 1;
+    values[choose(value)].x = 1;
     let again := value;
 }
 fun tuple_write<T>(values: &var [(i64, i64); 2], value: T) {
-    values[choose(value)].0 := 1;
+    values[choose(value)].0 = 1;
     let again := value;
 }
 fun main() {}
@@ -3076,7 +3076,7 @@ fun remainder<T>(value: { payload: T, count: i64 }) {
 }
 fun mutable<T>(value: T, replacement: T) {
     let var { payload, .. } := { payload = value }; let first := payload;
-    payload := replacement; let again := payload;
+    payload = replacement; let again := payload;
 }
 fun main() {}
 "#,
@@ -4568,7 +4568,7 @@ fn reassigning_a_moved_binding_makes_it_valid_again() {
 fun main() {
 var s := "hello";
 let moved := s;
-s := "again";
+s = "again";
 let ok := s;
 }
 "#,
@@ -4585,7 +4585,7 @@ var i := 0;
 loop {
     i += 1;
     let moved := s;
-    s := "again";
+    s = "again";
     if (i == 3) { break; }
 }
 }
@@ -4602,7 +4602,7 @@ struct Pair { left: String, right: String }
 fun main() {
 var p := Pair { left = "a", right = "b" };
 let taken := p.left;
-p.left := "c";
+p.left = "c";
 let whole := p;
 }
 "#,
@@ -4619,7 +4619,7 @@ struct Pair { left: String, right: String }
 fun main() {
 var p := Pair { left = "a", right = "b" };
 let whole := p;
-p.left := "c";
+p.left = "c";
 }
 "#,
         "p",
@@ -4641,7 +4641,7 @@ fun take_whole(p: Pair) -> i64 { 0 }
 fun main() {
 var p := Pair { left = "a", right = "b" };
 let taken := p.right;
-p.left := "c";
+p.left = "c";
 let n := take_whole(p);
 }
 "#,
@@ -4944,7 +4944,7 @@ aspect Bump { fun bump(&var self); }
 struct B { v: String }
 extend B: Show { fun show(&self) -> String { return self.v.clone(); } }
 struct C { v: i64 }
-extend C: Bump { fun bump(&var self) { self.v := self.v + 1; } }
+extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
 
 fun main() {
 let b := B { v = "x" };

@@ -91,7 +91,7 @@ extend AreaList: Iterable<f64> {
     fun next(&var self) -> Option<f64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
-            self.pos := self.pos + 1;
+            self.pos = self.pos + 1;
             Option::Some { value = v }
         } else {
             None
@@ -214,7 +214,7 @@ fun main() {
     // Empty Iterable: loop body never runs
     var body_ran: boolean  := false;
     let empty_areas: [f64] := [];
-    for (_a in AreaList::new(empty_areas)) { body_ran := true; }
+    for (_a in AreaList::new(empty_areas)) { body_ran = true; }
     assert(!body_ran);
 
     // From<Celsius> for Fahrenheit: boiling point

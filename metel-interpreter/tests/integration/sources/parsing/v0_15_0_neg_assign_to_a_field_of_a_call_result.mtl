@@ -2,5 +2,5 @@
 struct S { f: i64 }
 fun mk() -> S { S { f = 1 } }
 fun main() {
-    mk().f := 5;
+    mk().f = 5;
 }

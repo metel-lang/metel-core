@@ -25,7 +25,7 @@ fun call_as_bare_statement_no_let_var() -> i64 {
 fun call_as_bare_statement_with_var() -> i64 {
     var hit := 0;
     i(&var hit);
-    fun i(h: &var i64) { *h := 11; }
+    fun i(h: &var i64) { *h = 11; }
     hit
 }
 

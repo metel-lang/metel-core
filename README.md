@@ -46,7 +46,7 @@ extend Person: Greet {
 }
 
 extend Person {
-    fun rename(&var self, new_name: String) { self.name := new_name; }
+    fun rename(&var self, new_name: String) { self.name = new_name; }
 }
 
 fun greet_all<T: Greet>(people: [T]) {

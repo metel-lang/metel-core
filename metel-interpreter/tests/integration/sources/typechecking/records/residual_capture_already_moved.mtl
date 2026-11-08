@@ -6,8 +6,8 @@ fun main() {
     let right := pair.right;
     take(pair);
     let callback := [pair] once var || -> Pair { // ERROR[T0019]
-        pair.left := "new";
-        pair.right := "back";
+        pair.left = "new";
+        pair.right = "back";
         pair
     };
 }

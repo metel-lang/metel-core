@@ -3,11 +3,11 @@
 fun main() {
     // Braceless if in statement position (no else).
     var x := 0;
-    if (true) x := 1;
+    if (true) { x = 1; };
     assert(x == 1);
 
     // Braceless if — condition false, body not executed.
-    if (false) x := 99;
+    if (false) { x = 99; };
     assert(x == 1);
 
     // Braceless if–else in expression position.
@@ -19,7 +19,7 @@ fun main() {
 
     // Nested braceless: inner if has no else — ok.
     var flag := false;
-    if (true) if (true) flag := true;
+    if (true) if (true) { flag = true; };
     assert(flag);
 
     // Braceless if–else used as a function argument.
@@ -29,8 +29,8 @@ fun main() {
     var sum := 0;
     var i := 0;
     while (i < 5) {
-        if (i % 2 == 0) sum := sum + i;
-        i := i + 1;
+        if (i % 2 == 0) { sum = sum + i; };
+        i = i + 1;
     }
     assert(sum == 6);  // 0 + 2 + 4
 

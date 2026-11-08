@@ -6,7 +6,7 @@ fun main() {
     let make := |k: i64| -> i64 { return lib::Counter::with(k).n + lib::double(k); };
     assert(make(2) == 6);
     var v: u8 := 0;
-    v := 200;
+    v = 200;
     assert(v == 200);
     let c := lib::Counter::with(5);
     assert(read({ n = c.n, extra = 1 }) == 5);

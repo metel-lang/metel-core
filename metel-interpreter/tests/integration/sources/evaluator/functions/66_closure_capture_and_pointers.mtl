@@ -3,7 +3,7 @@ fun main() {
     let captured := || -> i64 {
         value
     };
-    value := 9;
+    value = 9;
 
     var shared := 0;
     var ptr := &var shared;

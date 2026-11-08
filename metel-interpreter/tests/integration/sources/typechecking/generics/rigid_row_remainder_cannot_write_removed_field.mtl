@@ -4,7 +4,7 @@ record Session<record R> { data: { ..R } }
 
 fun write_removed<record R, record Rest>(value: &var Session<..Rest>)
 where R = { token: String, ..Rest } {
-    value.data.token := "x"; // ERROR[T0003]
+    value.data.token = "x"; // ERROR[T0003]
 }
 
 fun main() {

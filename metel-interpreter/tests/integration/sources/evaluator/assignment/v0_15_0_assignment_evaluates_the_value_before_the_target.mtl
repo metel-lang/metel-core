@@ -2,21 +2,21 @@
 // side first and the target's own sub-expressions after, and not at all when the right-hand side
 // exits control flow.
 fun value(mark: &var i64) -> i64 {
-    *mark := *mark * 10 + 1;
+    *mark = *mark * 10 + 1;
     7
 }
 
 fun slot(mark: &var i64) -> u64 {
-    *mark := *mark * 10 + 2;
+    *mark = *mark * 10 + 2;
     0u64
 }
 
 fun write(values: &var [i64; 1], mark: &var i64) {
-    values[slot(mark)] := value(mark);
+    values[slot(mark)] = value(mark);
 }
 
 fun write_or_leave(values: &var [i64; 1], mark: &var i64, leave: boolean) {
-    values[slot(mark)] := if (leave) { return } else { value(mark) };
+    values[slot(mark)] = if (leave) { return } else { value(mark) };
 }
 
 fun main() {

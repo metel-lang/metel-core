@@ -5,6 +5,6 @@
 // forms.
 fun main() {
     let p: &var i64 := &var 1;
-    *p := 2;
+    *p = 2;
     assert(*p == 2);
 }

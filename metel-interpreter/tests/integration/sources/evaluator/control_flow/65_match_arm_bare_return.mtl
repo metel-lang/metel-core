@@ -28,7 +28,7 @@ fun find_nonzero(arr: [i64]) -> i64 {
     loop {
         if (i >= arr.len()) { break -1; }
         let found := match (arr[i as u64]) {
-            0 => { i := i + 1; continue; },
+            0 => { i = i + 1; continue; },
             n => break n,
         };
         found

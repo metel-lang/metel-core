@@ -6,7 +6,7 @@ fun rest_rows() {
     let { label, ..rest } := f;
     assert(label == "f");
     var total := 0;
-    for (r in rest.rows) { total := total + r; }
+    for (r in rest.rows) { total = total + r; }
     assert(total == 6);
 }
 fun empty_rest() {

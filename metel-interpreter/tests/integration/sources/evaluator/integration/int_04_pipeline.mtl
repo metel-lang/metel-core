@@ -74,7 +74,7 @@ extend NumberList: Iterable<i64> {
     fun next(&var self) -> Option<i64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
-            self.pos := self.pos + 1;
+            self.pos = self.pos + 1;
             Option::Some { value = v }
         } else {
             None
@@ -139,7 +139,7 @@ fun main() {
     // Empty NumberList: loop body never runs
     var ran := false;
     let empty_ints: [i64] := [];
-    for (_x in NumberList::new(empty_ints)) { ran := true; }
+    for (_x in NumberList::new(empty_ints)) { ran = true; }
     assert(!ran);
 
     // ? success: "1" → Token → Number(1)

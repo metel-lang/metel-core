@@ -11,8 +11,8 @@ fun main() {
     let old_left := empty_pair.left;
     let old_right := empty_pair.right;
     let refill := [empty_pair] once var |extra| {
-        empty_pair.left := "new-left";
-        empty_pair.right := "new-right";
+        empty_pair.left = "new-left";
+        empty_pair.right = "new-right";
         (empty_pair, extra)
     };
     let restored := refill(9);

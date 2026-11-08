@@ -2,7 +2,7 @@
 
 // Plain assignment
 fun zero_first(arr: [i64; 3]) -> [i64; 3] {
-    arr[0] := 0;
+    arr[0] = 0;
     arr
 }
 
@@ -14,6 +14,6 @@ fun bump(arr: [i64; 3]) -> [i64; 3] {
 
 // Index expression evaluated at runtime
 fun set_at(arr: [i64; 3], i: u64, v: i64) -> [i64; 3] {
-    arr[i] := v;
+    arr[i] = v;
     arr
 }

@@ -9,7 +9,7 @@ struct Cell {
 
 fun main() {
     var c := Cell { go = || { 0 } };
-    c.go := [&var c] var || {
+    c.go = [&var c] var || {
         (c.go)() + 1 // re-enters the same `var` closure while its first call is live
     };
     (c.go)(); // runtime error R0015 -- re-entrant call to a mutating closure

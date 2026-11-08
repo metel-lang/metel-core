@@ -2,7 +2,7 @@
 pub fun fold_left<T, A>(arr: [T], init: A, f: |A, &T| -> A) -> A {
     var acc := init;
     for (x in arr) {
-        acc := f(acc, &x);
+        acc = f(acc, &x);
     }
     acc
 }

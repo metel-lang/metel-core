@@ -30,7 +30,7 @@ fun sum_i32(values: List<i32>) -> i64 {
     let sl := values.as_slice();
     for (v in sl) {
         let wide: i64 := v as i64;
-        total := total + wide;
+        total = total + wide;
     }
     total
 }

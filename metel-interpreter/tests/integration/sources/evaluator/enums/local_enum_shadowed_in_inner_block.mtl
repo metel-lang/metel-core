@@ -5,22 +5,22 @@ fun main() {
     enum Mode { A, B }
     var outer := 0;
     match (Mode::B) {
-        Mode::A => { outer := 1; },
-        Mode::B => { outer := 2; },
+        Mode::A => { outer = 1; },
+        Mode::B => { outer = 2; },
     }
     assert(outer == 2);
     if (true) {
         enum Mode { Z }
         var inner := 0;
         match (Mode::Z) {
-            Mode::Z => { inner := 9; },
+            Mode::Z => { inner = 9; },
         }
         assert(inner == 9);
     }
     var again := 0;
     match (Mode::A) {
-        Mode::A => { again := 1; },
-        Mode::B => { again := 2; },
+        Mode::A => { again = 1; },
+        Mode::B => { again = 2; },
     }
     assert(again == 1);
 }

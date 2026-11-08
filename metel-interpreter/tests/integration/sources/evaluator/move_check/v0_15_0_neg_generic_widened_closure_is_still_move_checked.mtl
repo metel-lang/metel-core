@@ -4,7 +4,7 @@ fun apply(f: var || -> ()) { f(); }
 
 fun run<T>(x: T) {
     var n := 0;
-    apply([&var n] var || { n := 1; });
+    apply([&var n] var || { n = 1; });
     let a := x;
     let b := x; // use of moved value
 }

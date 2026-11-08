@@ -8,7 +8,7 @@ struct C {
 
 extend C: Bump {
     fun bump(&var self) {
-        self.v := self.v + 1;
+        self.v = self.v + 1;
     }
 }
 

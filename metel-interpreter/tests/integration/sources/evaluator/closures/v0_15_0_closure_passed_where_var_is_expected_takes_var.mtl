@@ -6,7 +6,7 @@ fun apply(f: var || -> ()) { }
 
 fun run(x: i64) {
     var v := x;
-    apply(|| { v := x; });
+    apply(|| { v = x; });
 }
 
 fun main() { run(1); }

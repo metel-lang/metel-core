@@ -32,7 +32,7 @@ fun main() {
 
     var total := 0.0;
     for (shape in shapes.as_slice()) {
-        total := total + shape.area();
+        total = total + shape.area();
     }
     // Circle: 3.14159 * 25 = 78.53975; Rectangle: 12.0; total = 90.53975
     assert(total > 90.5 && total < 90.6);

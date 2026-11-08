@@ -36,8 +36,8 @@ fun min_max(arr: [i64]) -> (i64, i64) {
     var lo := arr[0];
     var hi := arr[0];
     for (n in arr) {
-        if (n < lo) { lo := n; }
-        if (n > hi) { hi := n; }
+        if (n < lo) { lo = n; }
+        if (n > hi) { hi = n; }
     }
     return (lo, hi);
 }

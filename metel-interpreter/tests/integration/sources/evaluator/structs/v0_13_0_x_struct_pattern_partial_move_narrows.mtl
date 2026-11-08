@@ -17,7 +17,7 @@ fun main() {
     assert(h.id == 7);
 
     // reassigning the moved field widens `h` back to the whole `Handle`
-    h.name := "fd2".to_string();
+    h.name = "fd2".to_string();
     assert(h.name == "fd2");
     assert(h.id == 7);
 

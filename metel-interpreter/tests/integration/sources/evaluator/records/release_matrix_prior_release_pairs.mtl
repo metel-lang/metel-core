@@ -12,7 +12,7 @@ fun main() {
     let first := names[0].clone();
     assert(first == "a");
     var total := 0;
-    for (n in names) { total := total + n.len(); }
+    for (n in names) { total = total + n.len(); }
     assert(total == 2);
     let add := 10;
     let h: Handler := [add] once |v: i64| { v + add };
@@ -23,12 +23,12 @@ fun main() {
         let f := [m] once || {
             match (m) { Msg::Num { n } => n, Msg::Text { s } => s.len() }
         };
-        acc := acc + f();
+        acc = acc + f();
     }
     assert(acc == 3);
     let dogs: [dyn Speak] := [Dog {}, Dog {}];
     var barks := 0;
-    for (d in dogs) { if (d.speak() == "woof") { barks := barks + 1; } }
+    for (d in dogs) { if (d.speak() == "woof") { barks = barks + 1; } }
     assert(barks == 2);
     let moved := names;
     assert(moved.len() == 2);

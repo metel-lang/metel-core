@@ -6,8 +6,8 @@ fun main() {
     let m := Perhaps::Maybe;
     var s := 0;
     match (m) {
-        Perhaps::Maybe => { s := 1; },
-        Perhaps::Not => { s := 2; },
+        Perhaps::Maybe => { s = 1; },
+        Perhaps::Not => { s = 2; },
     }
     assert(s == 1);
     let o: Option<i64> := Some { value = 3 };

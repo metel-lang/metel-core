@@ -5,5 +5,5 @@ struct Outer { inner: Inner }
 
 fun main() {
     let s := Outer { inner = Inner { x = 1 } };
-    s.inner.x := 42;
+    s.inner.x = 42;
 }

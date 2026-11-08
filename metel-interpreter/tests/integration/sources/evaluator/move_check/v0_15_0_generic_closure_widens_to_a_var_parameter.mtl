@@ -6,7 +6,7 @@ fun apply(f: var || -> ()) { f(); }
 
 fun run<T: Copy>(x: T) {
     var v := x;
-    apply(|| { v := x; });
+    apply(|| { v = x; });
 }
 
 fun main() {

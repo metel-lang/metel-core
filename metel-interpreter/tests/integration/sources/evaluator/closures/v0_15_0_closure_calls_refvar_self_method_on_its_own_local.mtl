@@ -2,7 +2,7 @@
 struct S { n: i64 }
 extend S: Copy;
 extend S {
-    fun inc(&var self) { self.n := self.n + 1; }
+    fun inc(&var self) { self.n = self.n + 1; }
     fun get(&self) -> i64 { self.n }
 }
 

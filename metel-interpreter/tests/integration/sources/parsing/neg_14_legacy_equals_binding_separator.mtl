@@ -1,5 +1,5 @@
-// RFC-0136: `let`/`var` declarations, plain reassignment, and associated-type
-// definition use `:=`. The old `=` separator is a hard parse error — no alias.
+// RFC-0136: `let`/`var` declarations and associated-type
+// definition use `:=` (RFC-0183 moved plain reassignment back to `=`). The old `=` separator is a hard parse error — no alias.
 // (Compound `+=` etc. and struct-field `=` are unaffected; see neg_15.)
 fun main() {
     let x = 1;

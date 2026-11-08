@@ -32,7 +32,7 @@ extend Stack<i64> {
             array_push(new_items, self.items[i]);
             i += 1;
         }
-        self.items := new_items;
+        self.items = new_items;
         return top;
     }
 
@@ -95,7 +95,7 @@ extend Task {
     }
 
     fun complete(&var self) {
-        self.done := true;
+        self.done = true;
     }
 
     fun priority_label(self) -> String {
@@ -170,9 +170,9 @@ fun main() {
     var token_str := "";
     var first := true;
     for (tok in tokens) {
-        if (!first) { token_str := token_str + " "; }
-        token_str := token_str + token_to_string(tok);
-        first := false;
+        if (!first) { token_str = token_str + " "; }
+        token_str = token_str + token_to_string(tok);
+        first = false;
     }
     println(token_str);   // 3 * 4 + 5
 

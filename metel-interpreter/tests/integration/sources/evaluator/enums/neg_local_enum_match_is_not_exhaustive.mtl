@@ -3,6 +3,6 @@ fun main() {
     enum Mode { A, B }
     var s := 0;
     match (Mode::A) {
-        Mode::A => { s := 1; },
+        Mode::A => { s = 1; },
     }
 }

@@ -12,7 +12,7 @@ extend S {
 fun main() {
     var v := 0;
     let s := S { n = 0 };
-    s.each_var([&var v] || { v := 2; });
+    s.each_var([&var v] || { v = 2; });
     assert(v == 2);
 
     let text := "owned".to_string();

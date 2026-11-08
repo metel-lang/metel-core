@@ -113,7 +113,7 @@ fun map_arr<T, U>(arr: [T], f: |&T| -> U) -> [U] {
 
 fun fold<T, A>(arr: [T], init: A, f: |A, &T| -> A) -> A {
     var acc := init;
-    for (x in arr) { acc := f(acc, &x); }
+    for (x in arr) { acc = f(acc, &x); }
     acc
 }
 
@@ -170,14 +170,14 @@ fun max_int(a: i64, b: i64) -> i64 { if (a > b) a else b }
 fun array_min(arr: [i64]) -> i64 {
     var m := arr[0];
     var i := 1;
-    while (i < arr.len()) { m := min_int(m, arr[i as u64]); i += 1; }
+    while (i < arr.len()) { m = min_int(m, arr[i as u64]); i += 1; }
     m
 }
 
 fun array_max(arr: [i64]) -> i64 {
     var m := arr[0];
     var i := 1;
-    while (i < arr.len()) { m := max_int(m, arr[i as u64]); i += 1; }
+    while (i < arr.len()) { m = max_int(m, arr[i as u64]); i += 1; }
     m
 }
 

@@ -11,7 +11,7 @@ fun main() {
     var t := Two { left = "a", right = "b" };
     let taken_left := t.left;
     let taken_right := t.right;
-    t.left := "c";
+    t.left = "c";
     // t.right is still moved out -- reassigning only one of two moved fields does
     // not restore whole-value status; `t` stays partially moved.
     let n := take(t);

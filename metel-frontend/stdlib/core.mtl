@@ -275,7 +275,7 @@ extend List<T> {
     pub fun fold<A>(&self, init: A, f: |A, T| -> A) -> A {
         var acc := init;
         for (x in self.as_slice()) {
-            acc := f(acc, x);
+            acc = f(acc, x);
         }
         acc
     }
@@ -308,7 +308,7 @@ extend List<T> {
 extend<T> List<T>: Iterable<T> {
     fun next(&var self) -> Option<T> {
         let index := self.cursor;
-        self.cursor := self.cursor + 1;
+        self.cursor = self.cursor + 1;
         self.get(index)
     }
 }
@@ -488,10 +488,10 @@ extend<T: Display> [T]: Display {
         var first := true;
         for (item in self) {
             if (!first) {
-                out := out + ", ";
+                out = out + ", ";
             }
-            out := out + item.to_string();
-            first := false;
+            out = out + item.to_string();
+            first = false;
         }
         return out + "]";
     }

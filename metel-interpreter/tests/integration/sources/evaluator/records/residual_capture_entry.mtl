@@ -6,8 +6,8 @@ fun main() {
     let left := pair.left;
     let right := pair.right;
     let callback: Callback := [pair] once var || -> Pair {
-        pair.left := "new";
-        pair.right := "back";
+        pair.left = "new";
+        pair.right = "back";
         pair
     };
     assert(callback().left == "new");
@@ -15,7 +15,7 @@ fun main() {
     var partial := Pair { left = "gone", right = "kept" };
     let removed := partial.left;
     let restore := [partial] once var || -> Pair {
-        partial.left := "restored";
+        partial.left = "restored";
         assert(partial.right == "kept");
         partial
     };
@@ -24,7 +24,7 @@ fun main() {
     var anonymous := { left = "old", right = "gone" };
     let row_left := anonymous.left;
     let restore_row := [anonymous] once var || -> { right: String } {
-        anonymous.right := "back";
+        anonymous.right = "back";
         anonymous
     };
     assert(restore_row().right == "back");

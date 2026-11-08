@@ -180,18 +180,24 @@ block      = { "{" ~ block_item* ~ expr? ~ "}" }
 block_item      = { block_expr_stmt | let_pattern_decl | decl }
 block_expr_stmt = { (if_expr | match_expr | loop_expr) ~ ";"? ~ !"}" }
 let_pattern_decl = { ("let" ~ mut_kw | "let" | mut_kw) ~ record_pattern ~ ":=" ~ expr ~ ";" }
-expr_stmt  = { expr ~ ";" }
+// RFC-0183: assignment is a statement, so it is written only where a statement is: a block
+// statement ending in `;`, a match-arm body, a `for` header's init and update clauses. It is not
+// an operand, an argument, an initializer, a condition, a closure body or a block's tail.
+expr_stmt  = { stmt_expr ~ ";" }
 
 while_stmt = { "while" ~ "(" ~ expr ~ ")" ~ block }
 
-for_stmt   = { "for" ~ "(" ~ for_init ~ expr? ~ ";" ~ expr? ~ ")" ~ block }
+for_stmt   = { "for" ~ "(" ~ for_init ~ expr? ~ ";" ~ stmt_expr? ~ ")" ~ block }
 for_init   = { expr_stmt | let_mut_decl | let_decl | ";" }
 
 for_in_stmt  = { "for" ~ "(" ~ (("let" ~ mut_kw?) | mut_kw)? ~ ident ~ "in" ~ expr ~ ")" ~ block }
 
 // ── Expressions (precedence via layering) ─────────────────────────────────────
 
-expr             = { assign_expr }
+expr             = { or_expr }
+// A value expression never assigns; a statement position (`stmt_expr`) may. `assign_expr` is tried
+// first: it needs an `assign_op` after a unary target, which no value expression continues with.
+stmt_expr        = { assign_expr | expr }
 
 // Entry point for re-parsing a standalone expression substring (string
 // interpolation's `${...}` body). `expr` alone has no leading `~` sequence
@@ -202,11 +208,11 @@ expr             = { assign_expr }
 // space) succeeds.
 interp_expr_entry = { SOI ~ expr ~ EOI }
 
-assign_expr      = { unary_expr ~ assign_op ~ assign_expr | or_expr }
-// RFC-0136: plain reassignment reassigns a kept binding, so `:=`. The compound
-// operators keep `=` — the token already signals an in-place update of existing
-// storage. `==` is unaffected (it is never `assign_op`).
-assign_op        = { "+=" | "-=" | "*=" | "/=" | "%=" | ":=" }
+assign_expr      = { unary_expr ~ assign_op ~ expr }
+// RFC-0183: `:=` only introduces a name (`let`, `var`, record-pattern declarations, `type`); plain
+// reassignment stores into an existing place with `=`, as the compound operators do. `==` and `=>`
+// are never `assign_op`.
+assign_op        = { "+=" | "-=" | "*=" | "/=" | "%=" | "=" ~ !("=" | ">") }
 
 or_expr          = { and_expr ~ (or_op ~ and_expr)* }
 or_op            = { "||" }
@@ -305,7 +311,7 @@ match_scrutinee = _{ unit_lit | tuple_or_paren }
 match_expr  = { "match" ~ match_scrutinee ~ "{" ~ (match_arm ~ ("," ~ match_arm)* ~ ","?)? ~ "}" }
 // return_expr/break_expr/continue_expr are reachable through plain `expr` now
 // (issue #229) — no more return_arm/break_arm special-case needed here.
-match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | expr) }
+match_arm   = { pattern ~ ("if" ~ expr)? ~ "=>" ~ (block | stmt_expr) }
 
 if_expr     = { "if" ~ "(" ~ expr ~ ")" ~ (block | expr) ~ ("else" ~ (if_expr | block | expr))? }
 loop_expr   = { "loop" ~ block }

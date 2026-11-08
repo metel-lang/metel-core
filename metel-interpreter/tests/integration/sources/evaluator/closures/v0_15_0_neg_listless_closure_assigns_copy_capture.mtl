@@ -3,6 +3,6 @@
 // form -- it would mutate a private copy and leave the outer binding unchanged.
 fun main() {
     var count := 0;
-    let bump := || { count := count + 1; }; // missing `var` qualifier
+    let bump := || { count = count + 1; }; // missing `var` qualifier
     bump();
 }

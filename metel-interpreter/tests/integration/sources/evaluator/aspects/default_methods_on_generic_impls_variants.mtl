@@ -32,7 +32,7 @@ extend<U> Box<U>: Describe {
     fun twice(self) -> i64 { 100 }
 }
 
-extend<U> Cell<U>: Counter { fun bump(&var self) { self.n := self.n + 1; } }
+extend<U> Cell<U>: Counter { fun bump(&var self) { self.n = self.n + 1; } }
 extend<U> Cell<U>: Reader { fun read(&self) -> i64 { self.n } }
 
 extend i64: Tag { fun tag(self) -> i64 { 7 } }

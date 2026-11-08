@@ -12,7 +12,7 @@ aspect Counter {
 }
 
 extend MyCounter: Counter {
-    fun increment(&var self) { self.n := self.n + 1; }
+    fun increment(&var self) { self.n = self.n + 1; }
     fun value(&self) -> i64 { self.n }
 }
 

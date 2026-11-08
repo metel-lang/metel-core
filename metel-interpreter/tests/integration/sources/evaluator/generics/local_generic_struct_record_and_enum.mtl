@@ -16,7 +16,7 @@ fun main() {
     var p := Pair { a = id(3), b = "s" };
     assert(p.a == 3);
     assert(p.b == "s");
-    p.a := 5;
+    p.a = 5;
     assert(p.a == 5);
     let q: Pair<i64, String> := p;
 
@@ -27,14 +27,14 @@ fun main() {
     enum Opt<T> { Some { value: T }, None }
     var got := 0;
     match (Opt::Some { value = 7 }) {
-        Opt::Some { value } => { got := value; },
-        Opt::None => { got := -1; },
+        Opt::Some { value } => { got = value; },
+        Opt::None => { got = -1; },
     }
     assert(got == 7);
     let none: Opt<i64> := Opt::None;
     match (none) {
-        Opt::Some { value } => { got := value; },
-        Opt::None => { got := 0; },
+        Opt::Some { value } => { got = value; },
+        Opt::None => { got = 0; },
     }
     assert(got == 0);
 }

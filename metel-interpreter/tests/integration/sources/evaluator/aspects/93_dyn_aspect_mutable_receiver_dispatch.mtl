@@ -11,7 +11,7 @@ aspect Counter {
 struct MyCounter { n: i64 }
 
 extend MyCounter: Counter {
-    fun increment(&var self) { self.n := self.n + 1; }
+    fun increment(&var self) { self.n = self.n + 1; }
     fun value(&self) -> i64 { self.n }
 }
 

@@ -28,6 +28,6 @@ fun main() {
     assert(*rb == 5);
 
     let rbm := &var *mp;
-    *rbm := 9;
+    *rbm = 9;
     assert(m == 9);
 }

@@ -8,6 +8,6 @@ fun needs_sync<T: Sync>(x: T) -> () {
 
 fun main() {
     let n := 0;
-    let m := [n] var || { n := n + 1; n };
+    let m := [n] var || { n = n + 1; n };
     needs_sync(m); // error: a `mutating` closure is not `Sync`
 }

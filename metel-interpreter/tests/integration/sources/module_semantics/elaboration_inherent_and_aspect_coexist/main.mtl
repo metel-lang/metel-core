@@ -17,7 +17,7 @@ extend Counter {
         Counter { value = start, step = step }
     }
     fun tick(&var self) {
-        self.value := self.value + self.step;
+        self.value = self.value + self.step;
     }
     fun value(&self) -> i64 { self.value }
 }

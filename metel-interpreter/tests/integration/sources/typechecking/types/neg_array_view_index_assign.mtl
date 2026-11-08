@@ -2,5 +2,5 @@
 // grants write access through its indices, regardless of let/var.
 fun main() {
     let a: [i64] := [1, 2, 3];
-    a[0u64] := 5;
+    a[0u64] = 5;
 }

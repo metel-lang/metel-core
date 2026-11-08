@@ -11,7 +11,7 @@ fun main() {
     let b := Session { id = 3, data = { n = 5 } };
     let all := [a.kind(), b.kind()];
     var sum := 0;
-    for (k in all) { sum := sum + k; }
+    for (k in all) { sum = sum + k; }
     assert(sum == 3);
     let moved := b;
     assert(moved.kind() == 2);

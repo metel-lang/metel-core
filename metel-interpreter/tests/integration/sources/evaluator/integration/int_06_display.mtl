@@ -63,7 +63,7 @@ extend StringBag: Iterable<String> {
     fun next(&var self) -> Option<String> {
         if (self.pos < self.items.len()) {
             let pos := self.pos;
-            self.pos := pos + 1;
+            self.pos = pos + 1;
             let v := (&self.items[pos as u64]).to_string();
             Option::Some { value = v }
         } else {
@@ -166,14 +166,14 @@ fun main() {
     assert(bag.len() == 3);
     var result := "";
     for (label in bag) {
-        result := result + label;
+        result = result + label;
     }
     assert(result == "abc");
 
     // Empty StringBag
     var empty_ran := false;
     let empty_strs: [String] := [];
-    for (_label in StringBag::new(empty_strs)) { empty_ran := true; }
+    for (_label in StringBag::new(empty_strs)) { empty_ran = true; }
     assert(!empty_ran);
 
     // ? success path: "100" → Score(100)

@@ -4,6 +4,6 @@ enum E { A, B }
 fun main() {
     enum E { X, Y }
     var s := 0;
-    match (E::Y) { E::X => { s := 1; }, E::Y => { s := 2; }, }
+    match (E::Y) { E::X => { s = 1; }, E::Y => { s = 2; }, }
     assert(s == 2);
 }

@@ -8,7 +8,7 @@ fun main() {
     let p_ref: &&var i64 := &p;
 
     let f := || -> () {
-        **p_ref := 42;
+        **p_ref = 42;
     };
 
     f();

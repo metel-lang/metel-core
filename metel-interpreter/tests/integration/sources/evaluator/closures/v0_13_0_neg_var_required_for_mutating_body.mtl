@@ -4,6 +4,6 @@
 //
 fun main() {
     let n := 0;
-    let bump := [n] || { n := n + 1; n }; // mutates `n`; missing `var`
+    let bump := [n] || { n = n + 1; n }; // mutates `n`; missing `var`
     bump();
 }

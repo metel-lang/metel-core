@@ -5,7 +5,7 @@ fun choose<T>(condition: boolean, first: T, second: T) -> T {
 fun restored<T>(condition: boolean, original: T, replacement: T) -> T {
     var value := original;
     let consumed := value;
-    match (condition) { true => { value := replacement; }, _ => { value := replacement; } }
+    match (condition) { true => { value = replacement; }, _ => { value = replacement; } }
     value
 }
 

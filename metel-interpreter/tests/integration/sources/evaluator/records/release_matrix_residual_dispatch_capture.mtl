@@ -22,8 +22,8 @@ fun main() {
     let empty: Pair.{} := pair.clone();
     assert(empty.state() == 0);
     let restore: Restore := [pair] once var || -> PairAlias {
-        pair.left := "restored";
-        pair.right := "again";
+        pair.left = "restored";
+        pair.right = "again";
         assert(pair.state() == 1);
         pair
     };

@@ -14,7 +14,7 @@ fun main() {
     assert(q.y == 2);
 
     let var p2 := make_a();
-    p2.x := 99;
+    p2.x = 99;
     assert(p2.x == 99);
 
     let r := p.{ x };

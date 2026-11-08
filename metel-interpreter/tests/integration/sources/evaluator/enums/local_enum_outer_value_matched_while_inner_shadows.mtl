@@ -12,14 +12,14 @@ fun main() {
         enum Mode { Z }
         struct P { z: String }
         match (o) {
-            A => { seen := 1; },
-            B => { seen := 2; },
+            A => { seen = 1; },
+            B => { seen = 2; },
         }
         assert(po.a == 7);
         let inner := Mode::Z;
         var z := 0;
         match (inner) {
-            Z => { z := 9; },
+            Z => { z = 9; },
         }
         assert(z == 9);
     }

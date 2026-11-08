@@ -22,6 +22,6 @@ fun main() {
     assert(reassignable_fn(40) == 41);
     // ... and a later reassignment is visible through the same call site —
     // Call::callee_id dispatch must not resurrect the mut's original value.
-    reassignable_fn := add_two;
+    reassignable_fn = add_two;
     assert(reassignable_fn(40) == 42);
 }

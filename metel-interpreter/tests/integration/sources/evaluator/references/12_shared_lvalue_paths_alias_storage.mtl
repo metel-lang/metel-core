@@ -4,22 +4,22 @@ struct Outer { point: Point }
 fun main() {
     var direct := Point { x = 1 };
     let direct_ref: &i64 := &direct.x;
-    direct.x := 5;
+    direct.x = 5;
     assert(*direct_ref == 5);
 
     var nested := Outer { point = Point { x = 10 } };
     let nested_ref: &i64 := &nested.point.x;
-    nested.point.x := 12;
+    nested.point.x = 12;
     assert(*nested_ref == 12);
 
     var xs: [i64; 3] := [3, 4, 5];
     let array_ref: &i64 := &xs[1];
-    xs[1] := 9;
+    xs[1] = 9;
     assert(*array_ref == 9);
 
     var t := (7, 8);
     let tuple_ref: &i64 := &t.0;
-    t := (11, 8);
+    t = (11, 8);
     assert(*tuple_ref == 11);
 
     reborrow_of_a_path_reference();
@@ -38,12 +38,12 @@ fun reborrow_of_a_path_reference() {
 
     let r: &i64 := &c.v;
     let rr := &*r;
-    c.v := 5;
+    c.v = 5;
     assert(*rr == 5);
 
     // `&var` reborrowed as `&` downgrades to shared and still aliases.
     let m: &var i64 := &var c.v;
     let mr := &*m;
-    c.v := 6;
+    c.v = 6;
     assert(*mr == 6);
 }

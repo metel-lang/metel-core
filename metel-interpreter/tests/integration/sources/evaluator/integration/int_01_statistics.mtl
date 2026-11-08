@@ -25,7 +25,7 @@ fun sqrt_approx(x: f64) -> f64 {
         var guess := x / 2.0;
         var i := 0;
         while (i < 20) {
-            guess := (guess + x / guess) / 2.0;
+            guess = (guess + x / guess) / 2.0;
             i += 1;
         }
         guess
@@ -75,9 +75,9 @@ fun binary_search(sorted: [f64], target: f64) -> Option<i64> {
         if (float_eq(sorted[mid as u64], target)) {
             return Option::Some { value = mid };
         } else if (sorted[mid as u64] < target) {
-            lo := mid + 1;
+            lo = mid + 1;
         } else {
-            hi := mid - 1;
+            hi = mid - 1;
         }
     }
     None
@@ -124,8 +124,8 @@ fun compute_stats(data: [f64]) -> Result<Stats, String> {
     while (i < n) {
         let x := data[i as u64];
         total += x;
-        if (x < mn) { mn := x; }
-        if (x > mx) { mx := x; }
+        if (x < mn) { mn = x; }
+        if (x > mx) { mx = x; }
         i += 1;
     }
     let mean := total / (n as f64);

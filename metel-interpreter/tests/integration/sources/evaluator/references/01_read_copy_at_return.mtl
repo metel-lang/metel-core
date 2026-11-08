@@ -3,7 +3,7 @@
 fun f() -> i64 {
     var n := 1;
     let p: &var i64 := &var n;
-    *p := 4;
+    *p = 4;
     return *p;
 }
 

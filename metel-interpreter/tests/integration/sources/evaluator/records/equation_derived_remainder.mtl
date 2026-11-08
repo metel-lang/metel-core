@@ -7,7 +7,7 @@ where R = { token: String, ..Rest } {
 fun strip_extra<record R, record Rest>(d: { ..R }) -> { user: i64, ..Rest }
 where R = { token: String, user: i64, ..Rest } {
     let var { token: _, ..rest } := d;
-    rest.user := rest.user + 1;
+    rest.user = rest.user + 1;
     rest
 }
 

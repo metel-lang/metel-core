@@ -1,2 +1,2 @@
 import token::make;
-fun main() -> i64 { var t := make(); t.offset := 9; return t.kind; }
+fun main() -> i64 { var t := make(); t.offset = 9; return t.kind; }

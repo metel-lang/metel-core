@@ -572,7 +572,7 @@ fn abstract_body_retains_plain_local_rebinding() {
         r#"
 fun reset<T>(initial: T, replacement: T) -> T {
     var value := initial;
-    value := replacement;
+    value = replacement;
     value
 }
 
@@ -727,8 +727,8 @@ fn abstract_body_retains_autodereferenced_assignment_places() {
     let typed = typecheck_source(
         "abstract_projected_assignment.mtl",
         r#"
-fun tuple<T>(target: &var (T, i64), replacement: T) { target.0 := replacement; }
-fun record_write<T>(target: &var { payload: T }, replacement: T) { target.payload := replacement; }
+fun tuple<T>(target: &var (T, i64), replacement: T) { target.0 = replacement; }
+fun record_write<T>(target: &var { payload: T }, replacement: T) { target.payload = replacement; }
 fun main() {}
 "#,
     )
@@ -1068,8 +1068,8 @@ fun make() -> once var || -> Pair {
     let left := pair.left;
     let right := pair.right;
     [pair] once var || -> Pair {
-        pair.left := "new";
-        pair.right := "back";
+        pair.left = "new";
+        pair.right = "back";
         pair
     }
 }
@@ -1724,7 +1724,7 @@ fn implicit_copy_capture_carries_the_enclosing_local_id() {
     assert_eq!(
         capture_ids, &fun.param_ids,
         "the materialized capture's LocalId should match make_adder's own \
-             parameter x's LocalId — same binding, same identity"
+             parameter x's LocalId â same binding, same identity"
     );
     assert!(
         matches!(capture_ids[0], Some(_)),

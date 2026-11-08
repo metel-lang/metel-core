@@ -4,7 +4,7 @@ fun main() {
     let left := pair.left;
     let right := pair.right;
     let callback := [pair] once var || -> Pair { // ERROR[T0001]
-        pair.left := "new";
+        pair.left = "new";
         pair
     };
 }

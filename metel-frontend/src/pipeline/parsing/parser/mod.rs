@@ -1124,13 +1124,8 @@ fn parse_for_stmt(
     let mut body = None;
     for p in inner {
         match p.as_rule() {
-            Rule::expr => {
-                if condition.is_none() {
-                    condition = Some(parse_expr(p, filename)?);
-                } else {
-                    step = Some(parse_expr(p, filename)?);
-                }
-            }
+            Rule::expr => condition = Some(parse_expr(p, filename)?),
+            Rule::stmt_expr => step = Some(parse_expr(p, filename)?),
             Rule::block => body = Some(parse_block(p, filename)?),
             _ => {}
         }
@@ -1176,7 +1171,7 @@ fn parse_break_expr(
 /// Entry point: consumes one `expr` pair.
 fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
     match pair.as_rule() {
-        Rule::expr => {
+        Rule::expr | Rule::stmt_expr => {
             let inner = pair
                 .into_inner()
                 .next()
@@ -2792,7 +2787,7 @@ fn parse_match_arm(
 
     let body = match body_pair.as_rule() {
         Rule::block => parse_block(body_pair.clone(), filename)?,
-        Rule::expr => {
+        Rule::expr | Rule::stmt_expr => {
             let body_span = Span::of(body_pair, filename);
             let expr = parse_expr(body_pair.clone(), filename)?;
             Block {
@@ -4440,10 +4435,12 @@ mod keyword_argument_tests {
     }
 
     #[test]
-    fn assignment_spelled_with_colon_equals_is_still_an_assignment_argument() {
-        // `:=` is the assignment today (RFC-0183 changes that later); `=` is never an assignment here.
-        let args = call_args("fun main() { f(x := 1) }\n");
-        assert!(matches!(&args[0], Expr::Assign { .. }));
+    fn assignment_is_a_statement_not_an_argument() {
+        // RFC-0183: `=` in an argument is always a keyword argument, and `:=` introduces names only,
+        // so neither spelling is an assignment passed as a positional argument.
+        assert!(parse("fun main() { f(x := 1) }\n", "t.mtl").is_err());
+        let args = call_args("fun main() { f(x = 1) }\n");
+        assert!(matches!(&args[0], Expr::NamedArg { .. }));
     }
 }
 

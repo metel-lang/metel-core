@@ -26,11 +26,11 @@ fun repoint_and_write_through() {
     var b := 2;
     var p: &var i64 := &var a;
 
-    *p := 5;
+    *p = 5;
     assert(a == 5);
 
-    p := &var b;      // repoint — impossible before RFC-0110
-    *p := 9;
+    p = &var b;      // repoint — impossible before RFC-0110
+    *p = 9;
     assert(a == 5);  // a is untouched by the write through the repointed p
     assert(b == 9);
 
@@ -42,13 +42,13 @@ fun repoint_and_write_through() {
 fun selectors_stay_implicit() {
     var q := Point { x = 5, y = 7 };
     let qp: &var Point := &var q;
-    qp.y := 99;
+    qp.y = 99;
     assert(qp.x == 5);
     assert(q.y == 99);
 
     var xs := [1, 2, 3];
     let xp: &var [i64; 3] := &var xs;
-    xp[0] := 9;
+    xp[0] = 9;
     xp[1] += 10;
     assert(xs[0] == 9);
     assert(xs[1] == 12);
@@ -58,7 +58,7 @@ fun selectors_stay_implicit() {
 fun redundant_star_on_a_field_path() {
     var q := Point { x = 1, y = 2 };
     let qp: &var Point := &var q;
-    qp.x := 3;
+    qp.x = 3;
     assert(q.x == 3);
 }
 

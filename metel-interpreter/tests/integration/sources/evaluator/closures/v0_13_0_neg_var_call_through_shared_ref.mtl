@@ -12,6 +12,6 @@ fun peek(c: &Cell) -> i64 {
 
 fun main() {
     let n := 0;
-    let c := Cell { go = [n] var || { n := n + 1; n } };
+    let c := Cell { go = [n] var || { n = n + 1; n } };
     assert(peek(&c) == 1);
 }

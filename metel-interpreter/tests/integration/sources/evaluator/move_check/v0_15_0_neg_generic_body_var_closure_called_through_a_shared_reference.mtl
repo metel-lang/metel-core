@@ -2,7 +2,7 @@
 // as in a non-generic one.
 fun run<T: Copy>(x: T) {
     var n := 0;
-    let g := [&var n] var || { n := 1; };
+    let g := [&var n] var || { n = 1; };
     let r := &g;
     r();
 }

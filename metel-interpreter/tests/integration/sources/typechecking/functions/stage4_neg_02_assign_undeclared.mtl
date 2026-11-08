@@ -1,2 +1,2 @@
 // Stage 4 negative: assigning to an undeclared name is T0003
-z := 42; // ERROR[T0003]
+z = 42; // ERROR[T0003]

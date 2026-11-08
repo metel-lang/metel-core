@@ -6,6 +6,6 @@ fun main() {
     let none: std::core::Option<i64> := std::core::Option::None;
     assert(none.is_none());
     var s := 0;
-    match (Option::Not) { Option::Maybe => { s := 1; }, Option::Not => { s := 2; }, }
+    match (Option::Not) { Option::Maybe => { s = 1; }, Option::Not => { s = 2; }, }
     assert(s == 2);
 }

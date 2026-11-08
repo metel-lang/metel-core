@@ -11,7 +11,7 @@ fun run_twice(f: var |i64| -> i64, x: i64) -> i64 {
 
 fun main() {
     var acc := 0;
-    let step := [&var acc] var |d: i64| -> i64 { acc := acc + d; acc };
+    let step := [&var acc] var |d: i64| -> i64 { acc = acc + d; acc };
     let r := run_twice(step, 3);            // f(3): acc 0->3 ret 3 ; f(3): acc 3->6 ret 6
     assert(r == 6);
     assert(acc == 6);

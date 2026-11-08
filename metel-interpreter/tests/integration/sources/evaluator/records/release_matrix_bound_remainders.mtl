@@ -30,7 +30,7 @@ fun main() {
     let forwarded: {} := Courier {}.pass(empty);
     let data := { token = "discarded", payload = "kept" };
     let var { token: _, ..tail } := data;
-    tail.payload := "restored";
+    tail.payload = "restored";
     assert(Courier {}.pass(tail).payload == "restored");
     let owned := Owned { text = "removed" };
     let text := owned.text;
