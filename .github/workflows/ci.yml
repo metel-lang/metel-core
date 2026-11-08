@@ -306,6 +306,9 @@ jobs:
       - name: bump-docs.sh self-test
         run: tools/test_bump_docs.sh
 
+      - name: sweep_pub.py self-test (RFC-0218, metel-core#1849)
+        run: python3 tools/test_sweep_pub.py
+
   clippy-allow-ratchet:
     name: clippy-allow ratchet
     runs-on: ubuntu-latest
