@@ -1086,8 +1086,9 @@ impl BodyFreezer<'_, '_> {
         if !has_keyword(args) {
             return Ok(std::borrow::Cow::Borrowed(args));
         }
-        let overloaded = super::super::super::overload::callee_name(callee)
-            .is_some_and(|name| self.overloads.contains_key(name));
+        let overloads = super::super::super::overload::callee_name(callee)
+            .and_then(|name| self.overloads.get(name))
+            .map(Vec::as_slice);
         let names = self
             .identity
             .binding_spans
@@ -1095,7 +1096,7 @@ impl BodyFreezer<'_, '_> {
             .and_then(crate::identity::BindingId::as_global)
             .and_then(|symbol| self.identity.binding_spans.callee_params(symbol));
         let methods = self.identity.binding_spans.method_params();
-        positional_for_call(callee, args, span, overloaded, names, &methods)
+        positional_for_call(callee, args, span, overloads, names, &methods)
             .map(std::borrow::Cow::Owned)
             .map_err(|error| error.to_string())
     }

@@ -14,6 +14,7 @@
 use crate::data::ast::{Expr, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::{MethodOwner, MethodParams};
+use crate::pipeline::type_checking::type_engine::OverloadEntry;
 
 /// One declared parameter of the callee, in declaration order, excluding the receiver.
 #[derive(Debug, Clone, Copy)]
@@ -216,7 +217,7 @@ pub(super) fn positional_for_call(
     callee: &Expr,
     args: &[Expr],
     span: &Span,
-    overloaded: bool,
+    overloads: Option<&[OverloadEntry]>,
     names: Option<&[String]>,
     methods: &std::collections::HashMap<String, Vec<MethodParams>>,
 ) -> Result<Vec<Expr>, MetelError> {
@@ -238,14 +239,57 @@ pub(super) fn positional_for_call(
              (RFC-0223, metel-core#1858)",
         ));
     };
-    if overloaded {
-        return Err(MetelError::not_implemented(format!(
-            "keyword arguments on the overloaded name `{name}` (RFC-0223, metel-core#1858)"
-        )));
+    if let Some(entries) = overloads {
+        return positional_for_overloaded(name, entries, args, span);
     }
     match names {
         Some(names) => to_positional(name, &CalleeNames::Declared(names), args, span),
         None => to_positional(name, &CalleeNames::Value, args, span),
+    }
+}
+
+/// Bind a keyword call to an overloaded name (RFC-0223 legality-5): a candidate takes the call only if
+/// the call's keywords name some of its own parameters and the arguments fill every slot. When exactly
+/// one candidate does, the call is that candidate's positional call, and the ordinary overload
+/// selection then checks the per-slot types. Several candidates binding by name need the argument
+/// types to choose, which is not yet done (metel-core#1858).
+fn positional_for_overloaded(
+    name: &str,
+    entries: &[OverloadEntry],
+    args: &[Expr],
+    span: &Span,
+) -> Result<Vec<Expr>, MetelError> {
+    let binds: Vec<&OverloadEntry> = entries
+        .iter()
+        .filter(|entry| {
+            let params: Vec<ParamSlot<'_>> = entry
+                .param_names
+                .iter()
+                .map(|name| ParamSlot { name })
+                .collect();
+            bind_arguments(name, &params, args, span).is_ok()
+        })
+        .collect();
+    match binds.as_slice() {
+        [only] => to_positional(name, &CalleeNames::Declared(&only.param_names), args, span),
+        [] => {
+            let candidates: Vec<String> = entries
+                .iter()
+                .map(|entry| format!("({})", entry.param_names.join(", ")))
+                .collect();
+            Err(MetelError::type_error(
+                TypeErrorCode::T0039,
+                format!(
+                    "no overload of `{name}` takes these keyword arguments; its candidates declare {}",
+                    candidates.join(", ")
+                ),
+                span,
+            ))
+        }
+        _ => Err(MetelError::not_implemented(format!(
+            "keyword arguments on `{name}`: several overloads accept those names, and choosing by \
+             argument type is pending (RFC-0223, metel-core#1858)"
+        ))),
     }
 }
 

@@ -1,0 +1,6 @@
+fun area(width: i64, height: i64) -> i64 { width * height }
+fun area(radius: i64) -> i64 { radius * radius * 3 }
+
+fun main() {
+    let _ := area(depth = 2);
+}

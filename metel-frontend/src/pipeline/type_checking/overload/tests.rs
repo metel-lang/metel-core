@@ -4,6 +4,7 @@ use crate::pipeline::type_checking::type_engine::OverloadEntry;
 fn entry(index: u32, params: Vec<Type>, ret: Type) -> OverloadEntry {
     OverloadEntry {
         params,
+        param_names: std::sync::Arc::from([]),
         ret,
         symbol_id: SymbolId::core_overload(index),
     }

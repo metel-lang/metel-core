@@ -3382,14 +3382,14 @@ fn keyword_call_positional(
     span: &crate::data::ast::Span,
     ctx: &InferContext,
 ) -> Result<Vec<Expr>, MetelError> {
-    let overloaded =
-        super::super::overload::callee_name(callee).is_some_and(|n| ctx.is_overloaded(n));
+    let overloads =
+        super::super::overload::callee_name(callee).and_then(|n| ctx.overload_candidates(n));
     let names = ctx.callee_params_at(callee.span());
     super::super::keyword_binding::positional_for_call(
         callee,
         args,
         span,
-        overloaded,
+        overloads,
         names.as_deref(),
         ctx.method_params(),
     )
