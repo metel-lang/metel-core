@@ -3,8 +3,18 @@
 fun area(width: i64, height: i64) -> i64 { width * height }
 fun area(radius: i64) -> i64 { radius * radius * 3 }
 
+// Several overloads accept the same keyword, so the argument's type chooses.
+fun twice(value: i64) -> i64 { value * 2 }
+fun twice(value: String) -> String { value + value }
+fun mix(first: i64, second: String) -> i64 { first }
+fun mix(first: String, second: i64) -> i64 { second }
+
 fun main() {
     assert(area(radius = 2) == 12);
     assert(area(height = 3, width = 2) == 6);
     assert(area(2, height = 3) == 6);
+    assert(twice(value = 4) == 8);
+    assert(twice(value = "ab") == "abab");
+    assert(mix(second = "s", first = 7) == 7);
+    assert(mix(second = 8, first = "s") == 8);
 }

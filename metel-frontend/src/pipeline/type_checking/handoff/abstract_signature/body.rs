@@ -1056,7 +1056,7 @@ impl BodyFreezer<'_, '_> {
                 if self.facts.definition_array_length(span) {
                     AbstractExprKind::ArrayLength(Box::new(self.expression(receiver)?))
                 } else {
-                    let args = self.positional_method_arguments(method, args, span)?;
+                    let args = self.positional_method_arguments(receiver, method, args, span)?;
                     AbstractExprKind::MethodCall(
                         self.method_call(receiver, method, &args, span, &ty)?,
                     )
@@ -1082,13 +1082,43 @@ impl BodyFreezer<'_, '_> {
         args: &'e [Expr],
         span: &Span,
     ) -> Result<std::borrow::Cow<'e, [Expr]>, String> {
-        use super::super::super::keyword_binding::{has_keyword, positional_for_call};
+        use super::super::super::keyword_binding::{
+            has_keyword, positional_for_call, positional_for_entry,
+        };
         if !has_keyword(args) {
             return Ok(std::borrow::Cow::Borrowed(args));
         }
-        let overloads = super::super::super::overload::callee_name(callee)
-            .and_then(|name| self.overloads.get(name))
-            .map(Vec::as_slice);
+        if let Some(name) = super::super::super::overload::callee_name(callee)
+            && let Some(entries) = self.overloads.get(name)
+        {
+            // The retained contract holds the selected candidate's parameter types, which identify
+            // the candidate whose names the keywords bound against.
+            let contract = self
+                .facts
+                .definition_call_types()
+                .get(span)
+                .ok_or("call selection contract is not retained")?;
+            let AbstractType::Function { parameters, .. } = self
+                .types
+                .freeze(contract)
+                .map_err(|error| error.to_string())?
+            else {
+                return Err("call has no retained callable contract".to_string());
+            };
+            let types: Vec<_> = parameters
+                .iter()
+                .map(|parameter| match parameter {
+                    AbstractType::Concrete(ty) => Some(ty.clone()),
+                    _ => None,
+                })
+                .collect::<Option<_>>()
+                .ok_or("overloaded call has a non-concrete retained contract")?;
+            let entry = crate::pipeline::type_checking::overload::select(entries, &types)
+                .ok_or("overloaded call selection is not retained")?;
+            return positional_for_entry(name, entry, args, span)
+                .map(|positional| std::borrow::Cow::Owned(positional.args))
+                .map_err(|error| error.to_string());
+        }
         let names = self
             .identity
             .binding_spans
@@ -1096,14 +1126,15 @@ impl BodyFreezer<'_, '_> {
             .and_then(crate::identity::BindingId::as_global)
             .and_then(|symbol| self.identity.binding_spans.callee_params(symbol));
         let methods = self.identity.binding_spans.method_params();
-        positional_for_call(callee, args, span, overloads, names, &methods)
-            .map(std::borrow::Cow::Owned)
+        positional_for_call(callee, args, span, names, &methods)
+            .map(|positional| std::borrow::Cow::Owned(positional.args))
             .map_err(|error| error.to_string())
     }
 
     /// As [`Self::positional_call_arguments`], for a method call.
     fn positional_method_arguments<'e>(
         &self,
+        receiver: &Expr,
         method: &str,
         args: &'e [Expr],
         span: &Span,
@@ -1113,8 +1144,28 @@ impl BodyFreezer<'_, '_> {
             return Ok(std::borrow::Cow::Borrowed(args));
         }
         let methods = self.identity.binding_spans.method_params();
-        positional_for_method(method, args, span, &methods)
-            .map(std::borrow::Cow::Owned)
+        // Methods of one name that declare different names are told apart by the receiver's type.
+        let head = if super::super::super::keyword_binding::method_needs_receiver(method, &methods)
+        {
+            let mut ty = self.expression_type(receiver)?;
+            while let AbstractType::Reference(inner) | AbstractType::MutReference(inner) = ty {
+                ty = *inner;
+            }
+            match &ty {
+                AbstractType::Concrete(ty) => {
+                    let named = match ty {
+                        crate::data::types::Type::Named(name, ..) => Some(name.as_str()),
+                        _ => None,
+                    };
+                    super::super::super::keyword_binding::receiver_head(named, &ty.to_string())
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        positional_for_method(method, args, span, &methods, head.as_deref())
+            .map(|positional| std::borrow::Cow::Owned(positional.args))
             .map_err(|error| error.to_string())
     }
 

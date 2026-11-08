@@ -1,0 +1,6 @@
+fun show(value: i64) -> i64 { value }
+fun show(value: String) -> i64 { 100 }
+
+fun main() {
+    let _ := show(value = true);
+}

@@ -33,6 +33,23 @@ impl Binding {
     pub(super) fn is_identity(&self) -> bool {
         self.arg_for_param.iter().enumerate().all(|(i, &a)| i == a)
     }
+
+    /// When the reorder is observable (dynamics-1: arguments evaluate strictly as written), for each
+    /// written argument the declaration position it fills; `None` when the call is already in
+    /// declaration order or at most one argument is not a literal.
+    pub(super) fn written_to_param(&self, args: &[Expr]) -> Option<Vec<usize>> {
+        let non_literal = args
+            .iter()
+            .filter(|arg| !matches!(unwrap_keyword(arg), Expr::Literal(..)))
+            .count();
+        (!self.is_identity() && non_literal > 1).then(|| {
+            let mut order = vec![0; args.len()];
+            for (param, &written) in self.arg_for_param.iter().enumerate() {
+                order[written] = param;
+            }
+            order
+        })
+    }
 }
 
 /// Bind `args` to `params`. `callee` names the function in messages.
@@ -114,23 +131,28 @@ pub(super) fn has_keyword(args: &[Expr]) -> bool {
     args.iter().any(|arg| matches!(arg, Expr::NamedArg { .. }))
 }
 
+/// A keyword call rewritten to the positional call it is equivalent to.
+pub(super) struct Positional {
+    /// The argument expressions in the callee's declaration order.
+    pub args: Vec<Expr>,
+    /// When reordering changes evaluation order (dynamics-1: arguments evaluate strictly as written),
+    /// for each *written* argument the declaration position it fills; construction then evaluates each
+    /// into a temporary in written order. `None` when the written order is unobservable: the call is
+    /// already in declaration order, or at most one argument is not a literal.
+    pub written_to_param: Option<Vec<usize>>,
+}
+
 /// Rewrite the arguments of a call that names some of them into the positional argument list of the
 /// callee's declaration order, so the rest of each pass types and constructs an ordinary call.
 ///
-/// A reorder changes evaluation order, which is observable when more than one written argument is
-/// not a literal (dynamics-1: arguments evaluate strictly as written). Until the construction pass can
-/// bind temporaries, such a call is reported as not yet implemented rather than evaluated in the wrong
-/// order (metel-core#1858).
-///
 /// # Errors
-/// T0041 for a callee with no declared names, the binder's errors otherwise, and `not_implemented`
-/// for a reorder that would change evaluation order.
+/// T0041 for a callee with no declared names, and the binder's errors otherwise.
 pub(super) fn to_positional(
     callee: &str,
     names: &CalleeNames<'_>,
     args: &[Expr],
     call_span: &Span,
-) -> Result<Vec<Expr>, MetelError> {
+) -> Result<Positional, MetelError> {
     let CalleeNames::Declared(names) = names else {
         let keyword = args.iter().find_map(|arg| match arg {
             Expr::NamedArg { span, .. } => Some(span),
@@ -147,21 +169,15 @@ pub(super) fn to_positional(
     };
     let params: Vec<ParamSlot<'_>> = names.iter().map(|name| ParamSlot { name }).collect();
     let binding = bind_arguments(callee, &params, args, call_span)?;
-    let non_literal = args
-        .iter()
-        .filter(|arg| !matches!(unwrap_keyword(arg), Expr::Literal(..)))
-        .count();
-    if !binding.is_identity() && non_literal > 1 {
-        return Err(MetelError::not_implemented(format!(
-            "keyword arguments to `{callee}` written in a different order than its parameters, with \
-             more than one non-literal argument (evaluation-order temporaries, RFC-0223, metel-core#1873)"
-        )));
-    }
-    Ok(binding
-        .arg_for_param
-        .iter()
-        .map(|&index| unwrap_keyword(&args[index]).clone())
-        .collect())
+    let written_to_param = binding.written_to_param(args);
+    Ok(Positional {
+        args: binding
+            .arg_for_param
+            .iter()
+            .map(|&index| unwrap_keyword(&args[index]).clone())
+            .collect(),
+        written_to_param,
+    })
 }
 
 /// The method names a keyword call binds against, found by the method's name.
@@ -207,8 +223,8 @@ fn method_names<'a>(
 /// construction passes so they bind identically.
 ///
 /// `names` are the declared parameter names of the function the callee resolves to, when it resolves
-/// to one; `methods` are every declared method of the callee's name, for a path callee `Type::name`
-/// (an associated function). Anything else, an overloaded name, a constructor or a variant, is not yet
+/// to one (an overloaded name is selected by [`select_overload`] instead); `methods` are every declared method of the callee's name, for a path callee `Type::name`
+/// (an associated function). Anything else, a constructor or a variant, is not yet
 /// bound (metel-core#1858).
 ///
 /// # Errors
@@ -217,10 +233,9 @@ pub(super) fn positional_for_call(
     callee: &Expr,
     args: &[Expr],
     span: &Span,
-    overloads: Option<&[OverloadEntry]>,
     names: Option<&[String]>,
     methods: &std::collections::HashMap<String, Vec<MethodParams>>,
-) -> Result<Vec<Expr>, MetelError> {
+) -> Result<Positional, MetelError> {
     if let Expr::Path(segments, _, _) = callee
         && let [.., owner, name] = segments.as_slice()
     {
@@ -239,58 +254,100 @@ pub(super) fn positional_for_call(
              (RFC-0223, metel-core#1858)",
         ));
     };
-    if let Some(entries) = overloads {
-        return positional_for_overloaded(name, entries, args, span);
-    }
     match names {
         Some(names) => to_positional(name, &CalleeNames::Declared(names), args, span),
         None => to_positional(name, &CalleeNames::Value, args, span),
     }
 }
 
-/// Bind a keyword call to an overloaded name (RFC-0223 legality-5): a candidate takes the call only if
-/// the call's keywords name some of its own parameters and the arguments fill every slot. When exactly
-/// one candidate does, the call is that candidate's positional call, and the ordinary overload
-/// selection then checks the per-slot types. Several candidates binding by name need the argument
-/// types to choose, which is not yet done (metel-core#1858).
-fn positional_for_overloaded(
+/// The overload candidate a keyword call selects (RFC-0223 legality-5), with how its arguments bind.
+///
+/// A candidate takes the call only if the call's keywords name some of its own parameters and the
+/// arguments fill every slot; the resulting per-slot argument types must then equal the candidate's
+/// parameter types. `arg_types` are the written arguments' types, in written order. `Ok(None)` means
+/// some candidate binds by name but none by type, so the caller reports the ordinary no-match error.
+///
+/// # Errors
+/// T0039 when no candidate binds the call by name, listing each candidate's parameters.
+pub(super) fn select_overload<'a>(
     name: &str,
-    entries: &[OverloadEntry],
+    entries: &'a [OverloadEntry],
+    args: &[Expr],
+    arg_types: &[crate::data::types::Type],
+    span: &Span,
+) -> Result<Option<(&'a OverloadEntry, Binding)>, MetelError> {
+    let mut any_binds = false;
+    for entry in entries {
+        let params: Vec<ParamSlot<'_>> = entry
+            .param_names
+            .iter()
+            .map(|name| ParamSlot { name })
+            .collect();
+        let Ok(binding) = bind_arguments(name, &params, args, span) else {
+            continue;
+        };
+        any_binds = true;
+        let types_match = binding
+            .arg_for_param
+            .iter()
+            .zip(&entry.params)
+            .all(|(&written, param)| arg_types.get(written) == Some(param));
+        if types_match {
+            return Ok(Some((entry, binding)));
+        }
+    }
+    if any_binds {
+        return Ok(None);
+    }
+    let candidates: Vec<String> = entries
+        .iter()
+        .map(|entry| format!("({})", entry.param_names.join(", ")))
+        .collect();
+    Err(MetelError::type_error(
+        TypeErrorCode::T0039,
+        format!(
+            "no overload of `{name}` takes these keyword arguments; its candidates declare {}",
+            candidates.join(", ")
+        ),
+        span,
+    ))
+}
+
+/// The positional call a keyword call to the already selected overload `entry` is equivalent to.
+///
+/// # Errors
+/// The binder's errors, which cannot occur for a selection [`select_overload`] made.
+pub(super) fn positional_for_entry(
+    name: &str,
+    entry: &OverloadEntry,
     args: &[Expr],
     span: &Span,
-) -> Result<Vec<Expr>, MetelError> {
-    let binds: Vec<&OverloadEntry> = entries
-        .iter()
-        .filter(|entry| {
-            let params: Vec<ParamSlot<'_>> = entry
-                .param_names
-                .iter()
-                .map(|name| ParamSlot { name })
-                .collect();
-            bind_arguments(name, &params, args, span).is_ok()
-        })
-        .collect();
-    match binds.as_slice() {
-        [only] => to_positional(name, &CalleeNames::Declared(&only.param_names), args, span),
-        [] => {
-            let candidates: Vec<String> = entries
-                .iter()
-                .map(|entry| format!("({})", entry.param_names.join(", ")))
-                .collect();
-            Err(MetelError::type_error(
-                TypeErrorCode::T0039,
-                format!(
-                    "no overload of `{name}` takes these keyword arguments; its candidates declare {}",
-                    candidates.join(", ")
-                ),
-                span,
-            ))
-        }
-        _ => Err(MetelError::not_implemented(format!(
-            "keyword arguments on `{name}`: several overloads accept those names, and choosing by \
-             argument type is pending (RFC-0223, metel-core#1858)"
-        ))),
-    }
+) -> Result<Positional, MetelError> {
+    to_positional(name, &CalleeNames::Declared(&entry.param_names), args, span)
+}
+
+/// Whether the methods named `method` declare different parameter names, so binding a keyword call
+/// needs the receiver's type to choose among them.
+pub(super) fn method_needs_receiver(
+    method: &str,
+    methods: &std::collections::HashMap<String, Vec<MethodParams>>,
+) -> bool {
+    let candidates = methods.get(method).map_or(&[][..], Vec::as_slice);
+    candidates
+        .first()
+        .is_some_and(|first| candidates.iter().any(|c| c.names != first.names))
+}
+
+/// The head type name of a receiver type, for narrowing a method's candidates: a named type's name, or
+/// a primitive's spelling. `None` for any other shape (an array, a tuple, a function), which no
+/// nominal impl target names.
+pub(super) fn receiver_head(named: Option<&str>, spelling: &str) -> Option<String> {
+    named.map(str::to_string).or_else(|| {
+        spelling
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+            .then(|| spelling.to_string())
+    })
 }
 
 /// The positional argument list a keyword method call `receiver.method(..)` is equivalent to.
@@ -302,9 +359,10 @@ pub(super) fn positional_for_method(
     args: &[Expr],
     span: &Span,
     methods: &std::collections::HashMap<String, Vec<MethodParams>>,
-) -> Result<Vec<Expr>, MetelError> {
+    receiver_head: Option<&str>,
+) -> Result<Positional, MetelError> {
     let candidates = methods.get(method).map_or(&[][..], Vec::as_slice);
-    let names = method_names(method, candidates, None)?;
+    let names = method_names(method, candidates, receiver_head)?;
     to_positional(method, &CalleeNames::Declared(names), args, span)
 }
 
