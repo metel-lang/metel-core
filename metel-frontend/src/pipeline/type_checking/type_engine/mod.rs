@@ -6917,6 +6917,8 @@ pub struct InferContext {
     /// Reference spans of this module that resolve to a function, with its declared parameter names
     /// (RFC-0223): how a keyword-argument call finds the names to bind against.
     callee_params: std::rc::Rc<HashMap<Span, std::rc::Rc<[String]>>>,
+    /// Every declared method's parameter names by method name, graph-wide (RFC-0223).
+    method_params: std::rc::Rc<HashMap<String, Vec<crate::identity::MethodParams>>>,
     definition_snapshots: HashMap<Span, Box<super::handoff::ResolvedInferenceFacts>>,
     definition_break_targets: HashSet<TypeVar>,
     definition_diverging_loops: HashSet<Span>,
@@ -7047,6 +7049,7 @@ impl InferContext {
             definition_snapshot_sites: HashSet::new(),
             local_members: std::rc::Rc::default(),
             callee_params: std::rc::Rc::default(),
+            method_params: std::rc::Rc::default(),
             definition_snapshots: HashMap::new(),
             definition_break_targets: HashSet::new(),
             definition_diverging_loops: HashSet::new(),
@@ -9165,6 +9168,18 @@ impl InferContext {
         members: std::rc::Rc<crate::identity::LocalMembers>,
     ) {
         self.local_members = members;
+    }
+
+    pub(super) fn set_method_params(
+        &mut self,
+        method_params: std::rc::Rc<HashMap<String, Vec<crate::identity::MethodParams>>>,
+    ) {
+        self.method_params = method_params;
+    }
+
+    /// Every declared method's parameter names by method name.
+    pub(super) fn method_params(&self) -> &HashMap<String, Vec<crate::identity::MethodParams>> {
+        &self.method_params
     }
 
     pub(super) fn set_callee_params(

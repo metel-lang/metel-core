@@ -1494,7 +1494,7 @@ fn check_impl_with_report(
     identity: FrozenIdentity<'_>,
 ) -> Result<CheckImplReport, MetelError> {
     // `native` declarations are stdlib-only: reject them outside `std::…`.
-    enforce_native_stdlib_only(program, current_module_path)?;
+    early_declaration_checks(program, current_module_path, identity)?;
 
     // Lowering passes, in order: desugar `impl Aspect` params to fresh anonymous type
     // params; recognize `T::AssocType` projections (RFC-0082 SS3) among known generic
@@ -1853,6 +1853,80 @@ fn build_module_scheme_env(
     (scheme_env, scheme_ids)
 }
 
+/// Declaration checks that need no inference: `native` is stdlib-only, and an impl method repeats its
+/// aspect's parameter names.
+fn early_declaration_checks(
+    program: &Program,
+    current_module_path: &[String],
+    identity: FrozenIdentity<'_>,
+) -> Result<(), MetelError> {
+    enforce_native_stdlib_only(program, current_module_path)?;
+    check_impl_parameter_names(program, &identity.binding_spans.method_params())
+}
+
+/// RFC-0223 legality-4 (T0042): an aspect method has one set of parameter names, so every impl method
+/// declares the same names, in the same order, as the aspect's declaration. Parameter names are how a
+/// call through a bound, a `dyn` or the concrete type binds a keyword argument.
+fn check_impl_parameter_names(
+    program: &Program,
+    methods: &HashMap<String, Vec<crate::identity::MethodParams>>,
+) -> Result<(), MetelError> {
+    use crate::identity::MethodOwner;
+    for decl in &program.decls {
+        let Decl::Impl(block) = decl else { continue };
+        let Some(aspect) = &block.aspect_name else {
+            continue;
+        };
+        for method in &block.methods {
+            let declared: Vec<&crate::identity::MethodParams> = methods
+                .get(&method.name)
+                .into_iter()
+                .flatten()
+                .filter(|m| matches!(&m.owner, MethodOwner::Aspect(name) if name == aspect))
+                // A different parameter count is a signature mismatch (T0012), reported by
+                // conformance; T0042 is only for the same parameters under different names.
+                .filter(|m| {
+                    m.names.len()
+                        == method
+                            .params
+                            .iter()
+                            .filter(|p| p.receiver.is_none())
+                            .count()
+                })
+                .collect();
+            let written: Vec<&str> = method
+                .params
+                .iter()
+                .filter(|param| param.receiver.is_none())
+                .map(|param| param.name.as_str())
+                .collect();
+            let matches_some = declared.iter().any(|d| {
+                d.names
+                    .iter()
+                    .map(String::as_str)
+                    .eq(written.iter().copied())
+            });
+            if let Some(first) = declared.first()
+                && !matches_some
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0042,
+                    format!(
+                        "`{}` in the impl of `{aspect}` declares parameters ({}), but the aspect \
+                         declares ({}); an impl repeats the aspect's parameter names so a call \
+                         binds the same keywords through a bound, a `dyn` or the concrete type",
+                        method.name,
+                        written.join(", "),
+                        first.names.join(", ")
+                    ),
+                    &method.span,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Hand inference the frozen identity it reads: the block-local members, and the declared parameter
 /// names of every function this module references, so a call
 /// that names some of its arguments binds against them (RFC-0223, metel-core#1858).
@@ -1863,6 +1937,7 @@ fn seed_identity(ctx: &mut InferContext, program: &Program, identity: FrozenIden
         Decl::Let(binding) => Some(binding.span.filename.as_str()),
         _ => None,
     });
+    ctx.set_method_params(identity.binding_spans.method_params());
     if let Some(filename) = module_file {
         ctx.set_callee_params(identity.binding_spans.callee_params_in_file(filename));
     }

@@ -197,6 +197,46 @@ impl<'a> SigTypes<'a> {
     }
 }
 
+/// Record each method of an `extend` block under its method name (RFC-0223).
+fn record_impl_method_params(impl_block: &ImplBlock, acc: &mut ModuleAlloc) {
+    let target = match &impl_block.target_type {
+        crate::data::ast::TypeExpr::Named(name, _, _) => Some(name.clone()),
+        _ => None,
+    };
+    for method in &impl_block.methods {
+        acc.method_params.push((
+            method.name.clone(),
+            MethodParams {
+                owner: MethodOwner::Impl {
+                    target: target.clone(),
+                    aspect: impl_block.aspect_name.clone(),
+                },
+                names: declared_param_names(method),
+                span: method.span.clone(),
+            },
+        ));
+    }
+}
+
+/// Record each method an aspect declares under its method name (RFC-0223).
+fn record_aspect_method_params(aspect: &AspectDecl, acc: &mut ModuleAlloc) {
+    for method in &aspect.methods {
+        acc.method_params.push((
+            method.name.clone(),
+            MethodParams {
+                owner: MethodOwner::Aspect(aspect.name.clone()),
+                names: method
+                    .params
+                    .iter()
+                    .filter(|param| param.receiver.is_none())
+                    .map(|param| param.name.clone())
+                    .collect(),
+                span: method.span.clone(),
+            },
+        ));
+    }
+}
+
 /// The value-parameter names a function declares, receiver excluded (RFC-0223).
 fn declared_param_names(fun: &FunDecl) -> std::rc::Rc<[String]> {
     fun.params
@@ -208,6 +248,29 @@ fn declared_param_names(fun: &FunDecl) -> std::rc::Rc<[String]> {
 
 fn generic_names(generics: &[GenericParam]) -> Vec<&str> {
     generics.iter().map(|g| g.name.as_str()).collect()
+}
+
+/// Where a method's declared parameter names come from (RFC-0223): an aspect's own declaration, which
+/// is the one set of names every impl must repeat, or an impl method.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MethodOwner {
+    /// The aspect's declaration of the method.
+    Aspect(String),
+    /// A method of an `extend` block: its target's head type (`None` for a structural target such as
+    /// `i64[]`) and the aspect it implements, if any.
+    Impl {
+        target: Option<String>,
+        aspect: Option<String>,
+    },
+}
+
+/// One declared method's value-parameter names, receiver excluded.
+#[derive(Debug, Clone)]
+pub struct MethodParams {
+    pub owner: MethodOwner,
+    pub names: std::rc::Rc<[String]>,
+    /// Where the method is declared, for diagnostics.
+    pub span: Span,
 }
 
 /// Declared-name spans, resolved value-reference spans, and whole impl-method
@@ -237,6 +300,11 @@ pub struct BindingSpans {
     /// the function's symbol (RFC-0223, metel-core#1858). A call binds keyword arguments against
     /// these; a type carries no names, so this is the one place a callee's parameter names live.
     callee_params: HashMap<super::SymbolId, std::rc::Rc<[String]>>,
+    /// Every aspect and impl method's declared parameter names by method name, graph-wide. A method
+    /// call resolves its receiver only during checking, so it finds the names here by the method's
+    /// name and narrows by owner (RFC-0223, metel-core#1858). Shared, so each module's inference pass
+    /// takes a cheap handle.
+    method_params: std::rc::Rc<HashMap<String, Vec<MethodParams>>>,
 }
 
 impl BindingSpans {
@@ -268,6 +336,12 @@ impl BindingSpans {
     #[must_use]
     pub fn callee_params(&self, symbol: super::SymbolId) -> Option<&[String]> {
         self.callee_params.get(&symbol).map(|names| &**names)
+    }
+
+    /// A shared handle on every declared method's parameter names, by method name.
+    #[must_use]
+    pub fn method_params(&self) -> std::rc::Rc<HashMap<String, Vec<MethodParams>>> {
+        std::rc::Rc::clone(&self.method_params)
     }
 
     /// Every reference in `filename` that resolves to a function with recorded parameter names, with
@@ -363,19 +437,23 @@ pub fn allocate_module(
                     walk_value_body(BindingId::Global(sym), &d.value, interner, &mut acc, nav);
                 }
             }
-            Decl::Impl(impl_block) => walk_impl_methods(
-                module_path,
-                impl_block,
-                names,
-                &mut method_ordinals,
-                interner,
-                &mut acc,
-                nav,
-            ),
+            Decl::Impl(impl_block) => {
+                record_impl_method_params(impl_block, &mut acc);
+                walk_impl_methods(
+                    module_path,
+                    impl_block,
+                    names,
+                    &mut method_ordinals,
+                    interner,
+                    &mut acc,
+                    nav,
+                );
+            }
             Decl::Struct(_) | Decl::Enum(_) => {
                 walk_type_decl_item(module_path, decl, names, interner, &mut acc, nav);
             }
             Decl::Aspect(aspect) => {
+                record_aspect_method_params(aspect, &mut acc);
                 walk_aspect_methods(module_path, aspect, names, interner, &mut acc, nav);
             }
             _ => {}
@@ -413,6 +491,12 @@ pub fn allocate_module(
     binding_spans.declared_type_params = acc.declared_type_params;
     binding_spans.type_decl_params = acc.type_decl_params;
     binding_spans.callee_params = acc.callee_params;
+    for (method, params) in acc.method_params {
+        std::rc::Rc::make_mut(&mut binding_spans.method_params)
+            .entry(method)
+            .or_default()
+            .push(params);
+    }
     Allocation {
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
@@ -455,6 +539,7 @@ struct ModuleAlloc {
     declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
     type_decl_params: HashMap<super::SymbolId, Vec<(String, TypeParamId)>>,
     callee_params: HashMap<super::SymbolId, std::rc::Rc<[String]>>,
+    method_params: Vec<(String, MethodParams)>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -519,6 +604,12 @@ pub fn allocate_graph(
         binding_spans
             .callee_params
             .extend(allocation.binding_spans.callee_params);
+        for (method, entries) in allocation.binding_spans.method_params.iter() {
+            std::rc::Rc::make_mut(&mut binding_spans.method_params)
+                .entry(method.clone())
+                .or_default()
+                .extend(entries.iter().cloned());
+        }
     }
     Allocation {
         resolution,

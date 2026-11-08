@@ -1,0 +1,9 @@
+aspect Scale {
+    fun scale(self, by: i64) -> i64;
+}
+
+extend i64: Scale {
+    fun scale(self, factor: i64) -> i64 { self * factor }
+}
+
+fun main() {}

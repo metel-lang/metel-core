@@ -1037,7 +1037,10 @@ impl BodyFreezer<'_, '_> {
             Expr::Index { object, index, .. } => self.index(object, index, &ty)?,
             Expr::Call {
                 callee, args, span, ..
-            } => AbstractExprKind::Call(self.call(callee, args, span, &ty)?),
+            } => {
+                let args = self.positional_call_arguments(callee, args, span)?;
+                AbstractExprKind::Call(self.call(callee, &args, span, &ty)?)
+            }
             Expr::FieldAccess {
                 object,
                 field,
@@ -1053,8 +1056,9 @@ impl BodyFreezer<'_, '_> {
                 if self.facts.definition_array_length(span) {
                     AbstractExprKind::ArrayLength(Box::new(self.expression(receiver)?))
                 } else {
+                    let args = self.positional_method_arguments(method, args, span)?;
                     AbstractExprKind::MethodCall(
-                        self.method_call(receiver, method, args, span, &ty)?,
+                        self.method_call(receiver, method, &args, span, &ty)?,
                     )
                 }
             }
@@ -1068,6 +1072,49 @@ impl BodyFreezer<'_, '_> {
             _ => self.operator(expression, &ty)?,
         };
         Self::finish_expression(ty, kind, expression.span())
+    }
+
+    /// The call's arguments in declaration order: a keyword call is bound exactly as inference and
+    /// construction bound it (RFC-0223), so a retained argument pairs with the parameter it fills.
+    fn positional_call_arguments<'e>(
+        &self,
+        callee: &Expr,
+        args: &'e [Expr],
+        span: &Span,
+    ) -> Result<std::borrow::Cow<'e, [Expr]>, String> {
+        use super::super::super::keyword_binding::{has_keyword, positional_for_call};
+        if !has_keyword(args) {
+            return Ok(std::borrow::Cow::Borrowed(args));
+        }
+        let overloaded = super::super::super::overload::callee_name(callee)
+            .is_some_and(|name| self.overloads.contains_key(name));
+        let names = self
+            .identity
+            .binding_spans
+            .get(callee.span())
+            .and_then(crate::identity::BindingId::as_global)
+            .and_then(|symbol| self.identity.binding_spans.callee_params(symbol));
+        let methods = self.identity.binding_spans.method_params();
+        positional_for_call(callee, args, span, overloaded, names, &methods)
+            .map(std::borrow::Cow::Owned)
+            .map_err(|error| error.to_string())
+    }
+
+    /// As [`Self::positional_call_arguments`], for a method call.
+    fn positional_method_arguments<'e>(
+        &self,
+        method: &str,
+        args: &'e [Expr],
+        span: &Span,
+    ) -> Result<std::borrow::Cow<'e, [Expr]>, String> {
+        use super::super::super::keyword_binding::{has_keyword, positional_for_method};
+        if !has_keyword(args) {
+            return Ok(std::borrow::Cow::Borrowed(args));
+        }
+        let methods = self.identity.binding_spans.method_params();
+        positional_for_method(method, args, span, &methods)
+            .map(std::borrow::Cow::Owned)
+            .map_err(|error| error.to_string())
     }
 
     fn identifier(&self, name: &str, span: &Span) -> Result<AbstractExprKind, String> {

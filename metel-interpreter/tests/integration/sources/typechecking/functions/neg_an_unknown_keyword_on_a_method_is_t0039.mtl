@@ -1,0 +1,12 @@
+struct Acc {
+    total: i64,
+}
+
+extend Acc {
+    fun add(self, amount: i64) -> i64 { self.total + amount }
+}
+
+fun main() {
+    let acc := Acc { total = 1 };
+    let _ := acc.add(nope = 3);
+}

@@ -1417,6 +1417,33 @@ fn infer_expr_inner(
         Expr::MethodCall {
             receiver,
             method,
+            type_args,
+            args,
+            span,
+        } if super::super::keyword_binding::has_keyword(args) => {
+            // RFC-0223: bind the keywords against the method's declared names, then type the call as
+            // the ordinary positional method call it is equivalent to.
+            let positional = super::super::keyword_binding::positional_for_method(
+                method,
+                args,
+                span,
+                ctx.method_params(),
+            )?;
+            infer_expr(
+                &Expr::MethodCall {
+                    receiver: receiver.clone(),
+                    method: method.clone(),
+                    type_args: type_args.clone(),
+                    args: positional,
+                    span: span.clone(),
+                },
+                ctx,
+                fun_generalizations,
+            )
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
             args,
             span,
             ..
@@ -3364,5 +3391,6 @@ fn keyword_call_positional(
         span,
         overloaded,
         names.as_deref(),
+        ctx.method_params(),
     )
 }
