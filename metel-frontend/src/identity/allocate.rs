@@ -197,6 +197,15 @@ impl<'a> SigTypes<'a> {
     }
 }
 
+/// The value-parameter names a function declares, receiver excluded (RFC-0223).
+fn declared_param_names(fun: &FunDecl) -> std::rc::Rc<[String]> {
+    fun.params
+        .iter()
+        .filter(|param| param.receiver.is_none())
+        .map(|param| param.name.clone())
+        .collect()
+}
+
 fn generic_names(generics: &[GenericParam]) -> Vec<&str> {
     generics.iter().map(|g| g.name.as_str()).collect()
 }
@@ -224,6 +233,10 @@ pub struct BindingSpans {
     /// A `struct` or `enum` declaration → the generic parameters it declares, in order. A literal
     /// or pattern of the type pairs them with its type arguments by position.
     type_decl_params: HashMap<super::SymbolId, Vec<(String, TypeParamId)>>,
+    /// A function's declared value-parameter names, receiver excluded, in declaration order, keyed by
+    /// the function's symbol (RFC-0223, metel-core#1858). A call binds keyword arguments against
+    /// these; a type carries no names, so this is the one place a callee's parameter names live.
+    callee_params: HashMap<super::SymbolId, std::rc::Rc<[String]>>,
 }
 
 impl BindingSpans {
@@ -247,6 +260,29 @@ impl BindingSpans {
         self.declared_type_params
             .get(span)
             .map_or(&[], Vec::as_slice)
+    }
+
+    /// The value-parameter names declared by the function `symbol`, receiver excluded, in order, or
+    /// `None` when `symbol` is not a function the identity walk recorded (a builtin, a native with no
+    /// declaration here).
+    #[must_use]
+    pub fn callee_params(&self, symbol: super::SymbolId) -> Option<&[String]> {
+        self.callee_params.get(&symbol).map(|names| &**names)
+    }
+
+    /// Every reference in `filename` that resolves to a function with recorded parameter names, with
+    /// those names. The inference pass has no handle on the frozen identity, so it is handed this
+    /// slice once per module (RFC-0223, metel-core#1858).
+    #[must_use]
+    pub fn callee_params_in_file(&self, filename: &str) -> HashMap<Span, std::rc::Rc<[String]>> {
+        self.bindings
+            .iter()
+            .filter(|(span, _)| span.filename == filename)
+            .filter_map(|(span, binding)| {
+                let names = self.callee_params.get(&binding.as_global()?)?;
+                Some((span.clone(), std::rc::Rc::clone(names)))
+            })
+            .collect()
     }
 
     /// The generic parameters the `struct` or `enum` declared as `symbol` introduces, in order.
@@ -299,6 +335,7 @@ pub fn allocate_module(
                     // top-level function's identity off the span like any other binding.
                     acc.method_body_spans
                         .insert(fun.span.clone(), BindingId::Global(sym));
+                    acc.callee_params.insert(sym, declared_param_names(fun));
                     walk_body(
                         BindingId::Global(sym),
                         &fun.params,
@@ -375,6 +412,7 @@ pub fn allocate_module(
     binding_spans.type_params = acc.type_param_spans;
     binding_spans.declared_type_params = acc.declared_type_params;
     binding_spans.type_decl_params = acc.type_decl_params;
+    binding_spans.callee_params = acc.callee_params;
     Allocation {
         resolution: acc.out,
         positions: PositionIndex::from_entries(acc.positions),
@@ -416,6 +454,7 @@ struct ModuleAlloc {
     type_param_spans: HashMap<Span, TypeParamId>,
     declared_type_params: HashMap<Span, Vec<(String, TypeParamId)>>,
     type_decl_params: HashMap<super::SymbolId, Vec<(String, TypeParamId)>>,
+    callee_params: HashMap<super::SymbolId, std::rc::Rc<[String]>>,
 }
 
 /// Promote `Unresolved` references that the name resolver bound to a global
@@ -477,6 +516,9 @@ pub fn allocate_graph(
         binding_spans
             .type_decl_params
             .extend(allocation.binding_spans.type_decl_params);
+        binding_spans
+            .callee_params
+            .extend(allocation.binding_spans.callee_params);
     }
     Allocation {
         resolution,

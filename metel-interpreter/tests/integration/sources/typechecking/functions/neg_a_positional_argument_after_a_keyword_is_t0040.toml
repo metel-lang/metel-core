@@ -1,0 +1,8 @@
+[options]
+error = ["T0040"]
+spec = ["spec.functions.keyword-arguments.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0040"
+contains = "cannot follow the keyword argument `a`"

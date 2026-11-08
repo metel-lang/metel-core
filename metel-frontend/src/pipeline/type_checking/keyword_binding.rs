@@ -99,6 +99,108 @@ pub(super) fn bind_arguments(
     })
 }
 
+/// What a keyword-argument call's callee tells the binder.
+pub(super) enum CalleeNames<'a> {
+    /// A declared function: its value-parameter names, receiver excluded.
+    Declared(&'a [String]),
+    /// No declared names are known: a closure or other function value, whose type carries none.
+    Value,
+}
+
+/// Whether any written argument is a keyword argument.
+pub(super) fn has_keyword(args: &[Expr]) -> bool {
+    args.iter().any(|arg| matches!(arg, Expr::NamedArg { .. }))
+}
+
+/// Rewrite the arguments of a call that names some of them into the positional argument list of the
+/// callee's declaration order, so the rest of each pass types and constructs an ordinary call.
+///
+/// A reorder changes evaluation order, which is observable when more than one written argument is
+/// not a literal (dynamics-1: arguments evaluate strictly as written). Until the construction pass can
+/// bind temporaries, such a call is reported as not yet implemented rather than evaluated in the wrong
+/// order (metel-core#1858).
+///
+/// # Errors
+/// T0041 for a callee with no declared names, the binder's errors otherwise, and `not_implemented`
+/// for a reorder that would change evaluation order.
+pub(super) fn to_positional(
+    callee: &str,
+    names: &CalleeNames<'_>,
+    args: &[Expr],
+    call_span: &Span,
+) -> Result<Vec<Expr>, MetelError> {
+    let CalleeNames::Declared(names) = names else {
+        let keyword = args.iter().find_map(|arg| match arg {
+            Expr::NamedArg { span, .. } => Some(span),
+            _ => None,
+        });
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0041,
+            format!(
+                "`{callee}` is called through a function value, which takes positional arguments \
+                 only because a function type carries no parameter names"
+            ),
+            keyword.unwrap_or(call_span),
+        ));
+    };
+    let params: Vec<ParamSlot<'_>> = names.iter().map(|name| ParamSlot { name }).collect();
+    let binding = bind_arguments(callee, &params, args, call_span)?;
+    let non_literal = args
+        .iter()
+        .filter(|arg| !matches!(unwrap_keyword(arg), Expr::Literal(..)))
+        .count();
+    if !binding.is_identity() && non_literal > 1 {
+        return Err(MetelError::not_implemented(format!(
+            "keyword arguments to `{callee}` written in a different order than its parameters, with \
+             more than one non-literal argument (evaluation-order temporaries, RFC-0223, metel-core#1858)"
+        )));
+    }
+    Ok(binding
+        .arg_for_param
+        .iter()
+        .map(|&index| unwrap_keyword(&args[index]).clone())
+        .collect())
+}
+
+/// The positional argument list a keyword-argument call is equivalent to, shared by the inference and
+/// construction passes so they bind identically. `names` are the declared parameter names of the
+/// function the callee resolves to, when it resolves to one. A callee that is not a plain declared
+/// function name is not yet bound: a method or path callee waits for receiver and type-member
+/// resolution (metel-core#1858).
+///
+/// # Errors
+/// As [`to_positional`], plus `not_implemented` for a method, path or overloaded callee.
+pub(super) fn positional_for_call(
+    callee: &Expr,
+    args: &[Expr],
+    span: &Span,
+    overloaded: bool,
+    names: Option<&[String]>,
+) -> Result<Vec<Expr>, MetelError> {
+    let Some(name) = super::overload::callee_name(callee) else {
+        return Err(MetelError::not_implemented(
+            "keyword arguments on a call whose callee is a method or an associated function \
+             (RFC-0223, metel-core#1858)",
+        ));
+    };
+    if overloaded {
+        return Err(MetelError::not_implemented(format!(
+            "keyword arguments on the overloaded name `{name}` (RFC-0223, metel-core#1858)"
+        )));
+    }
+    match names {
+        Some(names) => to_positional(name, &CalleeNames::Declared(names), args, span),
+        None => to_positional(name, &CalleeNames::Value, args, span),
+    }
+}
+
+fn unwrap_keyword(arg: &Expr) -> &Expr {
+    match arg {
+        Expr::NamedArg { value, .. } => value,
+        other => other,
+    }
+}
+
 fn unknown_keyword(callee: &str, name: &str, params: &[ParamSlot<'_>], span: &Span) -> MetelError {
     let names: Vec<String> = params.iter().map(|p| format!("`{}`", p.name)).collect();
     let listing = if names.is_empty() {

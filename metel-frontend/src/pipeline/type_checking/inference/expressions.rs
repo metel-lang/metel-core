@@ -730,6 +730,26 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
+        } if super::super::keyword_binding::has_keyword(args) => {
+            // RFC-0223: bind the keywords against the callee's declared names, then type the call as
+            // the ordinary positional call it is equivalent to.
+            let positional = keyword_call_positional(callee, args, span, ctx)?;
+            infer_expr(
+                &Expr::Call {
+                    callee: callee.clone(),
+                    type_args: type_args.clone(),
+                    args: positional,
+                    span: span.clone(),
+                },
+                ctx,
+                fun_generalizations,
+            )
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } => {
             // RFC-0196: remember the arguments of a call to a monomorphic `let`-bound closure, so a
             // mismatch there reads "`id` has one type" instead of a bare `cannot unify`.
@@ -3326,4 +3346,23 @@ fn note_closure_argument(arg: &Expr, param: &InferType, ctx: &mut InferContext) 
         ctx.record_closure_expected_type(span.clone(), param.clone());
         ctx.defer_closure_checks(span);
     }
+}
+
+/// The positional argument list a keyword-argument call is equivalent to (RFC-0223).
+fn keyword_call_positional(
+    callee: &Expr,
+    args: &[Expr],
+    span: &crate::data::ast::Span,
+    ctx: &InferContext,
+) -> Result<Vec<Expr>, MetelError> {
+    let overloaded =
+        super::super::overload::callee_name(callee).is_some_and(|n| ctx.is_overloaded(n));
+    let names = ctx.callee_params_at(callee.span());
+    super::super::keyword_binding::positional_for_call(
+        callee,
+        args,
+        span,
+        overloaded,
+        names.as_deref(),
+    )
 }

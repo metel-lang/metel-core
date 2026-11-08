@@ -6914,6 +6914,9 @@ pub struct InferContext {
     /// The members of the block-local types of the program, to stamp each as it is registered
     /// (ADR-0068).
     local_members: std::rc::Rc<crate::identity::LocalMembers>,
+    /// Reference spans of this module that resolve to a function, with its declared parameter names
+    /// (RFC-0223): how a keyword-argument call finds the names to bind against.
+    callee_params: std::rc::Rc<HashMap<Span, std::rc::Rc<[String]>>>,
     definition_snapshots: HashMap<Span, Box<super::handoff::ResolvedInferenceFacts>>,
     definition_break_targets: HashSet<TypeVar>,
     definition_diverging_loops: HashSet<Span>,
@@ -7043,6 +7046,7 @@ impl InferContext {
             definition_templates: HashMap::new(),
             definition_snapshot_sites: HashSet::new(),
             local_members: std::rc::Rc::default(),
+            callee_params: std::rc::Rc::default(),
             definition_snapshots: HashMap::new(),
             definition_break_targets: HashSet::new(),
             definition_diverging_loops: HashSet::new(),
@@ -9161,6 +9165,18 @@ impl InferContext {
         members: std::rc::Rc<crate::identity::LocalMembers>,
     ) {
         self.local_members = members;
+    }
+
+    pub(super) fn set_callee_params(
+        &mut self,
+        callee_params: HashMap<Span, std::rc::Rc<[String]>>,
+    ) {
+        self.callee_params = std::rc::Rc::new(callee_params);
+    }
+
+    /// The declared parameter names of the function the reference written at `span` resolves to.
+    pub(super) fn callee_params_at(&self, span: &Span) -> Option<std::rc::Rc<[String]>> {
+        self.callee_params.get(span).cloned()
     }
 
     pub(super) fn retain_definition_snapshot(&mut self, span: &Span) -> Result<(), MetelError> {
