@@ -1037,6 +1037,7 @@ impl Cx<'_> {
             }
             Expr::RepeatArray(value, _, _)
             | Expr::UnaryOp(_, value, _)
+            | Expr::NamedArg { value, .. }
             | Expr::FieldAccess { object: value, .. }
             | Expr::TupleAccess { object: value, .. }
             | Expr::PropagateError { expr: value, .. } => {

@@ -602,6 +602,10 @@ fn infer_expr_inner(
         Expr::UnaryOp(op, operand, span) => {
             infer_unaryop(op, operand, span, ctx, fun_generalizations)
         }
+        // RFC-0223: parsed, not yet bound to parameters (metel-core#1858).
+        Expr::NamedArg { name, .. } => Err(MetelError::not_implemented(format!(
+            "keyword argument `{name}` (RFC-0223, metel-core#1858)"
+        ))),
         Expr::Tuple(elems, _) => {
             let elem_tys: Vec<InferType> = elems
                 .iter()

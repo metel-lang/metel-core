@@ -1674,6 +1674,10 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
         | Expr::ResolvedPath { span, .. } => {
             shift_span(span, base_start, base_line, base_col);
         }
+        Expr::NamedArg { value, span, .. } => {
+            shift_expr_span(value, base_start, base_line, base_col);
+            shift_span(span, base_start, base_line, base_col);
+        }
         Expr::Assign {
             target,
             value,
@@ -2693,9 +2697,39 @@ fn collect_args(
     filename: &str,
 ) -> Result<Vec<Expr>, MetelError> {
     pairs
-        .filter(|p| p.as_rule() == Rule::expr)
-        .map(|p| parse_expr(p, filename))
+        .filter(|p| p.as_rule() == Rule::call_arg)
+        .map(|p| parse_call_arg(p, filename))
         .collect()
+}
+
+/// One call argument: a keyword argument `name = value` (RFC-0223) or a plain expression.
+fn parse_call_arg(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr, MetelError> {
+    let inner = pair.into_inner().next().ok_or_else(|| {
+        MetelError::internal("call_arg: expected a keyword argument or an expression")
+    })?;
+    match inner.as_rule() {
+        Rule::keyword_arg => {
+            let span = Span::of(&inner, filename);
+            let mut parts = inner.into_inner();
+            let name = parts
+                .next()
+                .ok_or_else(|| MetelError::internal("keyword_arg: expected a name"))?
+                .as_str()
+                .to_string();
+            let value = parse_expr(
+                parts
+                    .next()
+                    .ok_or_else(|| MetelError::internal("keyword_arg: expected a value"))?,
+                filename,
+            )?;
+            Ok(Expr::NamedArg {
+                name,
+                value: Box::new(value),
+                span,
+            })
+        }
+        _ => parse_expr(inner, filename),
+    }
 }
 
 fn parse_match_expr(
@@ -4212,6 +4246,143 @@ mod path_segment_span_tests {
         assert_eq!(seg_spans.len(), 2);
         assert_eq!(&src[seg_spans[0].start..seg_spans[0].end], "helpers");
         assert_eq!(&src[seg_spans[1].start..seg_spans[1].end], "run");
+    }
+}
+
+#[cfg(test)]
+mod keyword_argument_tests {
+    //! RFC-0223 section 3 (metel-core#1857): `call_arg = { keyword_arg | expr }`. These are the grammar cases of the
+    //! prototype, kept as parse-level tests. Binding a keyword to a parameter is the checker's (metel-core#1858).
+
+    use super::parse;
+    use crate::data::ast::{BinOp, Decl, Expr};
+
+    fn main_tail(src: &str) -> Expr {
+        let program = parse(src, "t.mtl").expect("parse");
+        let main = program
+            .decls
+            .iter()
+            .find_map(|d| match d {
+                Decl::Fun(f) if f.name == "main" => Some(f),
+                _ => None,
+            })
+            .expect("fn main");
+        main.body.tail.as_deref().expect("tail expr").clone()
+    }
+
+    fn call_args(src: &str) -> Vec<Expr> {
+        match main_tail(src) {
+            Expr::Call { args, .. } | Expr::MethodCall { args, .. } => args,
+            other => panic!("expected a call, found {other:?}"),
+        }
+    }
+
+    fn named(arg: &Expr) -> (&str, &Expr) {
+        match arg {
+            Expr::NamedArg { name, value, .. } => (name.as_str(), value),
+            other => panic!("expected a keyword argument, found {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_keyword_argument_is_a_named_arg_with_its_value() {
+        let args = call_args("fun main() { f(x = 1) }\n");
+        assert_eq!(args.len(), 1);
+        let (name, value) = named(&args[0]);
+        assert_eq!(name, "x");
+        assert!(matches!(value, Expr::Literal(..)));
+    }
+
+    #[test]
+    fn positional_and_keyword_arguments_mix_in_written_order() {
+        let args = call_args("fun main() { f(a, b = 2, c = d) }\n");
+        assert_eq!(args.len(), 3);
+        assert!(matches!(&args[0], Expr::Ident(n, _) if n == "a"));
+        assert_eq!(named(&args[1]).0, "b");
+        let (name, value) = named(&args[2]);
+        assert_eq!(name, "c");
+        assert!(matches!(value, Expr::Ident(n, _) if n == "d"));
+    }
+
+    #[test]
+    fn a_positional_argument_after_a_keyword_parses_and_is_a_checker_error() {
+        // Grammar level only: rule 1's "positional first" is the checker's error (T0040), not a parse error.
+        let args = call_args("fun main() { f(a = 1, 2) }\n");
+        assert_eq!(args.len(), 2);
+        assert_eq!(named(&args[0]).0, "a");
+        assert!(matches!(&args[1], Expr::Literal(..)));
+    }
+
+    #[test]
+    fn a_trailing_comma_and_a_method_call_take_keyword_arguments() {
+        let args = call_args("fun main() { p.m(k = 1,) }\n");
+        assert_eq!(args.len(), 1);
+        assert_eq!(named(&args[0]).0, "k");
+    }
+
+    #[test]
+    fn a_turbofish_call_takes_keyword_arguments() {
+        let args = call_args("fun main() { f::<i64>(k = 1) }\n");
+        assert_eq!(named(&args[0]).0, "k");
+    }
+
+    #[test]
+    fn a_path_callee_takes_keyword_arguments() {
+        let args = call_args("fun main() { Type::make(x = 1, y = 2) }\n");
+        assert_eq!(args.len(), 2);
+        assert_eq!(named(&args[0]).0, "x");
+        assert_eq!(named(&args[1]).0, "y");
+    }
+
+    #[test]
+    fn a_closure_is_a_keyword_value_and_a_positional_neighbour() {
+        let args = call_args("fun main() { f(|v: i64| { v }, k = |w: i64| { w }) }\n");
+        assert!(matches!(&args[0], Expr::Closure { .. }));
+        let (name, value) = named(&args[1]);
+        assert_eq!(name, "k");
+        assert!(matches!(value, Expr::Closure { .. }));
+    }
+
+    #[test]
+    fn a_comparison_is_not_a_keyword_argument() {
+        let args = call_args("fun main() { f(x == y) }\n");
+        assert_eq!(args.len(), 1);
+        assert!(matches!(&args[0], Expr::BinOp(_, BinOp::Eq, _, _)));
+    }
+
+    #[test]
+    fn type_ascription_keeps_its_meaning_as_a_positional_argument() {
+        let args = call_args("fun main() { f(x: i64) }\n");
+        assert_eq!(args.len(), 1);
+        assert!(matches!(&args[0], Expr::Ascribe { .. }));
+    }
+
+    #[test]
+    fn the_keyword_argument_span_covers_name_and_value() {
+        let src = "fun main() { f(a, port = 5432) }\n";
+        let args = call_args(src);
+        let Expr::NamedArg { span, .. } = &args[1] else {
+            panic!("expected a keyword argument");
+        };
+        assert_eq!(&src[span.start..span.end], "port = 5432");
+    }
+
+    #[test]
+    fn a_keyword_value_may_itself_be_a_call_with_keywords() {
+        let args = call_args("fun main() { f(a = g(b = 1)) }\n");
+        let (name, value) = named(&args[0]);
+        assert_eq!(name, "a");
+        let Expr::Call { args: inner, .. } = value else {
+            panic!("expected a nested call");
+        };
+        assert_eq!(named(&inner[0]).0, "b");
+    }
+
+    #[test]
+    fn assignment_spelled_with_colon_equals_is_still_an_assignment_argument() {
+        // `:=` is the assignment today (RFC-0183 changes that later); `=` is never an assignment here.
+        let args = call_args("fun main() { f(x := 1) }\n");
+        assert!(matches!(&args[0], Expr::Assign { .. }));
     }
 }
 

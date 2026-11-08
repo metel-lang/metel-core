@@ -608,6 +608,10 @@ pub(super) fn construct_expr(
             ))
         }
         Expr::BinOp(lhs, op, rhs, span) => construct_binop(lhs, op, rhs, span, ctx),
+        // RFC-0223: parsed, not yet bound to parameters (metel-core#1858).
+        Expr::NamedArg { name, .. } => Err(MetelError::not_implemented(format!(
+            "keyword argument `{name}` (RFC-0223, metel-core#1858)"
+        ))),
         Expr::UnaryOp(op, operand, span) => {
             // For negation, propagate expected_ty to the operand so `-100` in
             // `let x: i8 = -100` resolves to i8. Unsigned targets are excluded:

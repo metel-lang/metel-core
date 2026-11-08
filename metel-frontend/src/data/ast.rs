@@ -722,6 +722,14 @@ pub enum Expr {
         value: Box<Expr>,
         span: Span,
     },
+    /// A keyword argument `name = value` (RFC-0223). It occurs only as an element of a call's `args`;
+    /// the parser builds it for `keyword_arg`, and binding it to a parameter belongs to the checker
+    /// (metel-core#1858). Anywhere else it is an internal error.
+    NamedArg {
+        name: String,
+        value: Box<Expr>,
+        span: Span,
+    },
     Call {
         callee: Box<Expr>,
         type_args: Vec<TypeExpr>,
@@ -838,6 +846,7 @@ impl Expr {
             | Expr::BinOp(_, _, _, s)
             | Expr::UnaryOp(_, _, s)
             | Expr::Assign { span: s, .. }
+            | Expr::NamedArg { span: s, .. }
             | Expr::Call { span: s, .. }
             | Expr::MethodCall { span: s, .. }
             | Expr::FieldAccess { span: s, .. }

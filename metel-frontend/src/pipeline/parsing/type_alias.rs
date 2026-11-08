@@ -1068,7 +1068,9 @@ impl Expander<'_> {
                     self.walk_expr(e)?;
                 }
             }
-            Expr::RepeatArray(e, _, _) | Expr::UnaryOp(_, e, _) => self.walk_expr(e)?,
+            Expr::RepeatArray(e, _, _)
+            | Expr::UnaryOp(_, e, _)
+            | Expr::NamedArg { value: e, .. } => self.walk_expr(e)?,
             Expr::BinOp(l, _, r, _) => {
                 self.walk_expr(l)?;
                 self.walk_expr(r)?;

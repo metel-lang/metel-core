@@ -233,6 +233,7 @@ fn collect_closure_expr_uses(
         }
         Expr::RepeatArray(value, _, _)
         | Expr::UnaryOp(_, value, _)
+        | Expr::NamedArg { value, .. }
         | Expr::Cast { expr: value, .. }
         | Expr::Ascribe { expr: value, .. }
         | Expr::PropagateError { expr: value, .. } => {
