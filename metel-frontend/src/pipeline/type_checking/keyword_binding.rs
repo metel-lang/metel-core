@@ -13,6 +13,7 @@
 
 use crate::data::ast::{Expr, Span};
 use crate::data::error::{MetelError, TypeErrorCode};
+use crate::identity::{MethodOwner, MethodParams};
 
 /// One declared parameter of the callee, in declaration order, excluding the receiver.
 #[derive(Debug, Clone, Copy)]
@@ -162,24 +163,78 @@ pub(super) fn to_positional(
         .collect())
 }
 
+/// The method names a keyword call binds against, found by the method's name.
+///
+/// A method call resolves its receiver only while checking, so the names are looked up by method name
+/// across every declared aspect and impl method. They are usable when every candidate declares the
+/// same names, which RFC-0223 legality-4 guarantees for an aspect method and which conventional
+/// inherent methods share; differing candidates need receiver-directed binding (metel-core#1858).
+fn method_names<'a>(
+    method: &str,
+    candidates: &'a [MethodParams],
+    head: Option<&str>,
+) -> Result<&'a [String], MetelError> {
+    let narrowed: Vec<&MethodParams> = match head {
+        Some(head) => candidates
+            .iter()
+            .filter(|c| matches!(&c.owner, MethodOwner::Impl { target: Some(t), .. } if t == head))
+            .collect(),
+        None => Vec::new(),
+    };
+    let pool: Vec<&MethodParams> = if narrowed.is_empty() {
+        candidates.iter().collect()
+    } else {
+        narrowed
+    };
+    let Some(first) = pool.first() else {
+        return Err(MetelError::not_implemented(format!(
+            "keyword arguments on `{method}`, whose declaration has no recorded parameter names \
+             (RFC-0223, metel-core#1858)"
+        )));
+    };
+    if pool.iter().all(|c| c.names == first.names) {
+        Ok(&first.names)
+    } else {
+        Err(MetelError::not_implemented(format!(
+            "keyword arguments on `{method}`: methods of that name declare different parameter \
+             names, and binding by receiver type is pending (RFC-0223, metel-core#1858)"
+        )))
+    }
+}
+
 /// The positional argument list a keyword-argument call is equivalent to, shared by the inference and
-/// construction passes so they bind identically. `names` are the declared parameter names of the
-/// function the callee resolves to, when it resolves to one. A callee that is not a plain declared
-/// function name is not yet bound: a method or path callee waits for receiver and type-member
-/// resolution (metel-core#1858).
+/// construction passes so they bind identically.
+///
+/// `names` are the declared parameter names of the function the callee resolves to, when it resolves
+/// to one; `methods` are every declared method of the callee's name, for a path callee `Type::name`
+/// (an associated function). Anything else, an overloaded name, a constructor or a variant, is not yet
+/// bound (metel-core#1858).
 ///
 /// # Errors
-/// As [`to_positional`], plus `not_implemented` for a method, path or overloaded callee.
+/// As [`to_positional`], plus `not_implemented` for a callee not yet bound.
 pub(super) fn positional_for_call(
     callee: &Expr,
     args: &[Expr],
     span: &Span,
     overloaded: bool,
     names: Option<&[String]>,
+    methods: &std::collections::HashMap<String, Vec<MethodParams>>,
 ) -> Result<Vec<Expr>, MetelError> {
+    if let Expr::Path(segments, _, _) = callee
+        && let [.., owner, name] = segments.as_slice()
+    {
+        let candidates = methods.get(name).map_or(&[][..], Vec::as_slice);
+        let names = method_names(name, candidates, Some(owner))?;
+        return to_positional(
+            &format!("{owner}::{name}"),
+            &CalleeNames::Declared(names),
+            args,
+            span,
+        );
+    }
     let Some(name) = super::overload::callee_name(callee) else {
         return Err(MetelError::not_implemented(
-            "keyword arguments on a call whose callee is a method or an associated function \
+            "keyword arguments on a call whose callee is not a plain function name or a path \
              (RFC-0223, metel-core#1858)",
         ));
     };
@@ -192,6 +247,21 @@ pub(super) fn positional_for_call(
         Some(names) => to_positional(name, &CalleeNames::Declared(names), args, span),
         None => to_positional(name, &CalleeNames::Value, args, span),
     }
+}
+
+/// The positional argument list a keyword method call `receiver.method(..)` is equivalent to.
+///
+/// # Errors
+/// As [`to_positional`], plus `not_implemented` when the method's names are not unambiguous.
+pub(super) fn positional_for_method(
+    method: &str,
+    args: &[Expr],
+    span: &Span,
+    methods: &std::collections::HashMap<String, Vec<MethodParams>>,
+) -> Result<Vec<Expr>, MetelError> {
+    let candidates = methods.get(method).map_or(&[][..], Vec::as_slice);
+    let names = method_names(method, candidates, None)?;
+    to_positional(method, &CalleeNames::Declared(names), args, span)
 }
 
 fn unwrap_keyword(arg: &Expr) -> &Expr {

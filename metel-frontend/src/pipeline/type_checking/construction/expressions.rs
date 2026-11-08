@@ -802,8 +802,9 @@ pub(super) fn construct_expr(
                 .get(callee.span())
                 .and_then(crate::identity::BindingId::as_global)
                 .and_then(|symbol| ctx.identity.binding_spans.callee_params(symbol));
+            let methods = ctx.identity.binding_spans.method_params();
             let positional = super::super::keyword_binding::positional_for_call(
-                callee, args, span, overloaded, names,
+                callee, args, span, overloaded, names, &methods,
             )?;
             let call = construct_call(callee, type_args, &positional, span, expected_ty, ctx)?;
             if let TypedExpr::Call { args, .. } = &call {
@@ -1054,6 +1055,29 @@ pub(super) fn construct_expr(
                 ty: field_ty,
                 span: span.clone(),
             })
+        }
+        Expr::MethodCall {
+            receiver,
+            method,
+            type_args,
+            args,
+            span,
+        } if super::super::keyword_binding::has_keyword(args) => {
+            // RFC-0223: construct the ordinary positional method call the keyword call is equivalent to.
+            let methods = ctx.identity.binding_spans.method_params();
+            let positional =
+                super::super::keyword_binding::positional_for_method(method, args, span, &methods)?;
+            construct_expr(
+                &Expr::MethodCall {
+                    receiver: receiver.clone(),
+                    method: method.clone(),
+                    type_args: type_args.clone(),
+                    args: positional,
+                    span: span.clone(),
+                },
+                expected_ty,
+                ctx,
+            )
         }
         Expr::MethodCall {
             receiver,

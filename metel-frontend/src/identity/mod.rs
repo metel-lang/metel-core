@@ -52,8 +52,8 @@ pub use lexical_path::{InheritedMethodTarget, LexicalPath, LexicalSeg};
 mod allocate;
 pub(crate) use allocate::allocate_inherited_body;
 pub use allocate::{
-    Allocation, BindingSpans, GraphModuleNav, ModuleNav, allocate_for_graph, allocate_graph,
-    allocate_module,
+    Allocation, BindingSpans, GraphModuleNav, MethodOwner, MethodParams, ModuleNav,
+    allocate_for_graph, allocate_graph, allocate_module,
 };
 
 mod position;

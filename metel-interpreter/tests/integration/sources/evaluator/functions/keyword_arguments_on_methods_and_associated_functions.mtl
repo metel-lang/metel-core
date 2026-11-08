@@ -1,0 +1,30 @@
+// RFC-0223 legality-2 (metel-core#1858): keyword arguments at associated functions, methods after the
+// receiver, and aspect methods called through the concrete type and through a bound.
+struct Acc {
+    total: i64,
+}
+
+extend Acc {
+    fun new(start: i64) -> Acc { Acc { total = start } }
+    fun add(self, amount: i64, times: i64) -> i64 { self.total + amount * times }
+}
+
+aspect Scale {
+    fun scale(self, by: i64, offset: i64) -> i64;
+}
+
+extend i64: Scale {
+    fun scale(self, by: i64, offset: i64) -> i64 { self * by + offset }
+}
+
+fun scaled<T: Scale>(v: T) -> i64 {
+    v.scale(offset = 1, by = 10)
+}
+
+fun main() {
+    let acc := Acc::new(start = 5);
+    assert(acc.add(times = 3, amount = 2) == 11);
+    assert(acc.add(2, times = 3) == 11);
+    assert(2.scale(offset = 1, by = 10) == 21);
+    assert(scaled(2) == 21);
+}

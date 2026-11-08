@@ -1,0 +1,8 @@
+[options]
+error = ["T0042"]
+spec = ["spec.functions.keyword-arguments.legality-4"]
+
+[expect]
+status = "typecheck_error"
+code = "T0042"
+contains = "repeats the aspect's parameter names"
