@@ -1104,7 +1104,7 @@ impl BodyFreezer<'_, '_> {
             .definition_construction(span)
             .ok_or("construction call lost its field names")?;
         let literal = super::super::super::construction_call::literal_for(
-            callee, type_args, args, span, names,
+            callee, type_args, args, span, names, false,
         )
         .map_err(|error| error.to_string())?;
         self.expression(&literal)
