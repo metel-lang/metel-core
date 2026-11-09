@@ -1,0 +1,19 @@
+// metel-core#1888: an associated function of a generic `extend<T>` block, called through the type path,
+// is checked at the call against the concrete type arguments (it used to be I0009).
+struct Box<T> { v: T }
+
+extend<T> Box<T> {
+    fun wrap(v: T) -> Box<T> { Box(v = v) }
+    fun twice(first: T, second: T) -> Pair<T> { Pair(first = first, second = second) }
+    fun again(v: T) -> Box<T> { Self(v) }
+}
+
+struct Pair<T> { first: T, second: T }
+
+fun main() {
+    assert(Box::wrap(5).v == 5);
+    assert(Box::wrap(v = 6).v == 6);
+    assert(Box::again("s").v == "s");
+    let p := Box::twice(second = 2, first = 1);
+    assert(p.first == 1 && p.second == 2);
+}
