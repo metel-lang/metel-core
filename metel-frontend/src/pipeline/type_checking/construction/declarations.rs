@@ -7,6 +7,7 @@ use super::{
     fun_body_diverges, infer_type_to_type, maybe_dyn_coerce, maybe_fn_move_coerce,
     maybe_singleton_coerce, resolved_to_type, type_expr_to_infer_in_assoc_ctx,
 };
+use crate::data::typed_ast::DerivedCloneOrder;
 
 /// A `TypedFunDecl` for an impl-block method: everything but `body` is copied
 /// straight off the source `FunDecl` (methods carry no top-level identity).
@@ -667,6 +668,8 @@ pub(super) fn construct_impl_decl(
     };
 
     let row_guards = row_guards_for_impl(ib);
+    let derived_clone_order = (ib.from_clause && ib.aspect_name.as_deref() == Some("Clone"))
+        .then(|| derived_clone_order_of(&target_name, ctx));
 
     Ok(TypedDecl::Impl(TypedImplBlock {
         polarity: ib.polarity,
@@ -677,10 +680,39 @@ pub(super) fn construct_impl_decl(
         aspect_type_args: ib.aspect_type_args.clone(),
         target_instantiation_args,
         row_guards,
+        derived_clone_order,
         target_type: ib.target_type.clone(),
         methods,
         span: ib.span.clone(),
     }))
+}
+
+/// The declaration order of the fields (struct) or of each variant's payload (enum) of `target_name`.
+fn derived_clone_order_of(target_name: &str, ctx: &ConstructCtx) -> DerivedCloneOrder {
+    if let Some(fields) = ctx.registry.struct_fields(ctx.current_module, target_name) {
+        return DerivedCloneOrder {
+            fields: fields.iter().map(|f| f.name.clone()).collect(),
+            variants: Vec::new(),
+        };
+    }
+    DerivedCloneOrder {
+        fields: Vec::new(),
+        variants: ctx
+            .registry
+            .enum_info(ctx.current_module, target_name)
+            .map(|info| {
+                info.variants
+                    .iter()
+                    .map(|v| {
+                        (
+                            v.name.clone(),
+                            v.fields.iter().map(|f| f.name.clone()).collect(),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
 }
 
 fn retain_abstract_method(

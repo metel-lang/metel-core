@@ -1,0 +1,5 @@
+struct Token { id: i64 }
+
+fun main() {
+    let a := [Token(id = 1); 3]; // ERROR[T0012]
+}

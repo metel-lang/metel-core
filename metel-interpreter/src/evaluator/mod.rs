@@ -390,6 +390,8 @@ pub struct RuntimeModuleEntry {
 
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeTypeEntry {
+    /// The order a derived `Clone` visits fields (metel-core#1817); `None` for a type with no derivation.
+    clone_order: Option<crate::data::typed_ast::DerivedCloneOrder>,
     associated_values: HashMap<String, RuntimeMethod>,
     inherent_impls: Vec<RuntimeInherentImpl>,
     aspect_impls: Vec<RuntimeAspectImpl>,
@@ -633,6 +635,34 @@ impl RuntimeRegistry {
     /// step; see [`RuntimeRegistry::type_ids`]).
     fn type_id_for_name(&self, type_name: &str) -> Option<SymbolId> {
         self.type_ids.get(type_name).copied()
+    }
+
+    /// Record the declaration order a derived `Clone` follows for `type_id`.
+    pub fn register_clone_order(
+        &mut self,
+        type_id: SymbolId,
+        type_name: &str,
+        order: crate::data::typed_ast::DerivedCloneOrder,
+    ) {
+        self.type_entry_mut(type_id, type_name).clone_order = Some(order);
+    }
+
+    /// The labels of `type_id`'s fields (or of `variant`'s payload) in the order its derived `Clone`
+    /// visits them, if the type derives `Clone`.
+    pub(crate) fn clone_order_of(
+        &self,
+        type_id: SymbolId,
+        variant: Option<&str>,
+    ) -> Option<&[String]> {
+        let order = self.types.get(&type_id)?.clone_order.as_ref()?;
+        match variant {
+            None => Some(order.fields.as_slice()),
+            Some(name) => order
+                .variants
+                .iter()
+                .find(|(variant_name, _)| variant_name == name)
+                .map(|(_, fields)| fields.as_slice()),
+        }
     }
 
     pub fn register_type_value(
@@ -2438,6 +2468,9 @@ fn run_passes(
                     else {
                         continue;
                     };
+                    if let Some(order) = &impl_block.derived_clone_order {
+                        runtime.register_clone_order(target_id, type_name, order.clone());
+                    }
                     // metel-core#1228: `None` (matches every instantiation) unless
                     // construction determined this impl names one specific
                     // instantiation (`extend W<i64>: Tag`) -- see
