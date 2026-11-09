@@ -1,0 +1,6 @@
+aspect Hot;
+aspect Cold: !Hot;
+struct P { n: i64 }
+extend P: Hot;
+extend P: Cold; // ERROR[T0015]
+fun main() {}

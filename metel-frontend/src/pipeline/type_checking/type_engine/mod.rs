@@ -3111,6 +3111,8 @@ pub(crate) struct AspectEntry {
     pub method_defs: Vec<AspectMethod>,
     /// Declared associated-type members (name + optional bound), RFC-0082 §1.
     pub assoc_type_decls: Vec<AssocTypeDecl>,
+    /// The direct positive super-aspects as written in the declaring module (RFC-0213).
+    pub supers: Vec<String>,
 }
 
 /// A type registered in a lexical scope, and the bare-name bindings it replaced there.
@@ -6062,22 +6064,7 @@ impl TypeDefinitionRegistry {
     /// (metel-core#989). Re-registering the same `(name, declaring_module)` pair
     /// replaces the earlier entry; a different declaring module adds a sibling entry
     /// under the same short name rather than clobbering it.
-    pub(crate) fn register_aspect_decl(
-        &mut self,
-        name: String,
-        declaring_module: Vec<String>,
-        method_names: Vec<String>,
-        generics: Vec<String>,
-        method_defs: Vec<AspectMethod>,
-        assoc_type_decls: Vec<AssocTypeDecl>,
-    ) {
-        let entry = AspectEntry {
-            declaring_module,
-            method_names,
-            generics,
-            method_defs,
-            assoc_type_decls,
-        };
+    pub(crate) fn register_aspect_decl(&mut self, name: String, entry: AspectEntry) {
         let entries = self.aspects.entry(name).or_default();
         if let Some(slot) = entries
             .iter_mut()
@@ -6087,6 +6074,61 @@ impl TypeDefinitionRegistry {
         } else {
             entries.push(entry);
         }
+    }
+
+    /// Every direct and transitive positive super-aspect of `name`, as seen from `current_module`
+    /// (RFC-0213 section 1): a proof of `T: name` proves each of them. Each is spelled as its
+    /// declaring module wrote it, which is how that module's bounds name it.
+    #[must_use]
+    pub fn aspect_super_closure(&self, current_module: &[String], name: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        let mut pending: Vec<(Vec<String>, String)> = Vec::new();
+        if let Some(entry) = self.aspect_entry_in(current_module, name) {
+            pending.extend(
+                entry
+                    .supers
+                    .iter()
+                    .map(|sup| (entry.declaring_module.clone(), sup.clone())),
+            );
+        }
+        while let Some((module, sup)) = pending.pop() {
+            if out.contains(&sup) {
+                continue;
+            }
+            if let Some(entry) = self.aspect_entry_in(&module, &sup) {
+                pending.extend(
+                    entry
+                        .supers
+                        .iter()
+                        .map(|next| (entry.declaring_module.clone(), next.clone())),
+                );
+            }
+            out.push(sup);
+        }
+        out
+    }
+
+    /// `bounds` plus the super-aspects each aspect bound proves.
+    pub(crate) fn with_super_aspect_bounds(
+        &self,
+        module: &[String],
+        bounds: &[GenericBound],
+    ) -> Vec<GenericBound> {
+        let mut out = bounds.to_vec();
+        for bound in bounds {
+            let GenericBound::Aspect(name) = bound else {
+                continue;
+            };
+            for sup in self.aspect_super_closure(module, name) {
+                if !out
+                    .iter()
+                    .any(|b| matches!(b, GenericBound::Aspect(n) if *n == sup))
+                {
+                    out.push(GenericBound::Aspect(sup));
+                }
+            }
+        }
+        out
     }
 
     /// The one aspect entry for `name` — but only when it is unambiguous (exactly one
@@ -7458,6 +7500,16 @@ impl InferContext {
         &mut self,
         bounds: HashMap<TypeVar, Vec<GenericBound>>,
     ) -> HashMap<TypeVar, Vec<GenericBound>> {
+        let bounds = bounds
+            .into_iter()
+            .map(|(tv, list)| {
+                (
+                    tv,
+                    self.registry
+                        .with_super_aspect_bounds(&self.current_module_path, &list),
+                )
+            })
+            .collect();
         std::mem::replace(&mut self.current_type_param_bounds, bounds)
     }
 

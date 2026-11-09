@@ -1,0 +1,21 @@
+// RFC-0213: a bound `T: Greeter` proves `T: Named`, and the methods of both are callable through it.
+aspect Named { fun name(&self) -> String; }
+aspect Greeter: Named { fun greet(&self) -> String; }
+aspect Loud: Greeter { fun shout(&self) -> String; }
+struct P { n: i64 }
+extend P: Named { fun name(&self) -> String { "p" } }
+extend P: Greeter { fun greet(&self) -> String { "hi" } }
+extend P: Loud { fun shout(&self) -> String { "HI" } }
+
+fun label<T: Named>(x: &T) -> String { x.name() }
+fun both<T: Greeter>(x: &T) -> String { label(x) }
+fun through_loud<T: Loud>(x: &T) -> String { both(x) }
+fun method_of_super<T: Loud>(x: &T) -> String { x.name() }
+
+fun main() {
+    let p := P(n = 1);
+    assert(both(&p) == "p");
+    assert(through_loud(&p) == "p");
+    assert(method_of_super(&p) == "p");
+    assert(p.shout() == "HI");
+}

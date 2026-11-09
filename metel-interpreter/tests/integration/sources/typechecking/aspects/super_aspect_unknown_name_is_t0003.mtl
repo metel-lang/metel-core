@@ -1,0 +1,2 @@
+aspect G: Nope; // ERROR[T0003]
+fun main() {}

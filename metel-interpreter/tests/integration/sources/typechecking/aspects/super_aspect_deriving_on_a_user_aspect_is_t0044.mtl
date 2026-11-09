@@ -1,0 +1,3 @@
+aspect Named { fun name(&self) -> String; }
+aspect G: deriving Named; // ERROR[T0044]
+fun main() {}

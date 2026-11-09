@@ -111,7 +111,10 @@ extend_aspect        = { bang? ~ named_type }
 // selects a pre-declared slot and keeps `=`.
 assoc_type_def = { "type" ~ ident ~ ":=" ~ type_expr ~ ";" }
 
-aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ (";" | "{" ~ (assoc_type_decl | aspect_method)* ~ "}") }
+super_aspects = { ":" ~ super_aspect ~ ("," ~ super_aspect)* }
+super_aspect  = { bang? ~ deriving_mark? ~ type_path }
+deriving_mark = @{ "deriving" ~ !(ASCII_ALPHANUMERIC | "_") }
+aspect_decl  = { pub_kw? ~ "aspect" ~ ident ~ generic_params? ~ super_aspects? ~ (";" | "{" ~ (assoc_type_decl | aspect_method)* ~ "}") }
 aspect_method = { "fun" ~ ident ~ generic_params? ~ "(" ~ param_list? ~ ")" ~ ("->" ~ type_expr)? ~ (block | ";") }
 assoc_type_decl = { "type" ~ ident ~ (":" ~ bound_list)? ~ ";" }
 

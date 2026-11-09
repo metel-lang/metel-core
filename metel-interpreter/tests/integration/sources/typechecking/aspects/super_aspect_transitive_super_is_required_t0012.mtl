@@ -1,0 +1,7 @@
+aspect A { fun a(&self) -> i64; }
+aspect B: A { fun b(&self) -> i64; }
+aspect C: B { fun c(&self) -> i64; }
+struct S { n: i64 }
+extend S: B { fun b(&self) -> i64 { 1 } } // ERROR[T0012]
+extend S: C { fun c(&self) -> i64 { 2 } }
+fun main() {}

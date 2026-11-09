@@ -1,0 +1,3 @@
+struct S { n: i64 }
+aspect G: S; // ERROR[T0003]
+fun main() {}
