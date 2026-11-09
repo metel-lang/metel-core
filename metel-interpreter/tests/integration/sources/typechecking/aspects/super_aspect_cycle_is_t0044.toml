@@ -1,0 +1,8 @@
+[options]
+error = ["T0044"]
+spec = ["spec.declarations.aspects.super-aspects.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0044"
+contains = "its own super-aspect"

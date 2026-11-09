@@ -1,0 +1,13 @@
+// RFC-0213 section 3: `aspect Cold: !Hot` forbids granting both, and nothing else.
+aspect Hot;
+aspect Cold: !Hot;
+struct Stove { n: i64 }
+struct Ice { n: i64 }
+extend Stove: Hot;
+extend Ice: Cold;
+
+fun main() {
+    let a := Stove(n = 1);
+    let b := Ice(n = 2);
+    assert(a.n + b.n == 3);
+}
