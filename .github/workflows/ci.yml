@@ -336,6 +336,11 @@ jobs:
         run: python3 -m unittest tools.test_check_no_semantic_name_lookup
       - name: frozen IR / ResolutionMap carry no String/Span key
         run: tools/check_no_semantic_name_lookup.py --check
+      # metel-core#1799: the std `Copy` aspect is recognised by declaration identity, never by spelling.
+      - name: Copy scanner tests
+        run: python3 -m unittest tools.test_check_no_copy_by_name
+      - name: no compiler site identifies Copy by its spelling
+        run: tools/check_no_copy_by_name.py --check
 
   flat-module-dir-check:
     name: no flat module file beside its own directory

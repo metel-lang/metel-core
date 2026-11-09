@@ -18,6 +18,7 @@ cargo test --workspace
 
 echo "pre-push: no flat module file beside its own directory"
 python3 tools/check_no_flat_module_dir_collision.py --check
+python3 tools/check_no_copy_by_name.py --check
 
 # AGENTS.md: develop's history is linear -- pull requests are rebase-merged, so a
 # merge commit never lands on it. This catches a merge commit in a local push to

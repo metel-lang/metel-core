@@ -302,15 +302,16 @@ pub(super) fn infer_decl(
             if ib.polarity == Polarity::Positive
                 && let Some(aspect_name) = &ib.aspect_name
             {
-                if aspect_name == "Copy" {
+                if ctx
+                    .registry()
+                    .is_copy_aspect(ctx.current_module_path(), aspect_name)
+                {
                     check_copy_impl_eligibility(ib, &target_name, ctx)?;
                 } else if aspect_name == "Drop"
                     && let Some(concrete_target) = closed_nominal_target(ib, &target_name)
-                    && ctx.registry().type_satisfies_aspect(
-                        ctx.current_module_path(),
-                        &concrete_target,
-                        "Copy",
-                    )
+                    && ctx
+                        .registry()
+                        .type_is_copy(ctx.current_module_path(), &concrete_target)
                 {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0001,

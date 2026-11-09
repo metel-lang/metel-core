@@ -1395,7 +1395,7 @@ fn check_all_fields(
         .filter(|(label, _)| !except.contains(label))
     {
         for aspect in aspects {
-            let holds = (aspect == "Copy"
+            let holds = (registry.is_copy_aspect(current_module, aspect)
                 && matches!(
                     ty,
                     Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
@@ -1552,7 +1552,7 @@ pub(super) fn check_type_satisfies_bounds(
         Type::SizedArray(elem, _) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
-                    let message = if aspect == "Copy" {
+                    let message = if registry.is_copy_aspect(current_module, aspect) {
                         format!(
                             "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: fixed-size arrays implement `{aspect}` only when their element type `{elem}` does"
                         )
@@ -1569,7 +1569,7 @@ pub(super) fn check_type_satisfies_bounds(
         Type::Tuple(_) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
-                    let message = if aspect == "Copy" {
+                    let message = if registry.is_copy_aspect(current_module, aspect) {
                         format!(
                             "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuples implement `{aspect}` only when every element does"
                         )
@@ -1705,8 +1705,7 @@ pub(super) fn check_type_does_not_satisfy_bound(
     };
     for aspect in neg_bounds.iter().filter_map(GenericBound::aspect_name) {
         if registry.type_satisfies_aspect(current_module, concrete, aspect) {
-            if aspect == "Drop" && registry.type_satisfies_aspect(current_module, concrete, "Copy")
-            {
+            if aspect == "Drop" && registry.type_is_copy(current_module, concrete) {
                 continue;
             }
             return Err(MetelError::type_error(

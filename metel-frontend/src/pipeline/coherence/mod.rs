@@ -1161,9 +1161,11 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
     // not inherit this rule. If either is absent (a program compiled without
     // the prelude) there is nothing to enforce.
     let std_core = vec!["std".to_string(), "core".to_string()];
-    let copy_id = names
-        .symbols
-        .get(&(std_core.clone(), Namespace::Type, "Copy".to_string()));
+    let copy_id = names.symbols.get(&(
+        std_core.clone(),
+        Namespace::Type,
+        crate::pipeline::type_checking::type_engine::COPY_ASPECT.to_string(),
+    ));
     let drop_id = names
         .symbols
         .get(&(std_core, Namespace::Type, "Drop".to_string()));

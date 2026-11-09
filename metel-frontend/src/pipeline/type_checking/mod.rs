@@ -1653,7 +1653,7 @@ fn capture_has_copy_grant(
             .all(|item| capture_has_copy_grant(ctx, item, current_module, assumptions)),
         _ => ctx
             .registry()
-            .infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions),
+            .infer_type_is_copy(current_module, ty, assumptions),
     }
 }
 
