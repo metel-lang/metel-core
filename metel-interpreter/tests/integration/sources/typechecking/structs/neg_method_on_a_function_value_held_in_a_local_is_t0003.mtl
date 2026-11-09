@@ -2,7 +2,9 @@
 
 fun f() -> i64 { 1 }
 
+// A written function type is move-only and has no `Clone` (RFC-0166, RFC-0206 section 2); an inferred
+// function or closure value that is `Copy` does (the compiler provides it, metel-core#1805).
 fun main() {
-    let g := f;
+    let g: || -> i64 := f;
     let h := g.clone();
 }
