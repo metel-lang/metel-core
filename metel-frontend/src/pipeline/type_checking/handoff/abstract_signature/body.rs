@@ -159,7 +159,7 @@ impl BodyFreezer<'_, '_> {
                             .abstract_nominal_aspect(
                                 identity,
                                 arguments,
-                                crate::pipeline::type_checking::type_engine::COPY_ASPECT,
+                                self.registry.implicit_aspect_name(),
                                 self.signature.facts.as_deref().unwrap_or_default(),
                             )
                             .map_or(

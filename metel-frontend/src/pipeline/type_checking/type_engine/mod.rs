@@ -20,9 +20,6 @@ use std::fmt;
 use std::rc::Rc;
 use std::time::Instant;
 
-/// The spelling of the std `Copy` aspect: the single definition every other site goes through (#1799).
-pub const COPY_ASPECT: &str = "Copy";
-
 mod ownership_rules;
 
 // ── Phase 1: Type Variables ───────────────────────────────────────────────────
@@ -3113,6 +3110,10 @@ pub(crate) struct AspectEntry {
     pub assoc_type_decls: Vec<AssocTypeDecl>,
     /// The direct positive super-aspects as written in the declaring module (RFC-0213).
     pub supers: Vec<String>,
+    /// The aspects its negative entries exclude (`aspect A: !B`), as written in the declaring module.
+    pub excludes: Vec<String>,
+    /// The `implicit` property (RFC-0212): a by-value use of a type with the aspect copies it.
+    pub implicit: bool,
 }
 
 /// A type registered in a lexical scope, and the bare-name bindings it replaced there.
@@ -3314,6 +3315,8 @@ pub struct TypeDefinitionRegistry {
     /// through the `_in` variants, which prefer a local declaration and otherwise resolve
     /// the name in that module's import scope.
     aspects: HashMap<String, Vec<AspectEntry>>,
+    /// The module and name of the aspect declared `implicit` (RFC-0212); at most one exists.
+    implicit_aspect: Option<(Vec<String>, String)>,
     /// Move-check reconstruction only: symbolic nominal placeholders and the
     /// aspect bounds already proved for their source generic parameters.
     symbolic_named_aspects: HashMap<String, HashSet<String>>,
@@ -3449,16 +3452,26 @@ impl TypeDefinitionRegistry {
         self.resolve_type_key(current_module, name)
     }
 
-    /// The declaration identity of the std `Copy` aspect, if the program has the prelude (#1799).
+    /// The name of the aspect that carries the `implicit` property (RFC-0212), empty when no declaration
+    /// in the program has it (a program compiled without the prelude). This is what the compiler calls
+    /// `Copy`: it is read from the declaration, never from a spelling (metel-core#1919).
     #[must_use]
-    pub fn copy_aspect_id(&self) -> Option<SymbolId> {
-        self.resolve_type_id(&["std".to_string(), "core".to_string()], COPY_ASPECT)
+    pub fn implicit_aspect_name(&self) -> &str {
+        self.implicit_aspect
+            .as_ref()
+            .map_or("", |(_, name)| name.as_str())
     }
 
-    /// Whether `name`, written in `current_module`, denotes the std `Copy` aspect (#1799). This is the
-    /// one place the compiler decides that an aspect is `Copy`: a user aspect that merely shares the
-    /// spelling is not it. A spelling that resolves to no aspect at all (a program compiled without the
-    /// prelude, or a name carried in a diagnostic-only form) falls back to the canonical spelling.
+    /// The declaration identity of the `implicit` aspect.
+    #[must_use]
+    pub fn copy_aspect_id(&self) -> Option<SymbolId> {
+        let (module, name) = self.implicit_aspect.as_ref()?;
+        self.resolve_type_id(module, name)
+    }
+
+    /// Whether `name`, written in `current_module`, denotes the `implicit` aspect: a user aspect that
+    /// merely shares its spelling is not it. A spelling that resolves to no aspect at all is compared
+    /// with the declared name.
     #[must_use]
     pub fn is_copy_aspect(&self, current_module: &[String], name: &str) -> bool {
         match (
@@ -3466,17 +3479,17 @@ impl TypeDefinitionRegistry {
             self.copy_aspect_id(),
         ) {
             (Some(id), Some(copy)) => id == copy,
-            _ => name == COPY_ASPECT,
+            _ => !name.is_empty() && name == self.implicit_aspect_name(),
         }
     }
 
-    /// Whether `ty` is `Copy` in `current_module`.
+    /// Whether `ty` has the `implicit` aspect (is copied by a by-value use) in `current_module`.
     #[must_use]
     pub fn type_is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        self.type_satisfies_aspect(current_module, ty, COPY_ASPECT)
+        self.type_satisfies_aspect(current_module, ty, self.implicit_aspect_name())
     }
 
-    /// Whether the inference type `ty` is `Copy` in `current_module`, under `assumptions`.
+    /// Whether the inference type `ty` has the `implicit` aspect in `current_module`, under `assumptions`.
     #[must_use]
     pub fn infer_type_is_copy(
         &self,
@@ -3484,7 +3497,31 @@ impl TypeDefinitionRegistry {
         ty: &InferType,
         assumptions: &AspectAssumptions,
     ) -> bool {
-        self.infer_type_satisfies_aspect(current_module, ty, COPY_ASPECT, assumptions)
+        self.infer_type_satisfies_aspect(
+            current_module,
+            ty,
+            self.implicit_aspect_name(),
+            assumptions,
+        )
+    }
+
+    /// The aspects an impl of `name` may not share a type with: the ones its declaration excludes
+    /// (`aspect A: !B`) and the ones that exclude it (RFC-0213 section 3).
+    #[must_use]
+    pub fn exclusion_partners(&self, current_module: &[String], name: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .aspect_entry_in(current_module, name)
+            .map(|entry| entry.excludes.clone())
+            .unwrap_or_default();
+        for (other, entries) in &self.aspects {
+            if entries
+                .iter()
+                .any(|entry| entry.excludes.iter().any(|excluded| excluded == name))
+            {
+                out.push(other.clone());
+            }
+        }
+        out
     }
 
     /// Like [`resolve_type_id`](Self::resolve_type_id), but with
@@ -3773,6 +3810,7 @@ impl TypeDefinitionRegistry {
             variant_declaring_enums: HashMap::new(),
             enum_decl_modules: HashMap::new(),
             aspects: HashMap::new(),
+            implicit_aspect: None,
             symbolic_named_aspects: HashMap::new(),
             impl_aspect_env: HashMap::new(),
             unconditional_ownership_impls: HashSet::new(),
@@ -6071,6 +6109,9 @@ impl TypeDefinitionRegistry {
     /// replaces the earlier entry; a different declaring module adds a sibling entry
     /// under the same short name rather than clobbering it.
     pub(crate) fn register_aspect_decl(&mut self, name: String, entry: AspectEntry) {
+        if entry.implicit {
+            self.implicit_aspect = Some((entry.declaring_module.clone(), name.clone()));
+        }
         let entries = self.aspects.entry(name).or_default();
         if let Some(slot) = entries
             .iter_mut()

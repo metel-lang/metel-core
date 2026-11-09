@@ -21,9 +21,9 @@ struct AspectFacts {
     name: String,
     declared: bool,
     derivable: bool,
+    /// Carries the `implicit` property: its class keyword is `copy`.
+    implicit: bool,
     method_count: usize,
-    /// Its derivation brings a super-aspect (`aspect Copy: deriving Clone`).
-    brings_super: bool,
 }
 
 fn facts_of(ad: &AspectDecl) -> AspectFacts {
@@ -31,9 +31,10 @@ fn facts_of(ad: &AspectDecl) -> AspectFacts {
     AspectFacts {
         name: ad.name.clone(),
         declared: has(AspectProperty::Declared),
-        derivable: has(AspectProperty::Derivable),
+        // A `deriving` super marks the aspect\'s derivation as bringing it (`aspect Copy: deriving Clone`).
+        derivable: has(AspectProperty::Derivable) || ad.supers.iter().any(|entry| entry.deriving),
+        implicit: has(AspectProperty::Implicit),
         method_count: ad.methods.len(),
-        brings_super: ad.supers.iter().any(|entry| entry.deriving),
     }
 }
 
@@ -72,13 +73,13 @@ fn check_clauses(
 ) -> Result<(), MetelError> {
     for entry in &clauses.colon {
         let facts = lookup(names, module, entry, aspects)?;
-        if facts.brings_super || facts.derivable {
+        if facts.derivable {
             return Err(error(
                 format!(
                     "`{0}` is granted by derivation, so the colon list cannot grant it: write `struct {1} derives {0}`{2}",
                     facts.name,
                     type_name,
-                    if facts.name == crate::pipeline::type_checking::type_engine::COPY_ASPECT {
+                    if facts.implicit {
                         format!(" or `copy struct {type_name}`")
                     } else {
                         String::new()
