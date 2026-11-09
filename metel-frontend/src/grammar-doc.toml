@@ -464,6 +464,14 @@ mode = "named"
 name = "Argument"
 section = "Expressions"
 [[rule]]
+pest = "label"
+mode = "named"
+name = "Label"
+section = "Expressions"
+[[rule]]
+pest = "label_index"
+mode = "inline"
+[[rule]]
 pest = "spread_arg"
 mode = "named"
 name = "SpreadArgument"

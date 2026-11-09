@@ -5,11 +5,11 @@
 struct Handle { fd: i64 }
 
 extend Handle {
-    fun add<record R>(self, t: { x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun add<record R>(self, t: { .x: i64, ..R }) -> i64 { self.fd + t.x }
 }
 
 fun main() {
     let h := Handle(fd = 1);
-    let r := { y = 3 };
+    let r := { .y = 3 };
     let _ := h.add(r);
 }

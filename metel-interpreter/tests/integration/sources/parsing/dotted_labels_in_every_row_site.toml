@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.record-labels.legality-1", "spec.types.record-labels.legality-2"]

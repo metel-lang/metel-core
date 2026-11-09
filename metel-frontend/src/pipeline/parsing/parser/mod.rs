@@ -2233,6 +2233,17 @@ fn parse_capture_list(
         .collect()
 }
 
+/// The name a RFC-0221 `label` pair carries: its inner identifier or index, without the dot.
+fn unlabel(pair: pest::iterators::Pair<Rule>) -> pest::iterators::Pair<Rule> {
+    if pair.as_rule() == Rule::label {
+        pair.into_inner()
+            .next()
+            .expect("a label holds a name or an index")
+    } else {
+        pair
+    }
+}
+
 fn parse_record_literal(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
@@ -2267,12 +2278,23 @@ fn parse_record_literal(
             } else if initializer.as_rule() == Rule::field_init {
                 let field_span = Span::of(&initializer, filename);
                 let mut it = initializer.into_inner();
-                let name_pair = it
-                    .next()
-                    .ok_or_else(|| MetelError::internal("record_lit: expected field name"))?;
+                let name_pair = unlabel(
+                    it.next()
+                        .ok_or_else(|| MetelError::internal("record_lit: expected field name"))?,
+                );
                 let name = name_pair.as_str().to_string();
                 let value = match it.next() {
                     Some(expr_pair) => parse_expr(expr_pair, filename)?,
+                    None if name_pair.as_rule() == Rule::label_index => {
+                        return Err(MetelError::parse(
+                            ParseErrorCode::P0001,
+                            format!(
+                                "the pun `{{ .{name} }}` names no variable: no variable is called `{name}`; \
+                                 write `.{name} = value`"
+                            ),
+                            &field_span,
+                        ));
+                    }
                     None => Expr::Ident(name.clone(), field_span),
                 };
                 fields.push((name, value));
@@ -2317,7 +2339,7 @@ fn parse_record_projection_expr(
         .ok_or_else(|| MetelError::internal("record_projection_expr: expected path"))?;
     let path_span = Span::of(&path_pair, filename);
     let path = collect_path_components(path_pair)?;
-    let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
+    let mut fields: Vec<String> = inner.map(|p| unlabel(p).as_str().to_string()).collect();
     sort_record_labels(&mut fields, filename, &span, "record projection")?;
     Ok(Expr::RecordProjection {
         path,
@@ -2857,10 +2879,12 @@ fn parse_record_field_pat_list(
         match child.as_rule() {
             Rule::record_field_pat => {
                 let ignored = child.as_str().contains(':');
-                let field = child
-                    .into_inner()
-                    .next()
-                    .expect("record_field_pat always contains an identifier");
+                let field = unlabel(
+                    child
+                        .into_inner()
+                        .next()
+                        .expect("record_field_pat always contains a label"),
+                );
                 if ignored {
                     ignored_fields.push(field.as_str().to_string());
                 } else {
@@ -3171,11 +3195,11 @@ fn parse_open_record_fields_and_tail(
         match inner_pair.as_rule() {
             Rule::record_type_field => {
                 let mut inner = inner_pair.into_inner();
-                let name = inner
-                    .next()
-                    .ok_or_else(|| MetelError::internal("open_record_type: expected field name"))?
-                    .as_str()
-                    .to_string();
+                let name = unlabel(inner.next().ok_or_else(|| {
+                    MetelError::internal("open_record_type: expected field name")
+                })?)
+                .as_str()
+                .to_string();
                 let ty = parse_type_expr(
                     inner.next().ok_or_else(|| {
                         MetelError::internal("open_record_type: expected field type")
@@ -3261,11 +3285,13 @@ fn parse_type_expr(
                     continue;
                 }
                 let mut inner = field_pair.into_inner();
-                let name = inner
-                    .next()
-                    .ok_or_else(|| MetelError::internal("record_type: expected field name"))?
-                    .as_str()
-                    .to_string();
+                let name = unlabel(
+                    inner
+                        .next()
+                        .ok_or_else(|| MetelError::internal("record_type: expected field name"))?,
+                )
+                .as_str()
+                .to_string();
                 let ty = parse_type_expr(
                     inner
                         .next()
@@ -3431,7 +3457,7 @@ fn parse_type_expr(
                 .next()
                 .ok_or_else(|| MetelError::internal("record_projection_type: expected path"))?;
             let path = collect_path_components(path_pair)?;
-            let mut fields: Vec<String> = inner.map(|p| p.as_str().to_string()).collect();
+            let mut fields: Vec<String> = inner.map(|p| unlabel(p).as_str().to_string()).collect();
             sort_record_labels(&mut fields, filename, &span, "record projection")?;
             Ok(TypeExpr::RecordProjection { path, fields, span })
         }
@@ -3449,7 +3475,7 @@ fn parse_type_expr(
             let mut tail = None;
             for p in inner {
                 match p.as_rule() {
-                    Rule::ident => fields.push(p.as_str().to_string()),
+                    Rule::label => fields.push(unlabel(p).as_str().to_string()),
                     Rule::row_tail => {
                         let tail_span = Span::of(&p, filename);
                         let var = p
@@ -3811,11 +3837,13 @@ fn parse_row_bound(
         // already captured in `open` above.
         if p.as_rule() == Rule::row_field {
             let mut inner = p.into_inner();
-            let label = inner
-                .next()
-                .ok_or_else(|| MetelError::internal("row_field: expected label"))?
-                .as_str()
-                .to_string();
+            let label = unlabel(
+                inner
+                    .next()
+                    .ok_or_else(|| MetelError::internal("row_field: expected label"))?,
+            )
+            .as_str()
+            .to_string();
             let ty = inner
                 .next()
                 .map(|te| parse_type_expr(te, filename))

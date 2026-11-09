@@ -1,4 +1,4 @@
 // Negative: anonymous records have no nominal owner, so no inherent methods.
-extend { x: i64 } {
+extend { .x: i64 } {
     fun get(&self) -> i64 { self.x }
 }

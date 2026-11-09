@@ -3,7 +3,7 @@
 // (metel-core#1465)
 struct Handle { fd: i64, name: String }
 
-fun bump(p: &var Handle.{ fd }) { p.fd = p.fd + 1; }
+fun bump(p: &var Handle.{ .fd }) { p.fd = p.fd + 1; }
 
 fun main() {
     var h := Handle(fd = 1, name = "a".to_string());

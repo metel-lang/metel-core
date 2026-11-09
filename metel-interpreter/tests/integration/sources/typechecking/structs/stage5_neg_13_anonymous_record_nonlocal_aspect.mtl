@@ -1,5 +1,5 @@
 // Negative: `Display` is a standard-library aspect (not local to this module),
 // so it cannot be implemented for an anonymous record.
-extend { x: i64 }: Display {
+extend { .x: i64 }: Display {
     fun to_string(&self) -> String { "x" }
 }

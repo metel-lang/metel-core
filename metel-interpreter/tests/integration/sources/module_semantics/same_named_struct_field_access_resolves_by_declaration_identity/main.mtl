@@ -17,6 +17,6 @@ fun main() {
     p2.x = 99;
     assert(p2.x == 99);
 
-    let r := p.{ x };
+    let r := p.{ .x };
     assert(r.x == 1);
 }

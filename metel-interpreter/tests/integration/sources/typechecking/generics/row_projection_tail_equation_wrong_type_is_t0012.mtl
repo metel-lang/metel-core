@@ -3,8 +3,8 @@
 
 struct Handle { pub fd: i64, pub extra: String }
 
-fun use_it<record R, record Rest>(h: Handle.{ fd, ..R }) -> i64
-where R = { extra: i64, ..Rest } {
+fun use_it<record R, record Rest>(h: Handle.{ .fd, ..R }) -> i64
+where R = { .extra: i64, ..Rest } {
     h.fd
 }
 

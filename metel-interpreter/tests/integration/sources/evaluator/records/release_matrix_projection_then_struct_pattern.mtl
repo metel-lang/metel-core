@@ -3,11 +3,11 @@
 // (metel-core#1454, #1455)
 struct Handle { fd: i64, name: String }
 
-fun name_len(p: Handle.{ name }) -> i64 { p.name.len() }
+fun name_len(p: Handle.{ .name }) -> i64 { p.name.len() }
 
 fun main() {
     var h := Handle(fd = 9, name = "xy".to_string());
-    let wrapped: Option<Handle.{ name }> := Option::Some(value = h.{ name });
+    let wrapped: Option<Handle.{ .name }> := Option::Some(value = h.{ .name });
     match (wrapped) {
         Option::Some { value } => assert(name_len(value) == 2),
         Option::None => assert(false),

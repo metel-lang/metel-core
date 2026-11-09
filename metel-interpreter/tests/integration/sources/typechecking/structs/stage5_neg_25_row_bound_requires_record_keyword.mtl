@@ -1,5 +1,5 @@
-fun bad<T: { x: i64 }>(_value: T) -> i64 { 0 }
+fun bad<T: { .x: i64 }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := bad({ x = 1 });
+    let _ := bad({ .x = 1 });
 }

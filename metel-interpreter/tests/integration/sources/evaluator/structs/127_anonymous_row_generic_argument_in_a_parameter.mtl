@@ -6,8 +6,8 @@ record Session<record R> { id: i64, data: { ..R } }
 fun pair(a: Session<..>, b: Session<..>) -> i64 { a.id + b.id }
 
 fun main() {
-    let x := Session(id = 1, data = { n = 1 });
-    let y := Session(id = 2, data = { label = "s" });
+    let x := Session(id = 1, data = { .n = 1 });
+    let y := Session(id = 2, data = { .label = "s" });
     assert(pair(x, y) == 3);
     println("ok");
 }

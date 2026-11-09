@@ -1,0 +1,4 @@
+// RFC-0221: the field of an anonymous record is its label, `.x`; a bare `x = 1` is the ordinary parse error.
+fun main() {
+    let p := { x = 1, y = 2 };
+}

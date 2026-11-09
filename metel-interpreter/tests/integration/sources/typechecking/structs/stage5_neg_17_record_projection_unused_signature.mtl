@@ -3,6 +3,6 @@
 // rather than waiting for unification to stumble over a stand-in type.
 struct Handle { fd: i64, tag: i64 }
 
-fun bad(h: Handle.{ nope }) -> i64 { 0 }
+fun bad(h: Handle.{ .nope }) -> i64 { 0 }
 
 fun main() { }

@@ -2,4 +2,4 @@ enum Status {
     Ready,
 }
 
-fun take(status: Status.{ code }) -> i64 { status.code }
+fun take(status: Status.{ .code }) -> i64 { status.code }

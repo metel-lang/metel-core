@@ -4,6 +4,6 @@
 
 struct Handle { fd: i64 }
 
-fun get_fd<R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
+fun get_fd<R>(h: Handle.{ .fd, ..R }) -> i64 { h.fd }
 
 fun main() {}

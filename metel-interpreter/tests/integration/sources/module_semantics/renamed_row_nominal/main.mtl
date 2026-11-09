@@ -3,7 +3,7 @@ import model::inspect;
 import model::identity;
 fun main() {
     assert(inspect(&Renamed(data = {})) == 1);
-    let value: Renamed<{ token: String }> := identity(Renamed(data = { token = "owned" }));
+    let value: Renamed<{ .token: String }> := identity(Renamed(data = { .token = "owned" }));
     assert(inspect(&value) == 1);
     assert(value.data.token == "owned");
 }

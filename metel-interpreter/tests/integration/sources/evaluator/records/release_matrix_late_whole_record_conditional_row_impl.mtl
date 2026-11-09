@@ -2,11 +2,11 @@
 // conditional impl takes an open-row parameter whose remainder holds a String.
 record Cfg<record R> { data: { ..R } }
 
-extend<record R: { port: i64, .. }> Cfg<..R> {
-    fun with<record Q>(self, extra: { n: i64, ..Q }) -> i64 { self.data.port + extra.n }
+extend<record R: { .port: i64, .. }> Cfg<..R> {
+    fun with<record Q>(self, extra: { .n: i64, ..Q }) -> i64 { self.data.port + extra.n }
 }
 
 fun main() {
-    let c := Cfg(data = { port = 80, host = "h".to_string() });
-    assert(c.with({ n = 2, note = "x".to_string() }) == 82);
+    let c := Cfg(data = { .port = 80, .host = "h".to_string() });
+    assert(c.with({ .n = 2, .note = "x".to_string() }) == 82);
 }

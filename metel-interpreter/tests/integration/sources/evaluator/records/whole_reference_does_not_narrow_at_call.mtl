@@ -3,7 +3,7 @@
 struct Handle { fd: i64, name: String }
 
 extend Handle {
-    fun nm(h: &Self.{ name }) -> i64 { 1 }
+    fun nm(h: &Self.{ .name }) -> i64 { 1 }
 }
 
 fun main() {

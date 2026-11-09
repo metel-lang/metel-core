@@ -14,7 +14,7 @@ fun main() {
     assert(area(Shape::Rect(w = 2, h = 3)) == 6);
     assert(area(Shape::Rect(2, 3)) == 6);
     assert(area(Shape::Circle(2)) == 12);
-    let row := { x = 1, y = 2 };
+    let row := { .x = 1, .y = 2 };
     let p := Point(..row);
     assert(p.x == 1 && p.y == 2);
 }

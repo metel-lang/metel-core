@@ -3,10 +3,10 @@
 import ticket::Ticket;
 import ticket::make;
 
-fun id_of(t: Ticket.{ id }) -> i64 { t.id }
+fun id_of(t: Ticket.{ .id }) -> i64 { t.id }
 
 fun main() {
     let t := make();
-    let just_id := t.{ id };
+    let just_id := t.{ .id };
     assert(id_of(just_id) == 1);
 }

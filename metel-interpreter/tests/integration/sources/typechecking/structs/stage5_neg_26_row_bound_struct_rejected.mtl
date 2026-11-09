@@ -2,7 +2,7 @@ struct Point {
     x: i64,
 }
 
-fun need_record<record T: { x: i64, .. }>(_value: T) -> i64 { 0 }
+fun need_record<record T: { .x: i64, .. }>(_value: T) -> i64 { 0 }
 
 fun main() {
     let _ := need_record(Point(x = 1));

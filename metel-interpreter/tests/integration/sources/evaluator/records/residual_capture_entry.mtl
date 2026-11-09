@@ -21,15 +21,15 @@ fun main() {
     };
     assert(restore().left == "restored");
 
-    var anonymous := { left = "old", right = "gone" };
+    var anonymous := { .left = "old", .right = "gone" };
     let row_left := anonymous.left;
-    let restore_row := [anonymous] once var || -> { right: String } {
+    let restore_row := [anonymous] once var || -> { .right: String } {
         anonymous.right = "back";
         anonymous
     };
     assert(restore_row().right == "back");
 
-    let empty_anonymous := { owned = "gone" };
+    let empty_anonymous := { .owned = "gone" };
     let owned := empty_anonymous.owned;
     let empty_callback := [empty_anonymous] once || -> {} { empty_anonymous };
     let empty: {} := empty_callback();

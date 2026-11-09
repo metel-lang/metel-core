@@ -1,6 +1,6 @@
 record Packet<record R> { data: { ..R } }
-extend<record R: !{ token }> Packet<..R> { fun cleared(&self) -> i64 { 4 } }
-fun rejected<record R: !{ token: String }>(packet: &Packet<..R>) -> i64 {
+extend<record R: !{ .token }> Packet<..R> { fun cleared(&self) -> i64 { 4 } }
+fun rejected<record R: !{ .token: String }>(packet: &Packet<..R>) -> i64 {
     packet.cleared() // ERROR[T0035]
 }
 fun main() {}

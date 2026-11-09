@@ -8,10 +8,10 @@
 struct Handle { fd: i64, name: String }
 
 extend Handle {
-    fun describe(h: Self.{ fd }) -> i64 { h.fd }
+    fun describe(h: Self.{ .fd }) -> i64 { h.fd }
 }
 
 fun main() {
     let handle := Handle(fd = 3, name = "x");
-    assert(Handle::describe(handle.{ fd }) == 3);
+    assert(Handle::describe(handle.{ .fd }) == 3);
 }

@@ -11,5 +11,5 @@ extend<record R> { ..R }: Label where ..R: Mark {
 }
 
 fun main() {
-    let _ := { a = 1, s = "x".to_string() }.label();
+    let _ := { .a = 1, .s = "x".to_string() }.label();
 }

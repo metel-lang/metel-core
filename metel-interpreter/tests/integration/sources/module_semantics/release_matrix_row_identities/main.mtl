@@ -8,8 +8,8 @@ import right::inspect_right;
 import right::identity_right;
 
 fun main() {
-    let left := identity_left(LeftPacket(data = { count = 4, text = "left" }));
-    let right := identity_right(RightPacket(data = { count = 4, text = "right" }));
+    let left := identity_left(LeftPacket(data = { .count = 4, .text = "left" }));
+    let right := identity_right(RightPacket(data = { .count = 4, .text = "right" }));
     assert(inspect_left(&left) == 4);
     assert(inspect_right(&right) == 104);
     let left_dyn: dyn LeftRead := left;

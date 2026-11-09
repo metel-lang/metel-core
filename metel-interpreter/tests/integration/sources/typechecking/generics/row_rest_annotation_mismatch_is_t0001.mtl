@@ -4,12 +4,12 @@
 record Session<record R> { id: i64, data: { ..R } }
 
 fun authenticate<record R, record Rest>(s: Session<..R>) -> Session<..Rest>
-where R = { token: String, ..Rest } {
+where R = { .token: String, ..Rest } {
     panic("unimplemented")
 }
 
 fun main() {
-    let s: Session<{ token: String, extra: i64 }> :=
-        Session(id = 1, data = { token = "t", extra = 2 });
-    let bad: Session<{ other: i64 }> := authenticate(s);
+    let s: Session<{ .token: String, .extra: i64 }> :=
+        Session(id = 1, data = { .token = "t", .extra = 2 });
+    let bad: Session<{ .other: i64 }> := authenticate(s);
 }

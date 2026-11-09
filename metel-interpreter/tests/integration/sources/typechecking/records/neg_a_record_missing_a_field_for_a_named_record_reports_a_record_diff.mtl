@@ -3,5 +3,5 @@
 record P { x: i64, y: i64 }
 
 fun main() {
-    let p: P := { x = 1 };
+    let p: P := { .x = 1 };
 }

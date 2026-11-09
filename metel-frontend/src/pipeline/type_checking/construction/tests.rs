@@ -144,8 +144,8 @@ fn abstract_signature_retains_row_equations_fieldwise_and_associated_equalities(
 aspect Source { type Item; fun take(&self) -> Item; }
 fun extract<T: Source<Item = i64>>(value: &T) -> i64 { value.take() }
 fun strip<record R, record Rest>(value: { ..R }) -> { ..Rest }
-where R = { token: String, ..Rest } {
-    let { token: _, ..rest } := value;
+where R = { .token: String, ..Rest } {
+    let { .token: _, ..rest } := value;
     rest
 }
 fun clone_row<record R>(value: &{ ..R }) -> { ..R } where ..R: Clone { value.clone() }
@@ -446,8 +446,8 @@ fn abstract_body_retains_open_record_construction_and_spread_position() {
     let typed = typecheck_source(
         "abstract_record_construction.mtl",
         r#"
-fun add_token<record R: !{token}>(value: { ..R }, token: String) -> { token: String, ..R } {
-    { ..value, token = token }
+fun add_token<record R: !{.token}>(value: { ..R }, token: String) -> { .token: String, ..R } {
+    { ..value, .token = token }
 }
 fun main() {}
 "#,
@@ -530,7 +530,7 @@ fn abstract_body_retains_nominal_residual_projection_source() {
         "abstract_residual_projection.mtl",
         r#"
 struct Packet<T> { payload: T, token: String }
-fun project<T>(value: Packet<T>) { let projected := value.{ payload }; }
+fun project<T>(value: Packet<T>) { let projected := value.{ .payload }; }
 fun main() {}
 "#,
     )
@@ -611,7 +611,7 @@ fn abstract_signature_retains_closed_row_parameter_facts() {
     let typed = typecheck_source(
         "abstract_closed_row.mtl",
         r#"
-fun duplicate<record R: { count: i64 }>(value: { ..R }) -> i64 {
+fun duplicate<record R: { .count: i64 }>(value: { ..R }) -> i64 {
     let first := value;
     let second := value;
     7
@@ -728,7 +728,7 @@ fn abstract_body_retains_autodereferenced_assignment_places() {
         "abstract_projected_assignment.mtl",
         r#"
 fun tuple<T>(target: &var (T, i64), replacement: T) { target.0 = replacement; }
-fun record_write<T>(target: &var { payload: T }, replacement: T) { target.payload = replacement; }
+fun record_write<T>(target: &var { .payload: T }, replacement: T) { target.payload = replacement; }
 fun main() {}
 "#,
     )
@@ -941,8 +941,8 @@ fn abstract_body_retains_nominal_structural_and_row_granted_field_selections() {
 struct Box<T> { value: T }
 fun take<T>(box: Box<T>) -> T { box.value }
 fun peek<T: Copy>(box: &Box<T>) -> T { box.value }
-fun known<T>(value: { token: String, item: T }) -> String { value.token }
-fun granted<record R: { token: String, .. }>(value: R) -> String { value.token }
+fun known<T>(value: { .token: String, .item: T }) -> String { value.token }
+fun granted<record R: { .token: String, .. }>(value: R) -> String { value.token }
 fun main() {}
 "#,
     )
@@ -1724,7 +1724,7 @@ fn implicit_copy_capture_carries_the_enclosing_local_id() {
     assert_eq!(
         capture_ids, &fun.param_ids,
         "the materialized capture's LocalId should match make_adder's own \
-             parameter x's LocalId Ã¢ÂÂ same binding, same identity"
+             parameter x's LocalId ÃÂ¢ÃÂÃÂ same binding, same identity"
     );
     assert!(
         matches!(capture_ids[0], Some(_)),
@@ -1940,7 +1940,7 @@ fn qualified_path_static_method_call_carries_a_type_id() {
 
 #[test]
 fn record_projection_base_carries_its_binding_id() {
-    // metel-core#1054 (record-projection identity slice): `self.{ fd }`'s
+    // metel-core#1054 (record-projection identity slice): `self.{ .fd }`'s
     // base is re-typed as a synthesised `Ident` node; it should resolve
     // to `self`'s own `LocalId`, the same as any other reference to
     // `self` in the method body, not `None`.
@@ -1953,7 +1953,7 @@ fn record_projection_base_carries_its_binding_id() {
                        }\n\
                        extend Handle {\n\
                        \tfun narrow(self) -> i64 {\n\
-                       \t\tlet r := self.{ fd };\n\
+                       \t\tlet r := self.{ .fd };\n\
                        \t\tr.fd\n\
                        \t}\n\
                        }\n\

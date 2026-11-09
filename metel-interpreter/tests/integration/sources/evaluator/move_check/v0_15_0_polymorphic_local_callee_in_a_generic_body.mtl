@@ -2,19 +2,19 @@
 // by the contract of that call. The callee is a let-bound closure with an open-record parameter
 // (implicit row, or the enclosing function's own `record R`), or a nested generic function, in a
 // generic function and in a non-generic function with an implicit row parameter.
-fun implicit_row(r: { x: i64, .. }) -> i64 {
-    let f := |p: { x: i64, .. }| -> i64 { return p.x + 1; };
+fun implicit_row(r: { .x: i64, .. }) -> i64 {
+    let f := |p: { .x: i64, .. }| -> i64 { return p.x + 1; };
     return f(r);
 }
 
-fun declared_row<record R>(r: { x: i64, ..R }) -> i64 {
-    let f := |p: { x: i64, ..R }| -> i64 { return p.x + 1; };
+fun declared_row<record R>(r: { .x: i64, ..R }) -> i64 {
+    let f := |p: { .x: i64, ..R }| -> i64 { return p.x + 1; };
     return f(r);
 }
 
 fun generic_caller<T: Copy>(t: T) -> i64 {
-    let f := |p: { x: i64, .. }| -> i64 { return p.x + 1; };
-    let row := { x = 1, y = t };
+    let f := |p: { .x: i64, .. }| -> i64 { return p.x + 1; };
+    let row := { .x = 1, .y = t };
     return f(row);
 }
 
@@ -40,8 +40,8 @@ fun shadowing<T: Copy>(x: T) -> T {
 fun main() {
     assert(twice(7) == 7);
     assert(shadowing(2) == 2);
-    assert(implicit_row({ x = 1 }) == 2);
-    assert(declared_row({ x = 1, y = 2 }) == 2);
+    assert(implicit_row({ .x = 1 }) == 2);
+    assert(declared_row({ .x = 1, .y = 2 }) == 2);
     assert(generic_caller(5) == 2);
     assert(nested_generic(3) == 3);
 }

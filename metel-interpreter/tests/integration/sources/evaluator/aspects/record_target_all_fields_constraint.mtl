@@ -17,8 +17,8 @@ record Pair { a: i64, b: f64 }
 fun show<T: Label>(x: &T) -> String { x.label() }
 
 fun main() {
-    assert({ a = 1, b = 2.0 }.label() == "all marked");
-    assert({ a = 1 }.label() == "all marked");
+    assert({ .a = 1, .b = 2.0 }.label() == "all marked");
+    assert({ .a = 1 }.label() == "all marked");
     let p := Pair(a = 1, b = 2.0);
     assert(p.label() == "all marked");
     assert(show(&p) == "all marked");

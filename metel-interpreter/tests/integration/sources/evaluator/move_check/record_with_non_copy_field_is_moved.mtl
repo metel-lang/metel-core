@@ -2,7 +2,7 @@
 // blanket impl (`where ..R: Copy` fails on `s: String`), so `let b := a` moves it and the
 // later use of `a` is a use-after-move.
 fun main() {
-    let a := { x = 1, s = "hi".to_string() };
+    let a := { .x = 1, .s = "hi".to_string() };
     let b := a;
     println(a.x);
 }

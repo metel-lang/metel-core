@@ -1,0 +1,4 @@
+// RFC-0221: a row bound's entry is a label.
+fun f<record R: { x: i64, .. }>(v: R) {}
+
+fun main() {}

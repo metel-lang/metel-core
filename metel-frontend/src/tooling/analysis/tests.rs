@@ -243,9 +243,9 @@ mod member_ids_on_typed_ir {
         // `LabelId`s, never nominal `FieldId`s (ADR-0054), so the typed
         // pattern carries plain spellings with no id slot to fabricate.
         let analysis = analyze(
-            "fun mag(p: { x: i64, y: i64 }) -> i64 {\n\
+            "fun mag(p: { .x: i64, .y: i64 }) -> i64 {\n\
              \tmatch (p) {\n\
-             \t\t{ x, y } => x + y,\n\
+             \t\t{ .x, .y } => x + y,\n\
              \t}\n\
              }\n",
         );

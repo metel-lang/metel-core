@@ -1,6 +1,6 @@
 aspect Source { type Item; fun take(self) -> Item; }
-fun invalid<S: Source<Item = { token: String }>>(source: S) -> {} {
-    let { token: _, ..rest } := source.take();
+fun invalid<S: Source<Item = { .token: String }>>(source: S) -> {} {
+    let { .token: _, ..rest } := source.take();
     let again := source.take(); // ERROR[T0019]
     rest
 }

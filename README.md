@@ -69,12 +69,12 @@ talking about the same type. A row bound constrains a generic parameter by the f
 it carries rather than by an aspect it implements:
 
 ```metel
-fun magnitude<record T: { x: f64, y: f64, .. }>(p: T) -> f64 {
+fun magnitude<record T: { .x: f64, .y: f64, .. }>(p: T) -> f64 {
     return p.x * p.x + p.y * p.y;
 }
 
 fun main() {
-    println(magnitude({ x = 3.0, y = 4.0 }));   // 25
+    println(magnitude({ .x = 3.0, .y = 4.0 }));   // 25
 }
 ```
 

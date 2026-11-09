@@ -2,9 +2,9 @@
 // signature that names only public fields are both fine.
 pub struct Ticket { pub id: i64, secret: String }
 
-fun hide(t: Ticket) -> Ticket.{ secret } { t.{ secret } }
+fun hide(t: Ticket) -> Ticket.{ .secret } { t.{ .secret } }
 
-pub fun ids(t: Ticket) -> Ticket.{ id } { t.{ id } }
+pub fun ids(t: Ticket) -> Ticket.{ .id } { t.{ .id } }
 
 fun main() {
     let u := Ticket(id = 2, secret = "u".to_string());

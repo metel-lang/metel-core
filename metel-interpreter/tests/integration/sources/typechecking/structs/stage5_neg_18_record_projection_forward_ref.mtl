@@ -1,7 +1,7 @@
 // Negative: a struct field may not project a struct declared later. Field types are
 // converted while the registry is still being built, so the target does not exist yet.
 // Reported directly, with the fix, rather than surfacing later as a bare unify failure.
-struct A { r: B.{ x } }
+struct A { r: B.{ .x } }
 
 struct B { x: i64, y: i64 }
 

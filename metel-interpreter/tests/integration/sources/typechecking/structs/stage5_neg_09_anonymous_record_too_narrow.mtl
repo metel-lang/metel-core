@@ -1,6 +1,6 @@
 // Negative: a narrower record where a wider one is expected. Exactness holds in
 // both directions — this is the mirror of stage5_neg_08.
-fun take(p: { x: i64, y: i64 }) -> i64 { p.x + p.y }
+fun take(p: { .x: i64, .y: i64 }) -> i64 { p.x + p.y }
 
-let narrow := { x = 1 };
+let narrow := { .x = 1 };
 let result := take(narrow);

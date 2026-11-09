@@ -1,7 +1,7 @@
-fun bad<record R>(r: { ..R }, auth: i64) -> { ..R, auth: i64 } {
-    { ..r, auth = auth } // ERROR[T0012]
+fun bad<record R>(r: { ..R }, auth: i64) -> { ..R, .auth: i64 } {
+    { ..r, .auth = auth } // ERROR[T0012]
 }
 
 fun main() -> i64 {
-    bad({ other = 1 }, 2).auth
+    bad({ .other = 1 }, 2).auth
 }

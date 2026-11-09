@@ -1,5 +1,5 @@
-fun exact<record T: { x: i64 }>(_value: T) -> i64 { 0 }
+fun exact<record T: { .x: i64 }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := exact({ x = 1, y = 2 });
+    let _ := exact({ .x = 1, .y = 2 });
 }

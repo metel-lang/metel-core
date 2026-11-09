@@ -7,9 +7,9 @@ pub fun make<record R>(id: i64, data: { ..R }) -> Packet<..R> {
 }
 
 pub fun strip<record R, record Rest>(packet: Packet<..R>) -> Packet<..Rest>
-where R = { token: String, ..Rest } {
-    let { id, data } := packet;
-    let { token: _, ..rest } := data;
+where R = { .token: String, ..Rest } {
+    let { .id, .data } := packet;
+    let { .token: _, ..rest } := data;
     Packet(id = id, data = rest)
 }
 

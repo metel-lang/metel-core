@@ -4,16 +4,16 @@
 // record is an ordinary value: its siblings stay readable and it fits a
 // parameter whose row matches exactly.
 
-fun right_of(r: { right: i64 }) -> i64 { r.right }
+fun right_of(r: { .right: i64 }) -> i64 { r.right }
 
 fun main() {
-    let r := { left = "a".to_string(), right = 7 };
+    let r := { .left = "a".to_string(), .right = 7 };
     let taken := r.left;                 // r : { right: i64 } from here on
     assert(r.right == 7);                // sibling still readable
     assert(right_of(r) == 7);            // exact-row parameter accepts the narrowed record
 
     // A `Copy` field read by value is a copy, not a move -- no narrowing.
-    let pt := { x = 1, y = 2 };
+    let pt := { .x = 1, .y = 2 };
     let x_copy := pt.x;
     assert(pt.x + pt.y == 3);            // pt is still the whole record
     assert(x_copy == 1);

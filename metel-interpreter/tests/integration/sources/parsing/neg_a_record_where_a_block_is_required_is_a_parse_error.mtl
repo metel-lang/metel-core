@@ -1,0 +1,5 @@
+// RFC-0221: a group that starts with a field is a record, so a function body written as one is the
+// ordinary parse error; the record is written inside the block, `{ { .x = 1 } }`.
+fun make() -> { .x: i64 } { .x = 1 }
+
+fun main() {}

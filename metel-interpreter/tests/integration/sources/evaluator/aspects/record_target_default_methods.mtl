@@ -7,16 +7,16 @@ aspect Area {
     fun double(&self) -> i64 { self.area() * 2 }
 }
 
-extend { n: i64 }: Area {
+extend { .n: i64 }: Area {
     fun area(&self) -> i64 { self.n }
 }
 
-extend<record R: { w: i64, .. }> { ..R }: Area {
+extend<record R: { .w: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w }
 }
 
 fun main() {
-    assert({ n = 4 }.double() == 8);
-    assert({ w = 5, z = 1 }.double() == 10);
+    assert({ .n = 4 }.double() == 8);
+    assert({ .w = 5, .z = 1 }.double() == 10);
     println("ok");
 }

@@ -5,10 +5,10 @@ record Session<record R> {
     data: { ..R },
 }
 
-extend<record R: !{ token }> Session<..R> {
+extend<record R: !{ .token }> Session<..R> {
     fun without_token(self) -> i64 { self.id }
 }
 
-fun use_session<record R: !{ token }>(session: Session<..R>) -> i64 {
+fun use_session<record R: !{ .token }>(session: Session<..R>) -> i64 {
     session.without_token()
 }

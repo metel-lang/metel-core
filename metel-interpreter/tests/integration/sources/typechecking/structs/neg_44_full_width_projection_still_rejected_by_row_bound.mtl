@@ -7,9 +7,9 @@
 
 struct Handle { fd: i64, name: String }
 
-fun wants_a_record<record T: { fd: i64, name: String, .. }>(t: T) -> i64 { t.fd }
+fun wants_a_record<record T: { .fd: i64, .name: String, .. }>(t: T) -> i64 { t.fd }
 
 fun main() {
     let h := Handle(fd = 3, name = "x");
-    let _ := wants_a_record(h.{ fd, name });
+    let _ := wants_a_record(h.{ .fd, .name });
 }
