@@ -737,8 +737,26 @@ fn infer_expr_inner(
             // equivalent to, and keep the field names for the abstract-body builder.
             let names = construction_field_names(callee, args, ctx)
                 .ok_or_else(|| MetelError::internal("construction call lost its type"))?;
+            // `Type(..r)` takes a record of exactly the type's row (RFC-0100 section 7).
+            if let [
+                Expr::NamedArg {
+                    name,
+                    value,
+                    span: arg_span,
+                },
+            ] = args.as_slice()
+                && name == crate::data::ast::SPREAD_ARG
+            {
+                let raw = infer_expr(value, ctx, fun_generalizations)?;
+                let solved = ctx.solve()?.apply(&raw);
+                if let InferType::Record(labels) = peel_all_references(&solved) {
+                    super::super::construction_call::check_spread_row(
+                        &labels, &names, callee, arg_span,
+                    )?;
+                }
+            }
             let literal = super::super::construction_call::literal_for(
-                callee, type_args, args, span, &names,
+                callee, type_args, args, span, &names, true,
             )?;
             ctx.record_definition_construction(span.clone(), names);
             infer_expr(&literal, ctx, fun_generalizations)

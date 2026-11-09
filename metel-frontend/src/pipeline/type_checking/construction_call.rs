@@ -72,6 +72,7 @@ pub(super) fn literal_for(
     args: &[Expr],
     span: &Span,
     names: &[String],
+    duplicate_spread: bool,
 ) -> Result<Expr, MetelError> {
     let path: Vec<String> = match callee {
         Expr::Ident(name, _) => vec![name.clone()],
@@ -106,7 +107,9 @@ pub(super) fn literal_for(
                     value,
                     span: arg_span,
                 },
-            ] if name == SPREAD_ARG => spread_fields(&display, value, arg_span, names)?,
+            ] if name == SPREAD_ARG => {
+                spread_fields(&display, value, arg_span, names, duplicate_spread)?
+            }
             _ => {
                 if let Some(Expr::NamedArg { span: arg_span, .. }) = args
                     .iter()
@@ -165,18 +168,67 @@ pub(super) fn literal_for(
     })
 }
 
+/// The record a spread builds a type from must have exactly the type's labels: an extra label is T0039
+/// (the type has no such field) and a missing one is T0004 (that field is unbound).
+pub(super) fn check_spread_row(
+    labels: &[(
+        String,
+        crate::pipeline::type_checking::type_engine::InferType,
+    )],
+    names: &[String],
+    callee: &Expr,
+    span: &Span,
+) -> Result<(), MetelError> {
+    let display = match callee {
+        Expr::Ident(name, _) => name.clone(),
+        Expr::Path(segments, _, _) => segments.join("::"),
+        Expr::ResolvedPath { resolved, .. } => resolved.clone(),
+        _ => String::from("the type"),
+    };
+    if let Some((extra, _)) = labels.iter().find(|(label, _)| !names.contains(label)) {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0039,
+            format!(
+                "`{display}` has no field named `{extra}`, but the spread record has the label `.{extra}`"
+            ),
+            span,
+        ));
+    }
+    let missing: Vec<&str> = names
+        .iter()
+        .filter(|name| !labels.iter().any(|(label, _)| label == *name))
+        .map(String::as_str)
+        .collect();
+    if !missing.is_empty() {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0004,
+            format!(
+                "`{display}` takes {} field(s) and the spread record has {}; unbound: `{}`",
+                names.len(),
+                labels.len(),
+                missing.join("`, `")
+            ),
+            span,
+        ));
+    }
+    Ok(())
+}
+
 /// `Type(..r)`: every field read from the binding `r`, which a record of exactly the type's row supplies.
 fn spread_fields(
     display: &str,
     value: &Expr,
     span: &Span,
     names: &[String],
+    duplicate: bool,
 ) -> Result<Vec<(String, Expr)>, MetelError> {
-    let Expr::Ident(..) = value else {
+    // A spread that is not a binding would be read once per field. Inference only needs its type, so it
+    // may duplicate the expression; the construction pass binds it to a temporary and reads that.
+    if !duplicate && !matches!(value, Expr::Ident(..)) {
         return Err(MetelError::not_implemented(format!(
-            "`{display}(..value)` where the spread is not a plain binding (RFC-0100 section 7, metel-core#1860)"
+            "`{display}(..value)` where the spread is not a plain binding (RFC-0100 section 7, metel-core#1886)"
         )));
-    };
+    }
     Ok(names
         .iter()
         .map(|name| {

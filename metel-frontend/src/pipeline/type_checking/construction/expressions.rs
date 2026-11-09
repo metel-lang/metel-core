@@ -802,8 +802,22 @@ pub(super) fn construct_expr(
             // RFC-0100: construct the struct literal the construction call is equivalent to.
             let names = construction_field_names(callee, args, ctx)
                 .ok_or_else(|| MetelError::internal("construction call lost its type"))?;
+            if let [Expr::NamedArg { name, value, .. }] = args.as_slice()
+                && name == crate::data::ast::SPREAD_ARG
+                && !matches!(value.as_ref(), Expr::Ident(..))
+            {
+                return construct_spread_call(
+                    callee,
+                    type_args,
+                    &args[0],
+                    span,
+                    &names,
+                    expected_ty,
+                    ctx,
+                );
+            }
             let literal = super::super::construction_call::literal_for(
-                callee, type_args, args, span, &names,
+                callee, type_args, args, span, &names, false,
             )?;
             construct_expr(&literal, expected_ty, ctx)
         }
@@ -2569,4 +2583,66 @@ fn keyword_callee_is_defined(callee: &Expr, ctx: &ConstructCtx) -> bool {
         }
         _ => true,
     }
+}
+
+/// `Type(..expr)` where `expr` is not a binding: evaluate it once into a temporary and build the struct
+/// from the temporary's fields (RFC-0100 section 7). The typed AST has no block expression, so the
+/// temporary sits in an always-taken `if` block, as for a keyword call evaluated in written order.
+fn construct_spread_call(
+    callee: &Expr,
+    type_args: &[crate::data::ast::TypeExpr],
+    spread_arg: &Expr,
+    span: &Span,
+    names: &[String],
+    expected_ty: Option<&Type>,
+    ctx: &mut ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    use crate::data::typed_ast::{TypedBlock, TypedDecl, TypedLetDecl};
+    let Expr::NamedArg {
+        value,
+        span: arg_span,
+        ..
+    } = spread_arg
+    else {
+        return Err(MetelError::internal(
+            "construction call: spread is not an argument",
+        ));
+    };
+    let spread = construct_expr(value, None, ctx)?;
+    let id = keyword_argument_local(span, usize::MAX);
+    ctx.bind_local(Some(id), spread.ty().clone(), false);
+    let ident_span = arg_span.clone();
+    ctx.synthetic_bindings
+        .insert(ident_span.clone(), crate::identity::BindingId::Local(id));
+    let read = [Expr::NamedArg {
+        name: crate::data::ast::SPREAD_ARG.to_string(),
+        value: Box::new(Expr::Ident("__spread".to_string(), ident_span)),
+        span: arg_span.clone(),
+    }];
+    let literal =
+        super::super::construction_call::literal_for(callee, type_args, &read, span, names, false)?;
+    let built = construct_expr(&literal, expected_ty, ctx)?;
+    let ty = built.ty().clone();
+    Ok(TypedExpr::If {
+        condition: Box::new(TypedExpr::Literal(
+            Literal::Boolean(true),
+            Type::Boolean,
+            span.clone(),
+        )),
+        then_branch: TypedBlock {
+            stmts: vec![TypedDecl::Let(TypedLetDecl {
+                name: "__spread".to_string(),
+                type_ann: None,
+                value: spread,
+                def_id: None,
+                local_id: Some(id),
+                span: arg_span.clone(),
+            })],
+            tail: Some(Box::new(built)),
+            span: span.clone(),
+        },
+        else_branch: None,
+        ty,
+        span: span.clone(),
+    })
 }

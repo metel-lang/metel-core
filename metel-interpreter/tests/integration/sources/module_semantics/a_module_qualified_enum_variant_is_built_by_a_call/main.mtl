@@ -1,0 +1,16 @@
+// RFC-0100 (metel-core#1886): an enum struct-variant reached through a module path is built by a call, by
+// keyword or by position, and its private fields stay private.
+import token::Kind;
+
+fun total(k: Kind) -> i64 {
+    match (k) {
+        Kind::A { n, m } => n * 10 + m,
+        Kind::B => 0,
+    }
+}
+
+fun main() {
+    assert(total(token::Kind::A(n = 3, m = 4)) == 34);
+    assert(total(token::Kind::A(5, 6)) == 56);
+    assert(total(Kind::A(m = 1, n = 2)) == 21);
+}

@@ -1,0 +1,28 @@
+// RFC-0100 section 7 (metel-core#1886): `Type(..expr)` builds a struct from a record of exactly its row,
+// and an expression that is not a binding is evaluated once, not once per field.
+struct Point { x: i64, y: i64 }
+struct Holder { row: { .x: i64, .y: i64 } }
+
+struct Counter { n: i64 }
+
+extend Counter {
+    fun row(&var self) -> { .x: i64, .y: i64 } {
+        self.n = self.n + 1;
+        { .x = self.n, .y = self.n * 10 }
+    }
+}
+
+extend Holder {
+    fun point(&self) -> Point { Point(..self.row) }
+}
+
+fun main() {
+    var c := Counter(0);
+    let p := Point(..c.row());
+    assert(p.x == 1 && p.y == 10);
+    assert(c.n == 1);
+    let h := Holder(row = { .x = 3, .y = 4 });
+    assert(h.point().y == 4);
+    let q := Point(..{ .x = 5, .y = 6 });
+    assert(q.x + q.y == 11);
+}

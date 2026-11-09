@@ -114,6 +114,10 @@ struct ConstructCtx<'a> {
     /// Source of synthetic identities for a binder the identity walk gave none; counts down from
     /// the top of the id space so it cannot meet a hashed `LocalId` in practice.
     next_synthetic_local: u64,
+    /// Binding sites the checker minted itself (a construction call's spread temporary): span to identity.
+    // resolution-freeze-allow: the key is a span the checker made up for its own temporary, not a written
+    // name, so no source reference can reach it; it is read only by the construction pass that minted it.
+    synthetic_bindings: HashMap<Span, BindingId>,
     /// Stack of concrete struct field maps (name → fields with spans), innermost last.
     struct_scopes: Vec<ConcreteStructEnv>,
     /// Declaration identities for block-local structs, parallel to
@@ -223,6 +227,7 @@ impl<'a> ConstructCtx<'a> {
             mut_env: vec![HashMap::new()],
             module_values: HashMap::new(),
             next_synthetic_local: u64::MAX,
+            synthetic_bindings: HashMap::new(),
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             local_struct_ids: vec![HashMap::new()],
             registry,
@@ -731,7 +736,10 @@ impl<'a> ConstructCtx<'a> {
     }
 
     fn binding_id_at(&self, span: &Span) -> Option<BindingId> {
-        self.identity.binding_spans.get(span)
+        self.synthetic_bindings
+            .get(span)
+            .copied()
+            .or_else(|| self.identity.binding_spans.get(span))
     }
 
     /// The identity of the binding *defined* by the declaration at `span`: a local, or the symbol
