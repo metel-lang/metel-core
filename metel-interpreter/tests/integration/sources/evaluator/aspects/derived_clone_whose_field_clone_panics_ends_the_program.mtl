@@ -1,0 +1,10 @@
+// A panic inside a field clone ends the program: nothing after it runs.
+struct Boom { n: i64 }
+extend Boom: Clone { fun clone(&self) -> Boom { panic("boom in the field clone") } }
+struct Holder derives Clone { b: Boom }
+
+fun main() {
+    let h := Holder(b = Boom(n = 1));
+    let c := h.clone();
+    print("after the panic");
+}

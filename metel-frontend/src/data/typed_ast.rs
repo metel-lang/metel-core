@@ -202,6 +202,14 @@ pub struct TypedEnumDecl {
     pub span: Span,
 }
 
+/// The field order a derived `Clone` follows (RFC-0206 section 4, metel-core#1817): declaration
+/// order for a struct, and for each variant of an enum its payload fields in declaration order.
+#[derive(Debug, Clone, Default)]
+pub struct DerivedCloneOrder {
+    pub fields: Vec<String>,
+    pub variants: Vec<(String, Vec<String>)>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypedImplBlock {
     /// See `ast::ImplBlock::polarity`; coherence checks it on the AST, so this copy is
@@ -237,6 +245,8 @@ pub struct TypedImplBlock {
     /// target apart -- both are "blanket" (`target_instantiation_args: None`), so
     /// without this the last one registered would answer every receiver.
     pub row_guards: Vec<RowGuard>,
+    /// For the impl a `derives Clone` clause stands for: the order its host clone visits fields.
+    pub derived_clone_order: Option<DerivedCloneOrder>,
     pub target_type: TypeExpr,
     pub methods: Vec<TypedFunDecl>,
     #[allow(dead_code)] // kept for future error messages
