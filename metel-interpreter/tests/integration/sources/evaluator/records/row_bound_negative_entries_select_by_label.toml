@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.generics.row-bounds.legality-8", "spec.types.generics.row-bounds.legality-9"]

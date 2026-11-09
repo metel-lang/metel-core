@@ -3723,14 +3723,106 @@ fn parse_block(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bloc
     Ok(Block { stmts, tail, span })
 }
 
+/// RFC-0189: the entries of one row bound must be able to hold together, and a negative entry needs an
+/// open row (a closed row already excludes every label it does not list).
+fn check_row_bound_entries(
+    fields: &[RowBoundField],
+    open: bool,
+    span: &Span,
+) -> Result<(), MetelError> {
+    let invalid = |message: String| {
+        MetelError::type_error(crate::data::error::TypeErrorCode::T0043, message, span)
+    };
+    if !open && let Some(entry) = fields.iter().find(|f| f.negated) {
+        return Err(invalid(format!(
+            "the closed row bound has a negative entry `!.{}`, which states nothing: a closed row already \
+             excludes every label it does not list; add `..` or drop the entry",
+            entry.label
+        )));
+    }
+    for negative in fields.iter().filter(|f| f.negated) {
+        for positive in fields
+            .iter()
+            .filter(|f| !f.negated && f.label == negative.label)
+        {
+            let same_type = match (&positive.ty, &negative.ty) {
+                (Some(p), Some(n)) => format!("{p:?}") == format!("{n:?}"),
+                _ => false,
+            };
+            if negative.ty.is_none() || same_type {
+                return Err(invalid(format!(
+                    "the entries for `.{}` cannot all hold: the bound requires the label and also forbids it",
+                    negative.label
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// A bound that carries negative entries is the positive bound of its other entries plus the negative
+/// bound of the negative ones: `{ .p: T, !.x, !.y: U, .. }` is `{ .p: T, .. }` and `!{ .x, .y: U }`
+/// (RFC-0189: the whole-row `!{ .. }` is sugar for the entry form), which the checker already knows.
+fn split_negative_entries(bound: Bound) -> Result<Vec<Bound>, MetelError> {
+    let BoundHead::Row(row) = &bound.head else {
+        return Ok(vec![bound]);
+    };
+    let has_negative_entry = row.fields.iter().any(|f| f.negated);
+    if bound.polarity == Polarity::Negative && has_negative_entry {
+        return Err(MetelError::type_error(
+            crate::data::error::TypeErrorCode::T0043,
+            "a negative entry inside an outer `!{ .. }` is a double negation: the outer `!` already means \
+             \"none of these\"; write the positive spelling, `{ .a, !.b, .. }`",
+            &bound.span,
+        ));
+    }
+    if bound.polarity == Polarity::Positive {
+        check_row_bound_entries(&row.fields, row.open, &bound.span)?;
+    }
+    if !has_negative_entry {
+        return Ok(vec![bound]);
+    }
+    let (negatives, positives): (Vec<RowBoundField>, Vec<RowBoundField>) =
+        row.fields.iter().cloned().partition(|f| f.negated);
+    let mut out = Vec::new();
+    if !positives.is_empty() {
+        out.push(Bound {
+            polarity: Polarity::Positive,
+            head: BoundHead::Row(RowBound {
+                fields: positives,
+                open: true,
+            }),
+            assoc_bindings: bound.assoc_bindings.clone(),
+            span: bound.span.clone(),
+        });
+    }
+    out.push(Bound {
+        polarity: Polarity::Negative,
+        head: BoundHead::Row(RowBound {
+            fields: negatives
+                .into_iter()
+                .map(|f| RowBoundField {
+                    negated: false,
+                    ..f
+                })
+                .collect(),
+            open: false,
+        }),
+        assoc_bindings: vec![],
+        span: bound.span,
+    });
+    Ok(out)
+}
+
 fn parse_bound_list(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
 ) -> Result<Vec<Bound>, MetelError> {
-    pair.into_inner()
-        .filter(|p| p.as_rule() == Rule::bound)
-        .map(|p| parse_bound(p, filename))
-        .collect()
+    let mut bounds = Vec::new();
+    for p in pair.into_inner().filter(|p| p.as_rule() == Rule::bound) {
+        bounds.extend(split_negative_entries(parse_bound(p, filename)?)?);
+    }
+    Ok(bounds)
 }
 
 fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Bound, MetelError> {
@@ -3836,7 +3928,8 @@ fn parse_row_bound(
         // The only other thing `row_bound` can yield is the trailing `..`, which is
         // already captured in `open` above.
         if p.as_rule() == Rule::row_field {
-            let mut inner = p.into_inner();
+            let mut inner = p.into_inner().peekable();
+            let negated = inner.next_if(|q| q.as_rule() == Rule::bang).is_some();
             let label = unlabel(
                 inner
                     .next()
@@ -3848,12 +3941,13 @@ fn parse_row_bound(
                 .next()
                 .map(|te| parse_type_expr(te, filename))
                 .transpose()?;
-            fields.push(RowBoundField { label, ty });
+            fields.push(RowBoundField { label, ty, negated });
         }
     }
+    // A stable sort keeps the written order of the repeated negative entries of one label.
     fields.sort_by(|a, b| a.label.cmp(&b.label));
     for pair in fields.windows(2) {
-        if pair[0].label == pair[1].label {
+        if pair[0].label == pair[1].label && !pair[0].negated && !pair[1].negated {
             return Err(record_duplicate_label_error(
                 &pair[0].label,
                 filename,

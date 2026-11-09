@@ -483,6 +483,10 @@ pub struct RowBound {
 pub struct RowBoundField {
     pub label: String,
     pub ty: Option<TypeExpr>,
+    /// A negative entry `!.x` / `!.x: T` (RFC-0189). Only the parser sees it set: `parse_bound_list`
+    /// splits a bound that carries negative entries into the positive bound and a negative bound, so
+    /// every later pass reads the existing `!{ .. }` machinery.
+    pub negated: bool,
 }
 
 /// RFC-0121: the `..R` (or anonymous `..`) tail of an `OpenRecord` type.
