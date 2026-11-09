@@ -2347,6 +2347,26 @@ fn infer_expr_inner(
                 ));
             }
 
+            // The `Clone` the compiler provides for a kind with no impl to write it in (RFC-0206 section 2):
+            // the unit type, a tuple of `Clone` parts, a `Copy` closure. The clone has the receiver's type.
+            if method == "clone"
+                && args.is_empty()
+                && (matches!(peeled_recv_for_bounds, InferType::Fun(..))
+                    // A closure's copy-ness is settled when its captures are known, so construction
+                    // judges it; the unit type and a tuple are judged here.
+                    || (matches!(
+                        peeled_recv_for_bounds,
+                        InferType::Concrete(crate::data::types::Type::Unit) | InferType::Tuple(_)
+                    ) && ctx.registry().infer_type_satisfies_aspect(
+                        ctx.current_module_path(),
+                        &peeled_recv_for_bounds,
+                        "Clone",
+                        &ctx.current_aspect_assumptions(),
+                    )))
+            {
+                return Ok(peeled_recv_for_bounds);
+            }
+
             // A function type is a known type with no methods: it satisfies no aspect, so there is
             // no `Clone`, `Display` or any other method to dispatch to (GAP-FUNCTIONS-002/003).
             // Saying "add a type annotation" here sends the user to a change that does nothing

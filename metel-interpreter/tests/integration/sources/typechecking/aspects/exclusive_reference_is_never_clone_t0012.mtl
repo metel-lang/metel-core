@@ -1,0 +1,6 @@
+fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
+fun main() {
+    var n := 1;
+    let r := &var n;
+    let c := need_clone(&r); // ERROR[T0012]
+}

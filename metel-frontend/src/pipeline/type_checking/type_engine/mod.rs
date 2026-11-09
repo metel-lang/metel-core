@@ -5337,7 +5337,8 @@ impl TypeDefinitionRegistry {
                 )
             }
             InferType::Tuple(items) => {
-                if is_copy {
+                // A tuple is `Clone` when every part is (provided, RFC-0206 section 2).
+                if is_copy || aspect_name == "Clone" {
                     // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
                     // being checker-only and can move into the stdlib.
                     return items.iter().all(|item| {
@@ -5467,7 +5468,8 @@ impl TypeDefinitionRegistry {
             // reach here; `Never` and `Fun` implement nothing, matching what
             // the pre-`InferType` version returned for them.
             InferType::Fun(_, _, _, use_multiplicity, call_mutation) => {
-                if is_copy {
+                // A `Copy` closure is `Clone`: the clone is the copy (RFC-0206 section 2).
+                if is_copy || aspect_name == "Clone" {
                     *use_multiplicity == UseMultiplicity::Copy
                 } else {
                     // RFC-0153 reserves the mutating-closure `!Sync` rule here until
@@ -5490,6 +5492,9 @@ impl TypeDefinitionRegistry {
                     Type::U64 => "u64",
                     Type::F32 => "f32",
                     Type::F64 => "f64",
+                    // The unit type has nothing to copy, so it is `Copy` (and so `Clone`), as the empty
+                    // tuple is (RFC-0206 section 2; metel-core#1784).
+                    Type::Unit => return is_copy || aspect_name == "Clone",
                     _ => return false,
                 };
                 let Some(target_id) = self.resolve_type_key_broad(current_module, name) else {
