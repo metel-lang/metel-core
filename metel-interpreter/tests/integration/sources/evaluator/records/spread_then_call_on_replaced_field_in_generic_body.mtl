@@ -1,0 +1,9 @@
+// RFC-0191: a call that reads only a replaced field may follow the spread in a generic body.
+fun twice(n: i64) -> i64 { n * 2 }
+fun bump<record R: { .n: i64, .. }>(r: { ..R }) -> { ..R } { { ..r, .n = twice(r.n) } }
+fun both<record R: { .n: i64, .. }>(r: { ..R }) -> { ..R } { { ..r, .n = twice(r.n) + r.n } }
+
+fun main() {
+    assert(bump({ .n = 1, .k = 0 }).n == 2);
+    assert(both({ .n = 1, .k = 0 }).n == 3);
+}

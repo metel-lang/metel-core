@@ -1,0 +1,6 @@
+fun twice(n: i64) -> i64 { n * 2 }
+fun bad<record R: { .n: i64, .m: i64, .. }>(r: { ..R }) -> { ..R } {
+    { ..r, .n = twice(r.m) } // ERROR[T0019]
+}
+
+fun main() {}
