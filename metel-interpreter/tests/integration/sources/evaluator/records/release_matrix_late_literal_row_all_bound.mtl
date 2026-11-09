@@ -2,11 +2,11 @@
 // names the tail of a literal row argument, and a call whose remainder is Copy is accepted.
 record Req<record R> { data: { ..R } }
 
-fun id_of<record R>(r: Req<..{ id: i64, ..R }>) -> (i64, i64) where ..R: Copy {
+fun id_of<record R>(r: Req<..{ .id: i64, ..R }>) -> (i64, i64) where ..R: Copy {
     (r.data.id, r.data.id)
 }
 
 fun main() {
-    let r := Req(data = { id = 4, n = 1 });
+    let r := Req(data = { .id = 4, .n = 1 });
     assert(id_of(r).0 == 4);
 }

@@ -4,16 +4,16 @@ record Req<record R> { data: { ..R } }
 
 fun empty() -> Req<..{}> { Req(data = {}) }
 
-fun add_host<record R: !{ host }>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
-    Req(data = { host = h, ..r.data })
+fun add_host<record R: !{ .host }>(r: Req<..R>, h: String) -> Req<..{ .host: String, ..R }> {
+    Req(data = { .host = h, ..r.data })
 }
 
-fun add_port<record R: !{ port }>(r: Req<..R>, p: i64) -> Req<..{ port: i64, ..R }> {
-    Req(data = { port = p, ..r.data })
+fun add_port<record R: !{ .port }>(r: Req<..R>, p: i64) -> Req<..{ .port: i64, ..R }> {
+    Req(data = { .port = p, ..r.data })
 }
 
 // a parameter can name the row it needs; the tail carries everything else
-fun host_of<record R>(r: Req<..{ host: String, ..R }>) -> String { r.data.host }
+fun host_of<record R>(r: Req<..{ .host: String, ..R }>) -> String { r.data.host }
 
 fun main() {
     let r := add_port(add_host(empty(), "a.com"), 80);

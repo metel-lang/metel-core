@@ -20,7 +20,7 @@ fun main() {
     assert(copied.inner.value == 7);
     assert(copied.values.to_string() == "[1, 2, 3]");
 
-    let custom_record := { item = Custom(value = 4) };
+    let custom_record := { .item = Custom(value = 4) };
     let custom_copy := custom_record.clone();
     assert(custom_copy.item.value == 5);
     println("ok");

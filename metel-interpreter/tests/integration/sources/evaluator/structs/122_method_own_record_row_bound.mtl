@@ -8,12 +8,12 @@
 struct Handle { fd: i64 }
 
 extend Handle {
-    fun add<record T: { x: i64, .. }>(self, t: T) -> i64 { self.fd + t.x }
+    fun add<record T: { .x: i64, .. }>(self, t: T) -> i64 { self.fd + t.x }
 }
 
 fun main() {
     let h := Handle(fd = 1);
-    let r := { x = 2, y = 3 };
+    let r := { .x = 2, .y = 3 };
     assert(h.add(r) == 3);
     println("ok");
 }

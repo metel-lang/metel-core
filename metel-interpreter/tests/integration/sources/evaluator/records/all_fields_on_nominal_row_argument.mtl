@@ -20,7 +20,7 @@ fun both<record R>(p: Packet<..R>) -> ({ ..R }, { ..R }) where ..R: Copy {
 }
 
 fun main() {
-    let p := Packet(data = { a = 1, flag = true });
+    let p := Packet(data = { .a = 1, .flag = true });
     assert(p.mark() == 1);
     assert(count(&p) == 1);
     let pair := both(p);

@@ -8,22 +8,22 @@ struct Tagged<T, record R> { pub v: T, pub extra: { ..R } }
 
 fun describe<record R>(b: Builder<..R>) -> String { b.name }
 
-fun auth_of<record R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
+fun auth_of<record R>(b: Builder<..R>) -> String where R = { .auth: String, .. } {
     b.data.auth
 }
 
 fun get<T, record R>(t: Tagged<T, ..R>) -> T { t.v }
 
 fun main() {
-    let b := Builder(name = "req", data = { auth = "tok", retries = 3 });
+    let b := Builder(name = "req", data = { .auth = "tok", .retries = 3 });
     assert(auth_of(b) == "tok");
-    assert(describe(Builder(name = "req", data = { auth = "tok", retries = 3 })) == "req");
+    assert(describe(Builder(name = "req", data = { .auth = "tok", .retries = 3 })) == "req");
 
-    let c: Builder<{ auth: String }> := Builder(name = "c", data = { auth = "t2" });
+    let c: Builder<{ .auth: String }> := Builder(name = "c", data = { .auth = "t2" });
     assert(auth_of(c) == "t2");
 
-    let t: Tagged<{ x: i64 }, { note: String }> :=
-        Tagged(v = { x = 1 }, extra = { note = "n" });
+    let t: Tagged<{ .x: i64 }, { .note: String }> :=
+        Tagged(v = { .x = 1 }, extra = { .note = "n" });
     assert(get(t).x == 1);
     println("ok");
 }

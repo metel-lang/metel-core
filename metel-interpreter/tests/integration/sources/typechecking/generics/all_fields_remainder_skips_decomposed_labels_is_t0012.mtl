@@ -2,11 +2,11 @@
 // decomposed labels too (here `name: String`), where `..Rest: Copy` would not.
 
 fun pick<record R, record Rest>(p: { ..R }) -> i64
-where R = { id: i64, name: String, ..Rest }, ..R: Copy
+where R = { .id: i64, .name: String, ..Rest }, ..R: Copy
 {
     p.id
 }
 
 fun main() {
-    let _ := pick({ id = 1, name = "x".to_string() });
+    let _ := pick({ .id = 1, .name = "x".to_string() });
 }

@@ -1,6 +1,6 @@
 fun duplicate_rest<record R, record Rest>(value: { ..R }) -> ({ ..Rest }, { ..Rest })
-where R = { token: String, ..Rest }, ..Rest: Copy {
-    let { token: _, ..rest } := value;
+where R = { .token: String, ..Rest }, ..Rest: Copy {
+    let { .token: _, ..rest } := value;
     let first := rest;
     let second := rest;
     (first, second)
@@ -10,26 +10,26 @@ struct Courier {}
 extend Courier: Relay {
     fun pass<T>(self, value: T) -> T { value }
 }
-fun extract<T>(value: { payload: T }) -> T {
-    let { payload, ..rest } := value;
+fun extract<T>(value: { .payload: T }) -> T {
+    let { .payload, ..rest } := value;
     let empty: {} := rest;
     payload
 }
 struct Owned { text: String }
 fun forward<T>(value: T) -> T { value }
 fun main() {
-    assert(extract({ payload = "generic owned" }) == "generic owned");
-    assert(extract({ payload = 17 }) == 17);
-    let empty_pair := duplicate_rest({ token = "discarded" });
+    assert(extract({ .payload = "generic owned" }) == "generic owned");
+    assert(extract({ .payload = 17 }) == 17);
+    let empty_pair := duplicate_rest({ .token = "discarded" });
     let left: {} := empty_pair.0;
     let right: {} := empty_pair.1;
-    let pair := duplicate_rest({ token = "discarded", count = 8, enabled = true });
+    let pair := duplicate_rest({ .token = "discarded", .count = 8, .enabled = true });
     assert(pair.0.count == 8);
     assert(pair.1.enabled);
-    let { token: _, ..empty } := { token = "owned" };
+    let { .token: _, ..empty } := { .token = "owned" };
     let forwarded: {} := Courier().pass(empty);
-    let data := { token = "discarded", payload = "kept" };
-    let var { token: _, ..tail } := data;
+    let data := { .token = "discarded", .payload = "kept" };
+    let var { .token: _, ..tail } := data;
     tail.payload = "restored";
     assert(Courier().pass(tail).payload == "restored");
     let owned := Owned(text = "removed");

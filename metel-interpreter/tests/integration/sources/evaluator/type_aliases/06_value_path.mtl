@@ -15,7 +15,7 @@ fun main() {
     let p := P(x = 3, y = 4);
     assert(p.x == 3);
 
-    let just_x := p.{ x };
+    let just_x := p.{ .x };
     assert(just_x.x == 3);
 
     let d := D::South;

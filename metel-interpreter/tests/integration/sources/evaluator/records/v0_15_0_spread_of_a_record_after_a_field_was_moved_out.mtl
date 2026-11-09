@@ -15,12 +15,12 @@ fun main() {
 
     let c := mk();
     let moved := c.value;
-    let s := { extra = 1, ..c };
+    let s := { .extra = 1, ..c };
     assert(s.extra == 1);
     assert(s.id == 2);
 
     let d := mk();
     let taken := d.value;
-    let t := { ..d.{ id, n } };
+    let t := { ..d.{ .id, .n } };
     assert(t.n == 3);
 }

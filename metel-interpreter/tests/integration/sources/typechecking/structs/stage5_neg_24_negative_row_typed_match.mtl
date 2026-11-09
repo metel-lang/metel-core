@@ -1,5 +1,5 @@
-fun forbid_float_x<record T: !{ x: f64 }>(_value: T) -> i64 { 0 }
+fun forbid_float_x<record T: !{ .x: f64 }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := forbid_float_x({ x = 1.0 });
+    let _ := forbid_float_x({ .x = 1.0 });
 }

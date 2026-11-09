@@ -2,10 +2,10 @@
 // field does not hide it; the public signature using the alias is rejected after expansion.
 pub struct Ticket { pub id: i64, secret: String }
 
-type Peek := Ticket.{ secret };
+type Peek := Ticket.{ .secret };
 
 pub fun peek(t: Ticket) -> Peek { // ERROR[T0009]
-    t.{ secret }
+    t.{ .secret }
 }
 
 fun main() {}

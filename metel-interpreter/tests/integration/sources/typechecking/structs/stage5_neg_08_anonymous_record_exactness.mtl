@@ -1,6 +1,6 @@
-fun take(point: { x: i64 }) -> i64 {
+fun take(point: { .x: i64 }) -> i64 {
     point.x
 }
 
-let wider := { x = 1, y = 2 };
+let wider := { .x = 1, .y = 2 };
 let result := take(wider);

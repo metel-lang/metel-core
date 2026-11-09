@@ -1,0 +1,37 @@
+// RFC-0221 (metel-core#1863): a label of a row is written `.name`, in an anonymous record literal, a
+// record pattern, a record type, a row bound and a projection list; selection is unchanged.
+struct Handle { fd: i64, name: i64 }
+
+fun norm<record R: { .x: i64, .. }>(v: R) -> i64 { v.x }
+
+fun read<record R>(h: Handle.{ .fd, ..R }) -> i64 { h.fd }
+
+fun sum(p: { .x: i64, .y: i64 }) -> i64 {
+    match (p) {
+        { .x, .y } => x + y,
+    }
+}
+
+fun main() {
+    let x := 5;
+    let p := { .x = 1, .y = 2 };
+    assert(sum(p) == 3);
+    let pun := { .x };
+    assert(pun.x == 5);
+    let { .x: _, .y } := p;
+    assert(y == 2);
+    let q := { ..p, .x = 10 };
+    assert(q.x == 10 && q.y == 2);
+    let t := { .0 = 7, .1 = 8 };
+    assert(t.0 + t.1 == 15);
+    let nested := { .a = { .b = 3 } };
+    assert(nested.a.b == 3);
+    assert({ .k = 4 }.k == 4);
+    assert(norm({ .x = 9, .z = 1 }) == 9);
+    let h := Handle(fd = 3, name = 4);
+    assert(read(h) == 3);
+    let arm := if (true) { .v = 1 } else { .v = 2 };
+    assert(arm.v == 1);
+    let make := |v: i64| { { .x = v } };
+    assert(make(6).x == 6);
+}

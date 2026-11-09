@@ -1,24 +1,24 @@
 fun strip<record R, record Rest>(d: { ..R }) -> { ..Rest }
-where R = { token: String, ..Rest } {
-    let { token: _, ..rest } := d;
+where R = { .token: String, ..Rest } {
+    let { .token: _, ..rest } := d;
     rest
 }
 
-fun strip_extra<record R, record Rest>(d: { ..R }) -> { user: i64, ..Rest }
-where R = { token: String, user: i64, ..Rest } {
-    let var { token: _, ..rest } := d;
+fun strip_extra<record R, record Rest>(d: { ..R }) -> { .user: i64, ..Rest }
+where R = { .token: String, .user: i64, ..Rest } {
+    let var { .token: _, ..rest } := d;
     rest.user = rest.user + 1;
     rest
 }
 
 fun strip_two<record R, record Mid, record Rest>(d: { ..R }) -> { ..Rest }
-where R = { token: String, ..Mid }, Mid = { user: i64, ..Rest } {
-    let { token: _, user: _, ..rest } := d;
+where R = { .token: String, ..Mid }, Mid = { .user: i64, ..Rest } {
+    let { .token: _, .user: _, ..rest } := d;
     rest
 }
 
-fun take<record R>(a: { x: i64, ..R }, b: { y: i64, ..R }) -> { ..R } {
-    let { x: _, ..rest } := a;
+fun take<record R>(a: { .x: i64, ..R }, b: { .y: i64, ..R }) -> { ..R } {
+    let { .x: _, ..rest } := a;
     rest
 }
 
@@ -26,34 +26,34 @@ record Box<record R> { data: { ..R } }
 record Credentials { token: String, name: String }
 extend<record R> Box<..R> {
     fun strip<record Rest>(self) -> { ..Rest }
-    where R = { token: String, ..Rest } {
-        let { token: _, ..rest } := self.data;
+    where R = { .token: String, ..Rest } {
+        let { .token: _, ..rest } := self.data;
         rest
     }
-    fun from_arg<record Q, record Rest>(self, d: { id: i64, ..Q }) -> { ..Rest }
-    where Q = { token: String, ..Rest } {
-        let { id: _, token: _, ..rest } := d;
+    fun from_arg<record Q, record Rest>(self, d: { .id: i64, ..Q }) -> { ..Rest }
+    where Q = { .token: String, ..Rest } {
+        let { .id: _, .token: _, ..rest } := d;
         rest
     }
-    fun add<record Q: !{token}>(self, d: { ..Q }) -> { token: String, ..Q } {
-        { token = "new", ..d }
+    fun add<record Q: !{.token}>(self, d: { ..Q }) -> { .token: String, ..Q } {
+        { .token = "new", ..d }
     }
 }
 
 fun main() {
-    assert(strip({ token = "t", user = 3 }).user == 3);
-    assert(strip({ token = "t", owned = "kept" }).owned == "kept");
+    assert(strip({ .token = "t", .user = 3 }).user == 3);
+    assert(strip({ .token = "t", .owned = "kept" }).owned == "kept");
     assert(strip(Credentials(token = "t", name = "Ada")).name == "Ada");
-    let empty: {} := strip({ token = "only" });
-    assert(strip_extra({ token = "t", user = 3, active = true }).active);
-    assert(strip_extra({ token = "t", user = 3 }).user == 4);
-    assert(strip_two({ token = "t", user = 3, active = true }).active);
-    assert(take({ x = 1, z = true }, { y = 2, z = false }).z);
-    let b := Box(data = { token = "t", x = true });
+    let empty: {} := strip({ .token = "only" });
+    assert(strip_extra({ .token = "t", .user = 3, .active = true }).active);
+    assert(strip_extra({ .token = "t", .user = 3 }).user == 4);
+    assert(strip_two({ .token = "t", .user = 3, .active = true }).active);
+    assert(take({ .x = 1, .z = true }, { .y = 2, .z = false }).z);
+    let b := Box(data = { .token = "t", .x = true });
     assert(b.strip().x);
-    let from_arg_box := Box(data = { token = "t", x = true });
-    assert(from_arg_box.from_arg({ id = 1, token = "t", y = true }).y);
-    let add_box := Box(data = { token = "t", x = true });
-    assert(add_box.add({ z = 5 }).z == 5);
+    let from_arg_box := Box(data = { .token = "t", .x = true });
+    assert(from_arg_box.from_arg({ .id = 1, .token = "t", .y = true }).y);
+    let add_box := Box(data = { .token = "t", .x = true });
+    assert(add_box.add({ .z = 5 }).z == 5);
     println("ok");
 }

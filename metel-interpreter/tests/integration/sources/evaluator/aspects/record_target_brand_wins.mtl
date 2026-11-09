@@ -12,7 +12,7 @@ extend Tagged: Describe {
     fun describe(&self) -> String { "brand".to_string() }
 }
 
-extend<record R: { w: i64, .. }> { ..R }: Describe {
+extend<record R: { .w: i64, .. }> { ..R }: Describe {
     fun describe(&self) -> String { "row".to_string() }
 }
 
@@ -21,7 +21,7 @@ fun show<T: Describe>(x: &T) -> String { x.describe() }
 fun main() {
     let tagged := Tagged(w = 1);
     let plain := Plain(w = 1, z = 2);
-    let anon := { w = 1 };
+    let anon := { .w = 1 };
     assert(tagged.describe() == "brand");
     assert(plain.describe() == "row");
     assert(anon.describe() == "row");

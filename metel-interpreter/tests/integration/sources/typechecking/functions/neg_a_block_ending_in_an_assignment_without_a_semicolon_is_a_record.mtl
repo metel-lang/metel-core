@@ -3,5 +3,5 @@
 // record is not the unit an `if` without `else` needs. The block is written `{ x = 1; }`.
 fun main() {
     var x := 0;
-    if (true) { x = 1 }
+    if (true) { .x = 1 }
 }

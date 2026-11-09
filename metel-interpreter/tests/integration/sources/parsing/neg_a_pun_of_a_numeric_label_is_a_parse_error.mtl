@@ -1,0 +1,4 @@
+// RFC-0221: a pun of a numeric label parses but is an error, because no variable is named `0`.
+fun main() {
+    let t := { .0 };
+}

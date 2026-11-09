@@ -3,16 +3,16 @@ struct Handle {
     tag: i64,
 }
 
-fun take(handle: Handle.{ fd }) -> i64 { handle.fd }
+fun take(handle: Handle.{ .fd }) -> i64 { handle.fd }
 
-fun identity(handle: Handle.{ fd }) -> Handle.{ fd } { handle }
+fun identity(handle: Handle.{ .fd }) -> Handle.{ .fd } { handle }
 
 fun main() {
     let handle := Handle(fd = 7, tag = 9);
-    let projected: Handle.{ fd } := handle.{ fd };
-    let nested: { inner: Handle.{ fd } } := { inner = handle.{ fd } };
+    let projected: Handle.{ .fd } := handle.{ .fd };
+    let nested: { .inner: Handle.{ .fd } } := { .inner = handle.{ .fd } };
 
     assert(take(projected) == 7);
-    assert(identity(handle.{ fd }).fd == 7);
+    assert(identity(handle.{ .fd }).fd == 7);
     assert(nested.inner.fd == 7);
 }

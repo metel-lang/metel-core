@@ -2,12 +2,12 @@
 // the same as one written inline -- a record carrying the forbidden label is
 // rejected, not silently accepted because the bound lives in a separate
 // clause from the parameter's own declaration.
-fun f<record T: { x, y: i64, .. }>(value: T) -> i64
-where record T: !{ z } {
+fun f<record T: { .x, .y: i64, .. }>(value: T) -> i64
+where record T: !{ .z } {
     value.y
 }
 
 fun main() {
-    let bad := { x = 1, y = 2, z = 3 };
+    let bad := { .x = 1, .y = 2, .z = 3 };
     let result := f(bad);
 }

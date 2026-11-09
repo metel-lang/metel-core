@@ -2,19 +2,19 @@
 // `Req` whose row gained a field, so `build` only exists once `host` has been set.
 record Req<record R> { data: { ..R } }
 
-extend<record R: !{ host }> Req<..R> {
-    fun host(self, h: String) -> Req<..{ host: String, ..R }> {
-        Req(data = { host = h, ..self.data })
+extend<record R: !{ .host }> Req<..R> {
+    fun host(self, h: String) -> Req<..{ .host: String, ..R }> {
+        Req(data = { .host = h, ..self.data })
     }
 }
 
-extend<record R: !{ port }> Req<..R> {
-    fun port(self, p: i64) -> Req<..{ port: i64, ..R }> {
-        Req(data = { port = p, ..self.data })
+extend<record R: !{ .port }> Req<..R> {
+    fun port(self, p: i64) -> Req<..{ .port: i64, ..R }> {
+        Req(data = { .port = p, ..self.data })
     }
 }
 
-extend<record R: { host: String, .. }> Req<..R> {
+extend<record R: { .host: String, .. }> Req<..R> {
     fun build(self) -> String { "GET " + self.data.host }
 }
 

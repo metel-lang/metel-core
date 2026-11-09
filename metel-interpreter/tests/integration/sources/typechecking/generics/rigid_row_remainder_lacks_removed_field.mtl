@@ -3,10 +3,10 @@
 record Session<record R> { data: { ..R } }
 
 fun read_removed<record R, record Rest>(value: Session<..Rest>) -> String
-where R = { token: String, ..Rest } {
+where R = { .token: String, ..Rest } {
     value.data.token // ERROR[T0003]
 }
 
 fun main() {
-    read_removed(Session(data = { extra = 1 }));
+    read_removed(Session(data = { .extra = 1 }));
 }

@@ -5,16 +5,16 @@
 
 aspect Describe { fun describe(&self) -> String; }
 
-extend<record R: { w: i64, .. }> { ..R }: Describe {
+extend<record R: { .w: i64, .. }> { ..R }: Describe {
     fun describe(&self) -> String { "has w".to_string() }
 }
 
-extend<record R: !{ w }> { ..R }: Describe {
+extend<record R: !{ .w }> { ..R }: Describe {
     fun describe(&self) -> String { "no w".to_string() }
 }
 
 fun main() {
-    assert({ w = 1, h = 2 }.describe() == "has w");
-    assert({ h = 2 }.describe() == "no w");
+    assert({ .w = 1, .h = 2 }.describe() == "has w");
+    assert({ .h = 2 }.describe() == "no w");
     println("ok");
 }

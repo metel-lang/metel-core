@@ -4,11 +4,11 @@ struct Handle { fd: i64, name: String }
 type H := Handle;
 
 extend Handle {
-    fun peek(h: &Self.{ fd }) -> i64 { h.fd }
+    fun peek(h: &Self.{ .fd }) -> i64 { h.fd }
 }
 
 fun main() {
     let h: H := Handle(fd = 4, name = "n".to_string());
-    assert(H::peek(&h.{ fd }) == 4);
+    assert(H::peek(&h.{ .fd }) == 4);
     assert(h.name == "n");
 }

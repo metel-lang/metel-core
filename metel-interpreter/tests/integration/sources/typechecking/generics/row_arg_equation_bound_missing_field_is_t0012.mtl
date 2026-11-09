@@ -3,11 +3,11 @@
 
 record Builder<record R> { data: { ..R } }
 
-fun auth_of<record R>(b: Builder<..R>) -> String where R = { auth: String, .. } {
+fun auth_of<record R>(b: Builder<..R>) -> String where R = { .auth: String, .. } {
     b.data.auth
 }
 
 fun main() {
-    let b := Builder(data = { retries = 3 });
+    let b := Builder(data = { .retries = 3 });
     auth_of(b);
 }

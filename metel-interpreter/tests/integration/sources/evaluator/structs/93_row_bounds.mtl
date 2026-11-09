@@ -1,29 +1,29 @@
-fun closed_ok<record T: { x: i64, y: i64 }>(_value: T) -> i64 { 1 }
+fun closed_ok<record T: { .x: i64, .y: i64 }>(_value: T) -> i64 { 1 }
 
-fun open_ok<record T: { x: i64, .. }>(_value: T) -> i64 { 2 }
+fun open_ok<record T: { .x: i64, .. }>(_value: T) -> i64 { 2 }
 
-fun label_only_ok<record T: { token }>(_value: T) -> i64 { 3 }
+fun label_only_ok<record T: { .token }>(_value: T) -> i64 { 3 }
 
-fun mixed_ok<record T: { token, y: i64, .. }>(_value: T) -> i64 { 4 }
+fun mixed_ok<record T: { .token, .y: i64, .. }>(_value: T) -> i64 { 4 }
 
 fun where_marker_ok<T>(_value: T) -> i64
-where record T: { x: i64, .. } {
+where record T: { .x: i64, .. } {
     5
 }
 
 fun any_record<record T>(_value: T) -> i64 { 6 }
 
-fun neg_typed_ok<record T: !{ x: f64 }>(_value: T) -> i64 { 7 }
+fun neg_typed_ok<record T: !{ .x: f64 }>(_value: T) -> i64 { 7 }
 
-fun neg_label_ok<record T: !{ z }>(_value: T) -> i64 { 8 }
+fun neg_label_ok<record T: !{ .z }>(_value: T) -> i64 { 8 }
 
 fun main() {
-    assert(closed_ok({ x = 1, y = 2 }) == 1);
-    assert(open_ok({ x = 1, y = 2, extra = 3 }) == 2);
-    assert(label_only_ok({ token = "id" }) == 3);
-    assert(mixed_ok({ token = true, y = 9, extra = 1 }) == 4);
-    assert(where_marker_ok({ x = 1, extra = 2 }) == 5);
-    assert(any_record({ anything = 1 }) == 6);
-    assert(neg_typed_ok({ x = 1 }) == 7);
-    assert(neg_label_ok({ x = 1 }) == 8);
+    assert(closed_ok({ .x = 1, .y = 2 }) == 1);
+    assert(open_ok({ .x = 1, .y = 2, .extra = 3 }) == 2);
+    assert(label_only_ok({ .token = "id" }) == 3);
+    assert(mixed_ok({ .token = true, .y = 9, .extra = 1 }) == 4);
+    assert(where_marker_ok({ .x = 1, .extra = 2 }) == 5);
+    assert(any_record({ .anything = 1 }) == 6);
+    assert(neg_typed_ok({ .x = 1 }) == 7);
+    assert(neg_label_ok({ .x = 1 }) == 8);
 }

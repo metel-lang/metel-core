@@ -1,5 +1,5 @@
-fun need_y<record T: { y, .. }>(_value: T) -> i64 { 0 }
+fun need_y<record T: { .y, .. }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := need_y({ x = 1 });
+    let _ := need_y({ .x = 1 });
 }

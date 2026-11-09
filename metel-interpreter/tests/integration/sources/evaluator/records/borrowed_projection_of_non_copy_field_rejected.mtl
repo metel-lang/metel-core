@@ -3,10 +3,10 @@
 struct Handle { fd: i64, name: String }
 
 extend Handle {
-    fun nm(h: &Self.{ name }) -> i64 { 1 }
+    fun nm(h: &Self.{ .name }) -> i64 { 1 }
 }
 
 fun main() {
     var h := Handle(fd = 7, name = "a".to_string());
-    let _n := Handle::nm(&h.{ name });
+    let _n := Handle::nm(&h.{ .name });
 }

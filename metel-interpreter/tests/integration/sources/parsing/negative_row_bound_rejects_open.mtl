@@ -1,5 +1,5 @@
 // Negative (RFC-0118 §2): a negative row bound names labels that must be absent, so there
 // is no rest to quantify over and `..` is meaningless. Rejected rather than ignored.
-fun f<record T: !{ x, .. }>(v: T) -> i64 { 1 }
+fun f<record T: !{ .x, .. }>(v: T) -> i64 { 1 }
 
 fun main() { }

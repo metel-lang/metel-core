@@ -2,8 +2,8 @@
 pub struct Ticket { pub id: i64, secret: String }
 
 extend Ticket {
-    pub fun peek(self) -> Ticket.{ secret } { // ERROR[T0009]
-        self.{ secret }
+    pub fun peek(self) -> Ticket.{ .secret } { // ERROR[T0009]
+        self.{ .secret }
     }
 }
 

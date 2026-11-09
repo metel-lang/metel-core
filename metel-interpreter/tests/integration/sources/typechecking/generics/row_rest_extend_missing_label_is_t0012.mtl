@@ -3,11 +3,11 @@
 
 record Session<record R> { id: i64, data: { ..R } }
 
-extend<record R, record Rest> Session<..R> where R = { token: String, ..Rest } {
+extend<record R, record Rest> Session<..R> where R = { .token: String, ..Rest } {
     fun authenticate(self) -> Session<..Rest> { panic("unimplemented") }
 }
 
 fun main() {
-    let s: Session<{ extra: i64 }> := Session(id = 1, data = { extra = 2 });
+    let s: Session<{ .extra: i64 }> := Session(id = 1, data = { .extra = 2 });
     let r := s.authenticate();
 }

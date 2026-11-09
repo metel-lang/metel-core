@@ -4,11 +4,11 @@ struct Handle { fd: i64, name: String }
 
 fun main() {
     let h := Handle(fd = 3, name = "log".to_string());
-    let a := h.{ fd };
+    let a := h.{ .fd };
     assert(a.fd == 3);
     assert(h.fd == 3);
     assert(h.name == "log");        // `fd` was Copy: h is still whole
-    let b := h.{ name };
+    let b := h.{ .name };
     assert(b.name == "log");
     assert(h.fd == 3);              // h : Handle.{ fd }
 }

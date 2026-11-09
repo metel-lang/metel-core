@@ -1,5 +1,5 @@
-fun need_float<record T: { x: f64, .. }>(_value: T) -> i64 { 0 }
+fun need_float<record T: { .x: f64, .. }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := need_float({ x = 1 });
+    let _ := need_float({ .x = 1 });
 }

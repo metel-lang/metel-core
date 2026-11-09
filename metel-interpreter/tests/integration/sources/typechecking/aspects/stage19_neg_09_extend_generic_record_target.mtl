@@ -6,7 +6,7 @@ aspect Area {
 // field types it writes must be spelled out: `T` here is the impl's own type
 // parameter, which no receiver's field type can equal, so the impl would typecheck
 // and then never apply (metel-core#239). Rejected rather than accepted-and-inert.
-extend<T> { w: T }: Area {
+extend<T> { .w: T }: Area {
     fun area(&self) -> i64 { return 1; }
 }
 

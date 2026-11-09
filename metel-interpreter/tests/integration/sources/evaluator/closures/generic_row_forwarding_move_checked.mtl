@@ -1,8 +1,8 @@
-fun add<record R: !{token}>(r: { ..R }) -> { token: String, ..R } {
-    { ..r, token = "secret" }
+fun add<record R: !{.token}>(r: { ..R }) -> { .token: String, ..R } {
+    { ..r, .token = "secret" }
 }
 
-fun forward<record R: !{token}>(r: { ..R }) -> i64 where ..R: Copy {
+fun forward<record R: !{.token}>(r: { ..R }) -> i64 where ..R: Copy {
     let callback := [r] once || {
         let added := add(r);
         let copied := r;
@@ -12,6 +12,6 @@ fun forward<record R: !{token}>(r: { ..R }) -> i64 where ..R: Copy {
 }
 
 fun main() {
-    assert(forward({ n = 1 }) == 7);
+    assert(forward({ .n = 1 }) == 7);
     assert(forward({}) == 7);
 }

@@ -5,7 +5,7 @@
 
 struct Handle { fd: i64, flags: i64 }
 
-fun get_fd(h: Handle.{ fd, .. }) -> i64 { h.fd }
+fun get_fd(h: Handle.{ .fd, .. }) -> i64 { h.fd }
 
 fun main() {
     let h := Handle(fd = 7, flags = 0);

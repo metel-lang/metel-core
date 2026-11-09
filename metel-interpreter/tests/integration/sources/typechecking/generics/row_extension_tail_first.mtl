@@ -1,10 +1,10 @@
 // RFC-0121: row extension permits the tail before newly-added fields.
 record Box<record R> {
-    value: { ..R, auth: String },
+    value: { ..R, .auth: String },
 }
 
 fun main() {
-    let boxed := Box(value = { id = 1, auth = "ok" });
+    let boxed := Box(value = { .id = 1, .auth = "ok" });
     assert(boxed.value.id == 1);
     assert(boxed.value.auth == "ok");
 }

@@ -3,5 +3,5 @@ import ticket::make;
 
 fun main() {
     let t := make();
-    let s := t.{ secret };
+    let s := t.{ .secret };
 }

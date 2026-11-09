@@ -5,6 +5,6 @@ struct Handle { fd: i64, name: String }
 
 fun main() {
     let h := Handle(fd = 3, name = "log".to_string());
-    let p := h.{ name };
+    let p := h.{ .name };
     println(h.name); // ERROR[T0019]
 }

@@ -8,13 +8,13 @@ struct Handle { fd: i64, name: String }
 type H := Handle;
 
 extend Handle {
-    fun describe(h: &Self.{ fd }) -> i64 { h.fd }
+    fun describe(h: &Self.{ .fd }) -> i64 { h.fd }
 }
 
 fun main() {
     let h: H := Handle(fd = 7, name = "n");
     let taken := h.name;                     // h : Handle.{ fd }
     assert(H::describe(&h) == 7);            // alias-qualified call, narrowed receiver
-    assert(H::describe(&h.{ fd }) == 7);     // re-projecting the residual: same type
+    assert(H::describe(&h.{ .fd }) == 7);     // re-projecting the residual: same type
     println(taken);
 }

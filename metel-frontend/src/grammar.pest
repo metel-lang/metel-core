@@ -147,7 +147,7 @@ bound         = { bang? ~ bound_head }
 bang          = { "!" }
 bound_head    = { row_bound | type_path ~ ("<" ~ bound_arg ~ ("," ~ bound_arg)* ~ ","? ~ ">")? }
 row_bound     = { "{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ "..")? ~ ","? ~ "}" }
-row_field     = { ident ~ (":" ~ type_expr)? }
+row_field     = { label ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }
 assoc_binding = { ident ~ "=" ~ type_expr }
 where_clause     = { "where" ~ where_constraint ~ ("," ~ where_constraint)* }
@@ -330,8 +330,13 @@ capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "
 // RFC-0100: a struct or enum struct-variant is built by a call (`Type(args)`), not by a brace literal; the
 // braces after a type name survive only in declarations and patterns.
 record_lit = { "{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
-record_projection_expr = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
-field_init     = { ident ~ ("=" ~ expr)? }
+record_projection_expr = { type_path ~ ".{" ~ label ~ ("," ~ label)* ~ ","? ~ "}" }
+// RFC-0221: a label of a row is written `.name` (or `.0`), never bare. `$` keeps the dot and the name
+// adjacent. The record-shaped sites (anonymous record literal, pattern, type, row bound and the
+// projection lists) take a `label`; struct and enum declarations, calls and patterns keep bare names.
+label          = ${ "." ~ (label_index | ident) }
+label_index    = @{ ASCII_DIGIT+ }
+field_init     = { label ~ ("=" ~ expr)? }
 record_initializer = { record_spread | field_init }
 record_spread = { ".." ~ expr }
 
@@ -359,7 +364,7 @@ rest_pat        = { ".." ~ ident }
 // allowed to name. Always last, never followed by a trailing comma.
 record_rest     = { ".." }
 record_rest_binding = { ".." ~ ident }
-record_field_pat = { ident ~ (":" ~ "_")? }
+record_field_pat = { label ~ (":" ~ "_")? }
 record_field_pat_list = { record_field_pat ~ ("," ~ record_field_pat)* ~ ("," ~ (record_rest_binding | record_rest))? ~ ","? | record_rest_binding | record_rest }
 field_pat_list  = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }
 record_pattern  = { "{" ~ record_field_pat_list ~ "}" }
@@ -408,7 +413,7 @@ dyn_type = { "dyn" ~ named_type }
 unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
 record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
-record_type_field = { ident ~ ":" ~ type_expr }
+record_type_field = { label ~ ":" ~ type_expr }
 // RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`) is a
 // regular type expression. Function parameters retain a dedicated top-level
 // checking path for row bounds; nested and reusable occurrences use ordinary
@@ -417,11 +422,11 @@ open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," 
                     | "{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
                     | "{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }
-record_projection_type = { type_path ~ ".{" ~ (ident ~ ("," ~ ident)* ~ ","?)? ~ "}" }
+record_projection_type = { type_path ~ ".{" ~ (label ~ ("," ~ label)* ~ ","?)? ~ "}" }
 // RFC-0121 installment 2: a struct's own residual-projection tail
 // (`Handle.{ fd, ..R }` / `Handle.{ .. }`) -- same `fun_decl_param`-only
 // restriction as `open_record_type` above, and the same reason.
-open_record_projection_type = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ "," ~ row_tail ~ ","? ~ "}"
+open_record_projection_type = { type_path ~ ".{" ~ label ~ ("," ~ label)* ~ "," ~ row_tail ~ ","? ~ "}"
                               | type_path ~ ".{" ~ row_tail ~ ","? ~ "}" }
 // RFC-0154: pipe-delimited parameter list. `->` and the return type stay mandatory in a
 // written function type (unlike the closure literal above). `fun_type` is `type_expr`'s

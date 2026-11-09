@@ -3,10 +3,10 @@
 fun keep<record T>(value: T) -> T { value }
 
 fun main() {
-    let a := keep({ x = 1 });
+    let a := keep({ .x = 1 });
     assert(a.x == 1);
 
-    let b := keep({ x = 1, y = "two", z = true });
+    let b := keep({ .x = 1, .y = "two", .z = true });
     assert(b.x == 1);
     assert(b.y == "two");
     assert(b.z);

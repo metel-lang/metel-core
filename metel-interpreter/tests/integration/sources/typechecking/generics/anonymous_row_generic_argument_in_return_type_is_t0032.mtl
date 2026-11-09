@@ -3,7 +3,7 @@
 record Session<record R> { id: i64, data: { ..R } }
 
 fun make() -> Session<..> {
-    let typed: Session<..> := Session(id = 1, data = { n = 1 });
+    let typed: Session<..> := Session(id = 1, data = { .n = 1 });
     typed
 }
 

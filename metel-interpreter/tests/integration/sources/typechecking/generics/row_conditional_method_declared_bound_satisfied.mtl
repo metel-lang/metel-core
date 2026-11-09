@@ -6,18 +6,18 @@ record Session<record R> {
     data: { ..R },
 }
 
-extend<record R: { token: String, .. }> Session<..R> {
+extend<record R: { .token: String, .. }> Session<..R> {
     fun with_token(self) -> i64 { self.id }
 }
 
-fun use_session<record R: { token: String, .. }>(session: Session<..R>) -> i64 {
+fun use_session<record R: { .token: String, .. }>(session: Session<..R>) -> i64 {
     session.with_token()
 }
 
 fun main() {
-    let session: Session<{ token: String }> := Session(
+    let session: Session<{ .token: String }> := Session(
         id = 1,
-        data = { token = "token" },
+        data = { .token = "token" },
     );
     println(use_session(session));
 }

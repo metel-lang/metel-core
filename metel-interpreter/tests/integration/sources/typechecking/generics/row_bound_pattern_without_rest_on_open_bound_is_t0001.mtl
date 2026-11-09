@@ -1,11 +1,11 @@
 // #646: an open row bound's full field set isn't known here, so a record pattern that
 // doesn't end in `..` can never be exhaustive against it.
-fun describe<record T: { x: f64, .. }>(p: T) -> f64 {
+fun describe<record T: { .x: f64, .. }>(p: T) -> f64 {
     match (p) {
-        { x } => x,
+        { .x } => x,
     }
 }
 
 fun main() {
-    println(describe({ x = 1.0 }));
+    println(describe({ .x = 1.0 }));
 }

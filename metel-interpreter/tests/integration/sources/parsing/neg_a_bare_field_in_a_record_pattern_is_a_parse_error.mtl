@@ -1,0 +1,5 @@
+// RFC-0221: a record pattern's field is a label.
+fun main() {
+    let p := { .x = 1, .y = 2 };
+    let { x, y } := p;
+}

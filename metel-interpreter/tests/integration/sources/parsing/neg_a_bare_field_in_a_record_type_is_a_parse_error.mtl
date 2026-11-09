@@ -1,0 +1,4 @@
+// RFC-0221: a record type's field is a label.
+fun f(p: { x: i64 }) -> i64 { 0 }
+
+fun main() {}

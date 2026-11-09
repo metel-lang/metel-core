@@ -13,6 +13,6 @@ fun main() {
         Shape::Rect { w, h } => assert(w * h == 6),
         Shape::Circle { r } => assert(r == 0),
     };
-    let row := { x = 1, y = 2 };
+    let row := { .x = 1, .y = 2 };
     assert(row.x + row.y == 3);
 }

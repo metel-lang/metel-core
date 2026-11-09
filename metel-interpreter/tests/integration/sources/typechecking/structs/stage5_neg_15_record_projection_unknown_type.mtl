@@ -1,1 +1,1 @@
-fun take(handle: Missing.{ fd }) -> i64 { handle.fd }
+fun take(handle: Missing.{ .fd }) -> i64 { handle.fd }

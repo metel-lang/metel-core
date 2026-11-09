@@ -1,0 +1,6 @@
+// RFC-0221: a projection list's labels are dotted, `Handle.{ .fd }`.
+struct Handle { fd: i64, name: i64 }
+
+fun f(h: Handle.{ fd }) -> i64 { 0 }
+
+fun main() {}

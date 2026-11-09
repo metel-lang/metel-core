@@ -9,7 +9,7 @@ struct Handle { fd: i64, name: String }
 
 extend Handle {
     fun narrow_let(self) -> i64 {
-        let x: Self.{ fd } := self.{ fd };
+        let x: Self.{ .fd } := self.{ .fd };
         return x.fd;
     }
 }

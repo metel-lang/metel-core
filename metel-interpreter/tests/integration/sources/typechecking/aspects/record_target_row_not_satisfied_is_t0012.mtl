@@ -3,12 +3,12 @@
 
 aspect Area { fun area(&self) -> i64; }
 
-extend<record R: { w: i64, .. }> { ..R }: Area {
+extend<record R: { .w: i64, .. }> { ..R }: Area {
     fun area(&self) -> i64 { self.w }
 }
 
 fun total<T: Area>(x: T) -> i64 { x.area() }
 
 fun main() {
-    let _ := total({ h = 3 });
+    let _ := total({ .h = 3 });
 }

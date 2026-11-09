@@ -1,5 +1,5 @@
-fun forbid_x<record T: !{ x }>(_value: T) -> i64 { 0 }
+fun forbid_x<record T: !{ .x }>(_value: T) -> i64 { 0 }
 
 fun main() {
-    let _ := forbid_x({ x = 1 });
+    let _ := forbid_x({ .x = 1 });
 }

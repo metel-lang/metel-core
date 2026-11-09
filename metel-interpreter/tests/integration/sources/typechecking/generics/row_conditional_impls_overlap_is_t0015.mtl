@@ -6,11 +6,11 @@ aspect Describe { fun describe(self) -> i64; }
 
 record Session<record R> { id: i64, data: { ..R } }
 
-extend<record R: { a: i64, .. }> Session<..R>: Describe {
+extend<record R: { .a: i64, .. }> Session<..R>: Describe {
     fun describe(self) -> i64 { 1 }
 }
 
-extend<record R: { b: i64, .. }> Session<..R>: Describe {
+extend<record R: { .b: i64, .. }> Session<..R>: Describe {
     fun describe(self) -> i64 { 2 }
 }
 

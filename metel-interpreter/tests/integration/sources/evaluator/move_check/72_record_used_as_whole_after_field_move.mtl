@@ -1,9 +1,9 @@
-fun take(r: { left: String, right: i64 }) -> i64 {
+fun take(r: { .left: String, .right: i64 }) -> i64 {
     r.right
 }
 
 fun main() {
-    let r := { left = "a".to_string(), right = 1 };
+    let r := { .left = "a".to_string(), .right = 1 };
     let left: String := r.left;
     let value: i64 := take(r);
 }

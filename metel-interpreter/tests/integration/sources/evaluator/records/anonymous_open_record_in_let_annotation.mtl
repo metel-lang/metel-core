@@ -2,16 +2,16 @@
 // `var`. The tail is a fresh inference variable, so the binding has the initializer's full type
 // and the extra fields stay readable. It used to fail on an internal `<open-row>` placeholder.
 fun main() {
-    let a: { x: i64, .. } := { x = 1, y = "s".to_string() };
+    let a: { .x: i64, .. } := { .x = 1, .y = "s".to_string() };
     assert(a.x == 1);
     assert(a.y == "s");
 
-    var b: { x: i64, .. } := { x = 1, y = 2 };
+    var b: { .x: i64, .. } := { .x = 1, .y = 2 };
     b.x = 9;
     assert(b.x == 9 && b.y == 2);
 
     // the annotation's fixed fields still type the initializer: `x` is a `u8`, not an `i64`
-    let c: { x: u8, .. } := { x = 200, y = 2 };
+    let c: { .x: u8, .. } := { .x = 200, .y = 2 };
     let d: u8 := c.x;
     assert(d == 200);
 }
