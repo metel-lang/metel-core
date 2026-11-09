@@ -1,7 +1,7 @@
 [options]
-error = ["T0001"]
+error = ["T0015"]
 
 [expect]
 status = "typecheck_error"
-code = "T0001"
-contains = "cannot implement both `Copy` and `Drop`"
+code = "T0015"
+contains = "cannot both be granted to one type"

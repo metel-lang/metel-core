@@ -1,0 +1,5 @@
+// RFC-0206 section 2: `aspect Copy: !Drop` excludes the pair, so a `copy struct` cannot also be `Drop`.
+copy struct Handle { fd: i64 }
+extend Handle: Drop { fun drop(&var self) { } } // ERROR[T0015]
+
+fun main() {}
