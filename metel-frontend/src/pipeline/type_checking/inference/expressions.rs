@@ -687,6 +687,12 @@ fn infer_expr_inner(
                             tail,
                         })
                     }
+                    // With nothing added (a bare spread, or only replacements) the literal's row is the
+                    // spread's own, which is how `{ ..R }` is written.
+                    var @ InferType::Var(_) if additions.is_empty() => {
+                        Ok(InferType::RowView(Box::new(var)))
+                    }
+                    row @ InferType::RowView(_) if additions.is_empty() => Ok(row),
                     var @ InferType::Var(_) => Ok(InferType::RowExtend {
                         fields: additions,
                         tail: Box::new(InferType::RowView(Box::new(var))),
@@ -2955,8 +2961,8 @@ fn classify_spread_label(
     Ok(SpreadLabel::Absent)
 }
 
-/// The type a row proves for `label`, when it is a concrete record or a decomposition (a bound that
-/// names the type resolves only to a primitive: a type naming a generic parameter is not read here).
+/// The type a row proves for `label`: a concrete record's, a decomposition's, or the one a row bound
+/// writes, read in the function's own generic scope (so a bound `.price: T` is `T`, not a named type).
 fn known_row_label_type(ctx: &InferContext, row: &InferType, label: &str) -> Option<InferType> {
     match row {
         InferType::RowView(source) => known_row_label_type(ctx, source, label),
@@ -2986,8 +2992,12 @@ fn known_row_label_type(ctx: &InferContext, row: &InferType, label: &str) -> Opt
                         .iter()
                         .find(|field| field.label == label)
                         .and_then(|field| field.ty.as_ref())
-                        .map(super::super::conversions::type_expr_to_infer)
-                        .filter(|ty| matches!(ty, InferType::Concrete(_))),
+                        .map(|ty| {
+                            super::super::conversions::type_expr_to_infer_with_generics(
+                                ty,
+                                ctx.type_params(),
+                            )
+                        }),
                     _ => None,
                 })
             })

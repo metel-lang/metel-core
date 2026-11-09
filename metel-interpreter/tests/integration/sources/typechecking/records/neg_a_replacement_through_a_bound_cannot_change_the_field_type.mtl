@@ -1,0 +1,5 @@
+fun retype<record R: { .price: i64, .. }>(line: { ..R }) -> { ..R } {
+    { ..line, .price = "free" }
+}
+
+fun main() {}

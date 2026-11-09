@@ -1208,6 +1208,28 @@ pub(super) fn collect_open_record_param_vars(
     collect_open_record_param_vars_with(fun, || ctx.fresh_type_var_raw())
 }
 
+/// The entries of the row bounds written on the generic parameter a row tail names.
+fn declared_row_bound_fields(tail: &RowTail, generics: &[GenericParam]) -> Vec<RowConstraintField> {
+    let Some(name) = &tail.var else {
+        return Vec::new();
+    };
+    generics
+        .iter()
+        .filter(|g| &g.name == name)
+        .flat_map(|g| g.bounds.iter())
+        .filter(|bound| bound.polarity == crate::data::ast::Polarity::Positive)
+        .filter_map(|bound| match &bound.head {
+            crate::data::ast::BoundHead::Row(row) => Some(row),
+            crate::data::ast::BoundHead::Aspect(_) => None,
+        })
+        .flat_map(|row| row.fields.iter())
+        .map(|field| RowConstraintField {
+            label: field.label.clone(),
+            ty: field.ty.clone(),
+        })
+        .collect()
+}
+
 fn check_row_var(tail: &RowTail, generics: &[GenericParam]) -> Result<(), MetelError> {
     let Some(name) = &tail.var else {
         return Ok(());
@@ -1405,7 +1427,7 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
             let decomposed =
                 resolve_decomposed_fields(tail, fun.where_clause.as_ref(), &fun.generics)?;
             let tv = fresh_type_var();
-            let row = RowConstraint {
+            let mut row = RowConstraint {
                 fields: fields
                     .iter()
                     .cloned()
@@ -1417,6 +1439,13 @@ pub(in crate::pipeline::type_checking) fn collect_open_record_param_vars_with(
                     .collect(),
                 open: true,
             };
+            // The tail's own row bound (`record R: { .price: i64, .. }`) names fields the parameter
+            // `{ ..R }` has too, so reading or replacing one through the parameter is allowed (RFC-0191).
+            for declared in declared_row_bound_fields(tail, &fun.generics) {
+                if !row.fields.iter().any(|f| f.label == declared.label) {
+                    row.fields.push(declared);
+                }
+            }
             let explicit: Vec<String> = fields.iter().map(|(label, _)| label.clone()).collect();
             let mut param_bounds = vec![GenericBound::Row(row)];
             param_bounds.extend(field_wise_bounds(
