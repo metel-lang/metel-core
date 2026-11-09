@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-8"]

@@ -24,7 +24,8 @@ pub(super) fn record_clone(
         .ok_or_else(|| MetelError::internal("record clone: expected a receiver"))?;
     match receiver {
         Value::Record { fields, type_id } => Ok(Value::Record {
-            fields: clone_fields(fields, span, runtime)?,
+            // An anonymous record's fields are visited in lexicographic label order.
+            fields: clone_fields(fields, None, span, runtime)?,
             type_id: *type_id,
         }),
         Value::Struct {
@@ -34,7 +35,12 @@ pub(super) fn record_clone(
         } => Ok(Value::Struct {
             name: name.clone(),
             type_id: *type_id,
-            fields: clone_fields(fields, span, runtime)?,
+            fields: clone_fields(
+                fields,
+                type_id.and_then(|id| runtime.clone_order_of(id, None)),
+                span,
+                runtime,
+            )?,
         }),
         // `derives Clone` on an enum (RFC-0207): the clone keeps the active variant and clones its payload.
         Value::Enum {
@@ -48,7 +54,12 @@ pub(super) fn record_clone(
             type_id: *type_id,
             variant: variant.clone(),
             variant_id: *variant_id,
-            fields: clone_fields(fields, span, runtime)?,
+            fields: clone_fields(
+                fields,
+                type_id.and_then(|id| runtime.clone_order_of(id, Some(variant))),
+                span,
+                runtime,
+            )?,
         }),
         _ => Err(MetelError::internal(
             "record clone: receiver is not a record",
@@ -56,13 +67,22 @@ pub(super) fn record_clone(
     }
 }
 
+/// Clone `fields` one at a time, in `order` (the declaration order of a derived `Clone`) and then in
+/// label order for any label it does not name, so an inner `clone` with an effect always runs in the
+/// same sequence (metel-core#1817).
 fn clone_fields(
     fields: &std::collections::HashMap<String, Value>,
+    order: Option<&[String]>,
     span: &Span,
     runtime: &RuntimeRegistry,
 ) -> Result<std::collections::HashMap<String, Value>, MetelError> {
-    fields
-        .iter()
+    let mut visit: Vec<&String> = order.unwrap_or_default().iter().collect();
+    let mut rest: Vec<&String> = fields.keys().filter(|k| !visit.contains(k)).collect();
+    rest.sort();
+    visit.extend(rest);
+    visit
+        .into_iter()
+        .filter_map(|label| fields.get(label).map(|value| (label, value)))
         .map(|(label, value)| {
             // A shared reference is `Clone` for every referent: the clone is another reference.
             if matches!(value, Value::Reference(_) | Value::FieldReference { .. }) {

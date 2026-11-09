@@ -784,6 +784,20 @@ pub(super) fn construct_expr(
             };
             let typed_elem = construct_expr(elem, elem_hint, ctx)?;
             let elem_ty = typed_elem.ty().clone();
+            // `[e; N]` with `N > 1` duplicates `e` without running any `clone`, so the element must be
+            // `Copy` (RFC-0206, metel-core#1817).
+            if *n > 1
+                && !matches!(elem_ty, Type::Never)
+                && !ctx.registry.type_is_copy(ctx.current_module, &elem_ty)
+            {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "`[e; {n}]` repeats its element without cloning it, so `{elem_ty}` must be `Copy`; write the elements out or use `.clone()` for each"
+                    ),
+                    span,
+                ));
+            }
             let ty = Type::SizedArray(Box::new(elem_ty), *n);
             Ok(TypedExpr::RepeatArray(
                 Box::new(typed_elem),

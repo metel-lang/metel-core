@@ -1,0 +1,25 @@
+// metel-core#1817: a derived Clone calls the field clones in declaration order (structs, enum payload
+// fields) and in label order for an anonymous record; each inner clone appends its mark to a log.
+var log := 0;
+struct Mark { n: i64 }
+extend Mark: Clone {
+    fun clone(&self) -> Mark {
+        log = log * 10 + self.n;
+        Mark(n = self.n)
+    }
+}
+struct Pair derives Clone { zed: Mark, alpha: Mark, mid: Mark }
+enum Shape derives Clone { Two { second: Mark, first: Mark }, Empty }
+
+fun main() {
+    let p := Pair(zed = Mark(n = 1), alpha = Mark(n = 2), mid = Mark(n = 3));
+    let q := p.clone();
+    assert(log == 123);
+    let s := Shape::Two(second = Mark(n = 4), first = Mark(n = 5));
+    let t := s.clone();
+    assert(log == 12345);
+    log = 0;
+    let r := { .zed = Mark(n = 1), .alpha = Mark(n = 2), .mid = Mark(n = 3) };
+    let c := r.clone();
+    assert(log == 231);
+}
