@@ -203,3 +203,85 @@ fn named_type_ids(graph: &NormalizedModuleGraph) -> HashSet<SymbolId> {
 fn error(message: String, span: &Span) -> MetelError {
     MetelError::type_error(TypeErrorCode::T0045, message, span)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::ast::AspectDecl;
+    use crate::pipeline::parsing::module_loader::{self, MultiFileSourceProvider};
+
+    /// The aspect declarations of `source`, with the names resolved for its root module. The std
+    /// check of `check_declarations` is the caller's; here the rules for an `implicit` aspect are
+    /// judged on their own, which no `.mtl` fixture can reach outside the standard library.
+    fn check_all(source: &str) -> Result<(), MetelError> {
+        let provider = MultiFileSourceProvider::new("main.mtl", source);
+        let graph = module_loader::load_virtual_root_with("main.mtl", &provider).expect("loads");
+        let names =
+            crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
+        let clone_id = names
+            .symbols
+            .get(&(
+                vec!["std".to_string(), "core".to_string()],
+                Namespace::Type,
+                "Clone".to_string(),
+            ))
+            .copied();
+        assert!(clone_id.is_some(), "std::core::Clone is in the graph");
+        let root = graph
+            .modules
+            .iter()
+            .find(|module| module.module_path.is_empty())
+            .expect("root module");
+        let mut first = None;
+        for decl in &root.program.decls {
+            let Decl::Aspect(ad) = decl else { continue };
+            let Some((_, span)) = implicit_of(ad) else {
+                continue;
+            };
+            check_implicit(&names, &root.module_path, ad, clone_id, span, &mut first)?;
+        }
+        Ok(())
+    }
+
+    fn implicit_of(ad: &AspectDecl) -> Option<&(AspectProperty, Span)> {
+        ad.properties
+            .iter()
+            .find(|(property, _)| *property == AspectProperty::Implicit)
+    }
+
+    #[test]
+    fn an_implicit_aspect_that_derives_clone_is_accepted() {
+        check_all("implicit aspect Dup: deriving Clone;\nfun main() {}").expect("accepted");
+    }
+
+    #[test]
+    fn an_implicit_aspect_without_a_super_is_rejected() {
+        let error = check_all("implicit aspect Bare;\nfun main() {}").expect_err("rejected");
+        assert!(error.to_string().contains("must refine `Clone`"), "{error}");
+    }
+
+    #[test]
+    fn an_implicit_aspect_whose_clone_super_is_not_derived_is_rejected() {
+        let error = check_all("implicit aspect Weak: Clone;\nfun main() {}").expect_err("rejected");
+        assert!(error.to_string().contains("must refine `Clone`"), "{error}");
+    }
+
+    #[test]
+    fn an_implicit_aspect_deriving_another_aspect_is_rejected() {
+        let error = check_all("aspect Other;\nimplicit aspect Odd: deriving Other;\nfun main() {}")
+            .expect_err("rejected");
+        assert!(error.to_string().contains("must refine `Clone`"), "{error}");
+    }
+
+    #[test]
+    fn a_second_implicit_aspect_is_rejected() {
+        let error = check_all(
+            "implicit aspect One: deriving Clone;\nimplicit aspect Two: deriving Clone;\nfun main() {}",
+        )
+        .expect_err("rejected");
+        assert!(
+            error.to_string().contains("at most one `implicit` aspect"),
+            "{error}"
+        );
+    }
+}
