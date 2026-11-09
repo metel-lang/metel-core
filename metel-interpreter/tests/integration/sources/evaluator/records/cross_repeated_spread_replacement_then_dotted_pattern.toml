@@ -1,3 +1,2 @@
 [options]
 move_check = true
-skip = "metel-core#1895"
