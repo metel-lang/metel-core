@@ -470,7 +470,8 @@ name = "Label"
 section = "Expressions"
 [[rule]]
 pest = "label_index"
-mode = "inline"
+mode = "terminal"
+name = "INT"
 [[rule]]
 pest = "spread_arg"
 mode = "named"
