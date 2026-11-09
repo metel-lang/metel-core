@@ -307,6 +307,9 @@ pub(super) fn infer_decl(
                     .is_copy_aspect(ctx.current_module_path(), aspect_name)
                 {
                     check_copy_impl_eligibility(ib, &target_name, ctx)?;
+                } else if ib.from_clause && aspect_name == "Clone" {
+                    // `derives Clone` (RFC-0207): every field must be `Clone`, judged at the field.
+                    super::check_fields_have_aspect(ib, &target_name, ctx, "Clone")?;
                 } else if aspect_name == "Drop"
                     && let Some(concrete_target) = closed_nominal_target(ib, &target_name)
                     && ctx

@@ -187,7 +187,7 @@ pub aspect Display {
     fun to_string(&self) -> String;
 }
 
-pub aspect Clone {
+pub derivable aspect Clone {
     fun clone(&self) -> Self;
 }
 

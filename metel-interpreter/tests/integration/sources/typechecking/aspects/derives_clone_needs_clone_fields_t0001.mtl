@@ -1,0 +1,7 @@
+struct NoClone { n: i64 }
+struct Bad derives Clone {
+    a: i64,
+    b: NoClone, // ERROR[T0001]
+}
+
+fun main() {}

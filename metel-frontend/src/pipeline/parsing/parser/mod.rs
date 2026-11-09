@@ -308,6 +308,56 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
 /// is `struct T` with `extend T: A;` and `extend T: B;`, so coherence sees an `extend` and a clause
 /// for the same aspect as the overlap they are (`T0015`). A generic type's impl is generic over the
 /// same parameters, so `copy struct W<T>` is `Copy` exactly when `T` is.
+/// Whether `ty` holds a `name` by value: not only behind a shared reference, which is `Clone` and
+/// `Copy` for every referent. `struct View<T> { r: &T }` is `Clone` for every `T`, so `T` is not
+/// bounded; a position this does not look through counts as owned.
+fn mentions_owned(ty: &TypeExpr, name: &str) -> bool {
+    match ty {
+        TypeExpr::Named(n, args, _) => n == name || args.iter().any(|a| mentions_owned(a, name)),
+        TypeExpr::Reference(_) => false,
+        TypeExpr::MutReference(inner) | TypeExpr::Array(inner) | TypeExpr::SizedArray(inner, _) => {
+            mentions_owned(inner, name)
+        }
+        TypeExpr::Tuple(items) => items.iter().any(|t| mentions_owned(t, name)),
+        TypeExpr::Record(fields) => fields.iter().any(|(_, t)| mentions_owned(t, name)),
+        _ => true,
+    }
+}
+
+/// The methods a derivation writes (RFC-0207 section 2): `Clone` is the host clone every record
+/// already uses, which clones each field through that field's own `clone` and keeps the active
+/// variant of an enum. `Copy` has none.
+fn derived_methods(entry: &ClauseEntry, target: &TypeExpr) -> Vec<FunDecl> {
+    if entry.name != "Clone" {
+        return Vec::new();
+    }
+    let span = entry.span.clone();
+    vec![FunDecl {
+        visibility: Visibility::Public,
+        name: "clone".to_string(),
+        generics: Vec::new(),
+        where_clause: None,
+        params: vec![Param {
+            mutable: false,
+            receiver: Some(ReceiverKind::Ref),
+            name: "self".into(),
+            type_ann: None,
+            span: span.clone(),
+        }],
+        return_type: Some(target.clone()),
+        native: Some(NativeBinding {
+            key_path: ["std", "core", "record_clone"].map(String::from).to_vec(),
+            span: span.clone(),
+        }),
+        body: Block {
+            stmts: Vec::new(),
+            tail: None,
+            span: span.clone(),
+        },
+        span,
+    }]
+}
+
 /// The impl's generics: the declaration's own. A `derives` entry holds when each type parameter has the
 /// aspect (`copy struct W<T>` is `Copy` exactly when `T` is), so it is bounded by that aspect; this
 /// over-approximates a parameter no field mentions, and an exact per-instantiation rule replaces it
@@ -316,6 +366,7 @@ fn clause_impl_generics(
     generics: &[GenericParam],
     entry: &ClauseEntry,
     derives: &[ClauseEntry],
+    field_types: &[&TypeExpr],
 ) -> Vec<GenericParam> {
     let from_derives = derives.iter().any(|d| std::ptr::eq(d, entry));
     generics
@@ -323,7 +374,11 @@ fn clause_impl_generics(
         .map(|g| {
             let mut param = g.clone();
             param.bounds = Vec::new();
-            if from_derives && !g.is_record && !g.is_row {
+            if from_derives
+                && !g.is_record
+                && !g.is_row
+                && field_types.iter().any(|ty| mentions_owned(ty, &g.name))
+            {
                 param.bounds.push(Bound {
                     polarity: Polarity::Positive,
                     head: BoundHead::Aspect(TypeExpr::Named(
@@ -341,9 +396,24 @@ fn clause_impl_generics(
 }
 
 fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
-    let (name, generics, clauses, span) = match decl {
-        Decl::Struct(sd) => (&sd.name, &sd.generics, &sd.clauses, &sd.span),
-        Decl::Enum(ed) => (&ed.name, &ed.generics, &ed.clauses, &ed.span),
+    let (name, generics, clauses, span, field_types) = match decl {
+        Decl::Struct(sd) => (
+            &sd.name,
+            &sd.generics,
+            &sd.clauses,
+            &sd.span,
+            sd.fields.iter().map(|f| &f.type_ann).collect::<Vec<_>>(),
+        ),
+        Decl::Enum(ed) => (
+            &ed.name,
+            &ed.generics,
+            &ed.clauses,
+            &ed.span,
+            ed.variants
+                .iter()
+                .flat_map(|v| v.fields.iter().map(|f| &f.type_ann))
+                .collect::<Vec<_>>(),
+        ),
         _ => return Vec::new(),
     };
     let args: Vec<TypeExpr> = generics
@@ -360,13 +430,13 @@ fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
         .filter(|entry| seen.insert(entry.name.clone()))
         .map(|entry| ImplBlock {
             polarity: Polarity::Positive,
-            generics: clause_impl_generics(generics, entry, &clauses.derives),
+            generics: clause_impl_generics(generics, entry, &clauses.derives, &field_types),
             aspect_name: Some(entry.name.clone()),
             aspect_type_args: Vec::new(),
             target_type: target.clone(),
             where_clause: None,
             assoc_type_defs: Vec::new(),
-            methods: Vec::new(),
+            methods: derived_methods(entry, &target),
             from_clause: true,
             span: entry.span.clone(),
         })

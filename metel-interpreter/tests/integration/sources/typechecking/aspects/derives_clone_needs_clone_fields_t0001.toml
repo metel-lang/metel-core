@@ -1,0 +1,8 @@
+[options]
+error = ["T0001"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-5"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"
+contains = "which is not `Clone`"

@@ -990,7 +990,8 @@ fn enforce_native_stdlib_only(program: &Program, module_path: &[String]) -> Resu
     for decl in &program.decls {
         match decl {
             crate::data::ast::Decl::Fun(fun) => check_fun(fun)?,
-            crate::data::ast::Decl::Impl(ib) => {
+            // The impl a `derives` clause stands for binds the host `Clone` (RFC-0207).
+            crate::data::ast::Decl::Impl(ib) if !ib.from_clause => {
                 for m in &ib.methods {
                     check_fun(m)?;
                 }
