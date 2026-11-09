@@ -12,6 +12,8 @@
 //! disjointness) and §3.2 (unconditional vs. conditional conflict) are
 //! handled via `provably_disjoint` checks on `scoped_type_param_bounds`.
 
+mod supers;
+
 use std::collections::HashMap;
 
 use crate::data::ast::{Decl, ImplBlock, Polarity, Span, TypeExpr, WhereClause};
@@ -1060,6 +1062,9 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
             ));
         }
     }
+
+    // Super-aspects (RFC-0213): the declared lists, then the impls against them.
+    supers::SuperTable::build(graph)?.check_impls(&impls)?;
 
     // Overlap detection (T0015): two impls of the same resolved aspect
     // conflict when some concrete instantiation could satisfy both. Checked

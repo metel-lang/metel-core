@@ -199,6 +199,20 @@ mode = "named"
 name = "AssocTypeDef"
 section = "Declarations"
 [[rule]]
+pest = "super_aspects"
+mode = "named"
+name = "SuperAspects"
+section = "Declarations"
+[[rule]]
+pest = "super_aspect"
+mode = "named"
+name = "SuperAspect"
+section = "Declarations"
+[[rule]]
+pest = "deriving_mark"
+mode = "literal"
+values = ["deriving"]
+[[rule]]
 pest = "aspect_decl"
 mode = "named"
 name = "AspectDeclaration"

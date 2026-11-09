@@ -1,0 +1,8 @@
+[options]
+error = ["T0003"]
+spec = ["spec.declarations.aspects.super-aspects.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "is not an aspect"

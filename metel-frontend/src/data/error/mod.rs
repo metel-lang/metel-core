@@ -63,6 +63,7 @@ pub enum TypeErrorCode {
     T0041, // A keyword argument in a call through a function value (RFC-0223, #1858)
     T0042, // An impl method's parameter name differs from the aspect's (RFC-0223, #1858)
     T0043, // An invalid row-bound entry: a negative entry in a closed row, contradictory entries, or nested negation (RFC-0189, #1866)
+    T0044, // An invalid super-aspect list: a cycle, a self-exclusion, or `deriving` on a user aspect (RFC-0213, #1801)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

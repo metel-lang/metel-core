@@ -1,0 +1,5 @@
+aspect Named { fun name(&self) -> String; }
+aspect Greeter: Named { fun greet(&self) -> String; }
+struct P { n: i64 }
+extend P: Greeter { fun greet(&self) -> String { "hi" } } // ERROR[T0012]
+fun main() {}
