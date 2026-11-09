@@ -1,0 +1,25 @@
+// RFC-0189 (metel-core#1866): a row bound may carry negative entries, `!.x` (no such label) and
+// `!.x: T` (no such label of that type), in the braces of the positive ones.
+record Session<record R> { id: i64, data: { ..R } }
+
+extend<record R: { .token: String, !.id, .. }> Session<..R> {
+    fun kind(&self) -> i64 { 1 }
+}
+extend<record R: { !.token, .. }> Session<..R> {
+    fun kind(&self) -> i64 { 2 }
+}
+
+fun route<record R: { .path: String, !.token, !.session: u64, .. }>(r: R) -> String { r.path }
+fun only_open<record R: { !.token, .. }>(r: R) -> i64 { 7 }
+fun not_a_u8<record R: { .x, !.x: u8, .. }>(r: R) -> i64 { 1 }
+
+fun main() {
+    assert(route({ .path = "p", .other = 1 }) == "p");
+    assert(route({ .path = "q", .session = "s" }) == "q");
+    assert(only_open({ .a = 1 }) == 7);
+    assert(not_a_u8({ .x = 1 }) == 1);
+    let tagged := Session(id = 1, data = { .token = "t" });
+    let plain := Session(id = 2, data = { .count = 3 });
+    assert(tagged.kind() == 1);
+    assert(plain.kind() == 2);
+}

@@ -147,7 +147,8 @@ bound         = { bang? ~ bound_head }
 bang          = { "!" }
 bound_head    = { row_bound | type_path ~ ("<" ~ bound_arg ~ ("," ~ bound_arg)* ~ ","? ~ ">")? }
 row_bound     = { "{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ "..")? ~ ","? ~ "}" }
-row_field     = { label ~ (":" ~ type_expr)? }
+// RFC-0189: an entry may be negative, `!.x` (no such label) or `!.x: T` (no such label of that type).
+row_field     = { bang? ~ label ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }
 assoc_binding = { ident ~ "=" ~ type_expr }
 where_clause     = { "where" ~ where_constraint ~ ("," ~ where_constraint)* }
