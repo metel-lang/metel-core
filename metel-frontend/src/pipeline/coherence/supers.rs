@@ -30,6 +30,9 @@ pub(super) struct SuperTable {
     direct: HashMap<SymbolId, Vec<Super>>,
     names: HashMap<SymbolId, String>,
     spans: HashMap<SymbolId, Span>,
+    /// `(aspect, super)` pairs whose super the compiler provides with the aspect: the `deriving` entry of an
+    /// `implicit` aspect (`Copy: deriving Clone`, RFC-0206 section 2). Its obligation is met without an impl.
+    provided: std::collections::HashSet<(SymbolId, SymbolId)>,
 }
 
 impl SuperTable {
@@ -49,6 +52,7 @@ impl SuperTable {
             }
         }
         let mut direct: HashMap<SymbolId, Vec<Super>> = HashMap::new();
+        let mut provided = std::collections::HashSet::new();
         for module in graph.modules() {
             for decl in &module.program.decls {
                 let Decl::Aspect(ad) = decl else { continue };
@@ -95,6 +99,15 @@ impl SuperTable {
                             &entry.span,
                         ));
                     }
+                    if entry.deriving
+                        && !entry.negative
+                        && ad
+                            .properties
+                            .iter()
+                            .any(|(p, _)| *p == crate::data::ast::AspectProperty::Implicit)
+                    {
+                        provided.insert((id, super_id));
+                    }
                     entries.push(Super {
                         id: super_id,
                         negative: entry.negative,
@@ -108,6 +121,7 @@ impl SuperTable {
             direct,
             names: aspects,
             spans,
+            provided,
         };
         table.reject_cycles()?;
         Ok(table)
@@ -167,15 +181,24 @@ impl SuperTable {
             .unwrap_or_default()
     }
 
-    /// Every direct and transitive positive super-aspect of `id`, each once.
-    pub(super) fn positive_closure(&self, id: SymbolId) -> Vec<SymbolId> {
+    /// The supers an impl of `id` must have written: the positive closure minus the supers the compiler
+    /// provides with an `implicit` aspect.
+    fn obligation_closure(&self, id: SymbolId) -> Vec<SymbolId> {
         let mut out = Vec::new();
         let mut seen = HashSet::new();
-        let mut stack = self.positive_supers(id);
+        let mut stack: Vec<SymbolId> = self
+            .positive_supers(id)
+            .into_iter()
+            .filter(|sup| !self.provided.contains(&(id, *sup)))
+            .collect();
         while let Some(next) = stack.pop() {
             if seen.insert(next) {
                 out.push(next);
-                stack.extend(self.positive_supers(next));
+                stack.extend(
+                    self.positive_supers(next)
+                        .into_iter()
+                        .filter(|sup| !self.provided.contains(&(next, *sup))),
+                );
             }
         }
         out
@@ -192,7 +215,7 @@ impl SuperTable {
             let (Polarity::Positive, Some(aspect)) = (imp.polarity, imp.aspect_id) else {
                 continue;
             };
-            for required in self.positive_closure(aspect) {
+            for required in self.obligation_closure(aspect) {
                 let has = |polarity: Polarity| {
                     impls.iter().any(|other| {
                         other.polarity == polarity
