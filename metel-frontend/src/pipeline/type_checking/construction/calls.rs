@@ -201,7 +201,15 @@ pub(super) fn construct_call(
                     }
                 }
             };
-            check_fun_call_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_bounds(
+                name,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+                ctx.identity.binding_spans,
+            )?;
             check_scheme_bounds(
                 name,
                 scheme,
@@ -283,7 +291,15 @@ pub(super) fn construct_call(
                     }
                 }
             };
-            check_fun_call_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_bounds(
+                &joined,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+                ctx.identity.binding_spans,
+            )?;
             check_scheme_bounds(
                 &joined,
                 scheme,
@@ -356,7 +372,15 @@ pub(super) fn construct_call(
                     ctx.current_module,
                 )?,
             };
-            check_fun_call_bounds(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_bounds(
+                resolved,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+                ctx.identity.binding_spans,
+            )?;
             check_scheme_bounds(
                 resolved,
                 scheme,
@@ -527,16 +551,18 @@ pub(super) fn construct_call(
 /// satisfy the aspect bounds declared on that function. Emits T0012 on the call span.
 pub(super) fn check_fun_call_bounds(
     fun_name: &str,
+    scheme: &TypeScheme,
     var_to_type: &HashMap<TypeVar, Type>,
     span: &Span,
     registry: &TypeDefinitionRegistry,
     current_module: &[String],
+    spans: &BindingSpans,
 ) -> Result<(), MetelError> {
     let bounds_map = registry.fun_bounds_for(fun_name);
     let record_kinds = registry.fun_record_kinds_for(fun_name);
     let projection_tail_constraints = registry.fun_projection_tail_constraints_for(fun_name);
     let open_row_params = registry.fun_open_row_params_for(fun_name);
-    let generic_types_by_name = GenericArgs::none();
+    let generic_types_by_name = GenericArgs::from_scheme(scheme, var_to_type, spans);
     for (tv, concrete) in var_to_type {
         let bounds = bounds_map
             .and_then(|map| map.get(tv))

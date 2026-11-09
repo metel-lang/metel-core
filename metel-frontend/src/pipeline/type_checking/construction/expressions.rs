@@ -513,10 +513,12 @@ pub(super) fn construct_expr(
                         ) {
                             check_fun_call_bounds(
                                 name,
+                                scheme,
                                 &var_map,
                                 span,
                                 ctx.registry,
                                 ctx.current_module,
+                                ctx.identity.binding_spans,
                             )?;
                             check_scheme_bounds(
                                 name,
