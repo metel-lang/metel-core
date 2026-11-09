@@ -1,0 +1,30 @@
+// RFC-0191 (metel-core#1867): a record literal that spreads a record may also replace one of its
+// fields when the spread's row proves the field present and the replacement has the field's type.
+record Point { x: i64, y: i64 }
+
+fun main() {
+    let s := { .a = 1, .b = 2 };
+    let t := { ..s, .a = 10 };
+    assert(t.a == 10 && t.b == 2);
+    // Position is not significant.
+    let u := { .a = 20, ..s };
+    assert(u.a == 20 && u.b == 2);
+    // A replacement and an addition in one literal.
+    let both := { ..s, .a = 5, .c = 6 };
+    assert(both.a == 5 && both.b == 2 && both.c == 6);
+    // A named record spreads as its row.
+    let p := Point(1, 2);
+    let moved := { ..p, .x = 9 };
+    assert(moved.x == 9 && moved.y == 2);
+    // The replacement may read the source: a Copy field is still readable after the spread.
+    let q := { .total = 2, .name = "n" };
+    let doubled := { ..q, .total = q.total * 2 };
+    assert(doubled.total == 4);
+    // Through a reference every carried-over field must be Copy; the replaced one need not be.
+    let r := &s;
+    let via := { ..r, .a = 0 };
+    assert(via.a == 0 && via.b == 2);
+    let owned_name := { .label = "old".to_string(), .count = 1 };
+    let renamed := { ..owned_name, .label = "new".to_string() };
+    assert(renamed.label == "new" && renamed.count == 1);
+}

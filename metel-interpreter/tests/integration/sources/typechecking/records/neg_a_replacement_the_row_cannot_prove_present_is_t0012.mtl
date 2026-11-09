@@ -1,0 +1,6 @@
+fun f<record R>(line: R) -> i64 {
+    let t := { ..line, .price = 1 };
+    0
+}
+
+fun main() {}

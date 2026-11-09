@@ -1,0 +1,4 @@
+fun main() {
+    let s := { .a = 1, .b = 2 };
+    let t := { ..s, .a = "one" };
+}
