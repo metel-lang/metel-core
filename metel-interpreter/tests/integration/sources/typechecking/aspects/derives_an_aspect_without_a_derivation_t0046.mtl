@@ -1,2 +1,2 @@
-struct Bad derives Clone { x: i64 } // ERROR[T0046]
+struct Bad derives Drop { x: i64 } // ERROR[T0046]
 fun main() {}

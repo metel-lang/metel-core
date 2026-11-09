@@ -36,6 +36,20 @@ pub(super) fn record_clone(
             type_id: *type_id,
             fields: clone_fields(fields, span, runtime)?,
         }),
+        // `derives Clone` on an enum (RFC-0207): the clone keeps the active variant and clones its payload.
+        Value::Enum {
+            name,
+            type_id,
+            variant,
+            variant_id,
+            fields,
+        } => Ok(Value::Enum {
+            name: name.clone(),
+            type_id: *type_id,
+            variant: variant.clone(),
+            variant_id: *variant_id,
+            fields: clone_fields(fields, span, runtime)?,
+        }),
         _ => Err(MetelError::internal(
             "record clone: receiver is not a record",
         )),
@@ -50,6 +64,10 @@ fn clone_fields(
     fields
         .iter()
         .map(|(label, value)| {
+            // A shared reference is `Clone` for every referent: the clone is another reference.
+            if matches!(value, Value::Reference(_) | Value::FieldReference { .. }) {
+                return Ok((label.clone(), value.clone()));
+            }
             let method = clone_method(value, span, runtime).ok_or_else(|| {
                 MetelError::internal(format!(
                     "record clone: field `{label}` has no Clone implementation"

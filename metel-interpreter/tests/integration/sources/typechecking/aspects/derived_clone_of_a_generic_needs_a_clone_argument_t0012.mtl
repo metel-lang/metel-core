@@ -1,0 +1,7 @@
+struct Wrapper<T> derives Clone { v: T }
+struct NoClone { n: i64 }
+
+fun main() {
+    let w := Wrapper(v = NoClone(n = 1));
+    let x := w.clone(); // ERROR[T0012]
+}

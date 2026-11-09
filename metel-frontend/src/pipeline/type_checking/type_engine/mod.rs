@@ -5307,10 +5307,9 @@ impl TypeDefinitionRegistry {
                 false
             }
             InferType::Reference(_) => {
-                if is_copy {
-                    return true;
-                }
-                false
+                // `&T` is `Copy`, and so `Clone`, for every `T` (RFC-0206): the clone is another
+                // reference.
+                is_copy || aspect_name == "Clone"
             }
             InferType::MutReference(_) => {
                 if is_copy {

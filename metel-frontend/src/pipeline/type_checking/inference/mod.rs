@@ -731,19 +731,37 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
 /// rules that already live in the query, and the copy that had drifted: it
 /// answered `false` for any named type with an unresolved argument, which is
 /// issue #303's wrong rejection.
-fn substituted_type_is_copy(
+fn substituted_type_has_aspect(
     ty: &InferType,
+    aspect: &str,
     assumptions: &AspectAssumptions,
     registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     current_module: &[String],
 ) -> bool {
-    registry.infer_type_is_copy(current_module, ty, assumptions)
+    registry.infer_type_satisfies_aspect(current_module, ty, aspect, assumptions)
 }
 
 fn check_copy_impl_eligibility(
     ib: &ImplBlock,
     target_name: &str,
     ctx: &mut InferContext,
+) -> Result<(), MetelError> {
+    check_fields_have_aspect(
+        ib,
+        target_name,
+        ctx,
+        crate::pipeline::type_checking::type_engine::COPY_ASPECT,
+    )
+}
+
+/// Every field (or payload) of `target_name` must have `aspect` under the impl's own bounds
+/// (`Copy` for a `Copy` impl; `Clone` for a derived `Clone`, RFC-0207 section 2 rule 3). The
+/// error is at the field.
+pub(super) fn check_fields_have_aspect(
+    ib: &ImplBlock,
+    target_name: &str,
+    ctx: &mut InferContext,
+    aspect: &str,
 ) -> Result<(), MetelError> {
     let (params, assumptions) = impl_params(ib, ctx);
     let mut type_param_args: HashMap<TypeVar, &TypeExpr> = HashMap::new();
@@ -770,8 +788,9 @@ fn check_copy_impl_eligibility(
     if let Some(fields) = ctx.get_struct_fields(target_name) {
         for field in fields {
             let field_ty = substitute_impl_params(&field.ty, &type_param_args, &params);
-            if !substituted_type_is_copy(
+            if !substituted_type_has_aspect(
                 &field_ty,
+                aspect,
                 &assumptions,
                 ctx.registry(),
                 ctx.current_module_path(),
@@ -779,7 +798,7 @@ fn check_copy_impl_eligibility(
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0001,
                     format!(
-                        "cannot implement `Copy` for `{target_name}`: field `{}` has type `{}` which is not `Copy`",
+                        "cannot implement `{aspect}` for `{target_name}`: field `{}` has type `{}` which is not `{aspect}`",
                         field.name,
                         display_type(&field_ty, &params)
                     ),
@@ -791,8 +810,9 @@ fn check_copy_impl_eligibility(
         for variant in &enum_info.variants {
             for field in &variant.fields {
                 let field_ty = substitute_impl_params(&field.ty, &type_param_args, &params);
-                if !substituted_type_is_copy(
+                if !substituted_type_has_aspect(
                     &field_ty,
+                    aspect,
                     &assumptions,
                     ctx.registry(),
                     ctx.current_module_path(),
@@ -800,7 +820,7 @@ fn check_copy_impl_eligibility(
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0001,
                         format!(
-                            "cannot implement `Copy` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{}` which is not `Copy`",
+                            "cannot implement `{aspect}` for `{target_name}`: payload `{}` of variant `{}::{}` has type `{}` which is not `{aspect}`",
                             field.name,
                             target_name,
                             variant.name,
@@ -813,7 +833,8 @@ fn check_copy_impl_eligibility(
         }
     }
 
-    if let Some(concrete_target) = closed_nominal_target(ib, target_name)
+    if aspect == crate::pipeline::type_checking::type_engine::COPY_ASPECT
+        && let Some(concrete_target) = closed_nominal_target(ib, target_name)
         && ctx
             .registry()
             .type_satisfies_aspect(ctx.current_module_path(), &concrete_target, "Drop")
