@@ -191,7 +191,8 @@ pub derivable aspect Clone {
     fun clone(&self) -> Self;
 }
 
-pub derivable aspect Copy {
+// `Copy` excludes `Drop` (RFC-0206 section 2, RFC-0213 section 3): no type is granted both.
+pub derivable aspect Copy: !Drop {
 }
 
 pub aspect Drop {

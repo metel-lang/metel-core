@@ -1,0 +1,9 @@
+// RFC-0206 section 2: `Drop` excludes `Copy` and only it; a `Drop` type can still be `Clone`.
+struct Guard derives Clone { fd: i64 }
+extend Guard: Drop { fun drop(&var self) { } }
+
+fun main() {
+    let g := Guard(fd = 3);
+    let h := g.clone();
+    assert(h.fd == 3);
+}

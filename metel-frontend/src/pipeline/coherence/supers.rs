@@ -239,7 +239,10 @@ impl SuperTable {
                         if !canonical_types_compatible(
                             &granted.canonical_key.1,
                             &other.canonical_key.1,
-                        ) {
+                        ) || !super::impls_actually_overlap(impls, granted, other)
+                        {
+                            // Disjoint conditional impls (`T: Copy` against `T: !Copy`) are not a grant
+                            // of both to one type.
                             continue;
                         }
                         let later = if (granted.span.line, granted.span.col)

@@ -1146,84 +1146,9 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
 
     check_inherent_method_duplicates(graph, &impls)?;
 
-    // RFC-0071 §4: no type may implement both `Copy` and `Drop` (issue #302).
-    //
-    // `typechecker::inference` enforces this at each impl's own declaration
-    // site, but only when the target is a *closed* nominal type — a
-    // conditional impl has an open target, so that check bails and two
-    // overlapping conditional impls of the two aspects slip through:
-    // `extend<T: Copy> Foo<T>: Copy` plus `extend<T: Display> Foo<T>: Drop`
-    // gives `Foo<i64>` both, since `i64` is `Copy` and `Display`. The
-    // same-aspect T0015 scan above never compares them either, because it
-    // groups by aspect and these are two different aspects.
-    //
-    // The question to ask is exactly the one the machinery above already
-    // answers — "could a single concrete instantiation satisfy both of these
-    // impls?" — so this reuses `canonical_types_compatible` +
-    // `impls_actually_overlap` rather than approximating it. Consequences
-    // worth stating, since they are the point of doing it precisely:
-    //
-    //   - `extend<T: Copy> Foo<T>: Copy` + `extend<T: !Copy> Foo<T>: Drop` is
-    //     accepted; the bounds are provably disjoint, so no instantiation
-    //     gets both.
-    //   - `extend<T: Copy> Foo<T>: Copy` + `extend Foo<String>: Drop` is
-    //     accepted, because `String` is not `Copy` and so is not in the
-    //     blanket's reach — while the same pair with `Foo<i64>` is rejected.
-    //
-    // The declaration-site check stays rather than being folded into this
-    // one. `impls_actually_overlap`'s blanket-vs-concrete arm resolves bounds
-    // via `concrete_satisfies_bounds`, which only sees *unconditional* impls
-    // collected in this pass, so it under-approximates exactly where the
-    // typechecker's `type_satisfies_aspect` — which recurses through
-    // conditional impls — does not. The two are complementary.
-    //
-    // Both aspects are looked up as the stdlib symbols rather than matched by
-    // name, so a user module declaring its own unrelated `Copy` marker does
-    // not inherit this rule. If either is absent (a program compiled without
-    // the prelude) there is nothing to enforce.
-    let std_core = vec!["std".to_string(), "core".to_string()];
-    let copy_id = names.symbols.get(&(
-        std_core.clone(),
-        Namespace::Type,
-        crate::pipeline::type_checking::type_engine::COPY_ASPECT.to_string(),
-    ));
-    let drop_id = names
-        .symbols
-        .get(&(std_core, Namespace::Type, "Drop".to_string()));
-    if let (Some(&copy_id), Some(&drop_id)) = (copy_id, drop_id) {
-        let positive_impls_of = |id: SymbolId| {
-            impls
-                .iter()
-                .filter(move |imp| imp.polarity == Polarity::Positive && imp.aspect_id == Some(id))
-        };
-        for copy_impl in positive_impls_of(copy_id) {
-            for drop_impl in positive_impls_of(drop_id) {
-                if !canonical_types_compatible(
-                    &copy_impl.canonical_key.1,
-                    &drop_impl.canonical_key.1,
-                ) {
-                    continue;
-                }
-                if !impls_actually_overlap(&impls, copy_impl, drop_impl) {
-                    continue;
-                }
-                let subject = if drop_impl.target_head.is_empty() {
-                    "this type".to_string()
-                } else {
-                    format!("`{}`", drop_impl.target_head)
-                };
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0001,
-                    format!(
-                        "{subject} cannot implement both `Copy` and `Drop`: this `Drop` \
-                         implementation overlaps the `Copy` implementation at {}:{}:{}",
-                        copy_impl.span.filename, copy_impl.span.line, copy_impl.span.col
-                    ),
-                    drop_impl.span,
-                ));
-            }
-        }
-    }
+    // RFC-0071 §4 (no type is both `Copy` and `Drop`) is the exclusion `aspect Copy: !Drop` declares in
+    // `std::core`; `supers::SuperTable::check_impls` enforces it, with the same overlap test
+    // (`impls_actually_overlap`) as the other conflicts (RFC-0213 section 3, metel-core#1804).
 
     // Ambiguous method across two DIFFERENT aspects (T0013), generalizing
     // `elaborator::build_aspect_method_map` to conditional/generic impls and

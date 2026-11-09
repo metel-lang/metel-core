@@ -1,8 +1,8 @@
 [options]
-error = ["T0001"]
+error = ["T0015"]
 spec = ["spec.ownership.copy-and-drop-are-mutually-exclusive.legality-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0001"
-contains = "cannot implement both `Copy` and `Drop`"
+code = "T0015"
+contains = "cannot both be granted to one type"
