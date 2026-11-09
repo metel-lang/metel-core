@@ -739,6 +739,46 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// A spread moves every field of its record except the labels the literal replaces (RFC-0191): a
+    /// replaced field is overwritten, so its old value is dropped in place and stays readable until
+    /// then. When some label is replaced and the spread is a place, the other fields are consumed one by
+    /// one; otherwise the whole value is consumed.
+    fn consume_spread(
+        &mut self,
+        value: &TypedExpr,
+        written: &[(String, TypedExpr)],
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        let record_fields = match peel_type_references(value.ty()) {
+            Type::Record(fields) | Type::Residual { fields, .. } => Some(fields),
+            _ => None,
+        };
+        let is_place = matches!(value, TypedExpr::Ident(..) | TypedExpr::FieldAccess { .. });
+        let replaces = record_fields.is_some_and(|fields| {
+            written
+                .iter()
+                .any(|(label, _)| fields.iter().any(|(name, _)| name == label))
+        });
+        if let (Some(fields), true, true) = (record_fields, is_place, replaces) {
+            for (name, ty) in fields {
+                if written.iter().any(|(label, _)| label == name) {
+                    continue;
+                }
+                let field = TypedExpr::FieldAccess {
+                    object: Box::new(value.clone()),
+                    field: name.clone(),
+                    field_id: None,
+                    ty: ty.clone(),
+                    span: value.span().clone(),
+                };
+                self.consume_expr_with_cause(&field, current_module, state, MoveCause::Other);
+            }
+        } else {
+            self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
+        }
+    }
+
     fn consume_record_literal(
         &mut self,
         fields: &[(String, TypedExpr)],
@@ -751,7 +791,7 @@ impl<'a> Checker<'a> {
             if index == spread_index
                 && let Some((value, _)) = spread
             {
-                self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);
+                self.consume_spread(value, fields, current_module, state);
             }
             if let Some((_, value)) = fields.get(index) {
                 self.consume_expr_with_cause(value, current_module, state, MoveCause::Other);

@@ -1,0 +1,9 @@
+// RFC-0191 (metel-core#1887): an owned spread moves every field except the replaced ones; the replaced
+// field is overwritten in the result, so the source's own value stays readable.
+fun main() {
+    let s := { .label = "old".to_string(), .count = 1 };
+    let t := { ..s, .label = "new".to_string() };
+    let old := s.label;
+    assert(old == "old");
+    assert(t.label == "new" && t.count == 1);
+}
