@@ -1,0 +1,3 @@
+aspect Plain;
+struct Bad: Plain { x: i64 } // ERROR[T0046]
+fun main() {}

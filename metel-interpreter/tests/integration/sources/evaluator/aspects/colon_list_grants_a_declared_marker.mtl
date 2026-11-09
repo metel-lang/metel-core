@@ -1,0 +1,14 @@
+// RFC-0207 section 1: a `declared` method-less aspect is granted in the colon list, together with `derives`.
+declared aspect Validated;
+declared aspect Audited;
+struct Ticket: Validated { id: i64 }
+struct Receipt: Validated, Audited derives Copy { id: i64 }
+
+fun needs_validated<T: Validated>(t: &T) -> i64 { 1 }
+
+fun main() {
+    let t := Ticket(id = 1);
+    let r := Receipt(id = 2);
+    let r2 := r;
+    assert(needs_validated(&t) + needs_validated(&r) + r.id + r2.id == 6);
+}

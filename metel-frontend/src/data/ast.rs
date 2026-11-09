@@ -354,6 +354,8 @@ pub struct StructDecl {
     pub kind: StructKind,
     pub name: String,
     pub generics: Vec<GenericParam>,
+    /// The colon list and `derives` clause (RFC-0207); empty when none is written.
+    pub clauses: DeclClauses,
     pub where_clause: Option<WhereClause>,
     pub fields: Vec<FieldDef>,
     pub span: Span,
@@ -365,6 +367,8 @@ pub struct EnumDecl {
     pub visibility: Visibility,
     pub name: String,
     pub generics: Vec<GenericParam>,
+    /// The colon list and `derives` clause (RFC-0207); empty when none is written.
+    pub clauses: DeclClauses,
     pub where_clause: Option<WhereClause>,
     pub variants: Vec<VariantDef>,
     pub span: Span,
@@ -393,6 +397,9 @@ pub struct ImplBlock {
     #[allow(dead_code)]
     pub assoc_type_defs: Vec<AssocTypeDef>,
     pub methods: Vec<FunDecl>,
+    /// Written by a declaration clause (`struct T: A`, `derives A`, `copy struct`) and not by `extend`
+    /// (RFC-0207): the impl a `declared` aspect allows, with no methods of its own.
+    pub from_clause: bool,
     pub span: Span,
 }
 
@@ -431,6 +438,32 @@ pub struct AspectDecl {
     pub span: Span,
 }
 
+/// The clauses a struct or enum declaration carries after its name (RFC-0207).
+#[derive(Debug, Clone, Default)]
+pub struct DeclClauses {
+    /// `struct T: A, B`: facts the type claims; each must be a `declared` method-less aspect.
+    pub colon: Vec<ClauseEntry>,
+    /// `struct T derives A, B` (and the `copy` class keyword, which adds `Copy` here).
+    pub derives: Vec<ClauseEntry>,
+}
+
+impl DeclClauses {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.colon.is_empty() && self.derives.is_empty()
+    }
+}
+
+/// One aspect named in a declaration clause.
+#[derive(Debug, Clone)]
+pub struct ClauseEntry {
+    /// The aspect as written, resolved against the declaring module.
+    pub name: String,
+    /// The `copy` class keyword stands for `derives Copy`; its entry is marked so a diagnostic can say so.
+    pub from_class_keyword: bool,
+    pub span: Span,
+}
+
 /// A declaration property of an aspect (RFC-0212).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AspectProperty {
@@ -438,6 +471,8 @@ pub enum AspectProperty {
     Declared,
     /// Granted structurally with no entry (std only; reserved).
     Auto,
+    /// Has a compiler-written derivation, requested with `derives` (RFC-0207; std only until comptime).
+    Derivable,
     /// A by-value use copies the representation instead of moving (std only).
     Implicit,
 }
@@ -448,6 +483,7 @@ impl AspectProperty {
         match self {
             Self::Declared => "declared",
             Self::Auto => "auto",
+            Self::Derivable => "derivable",
             Self::Implicit => "implicit",
         }
     }

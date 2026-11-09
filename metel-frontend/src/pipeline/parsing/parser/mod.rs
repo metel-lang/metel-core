@@ -4,12 +4,13 @@ use pest_derive::Parser;
 
 use crate::data::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
-    Bound, BoundHead, BreakExpr, CaptureSpec, Decl, EnumDecl, ExportDecl, Expr, FieldDef,
-    FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam, ImplBlock, ImportDecl,
-    ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal, MatchArm, MatchExpr, MutDecl,
-    NativeBinding, Param, PathRoot, Pattern, Polarity, Program, ReceiverKind, ReturnExpr, RowBound,
-    RowBoundField, RowEquation, RowTail, Span, Stmt, StructDecl, StructKind, TypeExpr, UnaryOp,
-    VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
+    Bound, BoundHead, BreakExpr, CaptureSpec, ClauseEntry, Decl, DeclClauses, EnumDecl, ExportDecl,
+    Expr, FieldDef, FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam,
+    ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal, MatchArm,
+    MatchExpr, MutDecl, NameSpan, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
+    ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt,
+    StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
+    WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -296,7 +297,80 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
             .map(Decl::Impl)
             .collect());
     }
-    Ok(vec![parse_single_decl(inner, filename)?])
+    let decl = parse_single_decl(inner, filename)?;
+    let impls = clause_impls(&decl);
+    let mut out = vec![decl];
+    out.extend(impls.into_iter().map(Decl::Impl));
+    Ok(out)
+}
+
+/// The marker impls a struct's or enum's declaration clauses stand for (RFC-0207): `struct T: A derives B`
+/// is `struct T` with `extend T: A;` and `extend T: B;`, so coherence sees an `extend` and a clause
+/// for the same aspect as the overlap they are (`T0015`). A generic type's impl is generic over the
+/// same parameters, so `copy struct W<T>` is `Copy` exactly when `T` is.
+/// The impl's generics: the declaration's own. A `derives` entry holds when each type parameter has the
+/// aspect (`copy struct W<T>` is `Copy` exactly when `T` is), so it is bounded by that aspect; this
+/// over-approximates a parameter no field mentions, and an exact per-instantiation rule replaces it
+/// with the row machinery (RFC-0207 section 2, rule 2). A colon-list marker is bounded by nothing.
+fn clause_impl_generics(
+    generics: &[GenericParam],
+    entry: &ClauseEntry,
+    derives: &[ClauseEntry],
+) -> Vec<GenericParam> {
+    let from_derives = derives.iter().any(|d| std::ptr::eq(d, entry));
+    generics
+        .iter()
+        .map(|g| {
+            let mut param = g.clone();
+            param.bounds = Vec::new();
+            if from_derives && !g.is_record && !g.is_row {
+                param.bounds.push(Bound {
+                    polarity: Polarity::Positive,
+                    head: BoundHead::Aspect(TypeExpr::Named(
+                        entry.name.clone(),
+                        Vec::new(),
+                        NameSpan(entry.span.clone()),
+                    )),
+                    assoc_bindings: Vec::new(),
+                    span: entry.span.clone(),
+                });
+            }
+            param
+        })
+        .collect()
+}
+
+fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
+    let (name, generics, clauses, span) = match decl {
+        Decl::Struct(sd) => (&sd.name, &sd.generics, &sd.clauses, &sd.span),
+        Decl::Enum(ed) => (&ed.name, &ed.generics, &ed.clauses, &ed.span),
+        _ => return Vec::new(),
+    };
+    let args: Vec<TypeExpr> = generics
+        .iter()
+        .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(span.clone())))
+        .collect();
+    let target = TypeExpr::Named(name.clone(), args, NameSpan(span.clone()));
+    let mut seen = std::collections::HashSet::new();
+    clauses
+        .colon
+        .iter()
+        .chain(&clauses.derives)
+        // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
+        .filter(|entry| seen.insert(entry.name.clone()))
+        .map(|entry| ImplBlock {
+            polarity: Polarity::Positive,
+            generics: clause_impl_generics(generics, entry, &clauses.derives),
+            aspect_name: Some(entry.name.clone()),
+            aspect_type_args: Vec::new(),
+            target_type: target.clone(),
+            where_clause: None,
+            assoc_type_defs: Vec::new(),
+            methods: Vec::new(),
+            from_clause: true,
+            span: entry.span.clone(),
+        })
+        .collect()
 }
 
 fn parse_single_decl(
@@ -563,20 +637,23 @@ fn parse_struct_decl(
     kind: StructKind,
 ) -> Result<StructDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut inner = pair.into_inner();
-    let first = inner
+    let mut inner = pair.into_inner().peekable();
+    let mut visibility = Visibility::Private;
+    if inner.peek().is_some_and(|p| p.as_rule() == Rule::pub_kw) {
+        inner.next();
+        visibility = Visibility::Public;
+    }
+    let mut clauses = DeclClauses::default();
+    if inner.peek().is_some_and(|p| p.as_rule() == Rule::class_kw)
+        && let Some(class) = inner.next()
+    {
+        parse_clause_part(class, filename, &mut clauses)?;
+    }
+    let name = inner
         .next()
-        .ok_or_else(|| MetelError::internal("struct_decl: expected name"))?;
-    let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner
-            .next()
-            .ok_or_else(|| MetelError::internal("struct_decl: expected name after pub"))?
-            .as_str()
-            .to_string();
-        (Visibility::Public, n)
-    } else {
-        (Visibility::Private, first.as_str().to_string())
-    };
+        .ok_or_else(|| MetelError::internal("struct_decl: expected name"))?
+        .as_str()
+        .to_string();
     let mut generics = vec![];
     let mut where_clause = None;
     let mut fields = vec![];
@@ -586,6 +663,9 @@ fn parse_struct_decl(
             Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
             Rule::struct_fields => fields = parse_struct_fields(p, filename)?,
+            Rule::colon_list | Rule::derives_clause | Rule::class_kw => {
+                parse_clause_part(p, filename, &mut clauses)?;
+            }
             _ => {}
         }
     }
@@ -620,10 +700,72 @@ fn parse_struct_decl(
         kind,
         name,
         generics,
+        clauses,
         where_clause,
         fields,
         span,
     })
+}
+
+/// One piece of a struct or enum header after the name: the colon list, the `derives` clause, or a
+/// class keyword (RFC-0207). The `copy` keyword is sugar for `derives Copy`; `linear` is reserved.
+fn parse_clause_part(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+    clauses: &mut DeclClauses,
+) -> Result<(), MetelError> {
+    let span = Span::of(&pair, filename);
+    match pair.as_rule() {
+        Rule::class_kw => {
+            if pair.as_str().trim() == "linear" {
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    "`linear` is reserved: linear types are not implemented yet (RFC-0089)"
+                        .to_string(),
+                    &span,
+                ));
+            }
+            clauses.derives.push(ClauseEntry {
+                name: "Copy".to_string(),
+                from_class_keyword: true,
+                span,
+            });
+        }
+        Rule::colon_list | Rule::derives_clause => {
+            let is_colon = pair.as_rule() == Rule::colon_list;
+            for entry in pair.into_inner() {
+                if entry.as_rule() != Rule::clause_entry {
+                    continue;
+                }
+                let entry_span = Span::of(&entry, filename);
+                let mut name = String::new();
+                for part in entry.into_inner() {
+                    if part.as_rule() == Rule::bang {
+                        return Err(MetelError::parse(
+                            ParseErrorCode::P0001,
+                            "a declaration clause has no negative entries: an opt-out of an \
+                             `auto` aspect is the negative impl `extend T: !A;`"
+                                .to_string(),
+                            &entry_span,
+                        ));
+                    }
+                    name = part.as_str().trim().to_string();
+                }
+                let entry = ClauseEntry {
+                    name,
+                    from_class_keyword: false,
+                    span: entry_span,
+                };
+                if is_colon {
+                    clauses.colon.push(entry);
+                } else {
+                    clauses.derives.push(entry);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn parse_enum_decl(
@@ -631,20 +773,23 @@ fn parse_enum_decl(
     filename: &str,
 ) -> Result<EnumDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut inner = pair.into_inner();
-    let first = inner
+    let mut inner = pair.into_inner().peekable();
+    let mut visibility = Visibility::Private;
+    if inner.peek().is_some_and(|p| p.as_rule() == Rule::pub_kw) {
+        inner.next();
+        visibility = Visibility::Public;
+    }
+    let mut clauses = DeclClauses::default();
+    if inner.peek().is_some_and(|p| p.as_rule() == Rule::class_kw)
+        && let Some(class) = inner.next()
+    {
+        parse_clause_part(class, filename, &mut clauses)?;
+    }
+    let name = inner
         .next()
-        .ok_or_else(|| MetelError::internal("enum_decl: expected name"))?;
-    let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner
-            .next()
-            .ok_or_else(|| MetelError::internal("enum_decl: expected name after pub"))?
-            .as_str()
-            .to_string();
-        (Visibility::Public, n)
-    } else {
-        (Visibility::Private, first.as_str().to_string())
-    };
+        .ok_or_else(|| MetelError::internal("enum_decl: expected name"))?
+        .as_str()
+        .to_string();
     let mut generics = vec![];
     let mut where_clause = None;
     let mut variants = vec![];
@@ -652,6 +797,9 @@ fn parse_enum_decl(
     for p in inner {
         match p.as_rule() {
             Rule::generic_params => generics = parse_generic_params(p, filename, &row_uses)?,
+            Rule::colon_list | Rule::derives_clause | Rule::class_kw => {
+                parse_clause_part(p, filename, &mut clauses)?;
+            }
             Rule::where_clause => where_clause = Some(parse_where_clause(p, filename)?),
             Rule::enum_variants => {
                 for v in p.into_inner() {
@@ -667,6 +815,7 @@ fn parse_enum_decl(
         visibility,
         name,
         generics,
+        clauses,
         where_clause,
         variants,
         span,
@@ -782,6 +931,7 @@ fn parse_extend_impl_block(
             .into_iter()
             .map(|(polarity, aspect_name, aspect_type_args)| {
                 Ok(ImplBlock {
+                    from_clause: false,
                     polarity,
                     generics: generics.clone(),
                     aspect_name: Some(aspect_name),
@@ -820,6 +970,7 @@ fn parse_extend_impl_block(
     };
 
     Ok(vec![ImplBlock {
+        from_clause: false,
         polarity: Polarity::Positive,
         generics,
         aspect_name,
@@ -4156,6 +4307,7 @@ fn parse_aspect_decl(
         let span = Span::of(&p, filename);
         let property = match p.as_str().trim() {
             "declared" => crate::data::ast::AspectProperty::Declared,
+            "derivable" => crate::data::ast::AspectProperty::Derivable,
             "implicit" => crate::data::ast::AspectProperty::Implicit,
             _ => crate::data::ast::AspectProperty::Auto,
         };

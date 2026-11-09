@@ -64,6 +64,7 @@ pub enum TypeErrorCode {
     T0042, // An impl method's parameter name differs from the aspect's (RFC-0223, #1858)
     T0043, // An invalid row-bound entry: a negative entry in a closed row, contradictory entries, or nested negation (RFC-0189, #1866)
     T0044, // An invalid super-aspect list: a cycle, a self-exclusion, or `deriving` on a user aspect (RFC-0213, #1801)
+    T0046, // A declaration-clause entry the language rejects: not an aspect, not `declared`, has methods, or not derivable (RFC-0207, #1800)
     T0045, // A misused aspect declaration property: `implicit`/`auto` outside std, a bad `implicit` aspect, or an `extend` of a `declared` aspect (RFC-0212, #1803)
 }
 

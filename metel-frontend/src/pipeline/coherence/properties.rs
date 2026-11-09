@@ -40,6 +40,10 @@ pub(super) fn check(
         let Some(info) = declared.get(&aspect) else {
             continue;
         };
+        // The impl a declaration clause stands for is the grant itself, not an `extend`.
+        if imp.from_clause {
+            continue;
+        }
         let has_declaration = matches!(
             &imp.canonical_key.1,
             CanonicalType::Resolved(id, _) if named_types.contains(id)
@@ -104,7 +108,11 @@ fn check_declarations(
                         span,
                     ));
                 }
-                if matches!(property, AspectProperty::Implicit | AspectProperty::Auto) && !in_std {
+                if matches!(
+                    property,
+                    AspectProperty::Implicit | AspectProperty::Auto | AspectProperty::Derivable
+                ) && !in_std
+                {
                     return Err(error(
                         format!(
                             "`{}` is accepted only on an aspect declared in the standard library; `{}` is a user aspect",

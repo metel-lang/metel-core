@@ -1,0 +1,3 @@
+declared aspect Marker;
+struct Bad derives Marker { x: i64 } // ERROR[T0046]
+fun main() {}
