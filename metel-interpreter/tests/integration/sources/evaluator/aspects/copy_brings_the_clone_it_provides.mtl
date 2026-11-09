@@ -4,7 +4,7 @@
 copy struct Point { x: i64, y: i64 }
 struct Pixel derives Copy { v: i64 }
 copy struct Wrapper<T> { v: T }
-copy struct Legacy { n: i64 }
+copy enum Dir { Up, Down }
 
 fun dup<T: Copy>(x: &T) -> T { x.clone() }
 fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
@@ -16,5 +16,6 @@ fun main() {
     assert(dup(&p).y == 2);
     assert(via_copy(&Pixel(v = 3)).v == 3);
     assert(Wrapper(v = 5).clone().v == 5);
-    match (need_clone(&Dir::Down)) { Dir::Down => assert(true), Dir::Up => assert(false) }
+    let down := Dir::Down;
+    match (need_clone(&down)) { Dir::Down => assert(true), Dir::Up => assert(false) }
 }
