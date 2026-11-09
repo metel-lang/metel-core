@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1", "spec.functions.keyword-arguments.legality-1", "spec.expressions.assignment.legality-3", "spec.types.record-labels.legality-1"]
