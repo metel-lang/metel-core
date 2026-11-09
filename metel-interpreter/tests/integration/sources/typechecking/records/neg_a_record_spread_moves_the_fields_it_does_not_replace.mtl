@@ -1,5 +1,5 @@
 fun main() {
-    let s := { .label = "old".to_string(), .name = "n".to_string() };
-    let t := { ..s, .label = "new".to_string() };
+    let s := { .label = "old", .name = "n" };
+    let t := { ..s, .label = "new" };
     let n := s.name;
 }

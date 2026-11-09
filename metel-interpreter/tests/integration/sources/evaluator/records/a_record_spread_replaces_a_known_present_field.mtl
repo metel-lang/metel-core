@@ -24,7 +24,7 @@ fun main() {
     let r := &s;
     let via := { ..r, .a = 0 };
     assert(via.a == 0 && via.b == 2);
-    let owned_name := { .label = "old".to_string(), .count = 1 };
-    let renamed := { ..owned_name, .label = "new".to_string() };
+    let owned_name := { .label = "old", .count = 1 };
+    let renamed := { ..owned_name, .label = "new" };
     assert(renamed.label == "new" && renamed.count == 1);
 }
