@@ -12,7 +12,7 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle { fd = 1 };
+    let h := Handle(fd = 1);
     let r := { x = 2, y = 3 };
     assert(h.add(r) == 3);
     println("ok");

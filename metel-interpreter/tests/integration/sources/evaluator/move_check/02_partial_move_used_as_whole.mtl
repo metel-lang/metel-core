@@ -8,7 +8,7 @@ fun take(pair: Pair) -> i64 {
 }
 
 fun main() {
-    let pair := Pair { left = "a", right = 1 };
+    let pair := Pair(left = "a", right = 1);
     let left: String := pair.left;
     let value: i64 := take(pair);
 }

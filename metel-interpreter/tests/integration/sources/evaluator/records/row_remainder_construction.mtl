@@ -41,5 +41,5 @@ fun main() -> i64 {
     };
     let original := { x = 4, y = 6 };
     let copied := copy_row(&original);
-    anonymous + nominal_remainder(PublicPair { id = 2, extra = 3 }) + copied.x + original.y
+    anonymous + nominal_remainder(PublicPair(id = 2, extra = 3)) + copied.x + original.y
 }

@@ -19,29 +19,29 @@ extend<record R, record Rest> Session<..R> where R = { token: String, ..Rest } {
     fun authenticate(self) -> Session<..Rest> {
         let { id, data } := self;
         let { token: _, ..rest } := data;
-        Session { id = id, data = rest }
+        Session(id = id, data = rest)
     }
 }
 
 extend<record R: !{token}> Session<..R> {
     fun with_token(self, token: String) -> Session<{ token: String, ..R }> {
         let { id, data } := self;
-        Session { id = id, data = { token = token, ..data } }
+        Session(id = id, data = { token = token, ..data })
     }
 }
 
 fun main() {
     // Each `self` method consumes its receiver, so each call gets a fresh session.
     let s: Session<{ token: String, extra: i64 }> :=
-        Session { id = 7, data = { token = "t", extra = 2 } };
+        Session(id = 7, data = { token = "t", extra = 2 });
     assert(s.ident() == 7);
     let s2: Session<{ token: String, extra: i64 }> :=
-        Session { id = 7, data = { token = "t", extra = 2 } };
+        Session(id = 7, data = { token = "t", extra = 2 });
     assert(s2.doubled() == 14);
     let s3: Session<{ token: String, extra: i64 }> :=
-        Session { id = 7, data = { token = "t", extra = 2 } };
+        Session(id = 7, data = { token = "t", extra = 2 });
 
-    let bare: Session<{ extra: i64 }> := Session { id = 3, data = { extra = 1 } };
+    let bare: Session<{ extra: i64 }> := Session(id = 3, data = { extra = 1 });
     assert(bare.ident() == 3);
 
     let r := s3.authenticate();
@@ -50,10 +50,10 @@ fun main() {
     let annotated: Session<{ extra: i64 }> := bare.with_token("new").authenticate();
     assert(annotated.id == 3);
     assert(annotated.data.extra == 1);
-    let empty: Session<{}> := Session { id = 9, data = {} };
+    let empty: Session<{}> := Session(id = 9, data = {});
     let empty_again: Session<{}> := empty.with_token("empty").authenticate();
     assert(empty_again.id == 9);
-    let owned := Session { id = 11, data = { name = "Ada" } };
+    let owned := Session(id = 11, data = { name = "Ada" });
     assert(owned.with_token("owned").authenticate().data.name == "Ada");
     println("ok");
 }

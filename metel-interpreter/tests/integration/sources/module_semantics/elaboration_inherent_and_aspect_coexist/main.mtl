@@ -14,7 +14,7 @@ struct Counter {
 extend Counter {
     // Inherent constructor and methods
     fun new(start: i64, step: i64) -> Counter {
-        Counter { value = start, step = step }
+        Counter(value = start, step = step)
     }
     fun tick(&var self) {
         self.value = self.value + self.step;

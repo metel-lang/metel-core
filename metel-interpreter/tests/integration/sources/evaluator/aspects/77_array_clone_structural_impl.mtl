@@ -10,12 +10,12 @@ extend Box: Display {
 
 extend Box: Clone {
     fun clone(&self) -> Self {
-        return Box { value = self.value };
+        return Box(value = self.value);
     }
 }
 
 fun main() {
-    let xs := [Box { value = 1 }, Box { value = 2 }, Box { value = 3 }];
+    let xs := [Box(value = 1), Box(value = 2), Box(value = 3)];
     let ys := xs.clone();
     assert(ys.to_string() == "[1, 2, 3]");
 }

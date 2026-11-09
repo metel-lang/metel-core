@@ -17,6 +17,6 @@ extend Mine: Drop {
 }
 
 fun main() {
-    let m := Mine { v = 41 };
+    let m := Mine(v = 41);
     assert(m.drop() == 42);
 }

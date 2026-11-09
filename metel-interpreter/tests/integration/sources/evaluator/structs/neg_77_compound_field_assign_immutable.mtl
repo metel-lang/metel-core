@@ -3,6 +3,6 @@
 struct Counter { value: i64 }
 
 fun main() {
-    let c := Counter { value = 0 };
+    let c := Counter(value = 0);
     c.value += 1;
 }

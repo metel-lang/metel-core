@@ -12,7 +12,7 @@ struct Stack<T> {
 
 extend Stack<i64> {
     fun new() -> Stack<i64> {
-        return Stack { items = [] };
+        return Stack(items = []);
     }
 
     fun push(&var self, value: i64) {
@@ -91,7 +91,7 @@ struct Task {
 
 extend Task {
     fun new(title: String, priority: Priority) -> Task {
-        return Task { title = title, done = false, priority = priority };
+        return Task(title = title, done = false, priority = priority);
     }
 
     fun complete(&var self) {
@@ -160,11 +160,11 @@ fun main() {
 
     // --- Tokens ---
     let tokens: [Token] := [
-        Token::Number { value = 3 },
+        Token::Number(value = 3),
         Token::Times,
-        Token::Number { value = 4 },
+        Token::Number(value = 4),
         Token::Plus,
-        Token::Number { value = 5 },
+        Token::Number(value = 5),
     ];
 
     var token_str := "";

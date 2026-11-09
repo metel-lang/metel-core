@@ -32,6 +32,6 @@ extend<T: !Display> Wrapper<T>: Bar {
 }
 
 fun main() {
-    let w := Wrapper { value = 42 };
+    let w := Wrapper(value = 42);
     assert(w.describe() == "foo-wrapper");
 }

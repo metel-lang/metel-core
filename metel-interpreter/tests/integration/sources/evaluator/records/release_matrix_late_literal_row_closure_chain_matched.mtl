@@ -4,12 +4,12 @@ record Req<record R> { data: { ..R } }
 
 extend<record R: !{ host }> Req<..R> {
     fun host(self, h: String) -> Req<..{ host: String, ..R }> {
-        Req { data = { host = h, ..self.data } }
+        Req(data = { host = h, ..self.data })
     }
 }
 
 fun main() {
-    let build := |h: String| { Req { data = {} }.host(h) };
+    let build := |h: String| { Req(data = {}).host(h) };
     let r := build("z".to_string());
     match (r.data.host.len()) {
         1 => { assert(r.data.host == "z"); },

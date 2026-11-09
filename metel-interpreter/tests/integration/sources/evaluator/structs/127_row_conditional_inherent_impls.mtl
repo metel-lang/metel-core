@@ -22,11 +22,11 @@ extend<record Q: { extra: i64, .. }> Session<..Q> {
 }
 
 fun authed() -> Session<{ token: String }> {
-    Session { id = 1, data = { token = "t" } }
+    Session(id = 1, data = { token = "t" })
 }
 
 fun anon() -> Session<{ extra: i64 }> {
-    Session { id = 2, data = { extra = 1 } }
+    Session(id = 2, data = { extra = 1 })
 }
 
 fun main() {

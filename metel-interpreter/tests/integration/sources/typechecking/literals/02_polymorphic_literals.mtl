@@ -31,7 +31,7 @@ fun main() {
     let _n: u64 := returns_u64();
 
     // Struct field coerces.
-    let _o := Point { x = 10, y = -20 };
+    let _o := Point(x = 10, y = -20);
 
     // Arithmetic between literal and typed var is well-typed.
     let base: i32 := 100i32;

@@ -19,7 +19,7 @@ extend MyCounter: Counter {
 fun bump(c: &var dyn Counter) { c.increment(); }
 
 fun main() {
-    var m := MyCounter { n = 0 };
+    var m := MyCounter(n = 0);
     bump(&var m);
     bump(&var m);
     assert(m.n == 2);

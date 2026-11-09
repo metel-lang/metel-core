@@ -5,6 +5,6 @@ extend Item: Mapper {
     fun ordinary(&self) -> i64 { 1 }
 }
 fun main() {
-    let value: dyn Mapper := Item {};
+    let value: dyn Mapper := Item();
     value.identity(1); // ERROR[T0003]
 }

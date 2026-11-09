@@ -7,7 +7,7 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle { fd = 1 };
+    let h := Handle(fd = 1);
     let r := { x = 2, name = "s".to_string() };
     assert(h.add(r) == 3);
 }

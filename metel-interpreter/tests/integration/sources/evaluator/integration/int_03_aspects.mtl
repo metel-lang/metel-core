@@ -83,7 +83,7 @@ extend Rectangle: Describable {
 struct AreaList { data: [f64], pos: i64 }
 
 extend AreaList {
-    fun new(data: [f64]) -> AreaList { AreaList { data = data, pos = 0 } }
+    fun new(data: [f64]) -> AreaList { AreaList(data = data, pos = 0) }
     fun len(&self) -> i64 { self.data.len() }
 }
 
@@ -92,7 +92,7 @@ extend AreaList: Iterable<f64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
             self.pos = self.pos + 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }
@@ -106,13 +106,13 @@ struct Fahrenheit { degrees: f64 }
 
 extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
-        Fahrenheit { degrees = value.degrees * 1.8 + 32.0 }
+        Fahrenheit(degrees = value.degrees * 1.8 + 32.0)
     }
 }
 
 extend Celsius: From<Fahrenheit> {
     fun from(value: Fahrenheit) -> Celsius {
-        Celsius { degrees = (value.degrees - 32.0) / 1.8 }
+        Celsius(degrees = (value.degrees - 32.0) / 1.8)
     }
 }
 
@@ -123,17 +123,17 @@ struct ShapeError { msg: String }
 
 extend ShapeError: From<ParseError> {
     fun from(value: ParseError) -> ShapeError {
-        ShapeError { msg = "parse error: " + value.msg }
+        ShapeError(msg = "parse error: " + value.msg)
     }
 }
 
 fun parse_radius(s: String) -> Result<i64, ParseError> {
     if (s == "5") {
-        Result::Ok { value = 5 }
+        Result::Ok(value = 5)
     } else if (s == "10") {
-        Result::Ok { value = 10 }
+        Result::Ok(value = 10)
     } else {
-        Result::Err { error = ParseError { msg = "bad radius: " + s } }
+        Result::Err(error = ParseError(msg = "bad radius: " + s))
     }
 }
 
@@ -141,18 +141,18 @@ fun parse_radius(s: String) -> Result<i64, ParseError> {
 fun circle_area_from_str(s: String) -> Result<f64, ShapeError> {
     let r := match (parse_radius(s)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err { error = error as ShapeError }; },
+        Result::Err { error } => { return Result::Err(error = error as ShapeError); },
     };
-    let c := Circle { radius = r };
-    Result::Ok { value = c.area() }
+    let c := Circle(radius = r);
+    Result::Ok(value = c.area())
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
 
 fun main() {
-    let c5  := Circle { radius = 5 };
-    let r34 := Rectangle { width = 3, height = 4 };
-    let c10 := Circle { radius = 10 };
+    let c5  := Circle(radius = 5);
+    let r34 := Rectangle(width = 3, height = 4);
+    let c10 := Circle(radius = 10);
 
     // Measurable on Circle: area ≈ 78.54, perimeter ≈ 31.42
     assert(approx(c5.area(), 78.54));
@@ -218,17 +218,17 @@ fun main() {
     assert(!body_ran);
 
     // From<Celsius> for Fahrenheit: boiling point
-    let boiling := Celsius { degrees = 100.0 };
+    let boiling := Celsius(degrees = 100.0);
     let boiling_f := boiling as Fahrenheit;
     assert(boiling_f.degrees == 212.0);
 
     // From<Fahrenheit> for Celsius: freezing point
-    let freezing_f := Fahrenheit { degrees = 32.0 };
+    let freezing_f := Fahrenheit(degrees = 32.0);
     let freezing_c := freezing_f as Celsius;
     assert(approx(freezing_c.degrees, 0.0));
 
     // Round-trip: Celsius → Fahrenheit → Celsius
-    let body := Celsius { degrees = 37.0 };
+    let body := Celsius(degrees = 37.0);
     let body_f := body as Fahrenheit;
     assert(approx(body_f.degrees, 98.60));
     let body_back := body_f as Celsius;

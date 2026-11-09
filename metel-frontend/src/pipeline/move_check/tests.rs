@@ -641,7 +641,7 @@ fun copied<T: Copy>(value: T) {
     match (value) { moved => { let copied := moved; moved; } }
     value;
 }
-fun make<T>(value: T) -> Option<T> { Option::Some { value = value } }
+fun make<T>(value: T) -> Option<T> { Option::Some(value = value) }
 fun payload<T>(value: T) {
     match (make(value)) { Some { value } => { let consumed := value; value; }, None => {} }
 }
@@ -2302,7 +2302,7 @@ fn abstract_ownership_does_not_erase_implicit_captures_in_nominal_literals() {
         r#"
 struct Packet<T> { payload: T }
 fun copied<T: Copy>(value: T) {
-    let f := || { let packet := Packet { payload = value }; };
+    let f := || { let packet := Packet(payload = value); };
     let again := value;
 }
 fun main() {}
@@ -3738,7 +3738,7 @@ right: i64,
 }
 
 fun main() {
-let pair := Pair { left = "a", right = 1 };
+let pair := Pair(left = "a", right = 1);
 let moved: String := pair.left;
 let again: String := pair.left;
 }
@@ -3757,7 +3757,7 @@ right: i64,
 }
 
 fun main() {
-let pair := Pair { left = "a", right = 1 };
+let pair := Pair(left = "a", right = 1);
 let moved: String := pair.left;
 let still_live: i64 := pair.right;
 }
@@ -3783,7 +3783,7 @@ pair.right
 }
 
 fun main() {
-let pair := Pair { left = "a", right = 1 };
+let pair := Pair(left = "a", right = 1);
 let moved: String := pair.left;
 let value: i64 := take(pair);
 }
@@ -3807,7 +3807,7 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let handle := Handle { name = "x", fd = 1 };
+let handle := Handle(name = "x", fd = 1);
 let name := handle.name;
 }
 "#,
@@ -3829,7 +3829,7 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let handle := Handle { name = "x", fd = 1 };
+let handle := Handle(name = "x", fd = 1);
 let n := match (handle.name) {
     name => name.len(),
 };
@@ -3896,7 +3896,7 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let wrapper := Wrapper { pair = ("x", 1) };
+let wrapper := Wrapper(pair = ("x", 1));
 let n := match (wrapper.pair) {
     (name, _) => name.len(),
 };
@@ -3924,9 +3924,9 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let wrapper := Wrapper {
-    payload = MaybeText::Full { text = "x" },
-};
+let wrapper := Wrapper(
+    payload = MaybeText::Full(text = "x"),
+);
 let n := match (wrapper.payload) {
     MaybeText::Full { text } => text.len(),
     MaybeText::Empty => 0,
@@ -3950,7 +3950,7 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let wrapper := Wrapper { pair = ("x", 1) };
+let wrapper := Wrapper(pair = ("x", 1));
 let name := wrapper.pair.0;
 }
 "#,
@@ -3982,7 +3982,7 @@ Full { text: String },
 }
 
 fun main() {
-let value := MaybeText::Full { text = "x" };
+let value := MaybeText::Full(text = "x");
 let n := match (value) {
     MaybeText::Full { text } => text.len(),
     MaybeText::Empty => 0,
@@ -4097,7 +4097,7 @@ struct Counter { value: i64 }
 fun bump(r: &var Counter) { }
 
 fun main() {
-var c := Counter { value = 0 };
+var c := Counter(value = 0);
 let r := &var c;
 bump(r);
 bump(r);
@@ -4116,7 +4116,7 @@ struct Counter { value: i64 }
 fun bump(r: &var Counter) { }
 
 fun main() {
-var c := Counter { value = 0 };
+var c := Counter(value = 0);
 let r := &var c;
 let q := r;
 bump(r);
@@ -4136,7 +4136,7 @@ right: i64,
 }
 
 fun main() {
-let pair := Pair { left = "a", right = 1 };
+let pair := Pair(left = "a", right = 1);
 let moved := pair.left;
 }
 "#,
@@ -4157,7 +4157,7 @@ right: i64,
 }
 
 fun main() {
-let pair := Pair { left = "a", right = 1 };
+let pair := Pair(left = "a", right = 1);
 let moved := pair.left;
 let sibling := pair.right;
 }
@@ -4181,7 +4181,7 @@ s: String,
 }
 
 fun main() {
-let a := Owned { s = "x" };
+let a := Owned(s = "x");
 let t := (a, 1);
 let n := a.s.len();
 }
@@ -4204,7 +4204,7 @@ fun drop(&var self) { }
 }
 
 fun main() {
-let h := Handle { name = "x", fd = 1 };
+let h := Handle(name = "x", fd = 1);
 let t := (h.name, 1);
 }
 "#,
@@ -4600,7 +4600,7 @@ fn reassigning_a_moved_field_makes_the_whole_value_usable_again() {
 struct Pair { left: String, right: String }
 
 fun main() {
-var p := Pair { left = "a", right = "b" };
+var p := Pair(left = "a", right = "b");
 let taken := p.left;
 p.left = "c";
 let whole := p;
@@ -4617,7 +4617,7 @@ fn assigning_a_field_does_not_revive_a_wholly_moved_value() {
 struct Pair { left: String, right: String }
 
 fun main() {
-var p := Pair { left = "a", right = "b" };
+var p := Pair(left = "a", right = "b");
 let whole := p;
 p.left = "c";
 }
@@ -4639,7 +4639,7 @@ struct Pair { left: String, right: String }
 fun take_whole(p: Pair) -> i64 { 0 }
 
 fun main() {
-var p := Pair { left = "a", right = "b" };
+var p := Pair(left = "a", right = "b");
 let taken := p.right;
 p.left = "c";
 let n := take_whole(p);
@@ -4809,7 +4809,7 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let r := &b;
 let first := r.eat();
 }
@@ -4833,7 +4833,7 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let r := &b;
 let first := (*r).eat();
 }
@@ -4855,7 +4855,7 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-var b := B { v = "owned" };
+var b := B(v = "owned");
 let r := &var b;
 let first := r.eat();
 }
@@ -4882,7 +4882,7 @@ return x.eat();
 }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let result := twice(&b);
 }
 "#,
@@ -4906,7 +4906,7 @@ return pair.0.eat();
 }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let result := consume_sneak((&b, 1));
 }
 "#,
@@ -4926,7 +4926,7 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let out := b.eat();
 let again := b.v;
 }
@@ -4947,12 +4947,12 @@ struct C { v: i64 }
 extend C: Bump { fun bump(&var self) { self.v = self.v + 1; } }
 
 fun main() {
-let b := B { v = "x" };
+let b := B(v = "x");
 let r := &b;
 let a := r.show();
 let c := r.show();
 
-var cc := C { v = 0 };
+var cc := C(v = 0);
 let rc := &var cc;
 rc.bump();
 rc.bump();
@@ -4979,7 +4979,7 @@ extend Pair: Copy;
 extend Pair { fun sum(self) -> i64 { self.a + self.b } }
 
 fun main() {
-let p := Pair { a = 1, b = 2 };
+let p := Pair(a = 1, b = 2);
 let r := &p;
 let first := r.sum();
 let second := r.sum();
@@ -5005,7 +5005,7 @@ extend B: Consume { fun eat(self) -> String { return self.v; } }
 fun get_ref(x: &B) -> &B { return x; }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let out := get_ref(&b).eat();
 }
 "#,
@@ -5027,7 +5027,7 @@ struct B { v: String }
 extend B: Consume { fun eat(self) -> String { return self.v; } }
 
 fun main() {
-let b := B { v = "owned" };
+let b := B(v = "owned");
 let r := &b;
 let rr := &r;
 let out := rr.eat();
@@ -5058,7 +5058,7 @@ fun peek(&self) -> String {
 }
 }
 fun main() {
-let item := Item { name = Name { value = "n" } };
+let item := Item(name = Name(value = "n"));
 let _ := item.peek();
 }
 "#,
@@ -5077,7 +5077,7 @@ let _ := item.peek();
         r#"
 record Row { name: String }
 fun main() {
-    let rows: [Row] := [Row { name = "a".to_string() }];
+    let rows: [Row] := [Row(name = "a".to_string())];
     for (r in rows) { let n := r.name; }
 }
 "#,
@@ -5138,7 +5138,7 @@ fun peek(&self) -> String {
 }
 }
 fun main() {
-let item := Item { name = Name { value = "n" }, count = 1 };
+let item := Item(name = Name(value = "n"), count = 1);
 let _ := item.peek();
 }
 "#,
@@ -5161,7 +5161,7 @@ let v := item.name.value;
 v
 }
 fun main() {
-let item := Item { name = Name { value = "n" }, count = 1 };
+let item := Item(name = Name(value = "n"), count = 1);
 let _ := peek(&item);
 }
 "#,
@@ -5178,7 +5178,7 @@ fn general_assignment_out_of_an_explicit_deref_is_rejected() {
         r#"
 struct B { v: String }
 fun main() {
-let b := B { v = "x" };
+let b := B(v = "x");
 let r := &b;
 let x: B := *r;
 }
@@ -5195,7 +5195,7 @@ fn by_value_argument_passing_out_of_an_explicit_deref_is_rejected() {
 struct B { v: String }
 fun takes(b: B) -> String { b.v }
 fun main() {
-let b := B { v = "x" };
+let b := B(v = "x");
 let r := &b;
 let n := takes(*r);
 }
@@ -5214,7 +5214,7 @@ struct Name { value: String }
 struct Item { name: Name }
 fun takes(v: String) -> i64 { v.len() }
 fun main() {
-let item := Item { name = Name { value = "x" } };
+let item := Item(name = Name(value = "x"));
 let r := &item;
 let n := takes(r.name.value);
 }
@@ -5235,7 +5235,7 @@ let v := item.count;
 v
 }
 fun main() {
-let item := Item { count = 5, name = "n" };
+let item := Item(count = 5, name = "n");
 let _ := peek(&item);
 }
 "#,
@@ -5261,9 +5261,9 @@ extend B: Consume { fun eat(self) -> String { return self.v; } }
 struct Middle { payload: B }
 struct Outer { inner: &Middle }
 fun main() {
-let b := B { v = "owned" };
-let middle := Middle { payload = b };
-let outer := Outer { inner = &middle };
+let b := B(v = "owned");
+let middle := Middle(payload = b);
+let outer := Outer(inner = &middle);
 let taken := outer.inner.payload.eat();
 }
 "#,
@@ -5284,7 +5284,7 @@ fun show(&self) -> String {
 }
 }
 fun main() {
-let item := Item { count = 1, name = "n" };
+let item := Item(count = 1, name = "n");
 println(item.show());
 }
 "#,
@@ -5366,8 +5366,8 @@ fun main() {}
 fn a_non_copy_local_record_is_moved_even_if_an_earlier_one_with_the_same_shape_is_copy() {
     let violations = assert_has_violation(
         r#"
-fun a() -> i64 { record P { x: i64 } let p := P { x = 1 }; let u := p; let v := p; u.x + v.x }
-fun b() -> i64 { record P { x: String } let p := P { x = "s" }; let u := p; let v := p; 0 }
+fun a() -> i64 { record P { x: i64 } let p := P(x = 1); let u := p; let v := p; u.x + v.x }
+fun b() -> i64 { record P { x: String } let p := P(x = "s"); let u := p; let v := p; 0 }
 fun main() { assert(a() == 2); assert(b() == 0); }
 "#,
         "p",
@@ -5380,8 +5380,8 @@ fun main() { assert(a() == 2); assert(b() == 0); }
 fn a_copy_local_record_is_copied_even_if_an_earlier_one_with_the_same_shape_is_not() {
     assert_no_violations(
         r#"
-fun a() -> i64 { record P { x: String } let p := P { x = "s" }; let u := p; 0 }
-fun b() -> i64 { record P { x: i64 } let p := P { x = 1 }; let u := p; let v := p; u.x + v.x }
+fun a() -> i64 { record P { x: String } let p := P(x = "s"); let u := p; 0 }
+fun b() -> i64 { record P { x: i64 } let p := P(x = 1); let u := p; let v := p; u.x + v.x }
 fun main() { assert(a() == 0); assert(b() == 2); }
 "#,
     );
@@ -5394,8 +5394,8 @@ fun main() { assert(a() == 0); assert(b() == 2); }
 fn a_non_copy_zero_field_struct_is_moved_even_if_an_earlier_zero_field_record_has_its_name() {
     let violations = assert_has_violation(
         r#"
-fun a() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
-fun b() -> i64 { struct E {} let e := E {}; let u := e; let v := e; 0 }
+fun a() -> i64 { record E {} let e := E(); let u := e; let v := e; 0 }
+fun b() -> i64 { struct E {} let e := E(); let u := e; let v := e; 0 }
 fun main() { assert(a() == 0); assert(b() == 0); }
 "#,
         "e",
@@ -5408,8 +5408,8 @@ fun main() { assert(a() == 0); assert(b() == 0); }
 fn a_copy_zero_field_record_is_copied_even_if_an_earlier_zero_field_struct_has_its_name() {
     assert_no_violations(
         r#"
-fun a() -> i64 { struct E {} let e := E {}; let u := e; 0 }
-fun b() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
+fun a() -> i64 { struct E {} let e := E(); let u := e; 0 }
+fun b() -> i64 { record E {} let e := E(); let u := e; let v := e; 0 }
 fun main() { assert(a() == 0); assert(b() == 0); }
 "#,
     );
@@ -5423,12 +5423,12 @@ fn a_non_copy_record_shadowing_a_copy_one_is_moved() {
         r#"
 fun main() {
     record P { x: i64 }
-    let outer := P { x = 1 };
+    let outer := P(x = 1);
     let o1 := outer;
     let o2 := outer;
     if (true) {
         record P { x: String }
-        let inner := P { x = "s" };
+        let inner := P(x = "s");
         let i1 := inner;
         let i2 := inner;
     }
@@ -5445,11 +5445,11 @@ fn a_copy_record_shadowing_a_non_copy_one_is_copied() {
         r#"
 fun main() {
     record P { x: String }
-    let outer := P { x = "s" };
+    let outer := P(x = "s");
     let o1 := outer;
     if (true) {
         record P { x: i64 }
-        let inner := P { x = 1 };
+        let inner := P(x = 1);
         let i1 := inner;
         let i2 := inner;
     }

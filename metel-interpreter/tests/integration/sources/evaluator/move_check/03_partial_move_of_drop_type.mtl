@@ -8,6 +8,6 @@ extend Handle: Drop {
 }
 
 fun main() {
-    let handle := Handle { name = "x", fd = 1 };
+    let handle := Handle(name = "x", fd = 1);
     let name := handle.name;
 }

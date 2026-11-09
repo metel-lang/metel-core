@@ -6,6 +6,6 @@ struct Handle {
 fun take(handle: Handle.{ nope }) -> i64 { handle.nope }
 
 fun main() {
-    let handle := Handle { fd = 7, tag = 9 };
+    let handle := Handle(fd = 7, tag = 9);
     take(handle.{ fd });
 }

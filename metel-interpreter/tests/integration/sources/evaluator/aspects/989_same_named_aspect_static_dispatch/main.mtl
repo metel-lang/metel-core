@@ -8,7 +8,7 @@ import decoy::marker;
 
 fun main() {
     let _unused := marker();
-    let c := Circle { radius = 2.0 };
+    let c := Circle(radius = 2.0);
     let a := c.area();
     assert(a == 6.0);
     assert(a + 1.0 == 7.0);

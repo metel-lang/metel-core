@@ -9,7 +9,7 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle { fd = 1 };
+    let h := Handle(fd = 1);
     let r := { y = 3 };
     let _ := h.add(r);
 }

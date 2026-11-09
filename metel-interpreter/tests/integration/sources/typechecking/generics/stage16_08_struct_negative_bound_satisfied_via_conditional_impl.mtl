@@ -11,7 +11,7 @@ struct Resource { x: i64 }
 // implement Drop (its Drop impl requires both A and B to be Drop, but Resource doesn't implement Drop)
 fun good(r: Resource) -> Arena<Pair<Resource, Resource>> {
     let x := r.x;
-    Arena { items = [Pair { first = r, second = Resource { x = x } }] }
+    Arena(items = [Pair(first = r, second = Resource(x = x))])
 }
 
 fun main() {}

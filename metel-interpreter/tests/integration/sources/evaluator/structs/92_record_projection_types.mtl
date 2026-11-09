@@ -8,7 +8,7 @@ fun take(handle: Handle.{ fd }) -> i64 { handle.fd }
 fun identity(handle: Handle.{ fd }) -> Handle.{ fd } { handle }
 
 fun main() {
-    let handle := Handle { fd = 7, tag = 9 };
+    let handle := Handle(fd = 7, tag = 9);
     let projected: Handle.{ fd } := handle.{ fd };
     let nested: { inner: Handle.{ fd } } := { inner = handle.{ fd } };
 

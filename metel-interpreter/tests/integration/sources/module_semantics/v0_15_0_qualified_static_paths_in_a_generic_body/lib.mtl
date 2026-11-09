@@ -1,10 +1,10 @@
 pub enum Kind { A, B { pub n: i64 } }
 pub struct Counter { pub n: i64 }
 extend Counter {
-    pub fun with(n: i64) -> Counter { return Counter { n = n }; }
-    pub fun zero() -> Counter { return Counter { n = 0 }; }
+    pub fun with(n: i64) -> Counter { return Counter(n = n); }
+    pub fun zero() -> Counter { return Counter(n = 0); }
 }
 extend Kind {
-    pub fun make(n: i64) -> Kind { return Kind::B { n = n }; }
+    pub fun make(n: i64) -> Kind { return Kind::B(n = n); }
 }
 pub fun double(x: i64) -> i64 { return x * 2; }

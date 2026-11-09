@@ -11,7 +11,7 @@ struct Counter {
 
 extend Counter {
     fun new(limit: i64) -> Counter {
-        return Counter { current = 0, limit = limit };
+        return Counter(current = 0, limit = limit);
     }
 }
 
@@ -20,7 +20,7 @@ extend Counter: Iterable<i64> {
         if (self.current < self.limit) {
             let val := self.current;
             self.current = self.current + 1;
-            return Option::Some { value = val };
+            return Option::Some(value = val);
         }
         return None;
     }

@@ -3,7 +3,7 @@ struct Point { x: i64, y: i64 }
 struct Outer { inner: Point }
 
 fun main() {
-    var p := Point { x = 1, y = 2 };
+    var p := Point(x = 1, y = 2);
     let ptr: &var Point := &var p;
 
     // Auto-deref field assign through &var Point.
@@ -20,7 +20,7 @@ fun main() {
     assert(p.y == 11);
 
     // Nested struct behind a &var reference.
-    var o := Outer { inner = Point { x = 0, y = 0 } };
+    var o := Outer(inner = Point(x = 0, y = 0));
     let optr: &var Outer := &var o;
     optr.inner.x = 42;
     assert(o.inner.x == 42);

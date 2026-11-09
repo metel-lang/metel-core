@@ -9,6 +9,6 @@ struct Box {
 
 fun main() {
     let pure := || { 3 }; // `reading`
-    let b := Box { run = pure };  // coerced into the `var`-typed field
+    let b := Box(run = pure);  // coerced into the `var`-typed field
     assert((b.run)() == 3);       // `b.run` is observed as `var () -> i64`
 }

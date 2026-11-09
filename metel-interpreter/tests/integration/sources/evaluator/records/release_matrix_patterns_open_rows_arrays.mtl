@@ -10,11 +10,11 @@ fun total<record R>(v: { n: i64, ..R }) -> i64 where ..R: Copy {
     match (v) { { n, ..rest } => n }
 }
 fun main() {
-    assert(area(Shape::Circle { r = 2, tag = "ab" }) == 8);
-    assert(area(Shape::Square { s = 3, tag = "" }) == 9);
+    assert(area(Shape::Circle(r = 2, tag = "ab")) == 8);
+    assert(area(Shape::Square(s = 3, tag = "")) == 9);
     assert(total({ n = 5, flag = true }) == 5);
-    let it := Item { id = 1, shape = [2, 3] };
+    let it := Item(id = 1, shape = [2, 3]);
     match (it.shape) { [a, b] => assert(a + b == 5) }
-    let r: Option<{ n: i64 }> := Option::Some { value = { n = 4 } };
+    let r: Option<{ n: i64 }> := Option::Some(value = { n = 4 });
     match (r) { Option::Some { value } => assert(value.n == 4), None => assert(false) }
 }

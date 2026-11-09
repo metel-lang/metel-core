@@ -3,4 +3,4 @@ struct P { pub x: i64 }
 
 fun gx<T>(a: T) -> i64 { a.x } // ERROR[T0035]
 
-fun main() { gx(P { x = 1 }); }
+fun main() { gx(P(x = 1)); }

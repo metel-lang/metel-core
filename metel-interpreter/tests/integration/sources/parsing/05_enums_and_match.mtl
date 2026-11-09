@@ -75,9 +75,9 @@ fun safe_head(arr: [i64]) -> Option<i64> {
 
 fun safe_div(a: i64, b: i64) -> Result<i64, String> {
     if (b == 0) {
-        return Result::Err { error = "division by zero" };
+        return Result::Err(error = "division by zero");
     }
-    return Result::Ok { value = a / b };
+    return Result::Ok(value = a / b);
 }
 
 fun main() {
@@ -87,9 +87,9 @@ fun main() {
     println(dir.opposite().to_string());            // South
 
     // --- data-carrying enum + area ---
-    let c := Shape::Circle { radius = 5.0 };
-    let r := Shape::Rectangle { width = 4.0, height = 6.0 };
-    let t := Shape::Triangle { base = 3.0, height = 8.0 };
+    let c := Shape::Circle(radius = 5.0);
+    let r := Shape::Rectangle(width = 4.0, height = 6.0);
+    let t := Shape::Triangle(base = 3.0, height = 8.0);
     println(float_to_string(c.area()));             // ~78.53975
     println(float_to_string(r.area()));             // 24.0
     println(float_to_string(t.area()));             // 12.0

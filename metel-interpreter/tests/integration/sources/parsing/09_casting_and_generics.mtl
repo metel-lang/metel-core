@@ -13,13 +13,13 @@ struct Box<T> {
 
 extend Box<i64> {
     fun new(v: i64) -> Box<i64> {
-        return Box { value = v };
+        return Box(value = v);
     }
 }
 
 extend Box<String> {
     fun new(v: String) -> Box<String> {
-        return Box { value = v };
+        return Box(value = v);
     }
 }
 
@@ -42,7 +42,7 @@ struct Pair<A, B> {
 
 extend Pair<i64, f64> {
     fun new(a: i64, b: f64) -> Pair<i64, f64> {
-        return Pair { first = a, second = b };
+        return Pair(first = a, second = b);
     }
 
     // cast first to f64 for arithmetic
@@ -57,7 +57,7 @@ fun show<T: Display>(item: T) {
 }
 
 fun swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
-    return Pair { first = p.second, second = p.first };
+    return Pair(first = p.second, second = p.first);
 }
 
 fun clamp(value: f64, lo: f64, hi: f64) -> f64 {
@@ -98,7 +98,7 @@ fun main() {
     println(float_to_string(p.sum_as_float()));   // 4.5
 
     // --- swap generic pair (Pair<String, i64>) ---
-    let sp: Pair<String, i64> := Pair { first = "world", second = 99 };
+    let sp: Pair<String, i64> := Pair(first = "world", second = 99);
     let swapped := swap(sp);
     println(int_to_string(swapped.first));   // 99
     println(swapped.second);                 // world

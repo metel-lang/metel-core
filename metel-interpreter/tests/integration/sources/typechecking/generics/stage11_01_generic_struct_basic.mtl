@@ -5,11 +5,11 @@ struct Box<T> {
 }
 
 fun make_int_box(v: i64) -> Box<i64> {
-    Box { value = v }
+    Box(value = v)
 }
 
 fun make_bool_box(v: boolean) -> Box<boolean> {
-    Box { value = v }
+    Box(value = v)
 }
 
 fun unbox_int(b: Box<i64>) -> i64 {

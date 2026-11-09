@@ -3,7 +3,7 @@
 // unrelated, same-named `Point` of its own.
 pub struct Point { pub n: i64 }
 extend Point {
-    pub fun origin() -> Point { Point { n = 1 } }
+    pub fun origin() -> Point { Point(n = 1) }
     pub fun kind(self) -> i64 { self.n }
 }
 pub fun use<T>(value: T) -> i64 {

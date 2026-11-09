@@ -33,19 +33,19 @@ fun unwrap_result(r: Result<i64, String>) -> i64 {
 
 fun main() {
     let c: Colour := Red;
-    let c2: Colour := Red {};
+    let c2: Colour := Red;
     assert(paint(c) == 1);
     assert(paint(c2) == 1);
     assert(paint(Blue) == 3);
     assert(paint(favourite()) == 2);
 
-    let holder := Holder {
+    let holder := Holder(
         colour = Blue,
-        maybe = Some { value = 5 },
+        maybe = Some(value = 5),
         nothing = None,
-        ok = Ok { value = 9 },
-        err = Err { error = "bad" },
-    };
+        ok = Ok(value = 9),
+        err = Err(error = "bad"),
+    );
 
     assert(paint(holder.colour) == 3);
     assert(shadow(7) == 7);

@@ -3,14 +3,14 @@
 // so `b` may copy `e` freely.
 fun a() -> i64 {
     struct E {}
-    let e := E {};
+    let e := E();
     let u := e;
     0
 }
 
 fun b() -> i64 {
     record E {}
-    let e := E {};
+    let e := E();
     let u := e;
     let v := e;
     0

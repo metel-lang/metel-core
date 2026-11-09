@@ -35,7 +35,7 @@ struct RunError    { msg: String }
 
 extend RunError: From<ConfigError> {
     fun from(value: ConfigError) -> RunError {
-        RunError { msg = "config: " + value.msg }
+        RunError(msg = "config: " + value.msg)
     }
 }
 
@@ -64,7 +64,7 @@ extend Task: Describable {
 struct Countdown { current: i64 }
 
 extend Countdown {
-    fun new(start: i64) -> Countdown { Countdown { current = start } }
+    fun new(start: i64) -> Countdown { Countdown(current = start) }
 }
 
 extend Countdown: Iterable<i64> {
@@ -72,7 +72,7 @@ extend Countdown: Iterable<i64> {
         if (self.current > 0) {
             let v := self.current;
             self.current = self.current - 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }
@@ -82,32 +82,32 @@ extend Countdown: Iterable<i64> {
 // ── Fallible config loader ─────────────────────────────────────────────────────
 
 fun load_config(key: String) -> Result<String, ConfigError> {
-    if (key == "timeout") { Result::Ok { value = "30" } }
-    else if (key == "mode") { Result::Ok { value = "fast" } }
-    else { Result::Err { error = ConfigError { msg = "unknown key: " + key } } }
+    if (key == "timeout") { Result::Ok(value = "30") }
+    else if (key == "mode") { Result::Ok(value = "fast") }
+    else { Result::Err(error = ConfigError(msg = "unknown key: " + key)) }
 }
 
 // same-type ? (ConfigError → ConfigError, no From needed)
 fun require_config(key: String) -> Result<String, ConfigError> {
     let v := load_config(key)?;
-    Result::Ok { value = v }
+    Result::Ok(value = v)
 }
 
 // cross-type match + as-cast (? cross-type deferred to #13)
 fun run_with_config(key: String) -> Result<String, RunError> {
     let v := match (load_config(key)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err { error = error as RunError }; },
+        Result::Err { error } => { return Result::Err(error = error as RunError); },
     };
-    Result::Ok { value = "ran:" + v }
+    Result::Ok(value = "ran:" + v)
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
 
 fun main() {
     // Both aspects on the same struct
-    let t1 := Task { name = "build", enabled = true };
-    let t2 := Task { name = "test",  enabled = false };
+    let t1 := Task(name = "build", enabled = true);
+    let t2 := Task(name = "test",  enabled = false);
 
     assert(t1.run()      == "build:ok");
     assert(t2.run()      == "test:skip");
@@ -190,7 +190,7 @@ fun main() {
     assert(0.to_string()   == "0");
 
     // Direct From cast
-    let ce := ConfigError { msg = "fail" };
+    let ce := ConfigError(msg = "fail");
     let re := ce as RunError;
     assert(re.msg == "config: fail");
 }

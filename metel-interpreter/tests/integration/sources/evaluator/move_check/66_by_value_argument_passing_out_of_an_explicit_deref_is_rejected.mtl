@@ -6,7 +6,7 @@ fun takes(b: B) -> String {
 }
 
 fun main() {
-    let b := B { v = "x" };
+    let b := B(v = "x");
     let r := &b;
     let n := takes(*r);
 }

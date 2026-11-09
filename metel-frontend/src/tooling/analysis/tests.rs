@@ -116,7 +116,7 @@ mod member_ids_on_typed_ir {
     fn plain_struct_literal_has_no_variant_id() {
         let analysis = analyze(
             "struct Point { x: i64, y: i64 }\n\
-             fun make() -> Point { Point { x = 1, y = 2 } }\n",
+             fun make() -> Point { Point(x = 1, y = 2) }\n",
         );
         let TypedExpr::StructLiteral { variant_id, .. } = tail_expr(&analysis, "make") else {
             panic!("expected a struct literal");
@@ -133,7 +133,7 @@ mod member_ids_on_typed_ir {
         let analysis = analyze(
             "fun f() -> i64 {\n\
              \tstruct Local { v: i64 }\n\
-             \tlet x := Local { v = 3 };\n\
+             \tlet x := Local(v = 3);\n\
              \tx.v\n\
              }\n",
         );

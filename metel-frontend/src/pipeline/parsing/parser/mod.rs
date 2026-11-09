@@ -1234,7 +1234,6 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         Rule::closure_expr => parse_closure_expr(pair, filename),
         Rule::record_lit => parse_record_literal(pair, filename),
         Rule::record_projection_expr => parse_record_projection_expr(pair, filename),
-        Rule::struct_literal => parse_struct_literal(pair, filename),
         r => Err(MetelError::internal(format!(
             "parse_expr: unexpected rule {r:?}"
         ))),
@@ -2232,40 +2231,6 @@ fn parse_capture_list(
             })
         })
         .collect()
-}
-
-fn parse_struct_literal(
-    pair: pest::iterators::Pair<Rule>,
-    filename: &str,
-) -> Result<Expr, MetelError> {
-    let span = Span::of(&pair, filename);
-    let mut inner = pair.into_inner();
-    let path_pair = inner
-        .next()
-        .ok_or_else(|| MetelError::internal("struct_literal: expected path"))?;
-    let path = collect_path_components(path_pair)?;
-    let mut fields = vec![];
-    for p in inner {
-        if p.as_rule() == Rule::field_init {
-            let field_span = Span::of(&p, filename);
-            let mut it = p.into_inner();
-            let name_pair = it
-                .next()
-                .ok_or_else(|| MetelError::internal("struct_literal: expected field name"))?;
-            let name = name_pair.as_str().to_string();
-            let value = match it.next() {
-                Some(expr_pair) => parse_expr(expr_pair, filename)?,
-                None => Expr::Ident(name.clone(), field_span),
-            };
-            fields.push((name, value));
-        }
-    }
-    Ok(Expr::StructLiteral {
-        path,
-        fields,
-        symbol_id: None,
-        span,
-    })
 }
 
 fn parse_record_literal(

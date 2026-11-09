@@ -15,6 +15,6 @@ struct S { }
 extend S: Go { }
 
 fun main() {
-    let s := S { };
+    let s := S( );
     s.go();
 }

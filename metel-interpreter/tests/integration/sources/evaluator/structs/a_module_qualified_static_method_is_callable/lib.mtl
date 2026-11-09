@@ -1,7 +1,7 @@
 pub struct Counter { pub n: i64 }
 extend Counter {
-    pub fun new() -> Counter { Counter { n = 0 } }
-    pub fun with(n: i64) -> Counter { Counter { n = n } }
+    pub fun new() -> Counter { Counter(n = 0) }
+    pub fun with(n: i64) -> Counter { Counter(n = n) }
     pub fun get(&self) -> i64 { self.n }
 }
 

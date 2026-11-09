@@ -1,5 +1,5 @@
 record Row { name: String }
 fun main() {
-    let rows: [Row] := [Row { name = "a".to_string() }];
+    let rows: [Row] := [Row(name = "a".to_string())];
     for (r in rows) { let n := r.name; } // ERROR[T0019]
 }

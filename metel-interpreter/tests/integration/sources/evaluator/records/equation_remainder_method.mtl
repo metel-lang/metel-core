@@ -5,10 +5,10 @@ extend<record R: !{ token }> Session<..R> {
 fun strip<record R, record Rest>(session: Session<..R>) -> i64
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := session.data;
-    let cleared: Session<..Rest> := Session { data = rest };
+    let cleared: Session<..Rest> := Session(data = rest);
     cleared.cleared()
 }
 fun main() {
-    assert(strip(Session { data = { token = "gone" } }) == 2);
-    assert(strip(Session { data = { token = "gone", kept = "here" } }) == 2);
+    assert(strip(Session(data = { token = "gone" })) == 2);
+    assert(strip(Session(data = { token = "gone", kept = "here" })) == 2);
 }

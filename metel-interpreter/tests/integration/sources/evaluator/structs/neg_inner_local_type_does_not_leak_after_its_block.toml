@@ -1,7 +1,7 @@
 [options]
-error = ["T0003"]
+error = ["T0039"]
 
 [expect]
 status = "typecheck_error"
-code = "T0003"
-contains = "no field `y` on `P`"
+code = "T0039"
+contains = "`P` has no parameter named `y`"

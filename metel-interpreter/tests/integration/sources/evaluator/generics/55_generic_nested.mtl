@@ -9,12 +9,12 @@ struct Pair<A, B> {
 
 fun main() {
     // Nested: Box<Pair<i64, boolean>>
-    let bp := Box { value = Pair { first = 7, second = true } };
+    let bp := Box(value = Pair(first = 7, second = true));
     assert(bp.value.first == 7);
     assert(bp.value.second);
 
     // Nested: Pair<Box<i64>, Box<boolean>>
-    let pb := Pair { first = Box { value = 100 }, second = Box { value = false } };
+    let pb := Pair(first = Box(value = 100), second = Box(value = false));
     assert(pb.first.value == 100);
     assert(!pb.second.value);
 }

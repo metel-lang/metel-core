@@ -12,7 +12,7 @@ fun swap_first(h: Holder, v: i64) -> Row {
 }
 
 fun main() {
-    let h := Holder { slot = (1, true) };
+    let h := Holder(slot = (1, true));
     let r: Row := swap_first(h, 9);
     assert(r.0 == 9);
     assert(r.1);

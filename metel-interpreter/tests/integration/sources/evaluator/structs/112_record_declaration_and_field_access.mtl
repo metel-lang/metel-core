@@ -17,19 +17,19 @@ record Pair<A, B> {
 }
 
 fun main() {
-    let h := Handle { fd = 3, name = "x" };
+    let h := Handle(fd = 3, name = "x");
     assert(h.fd == 3);
     assert(h.name == "x");
 
     let e := Empty;
-    let e2 := Empty {};
+    let e2 := Empty();
 
     let fd := 5;
     let name := "shorthand".to_string();
-    let h2 := Handle { fd, name };       // shorthand field init
+    let h2 := Handle(fd = fd, name = name);       // shorthand field init
     assert(h2.fd == 5);
 
-    let p := Pair { first = 1, second = true };
+    let p := Pair(first = 1, second = true);
     assert(p.first == 1);
     assert(p.second);
 

@@ -2,14 +2,14 @@
 // return type with a literal row, `Req<..{ host: String, ..R }>`; `..{}` is the empty row.
 record Req<record R> { data: { ..R } }
 
-fun empty() -> Req<..{}> { Req { data = {} } }
+fun empty() -> Req<..{}> { Req(data = {}) }
 
 fun add_host<record R: !{ host }>(r: Req<..R>, h: String) -> Req<..{ host: String, ..R }> {
-    Req { data = { host = h, ..r.data } }
+    Req(data = { host = h, ..r.data })
 }
 
 fun add_port<record R: !{ port }>(r: Req<..R>, p: i64) -> Req<..{ port: i64, ..R }> {
-    Req { data = { port = p, ..r.data } }
+    Req(data = { port = p, ..r.data })
 }
 
 // a parameter can name the row it needs; the tail carries everything else

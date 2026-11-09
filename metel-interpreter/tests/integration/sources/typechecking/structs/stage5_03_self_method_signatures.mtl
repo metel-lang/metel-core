@@ -6,7 +6,7 @@ struct Point {
 
 extend Point {
     fun clone(&self) -> Self {
-        Point { x = self.x }
+        Point(x = self.x)
     }
 
     fun same_as(&self, other: Self) -> boolean {
@@ -24,9 +24,9 @@ extend Token {
     }
 }
 
-let p := Point { x = 1 };
+let p := Point(x = 1);
 let q: Point := p.clone();
 let same: boolean := p.same_as(q);
 
-let token := Token::i64 { value = 7 };
+let token := Token::i64(value = 7);
 let token_copy: Token := token.identity();

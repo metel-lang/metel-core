@@ -1,7 +1,7 @@
-// Negative: unknown field name in a struct literal.
+// Negative: unknown field name in a construction call.
 
 struct Counter {
     value: i64,
 }
 
-let c := Counter { value = 0, extra = 1 }; // ERROR[T0003]
+let c := Counter(value = 0, extra = 1); // ERROR[T0039]

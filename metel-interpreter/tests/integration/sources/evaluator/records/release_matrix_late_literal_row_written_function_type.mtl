@@ -10,8 +10,8 @@ fun apply<record R: !{ host }>(
 }
 
 fun main() {
-    let r := Req { data = { port = 1 } };
-    let out := apply(r, |q: Req<..{ port: i64 }>| { Req { data = { host = "h".to_string(), ..q.data } } });
+    let r := Req(data = { port = 1 });
+    let out := apply(r, |q: Req<..{ port: i64 }>| { Req(data = { host = "h".to_string(), ..q.data }) });
     assert(out.data.host == "h");
     assert(out.data.port == 1);
 }

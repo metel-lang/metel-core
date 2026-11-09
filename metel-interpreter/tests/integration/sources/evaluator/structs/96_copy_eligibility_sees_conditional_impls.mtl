@@ -39,15 +39,15 @@ fun id<T: Copy>(x: T) -> T {
 }
 
 fun main() {
-    let o := Outer { inner = Inner { value = 1 } };
+    let o := Outer(inner = Inner(value = 1));
     let copied := id(o);
     assert(copied.inner.value == 1);
 
-    let w := Wrapped { held = Inner { value = 2 } };
+    let w := Wrapped(held = Inner(value = 2));
     let w_copied := id(w);
     assert(w_copied.held.value == 2);
 
-    let h := Held::One { value = Inner { value = 3 } };
+    let h := Held::One(value = Inner(value = 3));
     let h_copied := id(h);
     match (h_copied) {
         Held::One { value } => assert(value.value == 3),

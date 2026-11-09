@@ -43,17 +43,17 @@ extend<record R> Box<..R> {
 fun main() {
     assert(strip({ token = "t", user = 3 }).user == 3);
     assert(strip({ token = "t", owned = "kept" }).owned == "kept");
-    assert(strip(Credentials { token = "t", name = "Ada" }).name == "Ada");
+    assert(strip(Credentials(token = "t", name = "Ada")).name == "Ada");
     let empty: {} := strip({ token = "only" });
     assert(strip_extra({ token = "t", user = 3, active = true }).active);
     assert(strip_extra({ token = "t", user = 3 }).user == 4);
     assert(strip_two({ token = "t", user = 3, active = true }).active);
     assert(take({ x = 1, z = true }, { y = 2, z = false }).z);
-    let b := Box { data = { token = "t", x = true } };
+    let b := Box(data = { token = "t", x = true });
     assert(b.strip().x);
-    let from_arg_box := Box { data = { token = "t", x = true } };
+    let from_arg_box := Box(data = { token = "t", x = true });
     assert(from_arg_box.from_arg({ id = 1, token = "t", y = true }).y);
-    let add_box := Box { data = { token = "t", x = true } };
+    let add_box := Box(data = { token = "t", x = true });
     assert(add_box.add({ z = 5 }).z == 5);
     println("ok");
 }

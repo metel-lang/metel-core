@@ -3,7 +3,7 @@
 record Req<record R> { data: { ..R } }
 
 fun main() {
-    let r: Req<..{ host: String }> := Req { data = { host = "x" } };
+    let r: Req<..{ host: String }> := Req(data = { host = "x" });
     assert(r.data.host == "x");
-    let e: Req<..{}> := Req { data = {} };
+    let e: Req<..{}> := Req(data = {});
 }

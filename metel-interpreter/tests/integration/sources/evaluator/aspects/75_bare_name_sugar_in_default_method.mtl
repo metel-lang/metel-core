@@ -23,7 +23,7 @@ extend IntBox: Container {
 }
 
 fun main() {
-    let b := IntBox { value = 42 };
+    let b := IntBox(value = 42);
     let v: i64 := b.get_twice();
     assert(v == 42);
 }

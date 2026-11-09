@@ -5,6 +5,6 @@ struct Handle { fd: i64, name: String }
 fun read_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 
 fun main() {
-    let h := Handle { fd = 3, name = "x".to_string() };
+    let h := Handle(fd = 3, name = "x".to_string());
     assert(read_fd(h) == 3);
 }

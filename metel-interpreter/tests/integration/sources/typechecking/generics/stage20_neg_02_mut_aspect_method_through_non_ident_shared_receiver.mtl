@@ -20,6 +20,6 @@ fun sneak<T: Bump>(pair: (&T, i64)) {
 }
 
 fun main() {
-    var c := C { v = 0 };
+    var c := C(v = 0);
     sneak((&c, 1));
 }

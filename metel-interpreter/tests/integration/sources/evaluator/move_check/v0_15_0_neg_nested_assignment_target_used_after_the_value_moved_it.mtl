@@ -5,7 +5,7 @@ fun take(s: String) -> i64 { 0 }
 fun slot(s: &String) -> u64 { 0 }
 
 fun main() {
-    var g := Grid { cells = [1, 2] };
+    var g := Grid(cells = [1, 2]);
     let s := "x".to_string();
     g.cells[slot(&s)] = take(s);
 }

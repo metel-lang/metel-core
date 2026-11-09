@@ -17,7 +17,7 @@ fun go<T: Bump>(x: &var T) {
 }
 
 fun main() {
-    var c := C { v = 0 };
+    var c := C(v = 0);
     go(&var c);
     assert(c.v == 1);
 }

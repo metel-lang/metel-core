@@ -6,7 +6,7 @@
 struct Pair { op: |i64| -> i64, n: i64 }
 
 fun main() {
-    let p := Pair { op = |x: i64| { x * 2 }, n = 5 };
+    let p := Pair(op = |x: i64| { x * 2 }, n = 5);
     let r := match (p) {
         Pair { op, n } => op(n),
     };

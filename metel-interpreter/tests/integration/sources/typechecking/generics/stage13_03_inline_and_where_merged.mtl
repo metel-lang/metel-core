@@ -28,5 +28,5 @@ extend Entry: Comparable {
 }
 
 fun make(e: Entry) -> SortedCache<Entry> {
-    SortedCache { items = [e] }
+    SortedCache(items = [e])
 }

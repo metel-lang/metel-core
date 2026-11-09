@@ -14,9 +14,9 @@ import beta::*;
 import dispatch::*;
 
 fun main() {
-    let a := alpha::Shape::Circle { r = 3.0 };
+    let a := alpha::Shape::Circle(r = 3.0);
     assert(radius(a) == 3.0);
 
-    let b := beta::Shape::Circle { r = 9.0 };
+    let b := beta::Shape::Circle(r = 9.0);
     let _ := b;
 }

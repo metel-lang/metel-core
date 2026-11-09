@@ -559,11 +559,6 @@ mode = "named"
 name = "CaptureItem"
 section = "Expressions"
 [[rule]]
-pest = "struct_literal"
-mode = "named"
-name = "StructLiteral"
-section = "Expressions"
-[[rule]]
 pest = "record_lit"
 mode = "named"
 name = "RecordLiteral"

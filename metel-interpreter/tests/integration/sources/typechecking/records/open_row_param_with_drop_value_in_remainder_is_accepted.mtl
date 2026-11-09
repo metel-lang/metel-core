@@ -9,6 +9,6 @@ extend Handle: Drop {
 fun get_x<record R>(p: { x: i64, ..R }) -> i64 { p.x }
 
 fun main() {
-    let r := { x = 7, handle = Handle { fd = 1 } };
+    let r := { x = 7, handle = Handle(fd = 1) };
     assert(get_x(r) == 7);
 }

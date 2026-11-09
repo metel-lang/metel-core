@@ -4,7 +4,7 @@ struct Pair {
 }
 
 fun main() {
-    var p := Pair { left = "a", right = "b" };
+    var p := Pair(left = "a", right = "b");
     let taken := p.left;
     p.left = "c";
     let whole := p;

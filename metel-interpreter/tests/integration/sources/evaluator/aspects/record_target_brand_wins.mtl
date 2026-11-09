@@ -19,8 +19,8 @@ extend<record R: { w: i64, .. }> { ..R }: Describe {
 fun show<T: Describe>(x: &T) -> String { x.describe() }
 
 fun main() {
-    let tagged := Tagged { w = 1 };
-    let plain := Plain { w = 1, z = 2 };
+    let tagged := Tagged(w = 1);
+    let plain := Plain(w = 1, z = 2);
     let anon := { w = 1 };
     assert(tagged.describe() == "brand");
     assert(plain.describe() == "row");

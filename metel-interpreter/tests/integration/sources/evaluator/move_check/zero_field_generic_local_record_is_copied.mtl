@@ -2,7 +2,7 @@
 
 fun a() -> i64 {
     record Marker<T> {}
-    let m: Marker<i64> := Marker {};
+    let m: Marker<i64> := Marker();
     let n := m;
     let o := m;
     1

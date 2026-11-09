@@ -14,34 +14,34 @@ struct MathError  { msg: String }
 
 extend MathError: From<ParseError> {
     fun from(value: ParseError) -> MathError {
-        MathError { msg = "parse: " + value.msg }
+        MathError(msg = "parse: " + value.msg)
     }
 }
 
 fun parse_positive(s: String) -> Result<i64, ParseError> {
-    if (s == "1") { Result::Ok { value = 1 } }
-    else if (s == "2") { Result::Ok { value = 2 } }
-    else if (s == "10") { Result::Ok { value = 10 } }
-    else if (s == "42") { Result::Ok { value = 42 } }
-    else { Result::Err { error = ParseError { msg = "bad input: " + s } } }
+    if (s == "1") { Result::Ok(value = 1) }
+    else if (s == "2") { Result::Ok(value = 2) }
+    else if (s == "10") { Result::Ok(value = 10) }
+    else if (s == "42") { Result::Ok(value = 42) }
+    else { Result::Err(error = ParseError(msg = "bad input: " + s)) }
 }
 
 fun double_parsed(s: String) -> Result<i64, ParseError> {
     let n := parse_positive(s)?;
-    Result::Ok { value = n * 2 }
+    Result::Ok(value = n * 2)
 }
 
 fun add_parsed(a: String, b: String) -> Result<i64, MathError> {
     // cross-type match + as-cast (? cross-type deferred to #13)
     let x := match (parse_positive(a)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err { error = error as MathError }; },
+        Result::Err { error } => { return Result::Err(error = error as MathError); },
     };
     let y := match (parse_positive(b)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err { error = error as MathError }; },
+        Result::Err { error } => { return Result::Err(error = error as MathError); },
     };
-    Result::Ok { value = x + y }
+    Result::Ok(value = x + y)
 }
 
 // ── Option helpers ───────────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ fun add_parsed(a: String, b: String) -> Result<i64, MathError> {
 fun find_in(arr: [i64], target: i64) -> Option<i64> {
     var i := 0;
     while (i < arr.len()) {
-        if (arr[i as u64] == target) { return Option::Some { value = i }; }
+        if (arr[i as u64] == target) { return Option::Some(value = i); }
         i += 1;
     }
     None
@@ -57,15 +57,15 @@ fun find_in(arr: [i64], target: i64) -> Option<i64> {
 
 fun map_some(p: Option<i64>, factor: i64) -> Option<i64> {
     match (p) {
-        Option::Some { value } => Option::Some { value = value * factor },
+        Option::Some { value } => Option::Some(value = value * factor),
         None => None,
     }
 }
 
 fun perhaps_to_result(p: Option<i64>, error: String) -> Result<i64, String> {
     match (p) {
-        Option::Some { value } => Result::Ok { value = value },
-        None => Result::Err { error = error },
+        Option::Some { value } => Result::Ok(value = value),
+        None => Result::Err(error = error),
     }
 }
 
@@ -136,7 +136,7 @@ fun main() {
 
     // ── Option chaining via map_some ─────────────────────────────────────────
 
-    let m1 := map_some(Option::Some { value = 5 }, 3);
+    let m1 := map_some(Option::Some(value = 5), 3);
     match (m1) {
         Option::Some { value } => assert(value == 15),
         None => assert(false),
@@ -157,7 +157,7 @@ fun main() {
 
     // ── perhaps_to_result bridge ──────────────────────────────────────────────
 
-    let p2r_ok := perhaps_to_result(Option::Some { value = 7 }, "not found");
+    let p2r_ok := perhaps_to_result(Option::Some(value = 7), "not found");
     match (p2r_ok) {
         Result::Ok  { value } => assert(value == 7),
         Result::Err { error } => assert(false),

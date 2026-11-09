@@ -5,8 +5,8 @@ struct W<T> { v: T }
 extend W<i64>: Tag { fun t(&self) -> i64 { 1 } }
 extend W<String>: Tag { fun t(&self) -> i64 { 2 } }
 fun main() {
-    let a := W { v = 1 };
-    let b := W { v = "s" };
+    let a := W(v = 1);
+    let b := W(v = "s");
     assert(a.t() == 1);
     assert(b.t() == 2);
 }

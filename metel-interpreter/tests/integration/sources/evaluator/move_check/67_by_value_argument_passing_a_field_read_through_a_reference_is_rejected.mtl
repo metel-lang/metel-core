@@ -8,7 +8,7 @@ fun takes(v: String) -> i64 {
 }
 
 fun main() {
-    let item := Item { name = Name { value = "x" } };
+    let item := Item(name = Name(value = "x"));
     let r := &item;
     let n := takes(r.name.value);
 }

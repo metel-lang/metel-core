@@ -24,12 +24,12 @@ extend Counter: Stats {
 }
 
 fun main() {
-    let c := Counter { count = 5 };
+    let c := Counter(count = 5);
     assert(c.value() == 5);
     assert(c.doubled() == 10);
     assert(c.tripled() == 15);
 
-    let zero := Counter { count = 0 };
+    let zero := Counter(count = 0);
     assert(zero.doubled() == 0);
     assert(zero.tripled() == 0);
 }

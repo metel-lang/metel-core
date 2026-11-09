@@ -17,7 +17,7 @@ fun needs_sendable<T: Sendable>(x: &T) -> boolean { return true; }
 fun needs_not_displayable<T: !Displayable>(x: &T) -> boolean { return true; }
 
 fun main() {
-    let h := Handle { fd = 1 };
+    let h := Handle(fd = 1);
     assert(needs_copy2(&h));
     assert(needs_sendable(&h));
     assert(needs_not_displayable(&h));

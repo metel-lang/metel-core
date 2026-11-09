@@ -14,7 +14,7 @@ extend<record R: { name: String, .. }> { ..R }: Describe {
 }
 
 fun main() {
-    var h := Handle { id = 1, name = "secret" };
+    var h := Handle(id = 1, name = "secret");
     let name := h.name;
     assert(name == "secret");
     assert(h.state() == "no name");

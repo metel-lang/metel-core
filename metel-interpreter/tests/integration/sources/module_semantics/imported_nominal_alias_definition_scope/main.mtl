@@ -10,6 +10,6 @@ fun inspect_box(value: Container) -> i64 { value.value }
 fun main() {
     assert(inspect_packet(make_packet()) == 7);
     assert(inspect_box(make_box()) == 9);
-    assert(Packet { id = "local" }.id == "local");
-    assert(Box { value = "local" }.value == "local");
+    assert(Packet(id = "local").id == "local");
+    assert(Box(value = "local").value == "local");
 }

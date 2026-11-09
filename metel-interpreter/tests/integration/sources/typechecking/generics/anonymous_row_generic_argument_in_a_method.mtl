@@ -8,7 +8,7 @@ extend Tool {
 }
 
 fun main() {
-    let tool := Tool { n = 1 };
-    let session := Session { id = 2, data = { tag = "ok" } };
+    let tool := Tool(n = 1);
+    let session := Session(id = 2, data = { tag = "ok" });
     assert(tool.take(session) == 3);
 }

@@ -16,9 +16,9 @@ fun use_flag(f: Flag) -> i64 {
 
 fun main() {
     let a := Empty;
-    let b := Empty {};
+    let b := Empty();
     let x := Flag::On;
-    let y := Flag::On {};
+    let y := Flag::On;
 
     assert(use_empty(a) == 1);
     assert(use_empty(b) == 1);

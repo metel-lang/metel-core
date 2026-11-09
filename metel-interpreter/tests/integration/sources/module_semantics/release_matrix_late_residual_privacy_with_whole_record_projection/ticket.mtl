@@ -1,2 +1,2 @@
 pub struct Ticket { pub id: i64, pub label: String, secret: String }
-pub fun make() -> Ticket { Ticket { id = 1, label = "l".to_string(), secret = "s".to_string() } }
+pub fun make() -> Ticket { Ticket(id = 1, label = "l".to_string(), secret = "s".to_string()) }

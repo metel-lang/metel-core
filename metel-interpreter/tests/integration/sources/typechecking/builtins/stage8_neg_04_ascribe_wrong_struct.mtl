@@ -4,5 +4,5 @@ struct Foo { x: i64 }
 struct Bar { x: i64 }
 
 fun main() {
-    let _: Bar := Foo { x = 1 } : Bar; // ERROR[T0001]
+    let _: Bar := Foo(x = 1) : Bar; // ERROR[T0001]
 }

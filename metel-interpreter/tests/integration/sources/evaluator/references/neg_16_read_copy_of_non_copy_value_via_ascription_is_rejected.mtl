@@ -3,7 +3,7 @@
 struct NotCopy { v: String }
 
 fun main() {
-    let owned := NotCopy { v = "x" };
+    let owned := NotCopy(v = "x");
     let r: &NotCopy := &owned;
     let copy := r: NotCopy;
 }

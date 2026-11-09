@@ -26,8 +26,8 @@ extend Cat: Greetable {
 }
 
 fun main() {
-    let d := Dog { name = "Rex" };
-    let c := Cat { name = "Mia" };
+    let d := Dog(name = "Rex");
+    let c := Cat(name = "Mia");
 
     // Both call a method named `label` — dispatch must reach the correct impl.
     assert(d.label() == "dog:Rex");
@@ -38,8 +38,8 @@ fun main() {
     assert(c.farewell() == "purr from Mia");
 
     // Second instances
-    let d2 := Dog { name = "Buddy" };
-    let c2 := Cat { name = "Luna" };
+    let d2 := Dog(name = "Buddy");
+    let c2 := Cat(name = "Luna");
     assert(d2.label() == "dog:Buddy");
     assert(c2.label() == "cat:Luna");
 }

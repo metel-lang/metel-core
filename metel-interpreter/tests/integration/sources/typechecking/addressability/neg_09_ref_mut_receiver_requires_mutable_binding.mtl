@@ -12,6 +12,6 @@ extend Counter {
 }
 
 fun main() {
-    let counter := Counter { value = 0 };
+    let counter := Counter(value = 0);
     counter.increment();
 }

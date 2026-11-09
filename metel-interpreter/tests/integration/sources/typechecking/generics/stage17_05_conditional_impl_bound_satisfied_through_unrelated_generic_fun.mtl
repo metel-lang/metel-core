@@ -27,6 +27,6 @@ fun describe<T: Printable>(x: T) -> String {
 }
 
 fun main() {
-    let p := Pair { first = 5, second = 10 };
+    let p := Pair(first = 5, second = 10);
     let s: String := describe(p);
 }

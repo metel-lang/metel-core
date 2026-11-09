@@ -13,6 +13,6 @@ extend<record R: { token: String, .. }> Session<..R>: Describe {
 fun show<T: Describe>(t: T) -> i64 { t.describe() }
 
 fun main() {
-    let anon: Session<{ extra: i64 }> := Session { id = 1, data = { extra = 1 } };
+    let anon: Session<{ extra: i64 }> := Session(id = 1, data = { extra = 1 });
     println(show(anon));
 }
