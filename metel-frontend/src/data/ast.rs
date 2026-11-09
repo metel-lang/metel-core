@@ -420,10 +420,24 @@ pub struct AspectDecl {
     pub visibility: Visibility,
     pub name: String,
     pub generics: Vec<String>,
+    /// The direct super-aspects listed after the name (RFC-0213 section 1).
+    pub supers: Vec<SuperAspect>,
     /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1).
     /// Enforced against impl definitions (a missing one is `T0017`).
     pub assoc_types: Vec<AssocTypeDecl>,
     pub methods: Vec<AspectMethod>,
+    pub span: Span,
+}
+
+/// One entry of an aspect's super-aspect list: `aspect A: B, deriving C, !D` (RFC-0213).
+#[derive(Debug, Clone)]
+pub struct SuperAspect {
+    /// The aspect as written; resolved against the declaring module's scope.
+    pub name: String,
+    /// `!D`: an exclusion. No type may be granted both aspects (RFC-0213 section 3).
+    pub negative: bool,
+    /// `deriving C`: derived together with the sub-aspect (RFC-0213 section 4). Std aspects only.
+    pub deriving: bool,
     pub span: Span,
 }
 

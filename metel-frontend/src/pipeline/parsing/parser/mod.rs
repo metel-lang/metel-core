@@ -4156,10 +4156,32 @@ fn parse_aspect_decl(
         (Visibility::Private, first.as_str().to_string())
     };
     let mut generics = vec![];
+    let mut supers = vec![];
     let mut assoc_types = vec![];
     let mut methods = vec![];
     for p in inner {
         match p.as_rule() {
+            Rule::super_aspects => {
+                for entry in p.into_inner() {
+                    let span = Span::of(&entry, filename);
+                    let mut negative = false;
+                    let mut deriving = false;
+                    let mut name = String::new();
+                    for part in entry.into_inner() {
+                        match part.as_rule() {
+                            Rule::bang => negative = true,
+                            Rule::deriving_mark => deriving = true,
+                            _ => name = part.as_str().trim().to_string(),
+                        }
+                    }
+                    supers.push(crate::data::ast::SuperAspect {
+                        name,
+                        negative,
+                        deriving,
+                        span,
+                    });
+                }
+            }
             Rule::generic_params => {
                 for gp in p.into_inner() {
                     if gp.as_rule() == Rule::generic_param {
@@ -4185,6 +4207,7 @@ fn parse_aspect_decl(
         visibility,
         name,
         generics,
+        supers,
         assoc_types,
         methods,
         span,

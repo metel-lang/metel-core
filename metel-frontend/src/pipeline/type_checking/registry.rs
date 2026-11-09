@@ -1059,15 +1059,20 @@ fn register_aspect_decl(
     declaring_module: &[String],
     registry: &mut TypeDefinitionRegistry,
 ) {
-    let method_names = ad.methods.iter().map(|m| m.name.clone()).collect();
-    registry.register_aspect_decl(
-        ad.name.clone(),
-        declaring_module.to_vec(),
-        method_names,
-        ad.generics.clone(),
-        ad.methods.clone(),
-        ad.assoc_types.clone(),
-    );
+    let entry = super::type_engine::AspectEntry {
+        declaring_module: declaring_module.to_vec(),
+        method_names: ad.methods.iter().map(|m| m.name.clone()).collect(),
+        generics: ad.generics.clone(),
+        method_defs: ad.methods.clone(),
+        assoc_type_decls: ad.assoc_types.clone(),
+        supers: ad
+            .supers
+            .iter()
+            .filter(|entry| !entry.negative)
+            .map(|entry| entry.name.clone())
+            .collect(),
+    };
+    registry.register_aspect_decl(ad.name.clone(), entry);
 }
 
 /// Register the annotated signatures of NATIVE methods in an impl block on a

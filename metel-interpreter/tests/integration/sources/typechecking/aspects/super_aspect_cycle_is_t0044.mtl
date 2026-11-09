@@ -1,0 +1,3 @@
+aspect A: B; // ERROR[T0044]
+aspect B: A;
+fun main() {}
