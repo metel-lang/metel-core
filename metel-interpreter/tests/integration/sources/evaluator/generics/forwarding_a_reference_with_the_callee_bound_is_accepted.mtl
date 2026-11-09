@@ -1,0 +1,9 @@
+aspect Named { fun name(&self) -> String; }
+struct P { n: i64 }
+extend P: Named { fun name(&self) -> String { "p" } }
+fun label<T: Named>(x: &T) -> String { x.name() }
+fun pass<T: Named>(x: &T) -> String { label(x) }
+
+fun main() {
+    assert(pass(&P(n = 1)) == "p");
+}
