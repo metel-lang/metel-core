@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.types.fixed-size-arrays.legality-10"]

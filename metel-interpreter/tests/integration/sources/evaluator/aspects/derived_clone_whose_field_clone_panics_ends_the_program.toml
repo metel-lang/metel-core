@@ -1,5 +1,5 @@
 [options]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-8"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-8", "spec.declarations.aspects.declaration-clauses.legality-9"]
 
 [expect]
 status = "runtime_error"
