@@ -191,7 +191,7 @@ pub aspect Clone {
     fun clone(&self) -> Self;
 }
 
-pub aspect Copy {
+pub derivable aspect Copy {
 }
 
 pub aspect Drop {

@@ -204,6 +204,10 @@ mode = "named"
 name = "AspectProperty"
 section = "Declarations"
 [[rule]]
+pest = "derivable_kw"
+mode = "literal"
+values = ["derivable"]
+[[rule]]
 pest = "declared_kw"
 mode = "literal"
 values = ["declared"]
@@ -215,6 +219,38 @@ values = ["implicit"]
 pest = "auto_kw"
 mode = "literal"
 values = ["auto"]
+[[rule]]
+pest = "class_kw"
+mode = "named"
+name = "ClassKeyword"
+section = "Declarations"
+[[rule]]
+pest = "copy_kw"
+mode = "literal"
+values = ["copy"]
+[[rule]]
+pest = "linear_kw"
+mode = "literal"
+values = ["linear"]
+[[rule]]
+pest = "derives_kw"
+mode = "literal"
+values = ["derives"]
+[[rule]]
+pest = "colon_list"
+mode = "named"
+name = "ColonList"
+section = "Declarations"
+[[rule]]
+pest = "derives_clause"
+mode = "named"
+name = "DerivesClause"
+section = "Declarations"
+[[rule]]
+pest = "clause_entry"
+mode = "named"
+name = "ClauseEntry"
+section = "Declarations"
 [[rule]]
 pest = "super_aspects"
 mode = "named"

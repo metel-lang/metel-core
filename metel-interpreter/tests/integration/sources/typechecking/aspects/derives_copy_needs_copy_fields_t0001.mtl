@@ -1,0 +1,2 @@
+struct Bad derives Copy { s: String } // ERROR[T0001]
+fun main() {}

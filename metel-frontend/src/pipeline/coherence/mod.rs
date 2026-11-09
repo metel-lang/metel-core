@@ -12,6 +12,7 @@
 //! disjointness) and §3.2 (unconditional vs. conditional conflict) are
 //! handled via `provably_disjoint` checks on `scoped_type_param_bounds`.
 
+mod clauses;
 mod properties;
 mod supers;
 
@@ -65,6 +66,14 @@ fn resolve_id(names: &ResolvedNames, current_module: &[String], name: &str) -> O
         }
     }
     std_hit
+}
+
+/// The `SymbolId` of the declaration `name` in `module` itself, not through an import.
+fn declared_symbol(names: &ResolvedNames, module: &[String], name: &str) -> Option<SymbolId> {
+    names
+        .symbols
+        .get(&(module.to_vec(), Namespace::Type, name.to_string()))
+        .copied()
 }
 
 /// `SymbolId -> declaring module`, inverted from `names.symbols`'
@@ -628,6 +637,8 @@ struct CollectedImpl<'a> {
     /// additive instead of double-reporting (with possibly differently
     /// worded messages) the same concrete-nominal collision.
     is_structural_or_generic: bool,
+    /// Written by a declaration clause rather than an `extend` (RFC-0207).
+    from_clause: bool,
 }
 
 /// Whether two canonicalized targets could describe an overlapping concrete
@@ -918,6 +929,7 @@ fn check_inherent_method_duplicates(
                     method_names: vec![],
                     target_head: String::new(),
                     is_structural_or_generic: false,
+                    from_clause: false,
                 },
                 methods: ib
                     .methods
@@ -1032,6 +1044,7 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
                 method_names: ib.methods.iter().map(|m| m.name.as_str()).collect(),
                 target_head,
                 is_structural_or_generic,
+                from_clause: ib.from_clause,
             });
         }
     }
@@ -1065,6 +1078,7 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
     }
 
     // Super-aspects (RFC-0213): the declared lists, then the impls against them.
+    clauses::check(graph)?;
     properties::check(graph, &impls)?;
     supers::SuperTable::build(graph)?.check_impls(&impls)?;
 

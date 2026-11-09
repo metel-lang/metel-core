@@ -1,0 +1,2 @@
+linear struct Receipt { id: i64 } // ERROR[P0001]
+fun main() {}

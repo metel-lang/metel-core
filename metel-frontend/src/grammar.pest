@@ -80,7 +80,16 @@ native_attr = { "native" ~ "(" ~ "@" ~ native_path ~ ")" }
 native_path = @{ native_seg ~ ("." ~ native_seg)* }
 native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
-struct_decl = { pub_kw? ~ "struct" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
+struct_decl = { pub_kw? ~ class_kw? ~ "struct" ~ ident ~ generic_params? ~ colon_list? ~ derives_clause? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
+// RFC-0207: the class keywords and the two declaration clauses. All three words are contextual.
+class_kw       = { copy_kw | linear_kw }
+copy_kw        = @{ "copy" ~ !(ASCII_ALPHANUMERIC | "_") }
+linear_kw      = @{ "linear" ~ !(ASCII_ALPHANUMERIC | "_") }
+derives_kw     = @{ "derives" ~ !(ASCII_ALPHANUMERIC | "_") }
+colon_list     = { ":" ~ clause_entry ~ ("," ~ clause_entry)* }
+derives_clause = { derives_kw ~ clause_entry ~ ("," ~ clause_entry)* }
+// `bang?` so a negative entry parses and is rejected with its own message (the colon list has none).
+clause_entry   = { bang? ~ type_path }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }
 // RFC-0121 item 2: a field's type may be a tail-only open record (`{ ..R }`),
 // i.e. the struct's own `row`-kinded parameter `R` (any fixed-field open
@@ -92,7 +101,7 @@ struct_field  = { pub_kw? ~ ident ~ ":" ~ (open_record_type | type_expr) }
 // semantic distinction the type checker enforces, not the grammar.
 record_decl = { pub_kw? ~ "record" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 
-enum_decl   = { pub_kw? ~ "enum" ~ ident ~ generic_params? ~ where_clause? ~ "{" ~ enum_variants ~ "}" }
+enum_decl   = { pub_kw? ~ class_kw? ~ "enum" ~ ident ~ generic_params? ~ colon_list? ~ derives_clause? ~ where_clause? ~ "{" ~ enum_variants ~ "}" }
 enum_variants = { (enum_variant ~ ",")* ~ enum_variant? }
 enum_variant  = { ident ~ ("{" ~ struct_fields ~ "}")? }
 
@@ -111,7 +120,8 @@ extend_aspect        = { bang? ~ named_type }
 // selects a pre-declared slot and keeps `=`.
 assoc_type_def = { "type" ~ ident ~ ":=" ~ type_expr ~ ";" }
 
-aspect_property = { declared_kw | implicit_kw | auto_kw }
+aspect_property = { declared_kw | derivable_kw | implicit_kw | auto_kw }
+derivable_kw  = @{ "derivable" ~ !(ASCII_ALPHANUMERIC | "_") }
 declared_kw   = @{ "declared" ~ !(ASCII_ALPHANUMERIC | "_") }
 implicit_kw   = @{ "implicit" ~ !(ASCII_ALPHANUMERIC | "_") }
 auto_kw       = @{ "auto" ~ !(ASCII_ALPHANUMERIC | "_") }

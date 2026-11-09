@@ -1,0 +1,26 @@
+// RFC-0207: `copy struct T` is `struct T derives Copy`; the declaration is the grant, for structs, enums
+// and generic types alike, and deriving twice is the same as once.
+copy struct Point { x: i64, y: i64 }
+struct Pixel derives Copy { v: i64 }
+copy struct Both derives Copy { n: i64 }
+pub copy struct Wrapper<T> { v: T }
+copy enum Dir { Up, Down }
+
+fun main() {
+    let p := Point(x = 1, y = 2);
+    let q := p;
+    assert(p.x + q.y == 3);
+    let px := Pixel(v = 4);
+    let py := px;
+    assert(px.v + py.v == 8);
+    let b := Both(n = 5);
+    let c := b;
+    assert(b.n + c.n == 10);
+    let w := Wrapper(v = 3);
+    let w2 := w;
+    assert(w.v + w2.v == 6);
+    let d := Dir::Up;
+    let e := d;
+    match (d) { Dir::Up => assert(true), Dir::Down => assert(false) }
+    match (e) { Dir::Up => assert(true), Dir::Down => assert(false) }
+}

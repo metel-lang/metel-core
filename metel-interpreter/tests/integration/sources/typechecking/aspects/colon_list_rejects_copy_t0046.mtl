@@ -1,0 +1,2 @@
+struct Bad: Copy { x: i64 } // ERROR[T0046]
+fun main() {}
