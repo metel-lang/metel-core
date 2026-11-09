@@ -211,6 +211,7 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
 
 /// The type an undecided-ownership fallback `reason` is about, or `None` for any other reason
 /// (metel-core#1814).
+#[must_use]
 pub fn undecided_ownership_type(reason: &str) -> Option<&str> {
     abstract_bodies::undecided_type(reason)
 }
