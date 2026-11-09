@@ -1,0 +1,6 @@
+// A `Copy` type's `Clone` is the provided one and cannot be written (RFC-0213 section 4 rule 2).
+copy struct F { n: i64 }
+extend F: Clone { fun clone(&self) -> F { F(n = 0) } } // ERROR[T0015]
+
+struct G derives Copy { n: i64 }
+fun main() {}

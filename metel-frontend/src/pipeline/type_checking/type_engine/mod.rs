@@ -5178,9 +5178,16 @@ impl TypeDefinitionRegistry {
                 .any(|aspect| self.is_copy_aspect(current_module, aspect));
         }
         if let InferType::Var(var) = ty {
-            return assumptions
-                .get(var)
-                .is_some_and(|assumed| assumed.contains(aspect_name));
+            // An assumed aspect proves itself and its super-aspects (RFC-0213 section 1): `T: Copy`
+            // proves `T: Clone`.
+            return assumptions.get(var).is_some_and(|assumed| {
+                assumed.contains(aspect_name)
+                    || assumed.iter().any(|have| {
+                        self.aspect_super_closure(current_module, have)
+                            .iter()
+                            .any(|sup| sup == aspect_name)
+                    })
+            });
         }
         if let InferType::Named(name, args, ..) = ty
             && args.is_empty()

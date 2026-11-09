@@ -292,16 +292,48 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
         .next()
         .ok_or_else(|| MetelError::internal("decl: missing inner rule"))?;
     if inner.as_rule() == Rule::impl_block {
-        return Ok(parse_impl_block(inner, filename)?
-            .into_iter()
-            .map(Decl::Impl)
-            .collect());
+        let mut decls = Vec::new();
+        for block in parse_impl_block(inner, filename)? {
+            let provided = provided_clone_for(&block, filename);
+            decls.push(Decl::Impl(block));
+            decls.extend(provided.map(Decl::Impl));
+        }
+        return Ok(decls);
     }
     let decl = parse_single_decl(inner, filename)?;
     let impls = clause_impls(&decl);
     let mut out = vec![decl];
     out.extend(impls.into_iter().map(Decl::Impl));
     Ok(out)
+}
+
+/// The `Clone` the compiler provides with a marker `extend T: Copy;` (RFC-0206 section 2): the same
+/// host clone `derives Clone` binds, under the `Copy` impl's own generics. The standard library writes
+/// the `Clone` of every kind it grants `Copy`, so it is exempt.
+fn provided_clone_for(block: &ImplBlock, filename: &str) -> Option<ImplBlock> {
+    if block.polarity != Polarity::Positive
+        || block.from_clause
+        || !block.methods.is_empty()
+        || block.aspect_name.as_deref()
+            != Some(crate::pipeline::type_checking::type_engine::COPY_ASPECT)
+        || filename.starts_with("<embedded std")
+        // An `extend Box<i64>: Clone` of a specialised generic nominal does not work yet (metel-core#1922).
+        || (block.generics.is_empty()
+            && matches!(&block.target_type, TypeExpr::Named(_, args, _) if !args.is_empty()))
+    {
+        return None;
+    }
+    let entry = ClauseEntry {
+        name: "Clone".to_string(),
+        from_class_keyword: false,
+        span: block.span.clone(),
+    };
+    Some(ImplBlock {
+        aspect_name: Some(entry.name.clone()),
+        methods: derived_methods(&entry, &block.target_type),
+        from_clause: true,
+        ..block.clone()
+    })
 }
 
 /// The marker impls a struct's or enum's declaration clauses stand for (RFC-0207): `struct T: A derives B`
@@ -332,6 +364,14 @@ fn derived_methods(entry: &ClauseEntry, target: &TypeExpr) -> Vec<FunDecl> {
         return Vec::new();
     }
     let span = entry.span.clone();
+    // `Self` resolves for a plain nominal target; an instantiated generic one is spelled out (`Self`
+    // does not resolve to it at run time).
+    let generic = matches!(target, TypeExpr::Named(_, args, _) if !args.is_empty());
+    let return_type = if generic {
+        target.clone()
+    } else {
+        TypeExpr::Named("Self".to_string(), Vec::new(), NameSpan(span.clone()))
+    };
     vec![FunDecl {
         visibility: Visibility::Public,
         name: "clone".to_string(),
@@ -344,7 +384,7 @@ fn derived_methods(entry: &ClauseEntry, target: &TypeExpr) -> Vec<FunDecl> {
             type_ann: None,
             span: span.clone(),
         }],
-        return_type: Some(target.clone()),
+        return_type: Some(return_type),
         native: Some(NativeBinding {
             key_path: ["std", "core", "record_clone"].map(String::from).to_vec(),
             span: span.clone(),
@@ -365,16 +405,15 @@ fn derived_methods(entry: &ClauseEntry, target: &TypeExpr) -> Vec<FunDecl> {
 fn clause_impl_generics(
     generics: &[GenericParam],
     entry: &ClauseEntry,
-    derives: &[ClauseEntry],
+    bound: Option<&str>,
     field_types: &[&TypeExpr],
 ) -> Vec<GenericParam> {
-    let from_derives = derives.iter().any(|d| std::ptr::eq(d, entry));
     generics
         .iter()
         .map(|g| {
             let mut param = g.clone();
             param.bounds = Vec::new();
-            if from_derives
+            if let Some(bound) = bound
                 && !g.is_record
                 && !g.is_row
                 && field_types.iter().any(|ty| mentions_owned(ty, &g.name))
@@ -382,7 +421,7 @@ fn clause_impl_generics(
                 param.bounds.push(Bound {
                     polarity: Polarity::Positive,
                     head: BoundHead::Aspect(TypeExpr::Named(
-                        entry.name.clone(),
+                        bound.to_string(),
                         Vec::new(),
                         NameSpan(entry.span.clone()),
                     )),
@@ -421,16 +460,34 @@ fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
         .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(span.clone())))
         .collect();
     let target = TypeExpr::Named(name.clone(), args, NameSpan(span.clone()));
+    // Each entry with the aspect that bounds a generic type's parameters: a `derives` entry is bounded by
+    // itself, a colon-list marker by nothing. `derives Copy` also brings the `Clone` the compiler provides
+    // with it (RFC-0206 section 2, RFC-0213 section 4), under the same condition.
+    let mut entries: Vec<(ClauseEntry, Option<String>)> = Vec::new();
+    for entry in &clauses.colon {
+        entries.push((entry.clone(), None));
+    }
+    for entry in &clauses.derives {
+        entries.push((entry.clone(), Some(entry.name.clone())));
+        if entry.name == crate::pipeline::type_checking::type_engine::COPY_ASPECT {
+            entries.push((
+                ClauseEntry {
+                    name: "Clone".to_string(),
+                    from_class_keyword: false,
+                    span: entry.span.clone(),
+                },
+                Some(entry.name.clone()),
+            ));
+        }
+    }
     let mut seen = std::collections::HashSet::new();
-    clauses
-        .colon
+    entries
         .iter()
-        .chain(&clauses.derives)
         // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
-        .filter(|entry| seen.insert(entry.name.clone()))
-        .map(|entry| ImplBlock {
+        .filter(|(entry, _)| seen.insert(entry.name.clone()))
+        .map(|(entry, bound)| ImplBlock {
             polarity: Polarity::Positive,
-            generics: clause_impl_generics(generics, entry, &clauses.derives, &field_types),
+            generics: clause_impl_generics(generics, entry, bound.as_deref(), &field_types),
             aspect_name: Some(entry.name.clone()),
             aspect_type_args: Vec::new(),
             target_type: target.clone(),
