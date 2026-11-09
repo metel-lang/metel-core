@@ -1,11 +1,10 @@
 // RFC-0206 section 2, RFC-0213 section 4: `aspect Copy: deriving Clone` is `implicit`, so the compiler
-// provides the `Clone` of a `Copy` type: `derives Copy`, `copy struct` and a marker `extend T: Copy;` each
-// bring it, and `T: Copy` proves `T: Clone`.
+// provides the `Clone` of a `Copy` type: `derives Copy` and `copy struct` each bring it, and `T: Copy`
+// proves `T: Clone`.
 copy struct Point { x: i64, y: i64 }
 struct Pixel derives Copy { v: i64 }
 copy struct Wrapper<T> { v: T }
-struct Legacy { n: i64 }
-extend Legacy: Copy;
+copy struct Legacy { n: i64 }
 
 fun dup<T: Copy>(x: &T) -> T { x.clone() }
 fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
@@ -17,5 +16,5 @@ fun main() {
     assert(dup(&p).y == 2);
     assert(via_copy(&Pixel(v = 3)).v == 3);
     assert(Wrapper(v = 5).clone().v == 5);
-    assert(need_clone(&Legacy(n = 4)).n == 4);
+    match (need_clone(&Dir::Down)) { Dir::Down => assert(true), Dir::Up => assert(false) }
 }

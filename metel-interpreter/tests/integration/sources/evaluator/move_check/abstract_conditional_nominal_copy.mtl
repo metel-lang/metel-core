@@ -1,5 +1,4 @@
-struct Wrapper<T> { value: T }
-extend<T: Copy> Wrapper<T>: Copy;
+copy struct Wrapper<T> { value: T }
 
 fun copied<T: Copy>(value: Wrapper<T>) -> T {
     let first := value;

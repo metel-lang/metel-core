@@ -292,48 +292,16 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
         .next()
         .ok_or_else(|| MetelError::internal("decl: missing inner rule"))?;
     if inner.as_rule() == Rule::impl_block {
-        let mut decls = Vec::new();
-        for block in parse_impl_block(inner, filename)? {
-            let provided = provided_clone_for(&block, filename);
-            decls.push(Decl::Impl(block));
-            decls.extend(provided.map(Decl::Impl));
-        }
-        return Ok(decls);
+        return Ok(parse_impl_block(inner, filename)?
+            .into_iter()
+            .map(Decl::Impl)
+            .collect());
     }
     let decl = parse_single_decl(inner, filename)?;
     let impls = clause_impls(&decl);
     let mut out = vec![decl];
     out.extend(impls.into_iter().map(Decl::Impl));
     Ok(out)
-}
-
-/// The `Clone` the compiler provides with a marker `extend T: Copy;` (RFC-0206 section 2): the same
-/// host clone `derives Clone` binds, under the `Copy` impl's own generics. The standard library writes
-/// the `Clone` of every kind it grants `Copy`, so it is exempt.
-fn provided_clone_for(block: &ImplBlock, filename: &str) -> Option<ImplBlock> {
-    if block.polarity != Polarity::Positive
-        || block.from_clause
-        || !block.methods.is_empty()
-        || block.aspect_name.as_deref()
-            != Some(crate::pipeline::type_checking::type_engine::COPY_ASPECT)
-        || filename.starts_with("<embedded std")
-        // An `extend Box<i64>: Clone` of a specialised generic nominal does not work yet (metel-core#1922).
-        || (block.generics.is_empty()
-            && matches!(&block.target_type, TypeExpr::Named(_, args, _) if !args.is_empty()))
-    {
-        return None;
-    }
-    let entry = ClauseEntry {
-        name: "Clone".to_string(),
-        from_class_keyword: false,
-        span: block.span.clone(),
-    };
-    Some(ImplBlock {
-        aspect_name: Some(entry.name.clone()),
-        methods: derived_methods(&entry, &block.target_type),
-        from_clause: true,
-        ..block.clone()
-    })
 }
 
 /// The marker impls a struct's or enum's declaration clauses stand for (RFC-0207): `struct T: A derives B`

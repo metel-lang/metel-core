@@ -2,8 +2,7 @@ aspect Marker {}
 struct Clear { count: i64 }
 extend Clear: !Marker;
 
-struct Wrapper<T> { value: T }
-extend<T> Wrapper<T>: Copy where T: Copy;
+copy struct Wrapper<T> { value: T }
 
 struct Guard<T> { name: String, tag: T }
 extend<T> Guard<T>: Drop where T: Marker {

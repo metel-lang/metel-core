@@ -7,32 +7,24 @@
 // `T` is assumed `Copy`, which discharges the bound on `Inner`'s conditional
 // impl. The eligibility check used to give up here and reject the program.
 
-struct Inner<T> {
+copy struct Inner<T> {
     value: T,
 }
 
-extend<T: Copy> Inner<T>: Copy;
-
-struct Outer<T> {
+copy struct Outer<T> {
     inner: Inner<T>,
 }
 
-extend<T: Copy> Outer<T>: Copy;
-
-// The same shape with the bound in a `where` clause rather than inline.
-struct Wrapped<T> {
+// The same shape with the field through a conditional `Copy` type, written with the class keyword.
+copy struct Wrapped<T> {
     held: Inner<T>,
 }
 
-extend<T> Wrapped<T>: Copy where T: Copy;
-
 // And through an enum payload, which takes the other branch of the check.
-enum Held<T> {
+copy enum Held<T> {
     One { value: Inner<T> },
     None,
 }
-
-extend<T: Copy> Held<T>: Copy;
 
 fun id<T: Copy>(x: T) -> T {
     return x;

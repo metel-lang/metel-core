@@ -1,12 +1,11 @@
 // RFC-0044 §2: `self` (a plain value receiver) keeps value semantics -- the
 // method body observes the passed value and returns a new one; the original
 // binding is untouched.
-struct Counter {
+copy struct Counter {
     value: i64,
 }
 
 // `Counter` is `Copy`, so `incremented(self)` receives a copy and `original` stays usable.
-extend Counter: Copy;
 
 extend Counter {
     fun incremented(self) -> Counter {

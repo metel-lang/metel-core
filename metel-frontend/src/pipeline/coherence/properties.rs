@@ -21,6 +21,8 @@ use crate::pipeline::path_normalization::NormalizedModuleGraph;
 struct Declared {
     name: String,
     module: Vec<String>,
+    /// The aspect has a derivation, so its declaration clause is `derives`; otherwise the colon list.
+    derivable: bool,
 }
 
 /// Check every aspect declaration's properties and every impl of a `declared` aspect.
@@ -49,10 +51,18 @@ pub(super) fn check(
             CanonicalType::Resolved(id, _) if named_types.contains(id)
         );
         if has_declaration {
+            let fix = if info.derivable {
+                format!(
+                    "`derives {}` (or `copy struct {}` for `Copy`)",
+                    info.name, imp.target_head
+                )
+            } else {
+                format!("`struct {}: {}`", imp.target_head, info.name)
+            };
             return Err(error(
                 format!(
-                    "`{}` is a `declared` aspect: grant it in the declaration of `{}` (`struct {}: {}` or `derives {}`), not with `extend`",
-                    info.name, imp.target_head, imp.target_head, info.name, info.name
+                    "`{}` is a `declared` aspect: grant it in the declaration of `{}` with {fix}, not with `extend`",
+                    info.name, imp.target_head
                 ),
                 imp.span,
             ));
@@ -128,6 +138,10 @@ fn check_declarations(
                         Declared {
                             name: ad.name.clone(),
                             module: module.module_path.clone(),
+                            derivable: ad
+                                .properties
+                                .iter()
+                                .any(|(p, _)| *p == AspectProperty::Derivable),
                         },
                     );
                 }

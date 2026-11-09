@@ -11,11 +11,9 @@ struct T {
     s: String,
 }
 
-struct Holder<U> {
+copy struct Holder<U> {
     marker: U,
 }
-
-extend<T: Copy> Holder<T>: Copy;
 
 fun id<X: Copy>(x: X) -> X {
     return x;
