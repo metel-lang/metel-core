@@ -705,15 +705,24 @@ impl Checker<'_> {
         env: &mut Environment<'_>,
         state: &mut FlowState,
     ) -> Result<(), String> {
+        // RFC-0191: a replaced field is overwritten, so the literal may still read it after the
+        // spread (`{ ..r, .n = r.n + 1 }`). The row's other fields are unknown here, so the spread
+        // is consumed after the written operands when they read the spread's binding only through
+        // the written labels; any other shape keeps the spread-first order.
+        let deferred = spread.filter(|(value, _)| reads_only_written_labels(fields, value));
         for index in 0..=fields.len() {
             if let Some((value, position)) = spread
                 && *position == index
+                && deferred.is_none()
             {
                 self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
             }
             if let Some((_, value)) = fields.get(index) {
                 self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
             }
+        }
+        if let Some((value, _)) = deferred {
+            self.consume_abstract_expr(value, env, state, MoveCause::Other)?;
         }
         Ok(())
     }
@@ -1565,5 +1574,56 @@ fn dereferenced_type(ty: &AbstractType) -> Option<AbstractType> {
             Some(AbstractType::Concrete((**inner).clone()))
         }
         _ => None,
+    }
+}
+
+/// Whether the spread is a binding that some written label reads, and every written operand reads
+/// that binding only as `binding.label` for a written label. `false` for any operand shape this
+/// does not look through, so the caller keeps the conservative spread-first order.
+fn reads_only_written_labels(fields: &[(String, AbstractExpr)], spread: &AbstractExpr) -> bool {
+    let AbstractExprKind::Binding(root) = &spread.kind else {
+        return false;
+    };
+    let labels: Vec<&str> = fields.iter().map(|(label, _)| label.as_str()).collect();
+    let mut reads = false;
+    fields
+        .iter()
+        .all(|(_, operand)| operand_reads_only(operand, *root, &labels, &mut reads))
+        && reads
+}
+
+fn operand_reads_only(
+    expr: &AbstractExpr,
+    root: BindingId,
+    labels: &[&str],
+    reads: &mut bool,
+) -> bool {
+    match &expr.kind {
+        AbstractExprKind::Binding(id) => *id != root,
+        AbstractExprKind::Literal(_) => true,
+        AbstractExprKind::FieldAccess {
+            object, selection, ..
+        } => {
+            if matches!(&object.kind, AbstractExprKind::Binding(id) if *id == root) {
+                *reads = true;
+                match selection {
+                    AbstractFieldSelection::Nominal { label, .. }
+                    | AbstractFieldSelection::Structural { label }
+                    | AbstractFieldSelection::Granted { label, .. } => {
+                        labels.contains(&label.as_str())
+                    }
+                }
+            } else {
+                operand_reads_only(object, root, labels, reads)
+            }
+        }
+        AbstractExprKind::Binary { left, right, .. } => {
+            operand_reads_only(left, root, labels, reads)
+                && operand_reads_only(right, root, labels, reads)
+        }
+        AbstractExprKind::Unary { operand, .. } | AbstractExprKind::NumericCast(operand) => {
+            operand_reads_only(operand, root, labels, reads)
+        }
+        _ => false,
     }
 }

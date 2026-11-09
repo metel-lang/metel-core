@@ -1,0 +1,7 @@
+fun swap<record R: { .n: i64, .m: i64, .. }>(r: { ..R }) -> { ..R } {
+    { ..r, .n = r.m } // ERROR[T0019]
+}
+
+fun main() {
+    let s := swap({ .n = 1, .m = 2 });
+}
