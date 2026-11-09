@@ -116,10 +116,7 @@ fn verify_closure_capture_list(
             let Some(ty) = ctx.lookup_at(&use_site(name)) else {
                 continue;
             };
-            if !ctx
-                .registry
-                .type_satisfies_aspect(ctx.current_module, ty, "Copy")
-            {
+            if !ctx.registry.type_is_copy(ctx.current_module, ty) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0026,
                     format!("closure captures non-`Copy` `{name}`; add a capture list"),
@@ -153,7 +150,7 @@ fn verify_closure_capture_list(
             if capture_specs.iter().any(|capture| {
                 matches!(capture, crate::data::ast::CaptureSpec::Owned { name: captured, .. } if captured == name)
             }) && ctx.lookup_at(use_span).is_some_and(|ty| {
-                !ctx.registry.type_satisfies_aspect(ctx.current_module, ty, "Copy")
+                !ctx.registry.type_is_copy(ctx.current_module, ty)
             }) {
                 return Err(MetelError::type_error(
                     TypeErrorCode::T0027,
@@ -2172,12 +2169,9 @@ pub(super) fn construct_expr(
                 crate::data::ast::CaptureSpec::SharedRef { .. }
                 | crate::data::ast::CaptureSpec::MutRef { .. } => true,
                 crate::data::ast::CaptureSpec::Owned { span, .. }
-                | crate::data::ast::CaptureSpec::Clone { span, .. } => {
-                    ctx.lookup_at(span).is_some_and(|ty| {
-                        ctx.registry
-                            .type_satisfies_aspect(ctx.current_module, ty, "Copy")
-                    })
-                }
+                | crate::data::ast::CaptureSpec::Clone { span, .. } => ctx
+                    .lookup_at(span)
+                    .is_some_and(|ty| ctx.registry.type_is_copy(ctx.current_module, ty)),
             }) {
                 crate::data::types::UseMultiplicity::Copy
             } else {

@@ -314,7 +314,7 @@ fn check_explicit_negative_bounds(
                 negative_available.iter().any(
                     |bound| matches!(bound, GenericBound::Aspect(available) if available == aspect),
                 ) || (aspect == "Drop" && ctx.bounds_for_type_var(*arg_var).unwrap_or_default().iter().any(
-                    |bound| matches!(bound, GenericBound::Aspect(available) if available == "Copy"),
+                    |bound| matches!(bound, GenericBound::Aspect(available) if ctx.registry().is_copy_aspect(ctx.current_module_path(), available)),
                 ))
             }
             GenericBound::AllFields { .. } => false,
@@ -3072,27 +3072,19 @@ pub(super) fn infer_row_is_copy(ctx: &InferContext, row: &InferType) -> bool {
     match row {
         InferType::RowView(source) => infer_row_is_copy(ctx, source),
         InferType::Record(fields) => fields.iter().all(|(_, ty)| {
-            ctx.registry().infer_type_satisfies_aspect(
-                ctx.current_module_path(),
-                ty,
-                "Copy",
-                &assumptions,
-            )
+            ctx.registry()
+                .infer_type_is_copy(ctx.current_module_path(), ty, &assumptions)
         }),
         InferType::RowExtend { fields, tail } => {
             fields.iter().all(|(_, ty)| {
-                ctx.registry().infer_type_satisfies_aspect(
-                    ctx.current_module_path(),
-                    ty,
-                    "Copy",
-                    &assumptions,
-                )
+                ctx.registry()
+                    .infer_type_is_copy(ctx.current_module_path(), ty, &assumptions)
             }) && infer_row_is_copy(ctx, tail)
         }
         InferType::Var(tv) => {
             let all_fields_copy = ctx.bounds_for_type_var(*tv).is_some_and(|bounds| {
                 bounds.iter().any(|bound| {
-                    matches!(bound, GenericBound::AllFields { aspects, .. } if aspects.iter().any(|aspect| aspect == "Copy"))
+                    matches!(bound, GenericBound::AllFields { aspects, .. } if aspects.iter().any(|aspect| ctx.registry().is_copy_aspect(ctx.current_module_path(), aspect)))
                 })
             });
             all_fields_copy
@@ -3100,10 +3092,9 @@ pub(super) fn infer_row_is_copy(ctx: &InferContext, row: &InferType) -> bool {
                     .row_decomposition_for_type_var(*tv)
                     .is_some_and(|(fields, tail)| {
                         fields.iter().all(|(_, ty)| {
-                            ctx.registry().infer_type_satisfies_aspect(
+                            ctx.registry().infer_type_is_copy(
                                 ctx.current_module_path(),
                                 ty,
-                                "Copy",
                                 &assumptions,
                             )
                         }) && tail.is_some_and(|tail| infer_row_is_copy(ctx, &InferType::Var(tail)))

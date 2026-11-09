@@ -278,9 +278,7 @@ fn is_copy(ctx: &ConstructCtx, ty: &Type) -> bool {
     matches!(
         ty,
         Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
-    ) || ctx
-        .registry
-        .type_satisfies_aspect(ctx.current_module, ty, "Copy")
+    ) || ctx.registry.type_is_copy(ctx.current_module, ty)
 }
 
 fn narrow_named(

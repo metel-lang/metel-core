@@ -1184,7 +1184,11 @@ impl Checker<'_> {
                 active.remove(id);
                 result
             }
-            _ => match self.abstract_has_aspect(ty, env, "Copy") {
+            _ => match self.abstract_has_aspect(
+                ty,
+                env,
+                crate::pipeline::type_checking::type_engine::COPY_ASPECT,
+            ) {
                 Ok(copy) => Ok(copy),
                 Err(reason)
                     if reason
@@ -1231,9 +1235,7 @@ impl Checker<'_> {
         active: &mut HashSet<AbstractParameterId>,
     ) -> Result<bool, String> {
         let equal_facts = env.equal_parameter_facts(id)?;
-        let identity = self
-            .registry
-            .resolve_type_id(&["std".to_string(), "core".to_string()], "Copy");
+        let identity = self.registry.copy_aspect_id();
         let structural = equal_facts
             .iter()
             .any(|facts| facts.row_kind || facts.open_row_parameter);
@@ -1365,9 +1367,7 @@ impl Checker<'_> {
         env: &Environment<'_>,
         active: &mut HashSet<AbstractParameterId>,
     ) -> Result<Option<bool>, String> {
-        let identity = self
-            .registry
-            .resolve_type_id(&["std".to_string(), "core".to_string()], "Copy");
+        let identity = self.registry.copy_aspect_id();
         let mut pending = vec![(id, Vec::<String>::new())];
         let mut visited = HashSet::new();
         let mut unproven = None;
@@ -1464,12 +1464,14 @@ impl Checker<'_> {
                 .iter()
                 .find(|fact| &fact.ty == ty)
                 .and_then(|fact| match name {
-                    "Copy" => match fact.copy {
-                        crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
-                            Some(value)
+                    n if n == crate::pipeline::type_checking::type_engine::COPY_ASPECT => {
+                        match fact.copy {
+                            crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
+                                Some(value)
+                            }
+                            crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
                         }
-                        crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
-                    },
+                    }
                     "Drop" => match fact.drop {
                         crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
                             Some(value)

@@ -127,10 +127,9 @@ impl InferContext {
         if infer_type_has_var(&resolved) {
             return false;
         }
-        self.registry().infer_type_satisfies_aspect(
+        self.registry().infer_type_is_copy(
             self.current_module_path(),
             &resolved,
-            "Copy",
             &AspectAssumptions::new(),
         )
     }

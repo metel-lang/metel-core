@@ -1735,7 +1735,7 @@ impl<'a> Checker<'a> {
         matches!(
             peel_type_references(ty),
             Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
-        ) || self.type_satisfies_aspect(current_module, ty, "Copy")
+        ) || self.registry.type_is_copy(current_module, ty)
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {

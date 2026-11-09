@@ -20,6 +20,9 @@ use std::fmt;
 use std::rc::Rc;
 use std::time::Instant;
 
+/// The spelling of the std `Copy` aspect: the single definition every other site goes through (#1799).
+pub const COPY_ASPECT: &str = "Copy";
+
 mod ownership_rules;
 
 // ── Phase 1: Type Variables ───────────────────────────────────────────────────
@@ -3444,6 +3447,44 @@ impl TypeDefinitionRegistry {
         self.resolve_type_key(current_module, name)
     }
 
+    /// The declaration identity of the std `Copy` aspect, if the program has the prelude (#1799).
+    #[must_use]
+    pub fn copy_aspect_id(&self) -> Option<SymbolId> {
+        self.resolve_type_id(&["std".to_string(), "core".to_string()], COPY_ASPECT)
+    }
+
+    /// Whether `name`, written in `current_module`, denotes the std `Copy` aspect (#1799). This is the
+    /// one place the compiler decides that an aspect is `Copy`: a user aspect that merely shares the
+    /// spelling is not it. A spelling that resolves to no aspect at all (a program compiled without the
+    /// prelude, or a name carried in a diagnostic-only form) falls back to the canonical spelling.
+    #[must_use]
+    pub fn is_copy_aspect(&self, current_module: &[String], name: &str) -> bool {
+        match (
+            self.resolve_type_id(current_module, name),
+            self.copy_aspect_id(),
+        ) {
+            (Some(id), Some(copy)) => id == copy,
+            _ => name == COPY_ASPECT,
+        }
+    }
+
+    /// Whether `ty` is `Copy` in `current_module`.
+    #[must_use]
+    pub fn type_is_copy(&self, current_module: &[String], ty: &Type) -> bool {
+        self.type_satisfies_aspect(current_module, ty, COPY_ASPECT)
+    }
+
+    /// Whether the inference type `ty` is `Copy` in `current_module`, under `assumptions`.
+    #[must_use]
+    pub fn infer_type_is_copy(
+        &self,
+        current_module: &[String],
+        ty: &InferType,
+        assumptions: &AspectAssumptions,
+    ) -> bool {
+        self.infer_type_satisfies_aspect(current_module, ty, COPY_ASPECT, assumptions)
+    }
+
     /// Like [`resolve_type_id`](Self::resolve_type_id), but with
     /// [`resolve_type_key_broad`](Self::resolve_type_key_broad)'s fallback:
     /// accepts a bare declared name from *any* module as a last resort.
@@ -5126,10 +5167,13 @@ impl TypeDefinitionRegistry {
         aspect_name: &str,
         assumptions: &AspectAssumptions,
     ) -> bool {
+        let is_copy = self.is_copy_aspect(current_module, aspect_name);
         if let InferType::Concrete(Type::SymbolicRow { field_aspects, .. }) = ty
-            && aspect_name == "Copy"
+            && is_copy
         {
-            return field_aspects.iter().any(|aspect| aspect == "Copy");
+            return field_aspects
+                .iter()
+                .any(|aspect| self.is_copy_aspect(current_module, aspect));
         }
         if let InferType::Var(var) = ty {
             return assumptions
@@ -5205,21 +5249,31 @@ impl TypeDefinitionRegistry {
                 false
             }
             InferType::RowExtend { fields, tail } => {
-                aspect_name == "Copy"
+                is_copy
                     && fields.iter().all(|(_, ty)| {
-                        self.infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions)
+                        self.infer_type_satisfies_aspect(
+                            current_module,
+                            ty,
+                            aspect_name,
+                            assumptions,
+                        )
                     })
-                    && self.infer_type_satisfies_aspect(current_module, tail, "Copy", assumptions)
+                    && self.infer_type_satisfies_aspect(
+                        current_module,
+                        tail,
+                        aspect_name,
+                        assumptions,
+                    )
             }
             InferType::RowView(_) | InferType::Var(_) | InferType::Never => false,
             InferType::SizedArray(elem, _) => {
-                if aspect_name == "Copy" {
+                if is_copy {
                     // #299: fixed-size-array `Copy` stays hardcoded here until const generics
                     // exist and the stdlib can express `[T; N]: Copy` directly.
                     return self.infer_type_satisfies_aspect(
                         current_module,
                         elem,
-                        "Copy",
+                        aspect_name,
                         assumptions,
                     );
                 }
@@ -5236,29 +5290,34 @@ impl TypeDefinitionRegistry {
                 )
             }
             InferType::Tuple(items) => {
-                if aspect_name == "Copy" {
+                if is_copy {
                     // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
                     // being checker-only and can move into the stdlib.
                     return items.iter().all(|item| {
-                        self.infer_type_satisfies_aspect(current_module, item, "Copy", assumptions)
+                        self.infer_type_satisfies_aspect(
+                            current_module,
+                            item,
+                            aspect_name,
+                            assumptions,
+                        )
                     });
                 }
                 false
             }
             InferType::Reference(_) => {
-                if aspect_name == "Copy" {
+                if is_copy {
                     return true;
                 }
                 false
             }
             InferType::MutReference(_) => {
-                if aspect_name == "Copy" {
+                if is_copy {
                     return false;
                 }
                 false
             }
             InferType::Array(elem) => {
-                if aspect_name == "Copy" {
+                if is_copy {
                     return true;
                 }
                 let inner_args = std::slice::from_ref(elem.as_ref());
@@ -5361,13 +5420,15 @@ impl TypeDefinitionRegistry {
             // `Var` is answered by the assumption lookup above and cannot
             // reach here; `Never` and `Fun` implement nothing, matching what
             // the pre-`InferType` version returned for them.
-            InferType::Fun(_, _, _, use_multiplicity, call_mutation) => match aspect_name {
-                "Copy" => *use_multiplicity == UseMultiplicity::Copy,
-                // RFC-0153 reserves the mutating-closure `!Sync` rule here until
-                // RFC-0096 owns the wider callable auto-trait model.
-                "Sync" => *call_mutation != CallMutation::Mutating,
-                _ => false,
-            },
+            InferType::Fun(_, _, _, use_multiplicity, call_mutation) => {
+                if is_copy {
+                    *use_multiplicity == UseMultiplicity::Copy
+                } else {
+                    // RFC-0153 reserves the mutating-closure `!Sync` rule here until
+                    // RFC-0096 owns the wider callable auto-trait model.
+                    aspect_name == "Sync" && *call_mutation != CallMutation::Mutating
+                }
+            }
             InferType::Concrete(other) => {
                 let name = match other {
                     Type::Str => "String",

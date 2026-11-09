@@ -737,7 +737,7 @@ fn substituted_type_is_copy(
     registry: &crate::pipeline::type_checking::type_engine::TypeDefinitionRegistry,
     current_module: &[String],
 ) -> bool {
-    registry.infer_type_satisfies_aspect(current_module, ty, "Copy", assumptions)
+    registry.infer_type_is_copy(current_module, ty, assumptions)
 }
 
 fn check_copy_impl_eligibility(
