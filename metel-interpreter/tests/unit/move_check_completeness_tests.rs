@@ -65,13 +65,35 @@ fn analyze_fixture(root: &Path, fixture: &Path) -> (usize, Vec<String>) {
         .unwrap_or(fixture)
         .display()
         .to_string();
-    for body in &report.unchecked_generic_bodies {
+    // An undecided ownership is a reported diagnostic (`T0047`), not a skipped body (metel-core#1814).
+    let undecided = report
+        .unchecked_generic_bodies
+        .iter()
+        .filter(|body| body.undecided.is_some())
+        .count();
+    if undecided > 0 {
+        let error = move_check::check_graph(&checked.graph)
+            .expect_err("an undecided ownership must be reported");
+        assert!(
+            format!("{error:?}").contains("T0047") || format!("{error:?}").contains("T0019"),
+            "{name}: an undecided ownership must be a user diagnostic: {error:?}"
+        );
+    }
+    for body in report
+        .unchecked_generic_bodies
+        .iter()
+        .filter(|body| body.undecided.is_none())
+    {
         incomplete.push(format!(
             "{name}: unchecked body at {}:{}:{}: {}",
             body.span.filename, body.span.line, body.span.col, body.reason
         ));
     }
-    for fallback in &report.abstract_body_fallbacks {
+    for fallback in report
+        .abstract_body_fallbacks
+        .iter()
+        .filter(|fallback| move_check::undecided_ownership_type(&fallback.reason).is_none())
+    {
         incomplete.push(format!(
             "{name}: abstract fallback at {}:{}:{} ({:?}): {}",
             fallback.span.filename,
