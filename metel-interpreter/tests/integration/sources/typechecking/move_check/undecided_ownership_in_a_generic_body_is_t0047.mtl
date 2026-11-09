@@ -1,0 +1,13 @@
+// metel-core#1814: whether `Token<T>` is copied or moved depends on a condition the analysis of a generic
+// body cannot decide, so reusing it there is a diagnostic, never a silent move.
+aspect Marker;
+aspect Other;
+struct Token<T> { count: i64 }
+extend<T> Token<T>: Copy where T: Marker, T: Other;
+
+fun unknown_token<T: Marker>(value: Token<T>) { // ERROR[T0047]
+    let first := value;
+    let again := value;
+}
+
+fun main() {}

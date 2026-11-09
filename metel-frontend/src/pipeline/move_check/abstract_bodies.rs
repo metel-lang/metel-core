@@ -1191,9 +1191,7 @@ impl Checker<'_> {
             ) {
                 Ok(copy) => Ok(copy),
                 Err(reason)
-                    if reason
-                        == "abstract conditional nominal aspect entailment is not yet retained"
-                        && self.is_nominal_record(ty) =>
+                    if reason.starts_with(UNDECIDED_NOMINAL) && self.is_nominal_record(ty) =>
                 {
                     // The standard record `Copy` implementation is conditional
                     // on its row. Without a proof a generic body may still
@@ -1293,7 +1291,7 @@ impl Checker<'_> {
         // An otherwise unbounded remainder grants no Copy permission, just as
         // an ordinary unbounded row does. That is not an analysis fallback.
         if conditional_fieldwise {
-            return Err("derived abstract Copy entailment is not yet retained".to_string());
+            return Err(undecided(UNDECIDED_DERIVED_ROW, "a field-wise row"));
         }
         Ok(false)
     }
@@ -1480,15 +1478,13 @@ impl Checker<'_> {
                     },
                     _ => None,
                 })
-                .ok_or_else(|| {
-                    "abstract conditional nominal aspect entailment is not yet retained".to_string()
-                }),
+                .ok_or_else(|| undecided(UNDECIDED_NOMINAL, &describe(ty))),
             // A residual exists only after a partial move, and partially moving a `Drop`
             // type is itself rejected, so a residual never carries `Drop`. Drop dispatch
             // against a narrowed residual is specified as not implemented.
             AbstractType::Residual { .. } if name == "Drop" => Ok(false),
             AbstractType::Residual { .. } | AbstractType::Dyn { .. } => {
-                Err("abstract nominal aspect entailment is not yet retained".to_string())
+                Err(undecided(UNDECIDED_RESIDUAL, &describe(ty)))
             }
             _ => Ok(false),
         }
@@ -1644,5 +1640,49 @@ fn operand_reads_only(
                     .all(|argument| operand_reads_only(&argument.value, root, labels, reads))
         }
         _ => false,
+    }
+}
+
+/// The reasons an ownership question stays undecided in a generic body (RFC-0206 section 2, rule 3).
+/// Each is followed by `: ` and the type the question was about; `undecided_type` recovers it.
+pub(super) const UNDECIDED_NOMINAL: &str =
+    "abstract conditional nominal aspect entailment is not yet retained";
+pub(super) const UNDECIDED_RESIDUAL: &str =
+    "abstract nominal aspect entailment is not yet retained";
+pub(super) const UNDECIDED_DERIVED_ROW: &str =
+    "derived abstract Copy entailment is not yet retained";
+
+fn undecided(reason: &str, ty: &str) -> String {
+    format!("{reason}: {ty}")
+}
+
+/// The type an undecided-ownership `reason` is about, or `None` for any other fallback reason.
+pub(super) fn undecided_type(reason: &str) -> Option<&str> {
+    [UNDECIDED_NOMINAL, UNDECIDED_RESIDUAL, UNDECIDED_DERIVED_ROW]
+        .iter()
+        .find_map(|prefix| reason.strip_prefix(prefix)?.strip_prefix(": "))
+}
+
+/// A short rendering of an abstract type for a diagnostic; a type parameter is `_` (its name is
+/// presentation metadata the retained body does not carry).
+fn describe(ty: &AbstractType) -> String {
+    let list = |items: &[AbstractType]| items.iter().map(describe).collect::<Vec<_>>().join(", ");
+    match ty {
+        AbstractType::Concrete(ty) => ty.to_string(),
+        AbstractType::Parameter(_) => "_".to_string(),
+        AbstractType::Named {
+            name, arguments, ..
+        } if arguments.is_empty() => name.clone(),
+        AbstractType::Named {
+            name, arguments, ..
+        } => format!("{name}<{}>", list(arguments)),
+        AbstractType::Tuple(items) => format!("({})", list(items)),
+        AbstractType::Array(inner) => format!("[{}]", describe(inner)),
+        AbstractType::SizedArray(inner, n) => format!("[{}; {n}]", describe(inner)),
+        AbstractType::Reference(inner) => format!("&{}", describe(inner)),
+        AbstractType::MutReference(inner) => format!("&var {}", describe(inner)),
+        AbstractType::Residual { brand, .. } => format!("a residual of {brand}"),
+        AbstractType::Dyn { aspect, .. } => format!("dyn {aspect}"),
+        _ => "a generic value".to_string(),
     }
 }
