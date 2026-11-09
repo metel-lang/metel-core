@@ -657,7 +657,8 @@ pub(super) fn construct_expr(
                 .map(|(expr, index, _)| Ok((Box::new(construct_expr(expr, None, ctx)?), *index)))
                 .transpose()?;
             let mut result_fields = if let Some((spread, _)) = &typed_spread {
-                match spread.ty() {
+                // A spread through a reference spreads the referent's row (RFC-0178).
+                match peel_type_references(spread.ty()) {
                     Type::Record(fields)
                     | Type::OpenRecord { fields, .. }
                     | Type::Residual { fields, .. } => fields.clone(),
@@ -693,11 +694,17 @@ pub(super) fn construct_expr(
             } else {
                 Vec::new()
             };
-            result_fields.extend(
-                typed_fields
-                    .iter()
-                    .map(|(name, expr)| (name.clone(), expr.ty().clone())),
-            );
+            // RFC-0191: a written label the spread already has replaces that field (same type, same
+            // row); any other is an addition.
+            for (name, expr) in &typed_fields {
+                match result_fields
+                    .iter_mut()
+                    .find(|(existing, _)| existing == name)
+                {
+                    Some(slot) => slot.1 = expr.ty().clone(),
+                    None => result_fields.push((name.clone(), expr.ty().clone())),
+                }
+            }
             result_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
             let open_tail = typed_spread
                 .as_ref()

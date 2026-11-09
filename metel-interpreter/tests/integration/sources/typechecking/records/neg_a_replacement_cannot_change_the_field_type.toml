@@ -1,8 +1,8 @@
 [options]
-error = ["T0012"]
+error = ["T0001"]
 spec = ["spec.types.generics.open-rows.legality-4"]
 
 [expect]
 status = "typecheck_error"
-code = "T0012"
-contains = "already contains field `id`"
+code = "T0001"
+contains = ""

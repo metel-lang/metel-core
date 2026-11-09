@@ -4016,7 +4016,11 @@ pub fn eval_expr(
                 else {
                     return Err(MetelError::internal("record spread was not a record"));
                 };
-                values.extend(spread_fields);
+                // RFC-0191: a written label the spread also has replaces the spread's field, whose
+                // old value is dropped, so the spread supplies only the labels not written.
+                for (label, value) in spread_fields {
+                    values.entry(label).or_insert(value);
+                }
             }
             let type_id = match ty {
                 crate::data::types::Type::Named(_, _, id) => id.get(),

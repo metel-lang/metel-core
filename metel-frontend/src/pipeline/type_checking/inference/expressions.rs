@@ -640,28 +640,39 @@ fn infer_expr_inner(
                     InferType::Residual { fields, .. } => InferType::Record(fields),
                     other => other,
                 };
-                if through_reference && !infer_row_is_copy(ctx, &spread_ty) {
+                // RFC-0191: each written label is judged against the spread's row. A label the row proves
+                // absent is an addition (RFC-0178); one it proves present is a replacement, which keeps
+                // the field's type and leaves the row unchanged; anything else is rejected.
+                let mut additions = Vec::new();
+                let mut replaced: Vec<String> = Vec::new();
+                for (name, field_ty) in inferred_fields {
+                    match classify_spread_label(ctx, &spread_ty, &name, spread_span)? {
+                        SpreadLabel::Absent => additions.push((name, field_ty)),
+                        SpreadLabel::Present(existing) => {
+                            if let Some(existing) = existing {
+                                ctx.add_constraint(field_ty, existing, spread_span.clone());
+                            }
+                            replaced.push(name);
+                        }
+                    }
+                }
+                // The replaced fields' old values are dropped, so a reference spread needs only the
+                // fields that are carried over to be `Copy`.
+                let carried = {
+                    let solved = ctx.solve()?;
+                    let solved = ctx.default_literal_vars(&solved);
+                    solved.apply(&row_without(&spread_ty, &replaced))
+                };
+                if through_reference && !infer_row_is_copy(ctx, &carried) {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0033,
                         "cannot spread a record through a reference unless every field is `Copy`; clone the record explicitly",
                         spread_span,
                     ));
                 }
-                for (name, _) in &inferred_fields {
-                    require_spread_field_absent(ctx, &spread_ty, name, spread_span)?;
-                }
                 match spread_ty {
                     InferType::Record(mut spread_fields) => {
-                        for (name, field_ty) in inferred_fields {
-                            if spread_fields.iter().any(|(existing, _)| existing == &name) {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0012,
-                                    format!("record spread already contains field `{name}`"),
-                                    spread_span,
-                                ));
-                            }
-                            spread_fields.push((name, field_ty));
-                        }
+                        spread_fields.extend(additions);
                         spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
                         Ok(InferType::Record(spread_fields))
                     }
@@ -669,16 +680,7 @@ fn infer_expr_inner(
                         fields: mut spread_fields,
                         tail,
                     } => {
-                        for (name, field_ty) in inferred_fields {
-                            if spread_fields.iter().any(|(existing, _)| existing == &name) {
-                                return Err(MetelError::type_error(
-                                    TypeErrorCode::T0012,
-                                    format!("record spread already contains field `{name}`"),
-                                    spread_span,
-                                ));
-                            }
-                            spread_fields.push((name, field_ty));
-                        }
+                        spread_fields.extend(additions);
                         spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
                         Ok(InferType::RowExtend {
                             fields: spread_fields,
@@ -686,11 +688,11 @@ fn infer_expr_inner(
                         })
                     }
                     var @ InferType::Var(_) => Ok(InferType::RowExtend {
-                        fields: inferred_fields,
+                        fields: additions,
                         tail: Box::new(InferType::RowView(Box::new(var))),
                     }),
                     row @ InferType::RowView(_) => Ok(InferType::RowExtend {
-                        fields: inferred_fields,
+                        fields: additions,
                         tail: Box::new(row),
                     }),
                     other => Err(MetelError::type_error(
@@ -2886,12 +2888,22 @@ fn residual_field_error(
     )
 }
 
-fn require_spread_field_absent(
+/// What a spread's row proves about a label written beside the spread (RFC-0191 section 1).
+enum SpreadLabel {
+    /// The row proves the label absent: the field is added (RFC-0178).
+    Absent,
+    /// The row proves the label present, with this type when it is known: the field is replaced.
+    Present(Option<InferType>),
+}
+
+/// Judge `label` against the spread's row: absent is an addition, present a replacement, and a row
+/// that proves neither is rejected, naming the missing fact.
+fn classify_spread_label(
     ctx: &mut InferContext,
     row: &InferType,
     label: &str,
     span: &crate::data::ast::Span,
-) -> Result<(), MetelError> {
+) -> Result<SpreadLabel, MetelError> {
     let row = ctx.solve()?.apply(row);
     let (present, absent) = match &row {
         InferType::Record(fields) => (
@@ -2910,23 +2922,82 @@ fn require_spread_field_absent(
         _ => (false, false),
     };
     if present {
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0012,
-            format!("record spread already contains field `{label}`"),
-            span,
-        ));
+        return Ok(SpreadLabel::Present(known_row_label_type(ctx, &row, label)));
     }
     if !absent {
         return Err(MetelError::type_error(
             TypeErrorCode::T0012,
             format!(
                 "cannot prove field `{label}` absent from the spread row; \
-                 bound the row parameter with `!{{ {label} }}`"
+                 bound the row parameter with `!{{ {label} }}` (or with `{{ {label}, .. }}` to replace it)"
             ),
             span,
         ));
     }
-    Ok(())
+    Ok(SpreadLabel::Absent)
+}
+
+/// The type a row proves for `label`, when it is a concrete record or a decomposition (a bound that
+/// names the type resolves only to a primitive: a type naming a generic parameter is not read here).
+fn known_row_label_type(ctx: &InferContext, row: &InferType, label: &str) -> Option<InferType> {
+    match row {
+        InferType::RowView(source) => known_row_label_type(ctx, source, label),
+        InferType::Record(fields) => fields
+            .iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, ty)| ty.clone()),
+        InferType::RowExtend { fields, tail } => fields
+            .iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, ty)| ty.clone())
+            .or_else(|| known_row_label_type(ctx, tail, label)),
+        InferType::Var(tv) => {
+            let decomposed = ctx
+                .row_decomposition_for_type_var(*tv)
+                .and_then(|(fields, _)| {
+                    fields
+                        .iter()
+                        .find(|(name, _)| name == label)
+                        .map(|(_, ty)| ty.clone())
+                });
+            decomposed.or_else(|| {
+                let bounds = ctx.bounds_for_type_var(*tv)?;
+                bounds.iter().find_map(|bound| match bound {
+                    GenericBound::Row(row) => row
+                        .fields
+                        .iter()
+                        .find(|field| field.label == label)
+                        .and_then(|field| field.ty.as_ref())
+                        .map(super::super::conversions::type_expr_to_infer)
+                        .filter(|ty| matches!(ty, InferType::Concrete(_))),
+                    _ => None,
+                })
+            })
+        }
+        _ => None,
+    }
+}
+
+/// The row without the labels a literal replaces.
+fn row_without(row: &InferType, labels: &[String]) -> InferType {
+    match row {
+        InferType::Record(fields) => InferType::Record(
+            fields
+                .iter()
+                .filter(|(name, _)| !labels.contains(name))
+                .cloned()
+                .collect(),
+        ),
+        InferType::RowExtend { fields, tail } => InferType::RowExtend {
+            fields: fields
+                .iter()
+                .filter(|(name, _)| !labels.contains(name))
+                .cloned()
+                .collect(),
+            tail: tail.clone(),
+        },
+        other => other.clone(),
+    }
 }
 
 fn known_row_label_facts(ctx: &InferContext, row: &InferType, label: &str) -> (bool, bool) {
