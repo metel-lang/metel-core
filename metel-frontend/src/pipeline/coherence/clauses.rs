@@ -78,7 +78,7 @@ fn check_clauses(
                     "`{0}` is granted by derivation, so the colon list cannot grant it: write `struct {1} derives {0}`{2}",
                     facts.name,
                     type_name,
-                    if facts.name == "Copy" {
+                    if facts.name == crate::pipeline::type_checking::type_engine::COPY_ASPECT {
                         format!(" or `copy struct {type_name}`")
                     } else {
                         String::new()

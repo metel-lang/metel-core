@@ -726,7 +726,7 @@ fn parse_clause_part(
                 ));
             }
             clauses.derives.push(ClauseEntry {
-                name: "Copy".to_string(),
+                name: crate::pipeline::type_checking::type_engine::COPY_ASPECT.to_string(),
                 from_class_keyword: true,
                 span,
             });
