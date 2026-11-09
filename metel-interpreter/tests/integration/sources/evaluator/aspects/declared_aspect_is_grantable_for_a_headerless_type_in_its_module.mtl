@@ -1,0 +1,11 @@
+// RFC-0212 section 1: a type with no declaration of its own can be granted a declared aspect in the
+// aspect's defining module; the aspect's properties do not stop it being declared or used as a bound.
+declared aspect Tagged { fun tag(&self) -> i64; }
+extend i64: Tagged { fun tag(&self) -> i64 { self + 1 } }
+pub declared aspect Marked;
+
+fun tag_of<T: Tagged>(x: &T) -> i64 { x.tag() }
+
+fun main() {
+    assert(tag_of(&4) == 5);
+}

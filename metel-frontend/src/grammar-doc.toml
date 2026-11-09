@@ -199,6 +199,23 @@ mode = "named"
 name = "AssocTypeDef"
 section = "Declarations"
 [[rule]]
+pest = "aspect_property"
+mode = "named"
+name = "AspectProperty"
+section = "Declarations"
+[[rule]]
+pest = "declared_kw"
+mode = "literal"
+values = ["declared"]
+[[rule]]
+pest = "implicit_kw"
+mode = "literal"
+values = ["implicit"]
+[[rule]]
+pest = "auto_kw"
+mode = "literal"
+values = ["auto"]
+[[rule]]
 pest = "super_aspects"
 mode = "named"
 name = "SuperAspects"

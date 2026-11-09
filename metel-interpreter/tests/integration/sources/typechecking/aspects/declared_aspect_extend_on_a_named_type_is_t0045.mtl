@@ -1,0 +1,4 @@
+declared aspect Validated;
+struct Token { id: i64 }
+extend Token: Validated; // ERROR[T0045]
+fun main() {}

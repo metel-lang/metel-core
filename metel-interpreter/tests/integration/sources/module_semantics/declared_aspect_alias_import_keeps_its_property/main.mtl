@@ -1,0 +1,4 @@
+import helper::Marker as Mark;
+struct Token { id: i64 }
+extend Token: Mark; // ERROR[T0045]
+fun main() {}

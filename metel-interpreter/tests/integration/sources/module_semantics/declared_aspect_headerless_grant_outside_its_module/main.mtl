@@ -1,0 +1,3 @@
+import helper::Marker;
+extend i64: Marker; // ERROR[T0014]
+fun main() {}
