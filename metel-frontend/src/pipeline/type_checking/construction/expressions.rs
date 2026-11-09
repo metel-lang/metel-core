@@ -1453,7 +1453,13 @@ pub(super) fn construct_expr(
                 {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0003,
-                        format!("no method `clone` on `{provided}`: it is not `Clone`"),
+                        if matches!(provided, Type::Fun(..)) {
+                            format!(
+                                "no method `clone` on `{provided}`: a function type implements no aspect, so it has no methods"
+                            )
+                        } else {
+                            format!("no method `clone` on `{provided}`: it is not `Clone`")
+                        },
                         span,
                     ));
                 }
