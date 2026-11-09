@@ -1,7 +1,6 @@
 // metel-core#1676 (RFC 0153 legality-25): `[&var s] var` shares the binding, so the
 // call updates the outer value.
-struct S { n: i64 }
-extend S: Copy;
+copy struct S { n: i64 }
 extend S {
     fun inc(&var self) { self.n = self.n + 1; }
     fun get(&self) -> i64 { self.n }

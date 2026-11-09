@@ -1474,8 +1474,7 @@ fn abstract_ownership_uses_retained_nominal_coherence_without_samples() {
     let report = move_report_for_source_with(
         r#"
 struct Owned<T> { value: T }
-struct Ticket { count: i64 }
-extend Ticket: Copy;
+copy struct Ticket { count: i64 }
 enum Choice<T> { Some { value: T }, None }
 struct Handle { name: String }
 extend Handle: Drop { fun drop(&var self) {} }
@@ -1568,16 +1567,14 @@ aspect Marker {}
 aspect Other {}
 struct Guard<A, B> { name: String }
 extend<A, B> Guard<A, B>: Drop where A: Marker, B: Other { fun drop(&var self) {} }
-struct Witness<A, B> { count: i64 }
-extend<A, B> Witness<A, B>: Copy;
+copy struct Witness<A, B> { count: i64 }
 extend<A, B> Witness<A, B>: !Copy where A: Marker, B: Other;
-struct Token<T> { count: i64 }
-extend<T> Token<T>: Copy where T: Marker, T: Other;
+copy struct Token<T> { value: T }
 fun extract<A: !Marker, B>(value: Guard<A, B>) -> String { value.name }
 fun unknown_drop<A: Marker, B>(value: Guard<A, B>) -> String { value.name }
 fun copied<A: !Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
 fun unknown_override<A: Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
-fun token<T: Marker + Other>(value: Token<T>) { let first := value; let again := value; }
+fun token<T: Copy>(value: Token<T>) { let first := value; let again := value; }
 fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
 fun main() {}
 "#,
@@ -1601,8 +1598,7 @@ fn abstract_ownership_proves_where_conditions_and_destructor_disjointness() {
     let report = move_report_for_source_with(
         r#"
 aspect Marker {}
-struct Wrapper<T> { value: T }
-extend<T> Wrapper<T>: Copy where T: Copy;
+copy struct Wrapper<T> { value: T }
 struct Guard<T> { name: String, tag: T }
 extend<T> Guard<T>: Drop where T: Marker { fun drop(&var self) {} }
 fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
@@ -1623,7 +1619,7 @@ fun main() {}
         "{report:#?}"
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert_eq!(report.violations[0].use_span.line, 9, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 8, "{report:#?}");
     assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
@@ -1632,8 +1628,7 @@ fn abstract_ownership_proves_conditional_negative_override() {
     let report = move_report_for_source_with(
         r#"
 aspect Marker {}
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Copy;
+copy struct Witness<T> { count: i64 }
 extend<T: Marker> Witness<T>: !Copy;
 fun allowed<T: !Marker>(value: Witness<T>) { let first := value; let again := value; }
 fun denied<T: Marker>(value: Witness<T>) { let first := value; let again := value; }
@@ -1652,7 +1647,7 @@ fun main() {}
         "{report:#?}"
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert_eq!(report.violations[0].use_span.line, 7, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 6, "{report:#?}");
     assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
@@ -1661,16 +1656,10 @@ fun main() {}
 fn abstract_ownership_proves_declared_conditional_copy() {
     let report = move_report_for_source_with(
         r#"
-struct Wrapper<T> { value: T }
-extend<T: Copy> Wrapper<T>: Copy;
-struct Swapped<A, B> { count: i64 }
-extend<Y: Copy, X> Swapped<X, Y>: Copy;
-aspect Marker {}
-struct Token<T> { count: i64 }
-extend<T: !Marker> Token<T>: Copy;
+copy struct Wrapper<T> { value: T }
+copy struct Swapped<X, Y> { right: Y }
 fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
 fun swapped<T, U: Copy>(value: Swapped<T, U>) { let first := value; let again := value; }
-fun excluded<T: !Marker>(value: Token<T>) { let first := value; let again := value; }
 fun main() {}
 "#,
         |graph| {
@@ -1681,7 +1670,7 @@ fun main() {}
     );
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        3,
+        2,
         "{report:#?}"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
@@ -1692,10 +1681,8 @@ fun main() {}
 fn abstract_ownership_retains_unrestricted_generic_nominal_impls() {
     let report = move_report_for_source_with(
         r#"
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Copy;
-enum Mark<T> { Only }
-extend<T> Mark<T>: Copy;
+copy struct Witness<T> { count: i64 }
+copy enum Mark<T> { Only }
 struct Guardian<T> { value: T }
 extend<T> Guardian<T>: Drop { fun drop(&var self) {} }
 fun copied<T>(value: Witness<T>) { let first := value; let again := value; }
@@ -1756,8 +1743,7 @@ fn abstract_ownership_preserves_aliased_ownership_aspects() {
         r#"
 import std::core::Copy as Repeatable;
 import std::core::Drop as Finalize;
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Repeatable;
+struct Witness<T> derives Repeatable { count: i64 }
 struct Guardian<T> { value: T }
 extend<T> Guardian<T>: Finalize { fun drop(&var self) {} }
 struct Conditional<T> { value: T }
@@ -1779,7 +1765,7 @@ fun main() {}
         "{report:#?}"
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert_eq!(report.violations[0].use_span.line, 11, "{report:#?}");
+    assert_eq!(report.violations[0].use_span.line, 10, "{report:#?}");
     assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
@@ -1788,40 +1774,9 @@ fn abstract_ownership_keeps_aliased_negative_overrides_pending() {
     let report = move_report_for_source_with(
         r#"
 import std::core::Copy as Repeatable;
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Copy;
+copy struct Witness<T> { count: i64 }
 extend Witness<String>: !Repeatable;
 fun repeated<T>(value: Witness<T>) { let first := value; let again := value; }
-fun main() {}
-"#,
-        |graph| {
-            for module in &mut graph.modules {
-                module.scheme_ids.clear();
-            }
-        },
-    );
-    assert!(
-        report.checked_abstract_generic_bodies.is_empty(),
-        "{report:#?}"
-    );
-    assert!(
-        report
-            .abstract_body_fallbacks
-            .iter()
-            .any(|fallback| fallback
-                .reason
-                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
-        "{report:#?}"
-    );
-}
-
-#[test]
-fn abstract_ownership_does_not_generalize_specialized_nominal_copy() {
-    let report = move_report_for_source_with(
-        r#"
-struct Box<T> { value: T }
-extend Box<i64>: Copy;
-fun twice<T>(value: Box<T>) { let first := value; let again := value; }
 fun main() {}
 "#,
         |graph| {
@@ -2059,8 +2014,7 @@ fun main() {}
 fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial_results() {
     let report = move_report_for_source_with(
         r#"
-struct Holder<T> { value: T }
-extend<T: Copy> Holder<T>: Copy;
+copy struct Holder<T> { value: T }
 fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } let pair := (|k: i64| -> i64 { k }, 1); }
 fun ownership<T>(value: T, holder: Holder<T>) {
     let first := value; let second := value; let held := holder;
@@ -4979,8 +4933,7 @@ fn a_by_value_method_through_a_reference_is_allowed_when_the_pointee_is_copy() {
     // nothing is consumed either.
     assert_no_violations(
         r#"
-struct Pair { a: i64, b: i64 }
-extend Pair: Copy;
+copy struct Pair { a: i64, b: i64 }
 extend Pair { fun sum(self) -> i64 { self.a + self.b } }
 
 fun main() {
@@ -5468,9 +5421,7 @@ fn an_undecided_ownership_names_its_type_and_is_not_an_internal_fallback() {
     let report = move_report_for_source_with(
         r#"
 aspect Marker;
-aspect Other;
-struct Token<T> { count: i64 }
-extend<T> Token<T>: Copy where T: Marker, T: Other;
+copy struct Token<T> { value: T }
 fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
 fun fine<T: Copy>(value: T) { let first := value; let again := value; }
 fun main() {}

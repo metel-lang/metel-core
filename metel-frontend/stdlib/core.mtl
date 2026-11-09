@@ -191,10 +191,10 @@ pub derivable aspect Clone {
     fun clone(&self) -> Self;
 }
 
-// `Copy` is `implicit` (a by-value use copies), brings the `Clone` the compiler provides, and excludes `Drop`
-// (RFC-0206 section 2, RFC-0212, RFC-0213). `declared` is not yet written: `extend T: Copy;` stays accepted
-// during its deprecation window (metel-core#1806, #1920).
-pub derivable implicit aspect Copy: deriving Clone, !Drop {
+// `Copy` is `declared` (granted in a type's declaration: `copy struct`, `derives Copy`), `implicit` (a by-value
+// use copies), brings the `Clone` the compiler provides, and excludes `Drop` (RFC-0206 section 2, RFC-0212,
+// RFC-0213).
+pub declared derivable implicit aspect Copy: deriving Clone, !Drop {
 }
 
 pub aspect Drop {

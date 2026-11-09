@@ -1,8 +1,7 @@
 // A type parameter that no field mentions (a phantom parameter) is fixed by the expected
 // type the annotation already solved. Construction used to ignore it and fail with T0002,
 // surfacing as I0010 when a generic body was reconstructed (#1432).
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Copy;
+copy struct Witness<T> { count: i64 }
 
 struct Tagged<K, V> { value: V }
 

@@ -6,19 +6,18 @@
 //
 // Two ways the two impls can coexist:
 
-struct Disjoint<T> {
+copy struct Disjoint<T> {
     val: T,
 }
 
 // 1. Provably disjoint bounds. No `T` is both `Copy` and `!Copy`, so no
 //    instantiation of `Disjoint<T>` ever has both aspects.
-extend<T: Copy> Disjoint<T>: Copy;
 
 extend<T: !Copy> Disjoint<T>: Drop {
     fun drop(&var self) {}
 }
 
-struct Reach<T> {
+copy struct Reach<T> {
     val: T,
 }
 
@@ -26,7 +25,6 @@ struct Reach<T> {
 //    so the blanket does not apply to `Reach<String>` and it is free to
 //    implement `Drop`. With `i64` here instead this is a §4 violation —
 //    see `typechecking/structs/stage5_neg_35_copy_blanket_reaches_drop_instantiation.mtl`.
-extend<T: Copy> Reach<T>: Copy;
 
 extend Reach<String>: Drop {
     fun drop(&var self) {}

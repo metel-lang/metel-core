@@ -1,7 +1,6 @@
 // The annotated phantom-generic local is analysed from its retained definition and the
 // program executes under `--move-check`, for more than one instantiation (#1432).
-struct Witness<T> { count: i64 }
-extend<T> Witness<T>: Copy;
+copy struct Witness<T> { count: i64 }
 
 fun copy_witness<T>(unused: T) -> i64 {
     let witness: Witness<T> := Witness(count = 2);

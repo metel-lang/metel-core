@@ -1,8 +1,7 @@
 enum Flag { On, Off }
 enum Payload<T> { Present { value: T }, Missing }
 struct Envelope<T> { value: T }
-struct Ticket { count: i64 }
-extend Ticket: Copy;
+copy struct Ticket { count: i64 }
 
 fun copy_witness<T>(unused: T) -> i64 {
     let witness := Ticket(count = 2);

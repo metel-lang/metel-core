@@ -1,16 +1,12 @@
-struct Pair {
+copy struct Pair {
     left: i64,
     right: boolean,
 }
 
-extend Pair: Copy;
-
-enum MaybeInt {
+copy enum MaybeInt {
     Some { value: i64 },
     None,
 }
-
-extend MaybeInt: Copy;
 
 fun id_copy<T: Copy>(x: T) -> T {
     x

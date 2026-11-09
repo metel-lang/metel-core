@@ -3,18 +3,16 @@
 // and an ordinary (non-row-bounded) nominal-type parameter all typecheck and
 // evaluate identically regardless of which keyword declared the type.
 
-struct StructPoint {
+copy struct StructPoint {
     x: f64,
     y: f64,
 }
 
-record RecordPoint {
+copy record RecordPoint {
     x: f64,
     y: f64,
 }
 
-extend StructPoint: Copy;
-extend RecordPoint: Copy;
 
 extend StructPoint {
     fun magnitude(self) -> f64 { self.x * self.x + self.y * self.y }

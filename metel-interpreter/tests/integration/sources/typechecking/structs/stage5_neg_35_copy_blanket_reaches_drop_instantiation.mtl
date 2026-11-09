@@ -8,11 +8,9 @@
 // whether the concrete argument satisfies the blanket's bound, not on the
 // two impls merely sharing a target constructor.
 
-struct Reach<T> {
+copy struct Reach<T> {
     val: T,
 }
-
-extend<T: Copy> Reach<T>: Copy;
 
 extend Reach<i64>: Drop {
     fun drop(&var self) {}

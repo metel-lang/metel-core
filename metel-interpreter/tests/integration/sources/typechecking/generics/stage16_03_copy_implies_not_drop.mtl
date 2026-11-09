@@ -24,11 +24,9 @@
 // concretely and through a `T: Copy` generic. It does not isolate the implication —
 // `Both` has no `Drop` impl, so `!Drop` would hold regardless.
 
-struct Both {
+copy struct Both {
     x: i64,
 }
-
-extend Both: Copy;
 
 fun needs_no_drop<T: !Drop>(x: T) -> T {
     return x;

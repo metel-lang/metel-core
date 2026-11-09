@@ -6,11 +6,9 @@
 // `i64` is both `Copy` and `Display`, so `Overlap<i64>` would have both
 // aspects, which §4 forbids.
 
-struct Overlap<T> {
+copy struct Overlap<T> {
     val: T,
 }
-
-extend<T: Copy> Overlap<T>: Copy;
 
 extend<T: Display> Overlap<T>: Drop {
     fun drop(&var self) {}

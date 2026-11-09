@@ -1,5 +1,4 @@
-struct Bad {
+copy struct Bad {
     name: String,
 }
 
-extend Bad: Copy;

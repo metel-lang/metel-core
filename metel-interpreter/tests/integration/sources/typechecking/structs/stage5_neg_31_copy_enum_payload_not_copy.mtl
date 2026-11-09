@@ -1,6 +1,5 @@
-enum Token {
+copy enum Token {
     Text { value: String },
     End,
 }
 
-extend Token: Copy;

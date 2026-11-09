@@ -11,10 +11,8 @@ struct Inner<T> {
     value: T,
 }
 
-struct Outer<T> {
+copy struct Outer<T> {
     inner: Inner<T>,
 }
-
-extend<T: Copy> Outer<T>: Copy;
 
 fun main() {}

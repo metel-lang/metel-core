@@ -18,11 +18,9 @@ struct T {
     s: String,
 }
 
-struct Holder<U> {
+copy struct Holder<U> {
     inner: T,
     marker: U,
 }
-
-extend<T: Copy> Holder<T>: Copy;
 
 fun main() {}
