@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1"]

@@ -222,9 +222,21 @@ fn call_runtime_callable(
             let result = match &closure.body {
                 ClosureBody::Typed(b) => eval_block(b, &mut call_env, runtime),
                 ClosureBody::Untyped(b) => {
-                    let scheme_and_ctx = closure.scheme_id.zip(closure.type_ctx.as_ref()).and_then(
-                        |(id, type_ctx)| type_ctx.scheme_ids.get(&id).map(|s| (s, type_ctx)),
-                    );
+                    // A function is found by its scheme id; an associated function of an impl, called
+                    // through its type path (`Box::wrap(5)`), has no scheme id and carries the scheme the
+                    // registry holds for its declaration, as a method does.
+                    let scheme_and_ctx = closure
+                        .scheme_id
+                        .zip(closure.type_ctx.as_ref())
+                        .and_then(|(id, type_ctx)| {
+                            type_ctx.scheme_ids.get(&id).map(|s| (s, type_ctx))
+                        })
+                        .or_else(|| {
+                            closure
+                                .generic_method_scheme
+                                .as_ref()
+                                .zip(closure.type_ctx.as_ref())
+                        });
                     match scheme_and_ctx {
                         Some((scheme, type_ctx)) => {
                             // metel-core#286: prefer the argument types recorded at the
