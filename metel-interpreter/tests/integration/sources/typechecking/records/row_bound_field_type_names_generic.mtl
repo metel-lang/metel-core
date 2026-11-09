@@ -1,0 +1,8 @@
+// A row bound's field type may name another generic parameter of the function.
+fun price_of<T, record R: { .price: T, .. }>(r: R, v: T) -> i64 {
+    1
+}
+
+fun main() -> i64 {
+    price_of({ .price = 1, .a = 2 }, 7)
+}
