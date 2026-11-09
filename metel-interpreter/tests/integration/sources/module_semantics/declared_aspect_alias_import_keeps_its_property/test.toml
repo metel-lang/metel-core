@@ -1,0 +1,9 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+error = ["T0045"]
+spec = ["spec.declarations.aspects.aspect-declaration-properties.legality-3"]
+[expect]
+status = "typecheck_error"
+code = "T0045"
+contains = "is a `declared` aspect"

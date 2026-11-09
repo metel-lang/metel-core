@@ -1,0 +1,2 @@
+auto aspect Mine; // ERROR[T0045]
+fun main() {}

@@ -4141,20 +4141,31 @@ fn parse_aspect_decl(
     filename: &str,
 ) -> Result<AspectDecl, MetelError> {
     let span = Span::of(&pair, filename);
-    let mut inner = pair.into_inner();
-    let first = inner
+    let mut inner = pair.into_inner().peekable();
+    let mut visibility = Visibility::Private;
+    if inner.peek().is_some_and(|p| p.as_rule() == Rule::pub_kw) {
+        inner.next();
+        visibility = Visibility::Public;
+    }
+    let mut properties = vec![];
+    while inner
+        .peek()
+        .is_some_and(|p| p.as_rule() == Rule::aspect_property)
+    {
+        let Some(p) = inner.next() else { break };
+        let span = Span::of(&p, filename);
+        let property = match p.as_str().trim() {
+            "declared" => crate::data::ast::AspectProperty::Declared,
+            "implicit" => crate::data::ast::AspectProperty::Implicit,
+            _ => crate::data::ast::AspectProperty::Auto,
+        };
+        properties.push((property, span));
+    }
+    let name = inner
         .next()
-        .ok_or_else(|| MetelError::internal("aspect_decl: expected name"))?;
-    let (visibility, name) = if first.as_rule() == Rule::pub_kw {
-        let n = inner
-            .next()
-            .ok_or_else(|| MetelError::internal("aspect_decl: expected name after pub"))?
-            .as_str()
-            .to_string();
-        (Visibility::Public, n)
-    } else {
-        (Visibility::Private, first.as_str().to_string())
-    };
+        .ok_or_else(|| MetelError::internal("aspect_decl: expected name"))?
+        .as_str()
+        .to_string();
     let mut generics = vec![];
     let mut supers = vec![];
     let mut assoc_types = vec![];
@@ -4207,6 +4218,7 @@ fn parse_aspect_decl(
         visibility,
         name,
         generics,
+        properties,
         supers,
         assoc_types,
         methods,

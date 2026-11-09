@@ -420,6 +420,8 @@ pub struct AspectDecl {
     pub visibility: Visibility,
     pub name: String,
     pub generics: Vec<String>,
+    /// Properties written before `aspect` (RFC-0212), in source order.
+    pub properties: Vec<(AspectProperty, Span)>,
     /// The direct super-aspects listed after the name (RFC-0213 section 1).
     pub supers: Vec<SuperAspect>,
     /// `type Name;` / `type Name: Bound;` member declarations (RFC-0082 SS1).
@@ -427,6 +429,28 @@ pub struct AspectDecl {
     pub assoc_types: Vec<AssocTypeDecl>,
     pub methods: Vec<AspectMethod>,
     pub span: Span,
+}
+
+/// A declaration property of an aspect (RFC-0212).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AspectProperty {
+    /// Granted only through a type's declaration clauses, never by `extend`.
+    Declared,
+    /// Granted structurally with no entry (std only; reserved).
+    Auto,
+    /// A by-value use copies the representation instead of moving (std only).
+    Implicit,
+}
+
+impl AspectProperty {
+    #[must_use]
+    pub fn keyword(self) -> &'static str {
+        match self {
+            Self::Declared => "declared",
+            Self::Auto => "auto",
+            Self::Implicit => "implicit",
+        }
+    }
 }
 
 /// One entry of an aspect's super-aspect list: `aspect A: B, deriving C, !D` (RFC-0213).
