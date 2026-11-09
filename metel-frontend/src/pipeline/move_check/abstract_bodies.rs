@@ -1626,6 +1626,23 @@ fn operand_reads_only(
         AbstractExprKind::Unary { operand, .. } | AbstractExprKind::NumericCast(operand) => {
             operand_reads_only(operand, root, labels, reads)
         }
+        AbstractExprKind::Tuple(items) | AbstractExprKind::Array(items) => items
+            .iter()
+            .all(|item| operand_reads_only(item, root, labels, reads)),
+        AbstractExprKind::Call(call) => {
+            operand_reads_only(&call.callee, root, labels, reads)
+                && call
+                    .arguments
+                    .iter()
+                    .all(|argument| operand_reads_only(&argument.value, root, labels, reads))
+        }
+        AbstractExprKind::MethodCall(call) => {
+            operand_reads_only(&call.receiver, root, labels, reads)
+                && call
+                    .arguments
+                    .iter()
+                    .all(|argument| operand_reads_only(&argument.value, root, labels, reads))
+        }
         _ => false,
     }
 }
