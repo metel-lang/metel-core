@@ -1,0 +1,8 @@
+aspect Named { fun name(&self) -> String; }
+aspect Greeter { fun greet(&self) -> String; }
+fun label<T: Named>(x: &T) -> String { x.name() }
+fun bad<T: Greeter>(x: &T) -> String {
+    label(x) // ERROR[T0012]
+}
+
+fun main() {}

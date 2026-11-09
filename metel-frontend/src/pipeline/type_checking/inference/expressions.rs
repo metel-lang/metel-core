@@ -189,7 +189,27 @@ fn check_forwarded_generic_bounds(
                 ctx,
             );
         }
-        (InferType::RowView(param_inner), InferType::RowView(arg_inner)) => {
+        // The same forwarding through a reference, an array or a tuple (`x: &T` passed on as `&U`).
+        (InferType::Tuple(param_items), InferType::Tuple(arg_items))
+            if param_items.len() == arg_items.len() =>
+        {
+            for (param_item, arg_item) in param_items.iter().zip(arg_items) {
+                check_forwarded_generic_bounds(
+                    callee_name,
+                    scheme,
+                    renaming,
+                    param_item,
+                    arg_item,
+                    span,
+                    ctx,
+                )?;
+            }
+            return Ok(());
+        }
+        (InferType::RowView(param_inner), InferType::RowView(arg_inner))
+        | (InferType::Reference(param_inner), InferType::Reference(arg_inner))
+        | (InferType::MutReference(param_inner), InferType::MutReference(arg_inner))
+        | (InferType::Array(param_inner), InferType::Array(arg_inner)) => {
             return check_forwarded_generic_bounds(
                 callee_name,
                 scheme,
