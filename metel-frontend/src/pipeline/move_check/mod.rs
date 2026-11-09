@@ -134,6 +134,9 @@ struct PlaceConsumption<'a> {
 pub struct UncheckedGenericBody {
     pub span: Span,
     pub reason: String,
+    /// The type whose copy-or-move status the analysis could not decide, when that is why the body is
+    /// unchecked (metel-core#1814); `None` for any other reason.
+    pub undecided: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,6 +209,12 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
     checker.report
 }
 
+/// The type an undecided-ownership fallback `reason` is about, or `None` for any other reason
+/// (metel-core#1814).
+pub fn undecided_ownership_type(reason: &str) -> Option<&str> {
+    abstract_bodies::undecided_type(reason)
+}
+
 /// Run the move checker and convert the first violation into a user-facing type error.
 ///
 /// Success means every generic body was analysed and none violates the move rules.
@@ -213,8 +222,8 @@ pub fn collect_graph_violations(graph: &TypedModuleGraph) -> MoveCheckReport {
 /// also never passes: an incomplete report cannot authorize execution (ADR-0063).
 ///
 /// # Errors
-/// Returns `T0019` when the graph contains a move-checking violation, and `I0011`
-/// when any body could not be analysed.
+/// Returns `T0019` when the graph contains a move-checking violation, `T0047` when a generic
+/// body's ownership is undecided, and `I0011` when any other body could not be analysed.
 // arch-implements: ["arch.move-check.requirement-1"]
 pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
     let report = collect_graph_violations(graph);
@@ -228,6 +237,21 @@ pub fn check_graph(graph: &TypedModuleGraph) -> Result<(), MetelError> {
             TypeErrorCode::T0019,
             violation_message(&violation),
             &span,
+        ));
+    }
+    // An ownership question the analysis cannot decide is a documented limitation of generic bodies and
+    // a user-facing diagnostic, not an internal error (RFC-0206 section 2, rule 3; metel-core#1814).
+    if let Some((body, ty)) = report
+        .unchecked_generic_bodies
+        .iter()
+        .find_map(|body| body.undecided.as_deref().map(|ty| (body, ty)))
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0047,
+            format!(
+                "cannot decide whether `{ty}` is copied or moved in this generic body; add a bound that decides it, or take a reference and call `.clone()` (the solver that decides it is metel-core#1813)"
+            ),
+            &body.span,
         ));
     }
     let Some(first) = report.unchecked_generic_bodies.first() else {
@@ -1718,6 +1742,8 @@ impl<'a> Checker<'a> {
     }
 
     fn record_skipped_generic_body(&mut self, span: &Span, reason: impl Into<String>) {
+        let reason = reason.into();
+        let undecided = abstract_bodies::undecided_type(&reason).map(str::to_owned);
         if is_embedded_std_span(span) {
             self.report.skipped_generic_bodies_embedded_std += 1;
         } else {
@@ -1726,7 +1752,8 @@ impl<'a> Checker<'a> {
                 .unchecked_generic_bodies
                 .push(UncheckedGenericBody {
                     span: span.clone(),
-                    reason: reason.into(),
+                    reason,
+                    undecided,
                 });
         }
     }

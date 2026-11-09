@@ -1743,8 +1743,9 @@ fun main() {}
         report
             .abstract_body_fallbacks
             .iter()
-            .any(|fallback| fallback.reason
-                == "abstract conditional nominal aspect entailment is not yet retained"),
+            .any(|fallback| fallback
+                .reason
+                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
         "{report:#?}"
     );
 }
@@ -1807,8 +1808,9 @@ fun main() {}
         report
             .abstract_body_fallbacks
             .iter()
-            .any(|fallback| fallback.reason
-                == "abstract conditional nominal aspect entailment is not yet retained"),
+            .any(|fallback| fallback
+                .reason
+                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
         "{report:#?}"
     );
 }
@@ -1836,8 +1838,9 @@ fun main() {}
         report
             .abstract_body_fallbacks
             .iter()
-            .any(|fallback| fallback.reason
-                == "abstract conditional nominal aspect entailment is not yet retained"),
+            .any(|fallback| fallback
+                .reason
+                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
         "{report:#?}"
     );
 }
@@ -1872,8 +1875,9 @@ fun main() {}
         report
             .abstract_body_fallbacks
             .iter()
-            .any(|fallback| fallback.reason
-                == "abstract conditional nominal aspect entailment is not yet retained"),
+            .any(|fallback| fallback
+                .reason
+                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
         "{report:#?}"
     );
 }
@@ -2082,9 +2086,10 @@ fun main() {}
         "aggregate closure ownership contracts are not yet retained"
     );
     assert_eq!(fallbacks[1].stage, AbstractBodyFallbackStage::Ownership);
+    // The undecided question names the type it was about (metel-core#1814).
     assert_eq!(
         fallbacks[1].reason,
-        "abstract conditional nominal aspect entailment is not yet retained"
+        "abstract conditional nominal aspect entailment is not yet retained: Holder<_>"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
     // `completed`, and the function declared inside `preparation`, which is a definition of its own.
@@ -5455,5 +5460,38 @@ fun main() {
     }
 }
 "#,
+    );
+}
+
+#[test]
+fn an_undecided_ownership_names_its_type_and_is_not_an_internal_fallback() {
+    let report = move_report_for_source_with(
+        r#"
+aspect Marker;
+aspect Other;
+struct Token<T> { count: i64 }
+extend<T> Token<T>: Copy where T: Marker, T: Other;
+fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
+fun fine<T: Copy>(value: T) { let first := value; let again := value; }
+fun main() {}
+"#,
+        |graph| {
+            for module in &mut graph.modules {
+                module.scheme_ids.clear();
+            }
+        },
+    );
+    let undecided: Vec<_> = report
+        .unchecked_generic_bodies
+        .iter()
+        .filter_map(|body| body.undecided.as_deref())
+        .collect();
+    assert_eq!(undecided, ["Token<_>"], "{report:#?}");
+    assert!(report.violations.is_empty(), "{report:#?}");
+    // The decided body stays analysed (established proofs are preserved).
+    assert_eq!(
+        report.checked_abstract_generic_bodies.len(),
+        1,
+        "{report:#?}"
     );
 }
