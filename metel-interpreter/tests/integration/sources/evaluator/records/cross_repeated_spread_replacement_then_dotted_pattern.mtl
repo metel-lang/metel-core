@@ -1,0 +1,8 @@
+fun bump<record R: { .n: i64, .. }>(r: { ..R }) -> { ..R } { { ..r, .n = r.n + 1 } }
+fun main() {
+    let a := { .n = 1, .tag = 9 };
+    let b := bump(bump(a));
+    assert(b.n == 3 && b.tag == 9);
+    let { .n, ..rest } := b;
+    assert(n == 3 && rest.tag == 9);
+}

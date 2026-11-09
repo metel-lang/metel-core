@@ -1,0 +1,5 @@
+struct W { v: i64 }
+fun main() {
+    let w := W(v = 1);
+    let m := { ..w, .v = 2 }; // ERROR[T0012]
+}

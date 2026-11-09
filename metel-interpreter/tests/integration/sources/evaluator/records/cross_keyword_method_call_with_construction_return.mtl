@@ -1,0 +1,10 @@
+struct Acc { total: i64 }
+extend Acc {
+    fun add(&var self, by: i64, times: i64) { self.total = self.total + by * times; }
+}
+fun make(total: i64) -> Acc { Acc(total = total) }
+fun main() {
+    var a := make(1);
+    a.add(times = 3, by = 2);
+    assert(a.total == 7);
+}

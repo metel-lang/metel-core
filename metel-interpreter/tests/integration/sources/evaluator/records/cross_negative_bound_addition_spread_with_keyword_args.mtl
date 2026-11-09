@@ -1,0 +1,7 @@
+fun priced<record R: !{ .price }>(line: { ..R }, price: i64) -> { ..R, .price: i64 } {
+    { ..line, .price = price }
+}
+fun main() {
+    let r := priced(price = 5, line = { .sku = 7 });
+    assert(r.price == 5 && r.sku == 7);
+}
