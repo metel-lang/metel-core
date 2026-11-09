@@ -1,8 +1,8 @@
 import alpha::*;
 import beta::*;
 fun main() {
-    let a := alpha::Widget { id = 1 };
-    let b := beta::Widget { id = 2 };
+    let a := alpha::Widget(id = 1);
+    let b := beta::Widget(id = 2);
     assert(a.kind() == "alpha");
     assert(b.kind() == "beta");
 }

@@ -2,5 +2,5 @@
 struct Witness<T> { count: i64 }
 
 fun main() {
-    let witness := Witness { count = 2 };
+    let witness := Witness(count = 2);
 }

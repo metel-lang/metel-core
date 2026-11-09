@@ -33,15 +33,15 @@ extend Reach<String>: Drop {
 }
 
 fun main() {
-    let copyable := Disjoint { val = 1 };
+    let copyable := Disjoint(val = 1);
     assert(copyable.val == 1);
 
-    let droppable := Disjoint { val = "owned" };
+    let droppable := Disjoint(val = "owned");
     assert((&droppable.val).len() == 5);
 
-    let reached := Reach { val = 7 };
+    let reached := Reach(val = 7);
     assert(reached.val == 7);
 
-    let unreached := Reach { val = "outside" };
+    let unreached := Reach(val = "outside");
     assert((&unreached.val).len() == 7);
 }

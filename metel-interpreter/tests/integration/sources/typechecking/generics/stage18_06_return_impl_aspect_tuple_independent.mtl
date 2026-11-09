@@ -27,7 +27,7 @@ extend MyString: Display {
 
 // RFC §1.3 example - tuple with two independent extends Display positions
 fun pair() -> (extends Display, extends Display) {
-	(MyInt { value = 42 }, MyString { value = "hello".to_string() })
+	(MyInt(value = 42), MyString(value = "hello".to_string()))
 }
 
 fun main() {

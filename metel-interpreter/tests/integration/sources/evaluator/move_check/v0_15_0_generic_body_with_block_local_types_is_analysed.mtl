@@ -6,29 +6,29 @@ fun run<T>(x: T) -> T {
     enum Shape { Dot, Line { length: i64 } }
     struct Holder<U> { item: U }
 
-    let pair := Pair { name = "a".to_string(), count = 2 };
+    let pair := Pair(name = "a".to_string(), count = 2);
     let count := pair.count;
     let name := pair.name;
     assert(count == 2);
     assert(name == "a");
 
-    let shape := Shape::Line { length = 5 };
+    let shape := Shape::Line(length = 5);
     match (shape) {
         Shape::Dot => { assert(false); },
         Shape::Line { length } => { assert(length == 5); },
     }
 
-    let holder := Holder { item = x };
+    let holder := Holder(item = x);
     let item := holder.item;
 
     if (true) {
         struct Tag { id: i64 }
-        let tag := Tag { id = 1 };
+        let tag := Tag(id = 1);
         assert(tag.id == 1);
     }
     if (true) {
         struct Tag { label: String }
-        let tag := Tag { label = "t".to_string() };
+        let tag := Tag(label = "t".to_string());
         let label := tag.label;
         assert(label == "t");
     }

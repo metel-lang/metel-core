@@ -32,6 +32,6 @@ extend<T: Clone> Wrapper<T>: Bar { // ERROR[T0013]
 }
 
 fun main() {
-    let w := Wrapper { value = 42 };
+    let w := Wrapper(value = 42);
     println(w.describe());
 }

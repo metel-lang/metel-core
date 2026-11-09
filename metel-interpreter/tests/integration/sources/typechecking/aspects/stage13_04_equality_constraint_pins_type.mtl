@@ -23,6 +23,6 @@ fun needs_int_item<T: Container<Item = i64>>(x: T) -> i64 {
 }
 
 fun main() {
-    let b := IntBox { value = 7 };
+    let b := IntBox(value = 7);
     assert(needs_int_item(b) == 7);
 }

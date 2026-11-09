@@ -4,9 +4,9 @@ struct P { x: i64 }
 fun main() {
     if (true) {
         struct P { y: i64 }
-        let inner := P { y = 2 };
+        let inner := P(y = 2);
         assert(inner.y == 2);
     }
-    let outer := P { x = 1 };
+    let outer := P(x = 1);
     assert(outer.x == 1);
 }

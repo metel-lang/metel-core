@@ -20,7 +20,7 @@ extend Plain: Source {
 }
 
 fun main() {
-    assert(Box { v = "s" }.first_again() == 9);
-    assert(Plain { v = 1 }.first_again() == "p");
+    assert(Box(v = "s").first_again() == 9);
+    assert(Plain(v = 1).first_again() == "p");
     println("ok");
 }

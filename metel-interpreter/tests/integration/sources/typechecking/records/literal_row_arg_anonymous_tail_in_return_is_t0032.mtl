@@ -3,7 +3,7 @@
 record Req<record R> { data: { ..R } }
 
 fun add<record R: !{ host }>(r: Req<..R>) -> Req<..{ host: String, .. }> { // ERROR[T0032]
-    Req { data = { host = "x".to_string(), ..r.data } }
+    Req(data = { host = "x".to_string(), ..r.data })
 }
 
 fun main() {}

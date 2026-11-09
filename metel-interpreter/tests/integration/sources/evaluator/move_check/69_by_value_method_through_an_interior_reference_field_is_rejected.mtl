@@ -12,8 +12,8 @@ struct Middle { payload: B }
 struct Outer { inner: &Middle }
 
 fun main() {
-    let b := B { v = "owned" };
-    let middle := Middle { payload = b };
-    let outer := Outer { inner = &middle };
+    let b := B(v = "owned");
+    let middle := Middle(payload = b);
+    let outer := Outer(inner = &middle);
     let taken := outer.inner.payload.eat();
 }

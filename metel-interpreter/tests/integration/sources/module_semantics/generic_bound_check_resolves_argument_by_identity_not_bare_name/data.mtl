@@ -4,4 +4,4 @@ pub struct Box { pub n: i64 }
 extend Box: Mark {
     pub fun mark(self) -> i64 { self.n }
 }
-pub fun make() -> Box { Box { n = 1 } }
+pub fun make() -> Box { Box(n = 1) }

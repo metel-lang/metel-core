@@ -2,6 +2,6 @@
 record NotClone { values: List<i64> }
 
 fun main() {
-    let value := NotClone { values = List::new() };
+    let value := NotClone(values = List::new());
     let _copy := value.clone();
 }

@@ -2,6 +2,6 @@
 // used inside a closure, beside a u8 assignment, and as a row-polymorphic argument.
 pub struct Counter { pub n: i64 }
 extend Counter {
-    pub fun with(n: i64) -> Counter { return Counter { n = n }; }
+    pub fun with(n: i64) -> Counter { return Counter(n = n); }
 }
 pub fun double(x: i64) -> i64 { return x * 2; }

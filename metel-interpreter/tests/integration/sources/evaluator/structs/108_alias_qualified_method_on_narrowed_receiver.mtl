@@ -12,7 +12,7 @@ extend Handle {
 }
 
 fun main() {
-    let h: H := Handle { fd = 7, name = "n" };
+    let h: H := Handle(fd = 7, name = "n");
     let taken := h.name;                     // h : Handle.{ fd }
     assert(H::describe(&h) == 7);            // alias-qualified call, narrowed receiver
     assert(H::describe(&h.{ fd }) == 7);     // re-projecting the residual: same type

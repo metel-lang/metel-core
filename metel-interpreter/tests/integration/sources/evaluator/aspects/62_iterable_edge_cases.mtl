@@ -17,7 +17,7 @@ aspect Iterable<T> {
 struct Counter { current: i64, limit: i64 }
 
 extend Counter {
-    fun new(limit: i64) -> Counter { Counter { current = 0, limit = limit } }
+    fun new(limit: i64) -> Counter { Counter(current = 0, limit = limit) }
 }
 
 extend Counter: Iterable<i64> {
@@ -25,7 +25,7 @@ extend Counter: Iterable<i64> {
         if (self.current < self.limit) {
             let v := self.current;
             self.current = self.current + 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }
@@ -36,7 +36,7 @@ extend Counter: Iterable<i64> {
 struct Countdown { current: i64 }
 
 extend Countdown {
-    fun new(start: i64) -> Countdown { Countdown { current = start } }
+    fun new(start: i64) -> Countdown { Countdown(current = start) }
 }
 
 extend Countdown: Iterable<i64> {
@@ -44,7 +44,7 @@ extend Countdown: Iterable<i64> {
         if (self.current > 0) {
             let v := self.current;
             self.current = self.current - 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }

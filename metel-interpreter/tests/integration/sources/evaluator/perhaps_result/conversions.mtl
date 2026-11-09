@@ -5,7 +5,7 @@
 // rather than being reused across both.
 fun main() {
     // Option::ok_or
-    let some: Option<i64> := Option::Some { value = 5 };
+    let some: Option<i64> := Option::Some(value = 5);
     let none: Option<i64> := Option::None;
 
     match (some.ok_or("missing")) {
@@ -18,8 +18,8 @@ fun main() {
     }
 
     // Result::map_err
-    let ok: Result<i64, i64> := Result::Ok { value = 10 };
-    let err: Result<i64, i64> := Result::Err { error = 2 };
+    let ok: Result<i64, i64> := Result::Ok(value = 10);
+    let err: Result<i64, i64> := Result::Err(error = 2);
 
     match (ok.map_err(|e: i64| -> String { e.to_string() })) {
         Result::Ok { value } => assert(value == 10),
@@ -31,8 +31,8 @@ fun main() {
     }
 
     // Result::ok
-    let ok2: Result<i64, i64> := Result::Ok { value = 10 };
-    let err2: Result<i64, i64> := Result::Err { error = 2 };
+    let ok2: Result<i64, i64> := Result::Ok(value = 10);
+    let err2: Result<i64, i64> := Result::Err(error = 2);
 
     match (ok2.ok()) {
         Option::Some { value } => assert(value == 10),

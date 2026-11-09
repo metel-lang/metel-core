@@ -16,11 +16,11 @@ extend<T: Copy> Repeatable<T> {
 }
 
 fun main() {
-    let owned := Box { value = "owned" };
+    let owned := Box(value = "owned");
     let moved := owned.consume();
     assert(moved.value == "owned");
-    let combined := Box { value = 3 }.pair("other");
+    let combined := Box(value = 3).pair("other");
     assert(combined.0.value == 3);
     assert(combined.1 == "other");
-    assert(Repeatable { value = 7 }.twice() == 7);
+    assert(Repeatable(value = 7).twice() == 7);
 }

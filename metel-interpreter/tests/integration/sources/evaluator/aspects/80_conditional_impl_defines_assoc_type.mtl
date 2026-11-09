@@ -27,6 +27,6 @@ fun show_item<C: Container>(c: C) -> String {
 }
 
 fun main() {
-    let w := Wrapper { value = 42 };
+    let w := Wrapper(value = 42);
     assert(show_item(w) == "42");
 }

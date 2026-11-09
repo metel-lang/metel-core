@@ -13,7 +13,7 @@ fun needs_fd<record T: { fd: i64, .. }>(t: T) -> i64 {
 }
 
 fun main() {
-    let h := Handle { fd = 3, name = "x" };
+    let h := Handle(fd = 3, name = "x");
     let taken := h.name;          // h : Handle.{ fd } from here on -- a residual
     assert(needs_fd(h) == 3);     // the narrowed residual still satisfies the bound
     println(taken);

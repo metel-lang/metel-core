@@ -11,7 +11,7 @@ pub fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Opti
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Option::Some { value = clone(&arr[i as u64]) };
+            return Option::Some(value = clone(&arr[i as u64]));
         }
         i += 1;
     }

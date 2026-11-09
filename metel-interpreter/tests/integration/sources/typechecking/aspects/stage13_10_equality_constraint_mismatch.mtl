@@ -23,6 +23,6 @@ fun needs_int_item<T: Container<Item = i64>>(x: T) -> i64 {
 }
 
 fun main() {
-    let b := StrBox { value = "hi" };
+    let b := StrBox(value = "hi");
     let _ := needs_int_item(b); // ERROR[T0012]
 }

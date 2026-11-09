@@ -7,6 +7,6 @@
 struct Pair<A, B> { first: A, second: B }
 
 fun main() {
-    let p := Pair { first = 5, second = "x" };
+    let p := Pair(first = 5, second = "x");
     let n: boolean := p; // ERROR[T0001]
 }

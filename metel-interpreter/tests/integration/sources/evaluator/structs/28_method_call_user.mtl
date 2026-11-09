@@ -5,13 +5,13 @@ extend Point {
         self.x * self.x + self.y * self.y
     }
     fun translate(self, dx: i64, dy: i64) -> Point {
-        Point { x = self.x + dx, y = self.y + dy }
+        Point(x = self.x + dx, y = self.y + dy)
     }
 }
 
 fun main() {
     // Zero-arg (besides self) method.
-    let p := Point { x = 3, y = 4 };
+    let p := Point(x = 3, y = 4);
     let ms := p.magnitude_sq();
     assert(ms == 25);
     // Method with additional arguments that returns a new struct.

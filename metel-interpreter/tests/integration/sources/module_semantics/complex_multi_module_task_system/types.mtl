@@ -27,10 +27,10 @@ pub fun clone_status(value: &Status) -> Status {
 }
 
 pub fun clone_task(value: &Task) -> Task {
-    Task {
+    Task(
         title = (*value).title.substring(0, (*value).title.len()),
         priority = clone_priority(&(*value).priority),
         status = clone_status(&(*value).status),
         effort = (*value).effort,
-    }
+    )
 }

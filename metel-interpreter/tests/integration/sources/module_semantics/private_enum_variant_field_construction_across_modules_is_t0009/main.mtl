@@ -1,2 +1,2 @@
 import token::Token;
-fun main() { let t := Token::Inner { kind = 1, offset = 7 }; }
+fun main() { let t := Token::Inner(kind = 1, offset = 7); }

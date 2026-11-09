@@ -2,7 +2,7 @@ import child::probe;
 
 pub struct Counter { pub n: i64 }
 extend Counter {
-    pub fun new() -> Counter { return Counter { n = 1 }; }
+    pub fun new() -> Counter { return Counter(n = 1); }
 }
 
 fun main() {

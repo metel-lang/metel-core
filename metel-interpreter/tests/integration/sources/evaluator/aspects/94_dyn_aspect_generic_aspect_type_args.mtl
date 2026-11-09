@@ -13,6 +13,6 @@ extend Doubler: Callable<i64, i64> {
 }
 
 fun main() {
-    let d: dyn Callable<i64, i64> := Doubler { };
+    let d: dyn Callable<i64, i64> := Doubler( );
     assert(d.call(21) == 42);
 }

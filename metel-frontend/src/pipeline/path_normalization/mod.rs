@@ -935,7 +935,9 @@ fn normalize_construction_callee(
                 ));
             }
             if let Some((local, Some(id))) = resolved
-                && local.len() == 1
+                && (local.len() == 1
+                    || (local.len() == 2
+                        && local[1].chars().next().is_some_and(char::is_uppercase)))
             {
                 *callee = Expr::ResolvedPath {
                     resolved: local.join("::"),

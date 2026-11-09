@@ -5,5 +5,5 @@ fun main() {
     if (true) {
         struct P { y: i64 }
     }
-    let p := P { y = 1 };
+    let p := P(y = 1);
 }

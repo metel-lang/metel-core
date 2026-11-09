@@ -13,7 +13,7 @@ fun main() {
     let row_clone_with_tail := clone_head({ id = 3, count = 5 });
     assert(row_clone_with_tail.id + row_clone_with_tail.count == 8);
 
-    let user: UserAlias := User { id = 3, name = "moved", count = 5 };
+    let user: UserAlias := User(id = 3, name = "moved", count = 5);
     let name := user.name;
     let residual := user.clone();
     assert(name == "moved");

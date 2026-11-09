@@ -1,5 +1,5 @@
 struct Rock { }
 
 fun main() {
-    let x := (Rock { } : dyn Display);
+    let x := (Rock( ) : dyn Display);
 }

@@ -6,7 +6,7 @@ struct Handle { fd: i64, name: String }
 fun len_of(p: Handle.{ name }) -> i64 { p.name.len() }
 
 fun main() {
-    var h := Handle { fd = 7, name = "abc".to_string() };
+    var h := Handle(fd = 7, name = "abc".to_string());
     let p := h.{ name };
     let f := [p] once || { len_of(p) };
     assert(f() == 3);

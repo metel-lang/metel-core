@@ -10,7 +10,7 @@ fun strip(c: Cell) -> Residual<{ grid: Grid }> {
 fun main() {
     let s := swap({ left = 1, right = 2 });
     assert(s.left == 2);
-    let r := strip(Cell { value = 9, grid = [1, 2, 3] });
+    let r := strip(Cell(value = 9, grid = [1, 2, 3]));
     assert(r.grid[1] == 2);
     extend_ok();
 }

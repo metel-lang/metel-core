@@ -15,8 +15,8 @@ extend<T: !Copy> Holder<T> {
 }
 
 fun main() {
-    let copied := Holder { value = 1 };
-    let owned := Holder { value = "owned" };
+    let copied := Holder(value = 1);
+    let owned := Holder(value = "owned");
     assert(copied.carry("first") == "first");
     assert(owned.carry("second") == "second");
     assert(copied.carry(3) == 3);

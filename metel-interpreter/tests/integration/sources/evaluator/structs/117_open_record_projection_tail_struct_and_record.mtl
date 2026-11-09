@@ -14,10 +14,10 @@ fun get_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 fun get_box_fd<record R>(b: Box.{ fd, ..R }) -> i64 { b.fd }
 
 fun main() {
-    let h := Handle { fd = 7, flags = 0 };
+    let h := Handle(fd = 7, flags = 0);
     assert(get_fd(h) == 7);
 
-    let b := Box { fd = 9, label = 0 };
+    let b := Box(fd = 9, label = 0);
     assert(get_box_fd(b) == 9);
 
     println("ok");

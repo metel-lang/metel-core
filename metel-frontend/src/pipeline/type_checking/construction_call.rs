@@ -45,6 +45,13 @@ pub(super) fn target_of(callee: &Expr) -> Option<Target<'_>> {
     }
 }
 
+/// Whether a name reads as a variant or type by the naming convention (RFC-0101: capitalized), so a call
+/// of `Enum::Name(field = ..)` that names no known variant is a construction of an unknown one, and its
+/// literal reports it, instead of a call of a missing function.
+pub(super) fn is_variant_like(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+}
+
 /// The declaration a normalized callee names, when path normalization resolved it.
 pub(super) fn callee_symbol(callee: &Expr) -> Option<SymbolId> {
     match callee {
@@ -77,54 +84,75 @@ pub(super) fn literal_for(
         }
     };
     let display = path.join("::");
-    let fields = match args {
-        [
-            Expr::NamedArg {
-                name,
-                value,
-                span: arg_span,
-            },
-        ] if name == SPREAD_ARG => spread_fields(&display, value, arg_span, names)?,
-        _ => {
-            if let Some(Expr::NamedArg { span: arg_span, .. }) = args
-                .iter()
-                .find(|arg| matches!(arg, Expr::NamedArg { name, .. } if name == SPREAD_ARG))
-            {
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0039,
-                    format!(
-                        "a spread argument builds `{display}` from a record and must be its only argument"
-                    ),
-                    arg_span,
-                ));
+    // No declared shape (an enum or variant the registry does not know): pass the keyword names through
+    // so the literal's own checks report the unknown variant or enum.
+    let fields = if names.is_empty()
+        && args
+            .iter()
+            .all(|a| matches!(a, Expr::NamedArg { name, .. } if name != SPREAD_ARG))
+        && !args.is_empty()
+    {
+        args.iter()
+            .filter_map(|arg| match arg {
+                Expr::NamedArg { name, value, .. } => Some((name.clone(), (**value).clone())),
+                _ => None,
+            })
+            .collect()
+    } else {
+        match args {
+            [
+                Expr::NamedArg {
+                    name,
+                    value,
+                    span: arg_span,
+                },
+            ] if name == SPREAD_ARG => spread_fields(&display, value, arg_span, names)?,
+            _ => {
+                if let Some(Expr::NamedArg { span: arg_span, .. }) = args
+                    .iter()
+                    .find(|arg| matches!(arg, Expr::NamedArg { name, .. } if name == SPREAD_ARG))
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0039,
+                        format!(
+                            "a spread argument builds `{display}` from a record and must be its only argument"
+                        ),
+                        arg_span,
+                    ));
+                }
+                let slots: Vec<ParamSlot<'_>> =
+                    names.iter().map(|name| ParamSlot { name }).collect();
+                let binding = bind_arguments(&display, &slots, args, span)?;
+                // Written order: the literal evaluates its fields in the order listed.
+                let mut written: Vec<(usize, String, Expr)> = binding
+                    .arg_for_param
+                    .iter()
+                    .enumerate()
+                    .map(|(param, &index)| {
+                        let value = match &args[index] {
+                            Expr::NamedArg { value, .. } => (**value).clone(),
+                            positional => positional.clone(),
+                        };
+                        (index, names[param].clone(), value)
+                    })
+                    .collect();
+                written.sort_by_key(|(index, ..)| *index);
+                written
+                    .into_iter()
+                    .map(|(_, name, value)| (name, value))
+                    .collect()
             }
-            let slots: Vec<ParamSlot<'_>> = names.iter().map(|name| ParamSlot { name }).collect();
-            let binding = bind_arguments(&display, &slots, args, span)?;
-            // Written order: the literal evaluates its fields in the order listed.
-            let mut written: Vec<(usize, String, Expr)> = binding
-                .arg_for_param
-                .iter()
-                .enumerate()
-                .map(|(param, &index)| {
-                    let value = match &args[index] {
-                        Expr::NamedArg { value, .. } => (**value).clone(),
-                        positional => positional.clone(),
-                    };
-                    (index, names[param].clone(), value)
-                })
-                .collect();
-            written.sort_by_key(|(index, ..)| *index);
-            written
-                .into_iter()
-                .map(|(_, name, value)| (name, value))
-                .collect()
         }
     };
+    // A call's own span starts at its `(`; the literal it stands for spans the whole `Type(args)`, so a
+    // diagnostic points at the type.
+    let mut literal_span = callee.span().clone();
+    literal_span.end = span.end;
     let literal = Expr::StructLiteral {
         path: path.clone(),
         fields,
         symbol_id: callee_symbol(callee),
-        span: span.clone(),
+        span: literal_span.clone(),
     };
     if type_args.is_empty() || path.len() != 1 {
         return Ok(literal);
@@ -133,7 +161,7 @@ pub(super) fn literal_for(
     Ok(Expr::Ascribe {
         expr: Box::new(literal),
         ann: TypeExpr::Named(path[0].clone(), type_args.to_vec(), span.clone().into()),
-        span: span.clone(),
+        span: literal_span,
     })
 }
 

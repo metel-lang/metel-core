@@ -14,12 +14,12 @@ struct Fahrenheit {
 
 extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
-        return Fahrenheit { degrees = value.degrees * 1.8 + 32.0 };
+        return Fahrenheit(degrees = value.degrees * 1.8 + 32.0);
     }
 }
 
 fun main() {
-    let c := Celsius { degrees = 100.0 };
+    let c := Celsius(degrees = 100.0);
     let f := c as Fahrenheit;
     assert(f.degrees == 212.0);
 

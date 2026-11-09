@@ -7,6 +7,6 @@ extend<record R: { port: i64, .. }> Cfg<..R> {
 }
 
 fun main() {
-    let c := Cfg { data = { port = 80, host = "h".to_string() } };
+    let c := Cfg(data = { port = 80, host = "h".to_string() });
     assert(c.with({ n = 2, note = "x".to_string() }) == 82);
 }

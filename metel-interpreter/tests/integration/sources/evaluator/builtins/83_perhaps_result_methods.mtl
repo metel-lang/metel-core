@@ -8,7 +8,7 @@
 
 fun main() {
     // ── Option ──────────────────────────────────────────────────────────────
-    let some := Option::Some { value = 21 };
+    let some := Option::Some(value = 21);
     let none: Option<i64> := Option::None;
 
     assert((&some).is_some());
@@ -17,57 +17,57 @@ fun main() {
     assert(!(&none).is_some());
 
     // map transforms Some, passes through None
-    let some_map1 := Option::Some { value = 21 };
+    let some_map1 := Option::Some(value = 21);
     assert(some_map1.map(|x: i64| -> i64 { x * 2 }).unwrap_or(0) == 42);
     let none_map: Option<i64> := Option::None;
     assert(none_map.map(|x: i64| -> i64 { x * 2 }).unwrap_or(-1) == -1);
     // map may change the element type
-    let some_map2 := Option::Some { value = 21 };
+    let some_map2 := Option::Some(value = 21);
     assert(some_map2.map(|x: i64| -> String { "v" }).unwrap_or("none") == "v");
 
     // and_then chains a Option-returning function
-    let some_and_then1 := Option::Some { value = 21 };
-    assert(some_and_then1.and_then(|x: i64| -> Option<i64> { Option::Some { value = x + 1 } }).unwrap_or(0) == 22);
-    let some_and_then2 := Option::Some { value = 21 };
+    let some_and_then1 := Option::Some(value = 21);
+    assert(some_and_then1.and_then(|x: i64| -> Option<i64> { Option::Some(value = x + 1) }).unwrap_or(0) == 22);
+    let some_and_then2 := Option::Some(value = 21);
     assert(some_and_then2.and_then(|x: i64| -> Option<i64> { Option::None }).is_none());
 
     // unwrap_or / unwrap_or_else
-    let some_unwrap1 := Option::Some { value = 21 };
+    let some_unwrap1 := Option::Some(value = 21);
     assert(some_unwrap1.unwrap_or(0) == 21);
     let none_unwrap1: Option<i64> := Option::None;
     assert(none_unwrap1.unwrap_or(7) == 7);
     let none_unwrap2: Option<i64> := Option::None;
     assert(none_unwrap2.unwrap_or_else(|| -> i64 { 9 }) == 9);
-    let some_unwrap2 := Option::Some { value = 21 };
+    let some_unwrap2 := Option::Some(value = 21);
     assert(some_unwrap2.unwrap_or_else(|| -> i64 { 9 }) == 21);
 
     // ── Result ───────────────────────────────────────────────────────────────
-    let ok: Result<i64, String> := Result::Ok { value = 10 };
-    let err: Result<i64, String> := Result::Err { error = "boom" };
+    let ok: Result<i64, String> := Result::Ok(value = 10);
+    let err: Result<i64, String> := Result::Err(error = "boom");
 
     assert((&ok).is_ok());
     assert(!(&ok).is_err());
     assert((&err).is_err());
     assert(!(&err).is_ok());
 
-    let ok_map: Result<i64, String> := Result::Ok { value = 10 };
+    let ok_map: Result<i64, String> := Result::Ok(value = 10);
     assert(ok_map.map(|x: i64| -> i64 { x + 5 }).unwrap_or(0) == 15);
-    let err_map1: Result<i64, String> := Result::Err { error = "boom" };
+    let err_map1: Result<i64, String> := Result::Err(error = "boom");
     assert(err_map1.map(|x: i64| -> i64 { x + 5 }).unwrap_or(99) == 99);
     // map preserves the Err payload
-    let err_map2: Result<i64, String> := Result::Err { error = "boom" };
+    let err_map2: Result<i64, String> := Result::Err(error = "boom");
     assert(err_map2.map(|x: i64| -> i64 { x + 5 }).is_err());
 
-    let ok_and_then1: Result<i64, String> := Result::Ok { value = 10 };
-    assert(ok_and_then1.and_then(|x: i64| -> Result<i64, String> { Result::Ok { value = x * 3 } }).unwrap_or(0) == 30);
-    let ok_and_then2: Result<i64, String> := Result::Ok { value = 10 };
-    assert(ok_and_then2.and_then(|x: i64| -> Result<i64, String> { Result::Err { error = "no" } }).is_err());
+    let ok_and_then1: Result<i64, String> := Result::Ok(value = 10);
+    assert(ok_and_then1.and_then(|x: i64| -> Result<i64, String> { Result::Ok(value = x * 3) }).unwrap_or(0) == 30);
+    let ok_and_then2: Result<i64, String> := Result::Ok(value = 10);
+    assert(ok_and_then2.and_then(|x: i64| -> Result<i64, String> { Result::Err(error = "no") }).is_err());
 
-    let ok_unwrap: Result<i64, String> := Result::Ok { value = 10 };
+    let ok_unwrap: Result<i64, String> := Result::Ok(value = 10);
     assert(ok_unwrap.unwrap_or(0) == 10);
-    let err_unwrap1: Result<i64, String> := Result::Err { error = "boom" };
+    let err_unwrap1: Result<i64, String> := Result::Err(error = "boom");
     assert(err_unwrap1.unwrap_or(3) == 3);
-    let err_unwrap2: Result<i64, String> := Result::Err { error = "boom" };
+    let err_unwrap2: Result<i64, String> := Result::Err(error = "boom");
     assert(err_unwrap2.unwrap_or_else(|| -> i64 { 4 }) == 4);
 
     println("ok");

@@ -7,7 +7,7 @@
 struct Handle { fd: i64, name: String }
 
 fun main() {
-    let h := Handle { fd = 7, name = "n" };
+    let h := Handle(fd = 7, name = "n");
     let taken := h.name;                 // h : Handle.{ fd }
     let get := [h] once || { h.fd };     // captures the residual by value
     assert(get() == 7);

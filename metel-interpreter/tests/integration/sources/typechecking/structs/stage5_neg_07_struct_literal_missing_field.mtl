@@ -5,4 +5,4 @@ struct Point {
     y: f64,
 }
 
-let p := Point { x = 1.0 }; // ERROR[T0003]
+let p := Point(x = 1.0); // ERROR[T0004]

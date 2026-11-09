@@ -5,5 +5,5 @@ fun show(x: dyn Display) -> String {
 }
 
 fun main() {
-    show(Rock { });
+    show(Rock( ));
 }

@@ -43,10 +43,10 @@ fun main() {
     assert(name(Colour::Green) == "green");
     assert(name(Colour::Blue) == "blue");
 
-    assert(unwrap_or(Option::Some { value = 5 }, 0) == 5);
+    assert(unwrap_or(Option::Some(value = 5), 0) == 5);
     assert(unwrap_or(Option::None, 9) == 9);
 
-    assert(qualified_still_works(Option::Some { value = 3 }) == 3);
+    assert(qualified_still_works(Option::Some(value = 3)) == 3);
     assert(qualified_still_works(Option::None) == -1);
 
     assert(binding_fallback(Colour::Red) == "red");

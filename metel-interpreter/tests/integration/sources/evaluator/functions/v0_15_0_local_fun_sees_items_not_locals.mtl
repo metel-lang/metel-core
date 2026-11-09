@@ -4,7 +4,7 @@ let LIMIT := 10;
 fun helper(x: i64) -> i64 { x + 1 }
 fun main() {
     record P { x: i64 }
-    fun mk(v: i64) -> P { P { x = helper(v) } }
+    fun mk(v: i64) -> P { P(x = helper(v)) }
     fun is_even(n: i64) -> boolean { if (n == 0) { true } else { is_odd(n - 1) } }
     fun is_odd(n: i64) -> boolean { if (n == 0) { false } else { is_even(n - 1) } }
     fun twice(v: i64) -> i64 { mk(mk(v).x).x }

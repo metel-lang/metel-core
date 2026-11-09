@@ -4,7 +4,7 @@ import a::Foo;
 import b::Foo;
 
 fun main() {
-    let v := Foo { x = 1 };
+    let v := Foo(x = 1);
     assert(v.x == 1);
     assert(Foo() == 5);
 }

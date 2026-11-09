@@ -2,6 +2,6 @@
 struct Strings { a: String, b: String, c: String }
 
 fun main() {
-    let s := Strings { a = "a".to_string(), b = "b".to_string(), c = "c".to_string() };
+    let s := Strings(a = "a".to_string(), b = "b".to_string(), c = "c".to_string());
     let t: Strings.{ a, c } := s;
 }

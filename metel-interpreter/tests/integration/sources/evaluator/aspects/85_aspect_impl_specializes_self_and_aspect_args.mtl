@@ -5,7 +5,7 @@ aspect IntoSelf<S> {
 }
 
 extend Sink: IntoSelf<i16> {
-    fun make(x: i16) -> Sink { Sink { value = 1 } }
+    fun make(x: i16) -> Sink { Sink(value = 1) }
 }
 
 fun main() {}

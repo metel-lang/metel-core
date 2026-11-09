@@ -8,7 +8,7 @@ where ..R: Copy { ((value, value), 11) }
 fun strip<record R, record Rest>(value: Packet<..R>) -> Packet<..Rest>
 where R = { token: String, ..Rest } {
     let { token: _, ..rest } := value.data;
-    Packet { data = rest }
+    Packet(data = rest)
 }
 fun identity<T>(value: Envelope<T>) -> Envelope<T> { value }
 aspect Carrier { fun pass<T>(self, value: Envelope<T>) -> Envelope<T>; }
@@ -23,9 +23,9 @@ fun main() {
     assert(pair.0.0.count + pair.0.1.count == 10);
     let empty_pair := copy_twice({});
     let empty: EmptyRow := empty_pair.0.0;
-    let stripped := strip(Packet { data = { token = "gone", text = "kept" } });
+    let stripped := strip(Packet(data = { token = "gone", text = "kept" }));
     assert(stripped.data.text == "kept");
-    let stripped_empty: EmptyPacket := strip(Packet { data = { token = "gone" } });
-    let envelope := Courier {}.pass(identity((stripped_empty, 9)));
+    let stripped_empty: EmptyPacket := strip(Packet(data = { token = "gone" }));
+    let envelope := Courier().pass(identity((stripped_empty, 9)));
     assert(envelope.1 == 9);
 }

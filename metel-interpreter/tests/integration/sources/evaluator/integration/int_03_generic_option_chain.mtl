@@ -19,14 +19,14 @@ enum Option<T> {
 
 fun option_map<T, U>(opt: Option<T>, f: |T| -> U) -> Option<U> {
     match (opt) {
-        Option::Some { value } => Option::Some { value = f(value) },
+        Option::Some { value } => Option::Some(value = f(value)),
         _                      => Option::None,
     }
 }
 
 fun option_map_2<T, U>(opt: Option<T>, f: |T| -> U) -> Option<U> {
     match (opt) {
-        Option::Some { value } => Option::Some { value = f(value) },
+        Option::Some { value } => Option::Some(value = f(value)),
         _                      => Option::None,
     }
 }
@@ -47,7 +47,7 @@ fun option_or<T>(opt: Option<T>, fallback: T) -> T {
 
 fun option_filter<T>(opt: Option<T>, pred: |&T| -> boolean) -> Option<T> {
     match (opt) {
-        Option::Some { value } => if (pred(&value)) Option::Some { value = value } else Option::None,
+        Option::Some { value } => if (pred(&value)) Option::Some(value = value) else Option::None,
         _                      => Option::None,
     }
 }
@@ -67,15 +67,15 @@ struct Pair<A, B> {
 }
 
 fun pair_map_first<A, B, C>(p: Pair<A, B>, f: |A| -> C) -> Pair<C, B> {
-    Pair { first = f(p.first), second = p.second }
+    Pair(first = f(p.first), second = p.second)
 }
 
 fun pair_map_second<A, B, C>(p: Pair<A, B>, f: |B| -> C) -> Pair<A, C> {
-    Pair { first = p.first, second = f(p.second) }
+    Pair(first = p.first, second = f(p.second))
 }
 
 fun pair_swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
-    Pair { first = p.second, second = p.first }
+    Pair(first = p.second, second = p.first)
 }
 
 // ── Generic array utilities ───────────────────────────────────────────────────
@@ -89,7 +89,7 @@ fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Option::Some { value = clone(&arr[i as u64]) };
+            return Option::Some(value = clone(&arr[i as u64]));
         }
         i += 1;
     }
@@ -113,18 +113,18 @@ fun map_array<T, U>(arr: [T], f: |&T| -> U) -> [U] {
 // ── Safe integer division returning Option<i64> ───────────────────────────────
 
 fun safe_div(a: i64, b: i64) -> Option<i64> {
-    if (b == 0) Option::None else Option::Some { value = a / b }
+    if (b == 0) Option::None else Option::Some(value = a / b)
 }
 
 fun safe_div_2(a: i64, b: i64) -> Option<i64> {
-    if (b == 0) Option::None else Option::Some { value = a / b }
+    if (b == 0) Option::None else Option::Some(value = a / b)
 }
 
 // ── Safe array index ──────────────────────────────────────────────────────────
 
 fun safe_get_int(arr: [i64], i: i64) -> Option<i64> {
     if (i < 0 || i >= arr.len()) Option::None
-    else Option::Some { value = arr[i as u64] }
+    else Option::Some(value = arr[i as u64])
 }
 
 // ── String lookup in a [Pair<String,i64>] "map" ───────────────────────────────
@@ -134,10 +134,10 @@ fun table_get(table: [Pair<String, i64>], key: String) -> Option<i64> {
         table,
         [key.clone()] |p: &Pair<String, i64>| -> boolean { (*p).first == key },
         |p: &Pair<String, i64>| -> Pair<String, i64> {
-            Pair {
+            Pair(
                 first = (*p).first.substring(0, (*p).first.len()),
                 second = (*p).second,
-            }
+            )
         },
     );
     option_map(entry, |p: Pair<String, i64>| -> i64 { p.second })
@@ -154,11 +154,11 @@ fun main() {
     assert(id("hello") == "hello");
 
     // ── Option<i64> basic combinators ─────────────────────────────────────────
-    let some10: Option<i64>  := Option::Some { value = 10 };
+    let some10: Option<i64>  := Option::Some(value = 10);
     let none_i: Option<i64>  := Option::None;
 
     // map: Some(10) → Some(20)
-    let doubled := option_map(Option::Some { value = 10 }, |x: i64| -> i64 { x * 2 });
+    let doubled := option_map(Option::Some(value = 10), |x: i64| -> i64 { x * 2 });
     assert(option_or(doubled, 0) == 20);
 
     // map over None → None
@@ -171,35 +171,35 @@ fun main() {
     assert(option_or(none_i,  99) == 99);
 
     // filter: keeps if predicate holds
-    let keep   := option_filter(Option::Some { value = 10 }, |x: &i64| -> boolean { *x > 5  });
-    let remove := option_filter(Option::Some { value = 10 }, |x: &i64| -> boolean { *x > 50 });
+    let keep   := option_filter(Option::Some(value = 10), |x: &i64| -> boolean { *x > 5  });
+    let remove := option_filter(Option::Some(value = 10), |x: &i64| -> boolean { *x > 50 });
     assert(option_is_some(keep));
     assert(!option_is_some(remove));
 
     // and_then (flatMap): chain two operations
-    let chained := option_and_then(Option::Some { value = 10 }, |x: i64| -> Option<i64> {
-        if (x > 5) Option::Some { value = x + 1 } else Option::None
+    let chained := option_and_then(Option::Some(value = 10), |x: i64| -> Option<i64> {
+        if (x > 5) Option::Some(value = x + 1) else Option::None
     });
     assert(option_or(chained, 0) == 11);
 
     let none_i_chain: Option<i64> := Option::None;
     let chained_none := option_and_then(none_i_chain, |x: i64| -> Option<i64> {
-        Option::Some { value = x + 1 }
+        Option::Some(value = x + 1)
     });
     assert(!option_is_some(chained_none));
 
     // ── Option<boolean> ──────────────────────────────────────────────────────────
-    let some_true: Option<boolean> := Option::Some { value = true };
-    let some_false: Option<boolean> := Option::Some { value = false };
+    let some_true: Option<boolean> := Option::Some(value = true);
+    let some_false: Option<boolean> := Option::Some(value = false);
 
     assert(option_or(some_true,  false));
     assert(!option_or(some_false, true));
 
-    let negated := option_map(Option::Some { value = true }, |b: boolean| -> boolean { !b });
+    let negated := option_map(Option::Some(value = true), |b: boolean| -> boolean { !b });
     assert(!option_or(negated, true));
 
     // ── Option<String> ────────────────────────────────────────────────────────
-    let some_str: Option<String> := Option::Some { value = "hello" };
+    let some_str: Option<String> := Option::Some(value = "hello");
     let none_str: Option<String> := Option::None;
 
     let upper_len := option_map(some_str, |s: String| -> i64 { s.len() });
@@ -240,27 +240,27 @@ fun main() {
     assert(option_or(doubled_elem, -1) == 60);
 
     // ── Pair<A,B> operations ──────────────────────────────────────────────────
-    let p1: Pair<i64, boolean> := Pair { first = 7, second = true };
+    let p1: Pair<i64, boolean> := Pair(first = 7, second = true);
     assert(p1.first == 7);
     assert(p1.second);
 
     // map_first: double the i64
-    let p2 := pair_map_first(Pair { first = 7, second = true }, |x: i64| -> i64 { x * 2 });
+    let p2 := pair_map_first(Pair(first = 7, second = true), |x: i64| -> i64 { x * 2 });
     assert(p2.first == 14);
     assert(p2.second);
 
     // map_second: negate the boolean
-    let p3 := pair_map_second(Pair { first = 7, second = true }, |b: boolean| -> boolean { !b });
+    let p3 := pair_map_second(Pair(first = 7, second = true), |b: boolean| -> boolean { !b });
     assert(p3.first  == 7);
     assert(!p3.second);
 
     // swap: Pair<i64,boolean> → Pair<boolean,i64>
-    let p4 := pair_swap(Pair { first = 7, second = true });
+    let p4 := pair_swap(Pair(first = 7, second = true));
     assert(p4.first);
     assert(p4.second == 7);
 
     // Pair<String, i64> for a name–score record
-    let score := Pair { first = "Alice", second = 95 };
+    let score := Pair(first = "Alice", second = 95);
     assert(score.first == "Alice");
     assert(score.second == 95);
     let bumped := pair_map_second(score, |n: i64| -> i64 { n + 5 });
@@ -268,16 +268,16 @@ fun main() {
 
     // ── table_get: [Pair<String,i64>] as a lookup table ───────────────────────
     let table: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
 
     let apples  := table_get(table, "apples");
     let table_again: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
     let missing := table_get(table_again, "grapes");
     assert(option_or(apples,  0) == 3);
@@ -285,15 +285,15 @@ fun main() {
 
     // Compute total of found items using and_then
     let table_apples_again: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
     let apples_for_total := table_get(table_apples_again, "apples");
     let table_third: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
     let bananas := table_get(table_third, "bananas");
     let total := option_and_then(apples_for_total, [bananas] once |a: i64| -> Option<i64> {
@@ -334,34 +334,34 @@ fun main() {
     // ── Composing combinators ─────────────────────────────────────────────────
     // find_first in an array of Pairs: locate entry with value > 5
     let table_rich: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
     let rich_entry := find_first(
         table_rich,
         |p: &Pair<String, i64>| -> boolean { (*p).second > 5 },
         |p: &Pair<String, i64>| -> Pair<String, i64> {
-            Pair {
+            Pair(
                 first = (*p).first.substring(0, (*p).first.len()),
                 second = (*p).second,
-            }
+            )
         },
     );
     assert(option_is_some(rich_entry));
     let table_rich_again: [Pair<String, i64>] := [
-        Pair { first = "apples",  second = 3  },
-        Pair { first = "bananas", second = 7  },
-        Pair { first = "cherries", second = 12 },
+        Pair(first = "apples",  second = 3),
+        Pair(first = "bananas", second = 7),
+        Pair(first = "cherries", second = 12),
     ];
     let rich_entry_again := find_first(
         table_rich_again,
         |p: &Pair<String, i64>| -> boolean { (*p).second > 5 },
         |p: &Pair<String, i64>| -> Pair<String, i64> {
-            Pair {
+            Pair(
                 first = (*p).first.substring(0, (*p).first.len()),
                 second = (*p).second,
-            }
+            )
         },
     );
     let rich_name := option_map(rich_entry_again, |p: Pair<String, i64>| -> String { p.first });

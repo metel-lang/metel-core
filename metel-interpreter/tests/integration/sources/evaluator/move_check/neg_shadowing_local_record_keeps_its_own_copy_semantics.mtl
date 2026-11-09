@@ -3,12 +3,12 @@
 // so moving `inner` twice is a use-after-move.
 fun main() {
     record P { x: i64 }
-    let outer := P { x = 1 };
+    let outer := P(x = 1);
     let o1 := outer;
     let o2 := outer;
     if (true) {
         record P { x: String }
-        let inner := P { x = "s" };
+        let inner := P(x = "s");
         let i1 := inner;
         let i2 := inner;
     }

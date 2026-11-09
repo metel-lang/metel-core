@@ -27,38 +27,38 @@ struct Fahrenheit{ degrees: f64 }
 // Meters ↔ Feet
 extend Feet: From<Meters> {
     fun from(value: Meters) -> Feet {
-        Feet { value = value.value * 3.28084 }
+        Feet(value = value.value * 3.28084)
     }
 }
 extend Meters: From<Feet> {
     fun from(value: Feet) -> Meters {
-        Meters { value = value.value / 3.28084 }
+        Meters(value = value.value / 3.28084)
     }
 }
 
 // Feet → Inches (chaining: Meters → Feet → Inches)
 extend Inches: From<Feet> {
     fun from(value: Feet) -> Inches {
-        Inches { value = value.value * 12.0 }
+        Inches(value = value.value * 12.0)
     }
 }
 
 // Celsius ↔ Kelvin
 extend Kelvin: From<Celsius> {
     fun from(value: Celsius) -> Kelvin {
-        Kelvin { degrees = value.degrees + 273.15 }
+        Kelvin(degrees = value.degrees + 273.15)
     }
 }
 extend Celsius: From<Kelvin> {
     fun from(value: Kelvin) -> Celsius {
-        Celsius { degrees = value.degrees - 273.15 }
+        Celsius(degrees = value.degrees - 273.15)
     }
 }
 
 // Celsius ↔ Fahrenheit (multiple targets from Celsius)
 extend Fahrenheit: From<Celsius> {
     fun from(value: Celsius) -> Fahrenheit {
-        Fahrenheit { degrees = value.degrees * 1.8 + 32.0 }
+        Fahrenheit(degrees = value.degrees * 1.8 + 32.0)
     }
 }
 
@@ -70,48 +70,48 @@ fun approx(a: f64, b: f64) -> boolean {
 
 fun main() {
     // Zero value
-    let zero_m := Meters { value = 0.0 };
+    let zero_m := Meters(value = 0.0);
     let zero_f := zero_m as Feet;
     assert(zero_f.value == 0.0);
 
     // Large value
-    let km := Meters { value = 1000.0 };
+    let km := Meters(value = 1000.0);
     let km_ft := km as Feet;
     assert(approx(km_ft.value, 3280.84));
 
     // Negative value
-    let neg := Meters { value = -1.0 };
+    let neg := Meters(value = -1.0);
     let neg_ft := neg as Feet;
     assert(approx(neg_ft.value, -3.28084));
 
     // Multiple From targets from same source type
-    let c100 := Celsius { degrees = 100.0 };
+    let c100 := Celsius(degrees = 100.0);
     let k100 := c100 as Kelvin;
     assert(approx(k100.degrees, 373.15));
     let f100 := c100 as Fahrenheit;
     assert(f100.degrees == 212.0);
 
     // Chained casts: Meters → Feet → Inches
-    let one_m := Meters { value = 1.0 };
+    let one_m := Meters(value = 1.0);
     let ft := one_m as Feet;
     let in_ := ft as Inches;
     assert(approx(in_.value, 39.37)); // 1m ≈ 39.37 inches
 
     // Round-trip: Meters → Feet → Meters
-    let orig := Meters { value = 5.0 };
+    let orig := Meters(value = 5.0);
     let via_ft := orig as Feet;
     let back := via_ft as Meters;
     assert(approx(back.value, 5.0));
 
     // Round-trip: Celsius → Kelvin → Celsius
-    let c37 := Celsius { degrees = 37.0 };
+    let c37 := Celsius(degrees = 37.0);
     let k37 := c37 as Kelvin;
     assert(approx(k37.degrees, 310.15));
     let back_c := k37 as Celsius;
     assert(approx(back_c.degrees, 37.0));
 
     // absolute zero: 0 K → Celsius
-    let abs_zero := Kelvin { degrees = 0.0 };
+    let abs_zero := Kelvin(degrees = 0.0);
     let abs_c := abs_zero as Celsius;
     assert(approx(abs_c.degrees, -273.15));
 

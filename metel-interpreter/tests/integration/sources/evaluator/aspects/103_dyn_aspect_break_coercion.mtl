@@ -14,7 +14,7 @@ fun main() {
     var i := 0;
     let x: dyn Display := loop {
         i = i + 1;
-        if (i > 3) { break Rock { }; }
+        if (i > 3) { break Rock( ); }
     };
     assert(x.to_string() == "rock");
 }

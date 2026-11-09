@@ -2,7 +2,7 @@ struct Point { x: i64 }
 
 extend Point {
     fun clone(&self) -> Self {
-        Point { x = self.x }
+        Point(x = self.x)
     }
 
     fun same_as(&self, other: Self) -> boolean {
@@ -21,12 +21,12 @@ extend Token {
 }
 
 fun main() {
-    let p := Point { x = 3 };
+    let p := Point(x = 3);
     let q := p.clone();
     assert(q.x == 3);
     assert(p.same_as(q));
 
-    let token := Token::i64 { value = 9 };
+    let token := Token::i64(value = 9);
     let token_copy := token.identity();
     match (token_copy) {
         Token::i64 { value } => assert(value == 9),

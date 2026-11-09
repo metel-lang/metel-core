@@ -5,7 +5,7 @@ fun clone_box<T: Clone>(value: Box<T>) -> Box<T> {
 }
 
 fun main() {
-    let original := Box { value = "generic record".to_string() };
+    let original := Box(value = "generic record".to_string());
     let copied := clone_box(original);
     assert(copied.value == "generic record");
 }

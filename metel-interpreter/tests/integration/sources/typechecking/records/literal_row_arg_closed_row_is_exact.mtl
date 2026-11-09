@@ -3,5 +3,5 @@
 record Req<record R> { data: { ..R } }
 
 fun main() {
-    let r: Req<..{ host: String }> := Req { data = { host = "x", port = 1 } }; // ERROR[T0001]
+    let r: Req<..{ host: String }> := Req(data = { host = "x", port = 1 }); // ERROR[T0001]
 }

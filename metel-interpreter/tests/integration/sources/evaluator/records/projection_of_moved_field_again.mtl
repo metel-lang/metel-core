@@ -2,7 +2,7 @@
 struct Handle { fd: i64, name: String }
 
 fun main() {
-    var h := Handle { fd = 7, name = "a".to_string() };
+    var h := Handle(fd = 7, name = "a".to_string());
     let _p := h.{ name };
     let _q := h.{ name };
 }

@@ -1,6 +1,6 @@
 import shapes_a::Kind;
 import shapes_a::A;
 pub fun run_a() -> String {
-    let x: dyn Kind := A { };
+    let x: dyn Kind := A( );
     x.tag()
 }

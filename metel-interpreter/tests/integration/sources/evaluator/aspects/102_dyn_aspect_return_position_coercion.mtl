@@ -11,8 +11,8 @@ extend Rock: Display {
     fun to_string(&self) -> String { "rock".to_string() }
 }
 
-fun make_tail() -> dyn Display { Rock { } }
-fun make_explicit() -> dyn Display { return Rock { }; }
+fun make_tail() -> dyn Display { Rock( ) }
+fun make_explicit() -> dyn Display { return Rock( ); }
 
 fun main() {
     assert(make_tail().to_string() == "rock");

@@ -16,6 +16,6 @@ extend<T> Wrapped<T> {
     fun apply(&self, value: i64) -> i64 { self.value.again(value) }
 }
 fun main() {
-    assert(generic(&Doubler {}, 6) == 12);
-    assert(Wrapped { value = Doubler {} }.apply(7) == 14);
+    assert(generic(&Doubler(), 6) == 12);
+    assert(Wrapped(value = Doubler()).apply(7) == 14);
 }

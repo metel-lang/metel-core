@@ -12,12 +12,12 @@ fun read_fd<record R>(h: Handle.{ fd, ..R }) -> i64 { h.fd }
 fun anon<record R>(d: { ..R }) -> i64 { 1 }
 
 fun main() {
-    assert(any_handle(Handle { fd = 3, name = "x".to_string() }) == 1);
-    assert(fd_of(Handle { fd = 3, name = "x".to_string() }) == 3);
+    assert(any_handle(Handle(fd = 3, name = "x".to_string())) == 1);
+    assert(fd_of(Handle(fd = 3, name = "x".to_string())) == 3);
     assert(anon({ fd = 3, name = "x".to_string() }) == 1);
 
     // a residual with a Copy remainder also passes a named-field projection
-    let h := Handle { fd = 5, name = "y".to_string() };
+    let h := Handle(fd = 5, name = "y".to_string());
     let n := h.name;
     assert(read_fd(h) == 5);
     assert(n == "y");

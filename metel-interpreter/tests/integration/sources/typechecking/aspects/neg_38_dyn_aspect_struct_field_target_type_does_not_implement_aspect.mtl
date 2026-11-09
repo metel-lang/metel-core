@@ -2,5 +2,5 @@ struct Rock { }
 struct Holder { item: dyn Display }
 
 fun main() {
-    let h := Holder { item = Rock { } };
+    let h := Holder(item = Rock( ));
 }

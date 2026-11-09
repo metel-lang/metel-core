@@ -44,11 +44,11 @@ fun main() {
     assert(through_bound(a));
 
     // The cases that already worked must keep working.
-    let x := [B { v = 1 }, B { v = 2 }];
-    let y := [B { v = 1 }, B { v = 2 }];
+    let x := [B(v = 1), B(v = 2)];
+    let y := [B(v = 1), B(v = 2)];
     assert(x.eq(&y));
-    let differing := [B { v = 1 }, B { v = 9 }];
-    let shorter := [B { v = 1 }];
+    let differing := [B(v = 1), B(v = 9)];
+    let shorter := [B(v = 1)];
     assert(!x.eq(&differing));
     assert(!x.eq(&shorter));
     assert(!a.eq(&x));
@@ -102,6 +102,6 @@ fun no_argument_generic_method_on_empty_receiver() {
     let empty: [B] := [];
     assert(empty.show() == "");
 
-    let filled := [B { v = 1 }, B { v = 2 }];
+    let filled := [B(v = 1), B(v = 2)];
     assert(filled.show() == "bb");
 }

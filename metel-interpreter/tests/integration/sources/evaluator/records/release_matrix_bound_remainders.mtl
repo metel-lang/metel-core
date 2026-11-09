@@ -27,13 +27,13 @@ fun main() {
     assert(pair.0.count == 8);
     assert(pair.1.enabled);
     let { token: _, ..empty } := { token = "owned" };
-    let forwarded: {} := Courier {}.pass(empty);
+    let forwarded: {} := Courier().pass(empty);
     let data := { token = "discarded", payload = "kept" };
     let var { token: _, ..tail } := data;
     tail.payload = "restored";
-    assert(Courier {}.pass(tail).payload == "restored");
-    let owned := Owned { text = "removed" };
+    assert(Courier().pass(tail).payload == "restored");
+    let owned := Owned(text = "removed");
     let text := owned.text;
-    let forwarded_nominal: Owned.{} := Courier {}.pass(forward(owned));
+    let forwarded_nominal: Owned.{} := Courier().pass(forward(owned));
     assert(text == "removed");
 }

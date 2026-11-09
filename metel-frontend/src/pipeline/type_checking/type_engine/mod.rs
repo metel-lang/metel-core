@@ -5937,6 +5937,28 @@ impl TypeDefinitionRegistry {
         self.enum_env.get(&id)
     }
 
+    /// The declared field names of the struct-like variant called `variant_name`, written without its
+    /// enum (RFC-0100: `Some(value = 1)`), when every enum declaring a variant of that name declares
+    /// the same fields. `None` for a unit variant or an unknown or ambiguous name.
+    #[must_use]
+    pub fn unqualified_variant_field_names(&self, variant_name: &str) -> Option<Vec<String>> {
+        let mut found: Option<Vec<String>> = None;
+        for id in self.variant_declaring_enums.get(variant_name)? {
+            let variant = self
+                .enum_env
+                .get(id)?
+                .variants
+                .iter()
+                .find(|v| v.name == variant_name)?;
+            let names: Vec<String> = variant.fields.iter().map(|f| f.name.clone()).collect();
+            match &found {
+                Some(previous) if *previous != names => return None,
+                _ => found = Some(names),
+            }
+        }
+        found.filter(|names| !names.is_empty())
+    }
+
     #[must_use]
     pub fn has_variant_named(&self, variant_name: &str) -> bool {
         self.variant_declaring_enums.contains_key(variant_name)

@@ -1,0 +1,18 @@
+// RFC-0100 section 4: destructuring keeps `Type { field }`, and an anonymous record keeps its brace
+// literal; only the construction of a struct or variant is a call.
+struct Point { x: i64, y: i64 }
+enum Shape { Circle { r: i64 }, Rect { w: i64, h: i64 } }
+
+fun main() {
+    let p := Point(1, 2);
+    match (p) {
+        Point { x, y } => assert(x + y == 3),
+    };
+    let s := Shape::Rect(w = 2, h = 3);
+    match (s) {
+        Shape::Rect { w, h } => assert(w * h == 6),
+        Shape::Circle { r } => assert(r == 0),
+    };
+    let row := { x = 1, y = 2 };
+    assert(row.x + row.y == 3);
+}

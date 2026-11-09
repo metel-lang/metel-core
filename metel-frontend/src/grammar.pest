@@ -278,7 +278,6 @@ primary_expr = {
   | continue_expr
   | record_projection_expr
   | record_lit
-  | struct_literal
   | path_expr
 }
 
@@ -328,7 +327,8 @@ closure_expr = { capture_list? ~ once_kw? ~ mut_kw? ~ "|" ~ param_list? ~ "|" ~ 
 capture_list = { "[" ~ (capture_item ~ ("," ~ capture_item)* ~ ","?)? ~ "]" }
 capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "(" ~ ")" | ident }
 
-struct_literal = { type_path ~ "{" ~ (field_init ~ ("," ~ field_init)* ~ ","?)? ~ "}" }
+// RFC-0100: a struct or enum struct-variant is built by a call (`Type(args)`), not by a brace literal; the
+// braces after a type name survive only in declarations and patterns.
 record_lit = { "{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
 record_projection_expr = { type_path ~ ".{" ~ ident ~ ("," ~ ident)* ~ ","? ~ "}" }
 field_init     = { ident ~ ("=" ~ expr)? }

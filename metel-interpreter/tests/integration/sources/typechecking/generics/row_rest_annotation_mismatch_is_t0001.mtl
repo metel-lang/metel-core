@@ -10,6 +10,6 @@ where R = { token: String, ..Rest } {
 
 fun main() {
     let s: Session<{ token: String, extra: i64 }> :=
-        Session { id = 1, data = { token = "t", extra = 2 } };
+        Session(id = 1, data = { token = "t", extra = 2 });
     let bad: Session<{ other: i64 }> := authenticate(s);
 }

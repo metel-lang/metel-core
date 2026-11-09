@@ -30,7 +30,7 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle { fd = 3, name = "stdin" };
+    let h := Handle(fd = 3, name = "stdin");
     assert(Handle::describe_self(h.{ fd }) == 3);
     assert(Handle::describe_named(h.{ fd }) == 3);
 }

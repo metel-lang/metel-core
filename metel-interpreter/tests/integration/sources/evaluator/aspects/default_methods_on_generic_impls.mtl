@@ -28,13 +28,13 @@ extend<T: !Tag> Box<T>: Describe { fun describe(self) -> i64 { 2 } }
 fun doubled<D: Describe>(d: D) -> i64 { d.twice() }
 
 fun main() {
-    assert(Pair { v = 1 }.twice() == 20);
-    assert(Pair { v = "s" }.twice() == 20);
-    assert(Fixed { v = 1 }.twice() == 10);
-    assert(Box { v = 1 }.twice() == 2);
-    assert(Box { v = "s" }.twice() == 4);
+    assert(Pair(v = 1).twice() == 20);
+    assert(Pair(v = "s").twice() == 20);
+    assert(Fixed(v = 1).twice() == 10);
+    assert(Box(v = 1).twice() == 2);
+    assert(Box(v = "s").twice() == 4);
     // through a generic `D: Describe` bound
-    assert(doubled(Box { v = 1 }) == 2);
-    assert(doubled(Pair { v = 1 }) == 20);
+    assert(doubled(Box(v = 1)) == 2);
+    assert(doubled(Pair(v = 1)) == 20);
     println("ok");
 }

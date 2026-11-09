@@ -2,6 +2,6 @@ pub struct Box { pub degrees: f64 }
 aspect From<T> { fun from(value: T) -> Self; }
 pub struct Source { pub degrees: f64 }
 extend Box: From<Source> {
-    fun from(value: Source) -> Box { Box { degrees = value.degrees + 2000.0 } }
+    fun from(value: Source) -> Box { Box(degrees = value.degrees + 2000.0) }
 }
-pub fun make_source(d: f64) -> Source { Source { degrees = d } }
+pub fun make_source(d: f64) -> Source { Source(degrees = d) }

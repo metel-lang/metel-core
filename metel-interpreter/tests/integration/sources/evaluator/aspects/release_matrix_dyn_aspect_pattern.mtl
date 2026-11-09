@@ -15,6 +15,6 @@ fun render(display: Display) -> String {
 }
 
 fun main() {
-    let display := Display::Item { renderable = Message { text = "matched" } };
+    let display := Display::Item(renderable = Message(text = "matched"));
     assert(render(display) == "matched");
 }

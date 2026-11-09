@@ -8,7 +8,7 @@ extend S {
 
 fun main() {
     let f := || {
-        var t := S { n = 0 };
+        var t := S(n = 0);
         t.inc();
         t.get()
     };

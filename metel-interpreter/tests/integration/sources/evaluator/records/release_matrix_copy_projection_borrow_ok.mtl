@@ -8,7 +8,7 @@ extend Handle {
 }
 
 fun main() {
-    let h: H := Handle { fd = 4, name = "n".to_string() };
+    let h: H := Handle(fd = 4, name = "n".to_string());
     assert(H::peek(&h.{ fd }) == 4);
     assert(h.name == "n");
 }

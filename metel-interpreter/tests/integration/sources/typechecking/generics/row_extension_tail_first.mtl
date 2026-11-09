@@ -4,7 +4,7 @@ record Box<record R> {
 }
 
 fun main() {
-    let boxed := Box { value = { id = 1, auth = "ok" } };
+    let boxed := Box(value = { id = 1, auth = "ok" });
     assert(boxed.value.id == 1);
     assert(boxed.value.auth == "ok");
 }

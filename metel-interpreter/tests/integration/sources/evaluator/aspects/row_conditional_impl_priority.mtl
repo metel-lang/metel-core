@@ -16,9 +16,9 @@ extend<record R: { token: String, .. }> Session<..R>: Describe {
 
 fun main() {
     let exact: Session<{ token: String }> :=
-        Session { id = 1, data = { token = "t" } };
+        Session(id = 1, data = { token = "t" });
     let wider: Session<{ token: String, extra: i64 }> :=
-        Session { id = 2, data = { token = "t", extra = 1 } };
+        Session(id = 2, data = { token = "t", extra = 1 });
     assert(exact.describe() == 1);
     assert(wider.describe() == 2);
     println("ok");

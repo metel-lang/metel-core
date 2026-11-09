@@ -8,7 +8,7 @@ struct Handle { fd: i64, name: String }
 fun wants_full(h: Handle) -> i64 { h.fd }
 
 fun main() {
-    let h := Handle { fd = 3, name = "x" };
+    let h := Handle(fd = 3, name = "x");
     let taken := h.name;
     let _ := wants_full(h);   // rejected: `h` is `Handle.{ fd }`
     println(taken);

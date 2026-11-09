@@ -11,7 +11,7 @@ extend Doubler: Callable<i64, i64> {
     fun call(&self, arg: i64) -> i64 { arg * 2 }
 }
 
-fun make() -> dyn Callable<i64, i64> { Doubler { } }
+fun make() -> dyn Callable<i64, i64> { Doubler( ) }
 
 fun main() {
     assert(make().call(21) == 42);

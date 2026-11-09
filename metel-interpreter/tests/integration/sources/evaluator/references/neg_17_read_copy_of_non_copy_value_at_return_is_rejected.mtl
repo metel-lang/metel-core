@@ -8,6 +8,6 @@ fun f(r: &NotCopy) -> NotCopy {
 }
 
 fun main() {
-    let owned := NotCopy { v = "x" };
+    let owned := NotCopy(v = "x");
     let _ := f(&owned);
 }

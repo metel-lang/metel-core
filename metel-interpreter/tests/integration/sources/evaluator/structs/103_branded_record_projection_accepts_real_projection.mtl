@@ -12,6 +12,6 @@ extend Handle {
 }
 
 fun main() {
-    let handle := Handle { fd = 3, name = "x" };
+    let handle := Handle(fd = 3, name = "x");
     assert(Handle::describe(handle.{ fd }) == 3);
 }

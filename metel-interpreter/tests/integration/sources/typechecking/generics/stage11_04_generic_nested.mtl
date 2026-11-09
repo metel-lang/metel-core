@@ -10,7 +10,7 @@ struct Pair<A, B> {
 }
 
 fun make_boxed_pair(a: i64, b: boolean) -> Box<Pair<i64, boolean>> {
-    Box { value = Pair { first = a, second = b } }
+    Box(value = Pair(first = a, second = b))
 }
 
 fun get_pair(b: Box<Pair<i64, boolean>>) -> Pair<i64, boolean> {

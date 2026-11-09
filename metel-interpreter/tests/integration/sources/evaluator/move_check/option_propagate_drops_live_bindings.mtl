@@ -3,13 +3,13 @@
 struct Pair { left: String, right: String }
 
 fun f(o: Option<i64>) -> Option<i64> {
-    let p := Pair { left = "a", right = "b" };
+    let p := Pair(left = "a", right = "b");
     let left := p.left;
     let n := o?;
-    Some { value = n + left.len() as i64 }
+    Some(value = n + left.len() as i64)
 }
 
 fun main() {
-    assert(f(Some { value = 1 }).unwrap_or(0) == 2);
+    assert(f(Some(value = 1)).unwrap_or(0) == 2);
     assert(f(None).is_none());
 }

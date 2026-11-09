@@ -26,7 +26,7 @@ fun main() {
     assert(nested.outer.inner == 7);
 
     // A record as a struct field.
-    let w := Wrap { inner = { x = 1, y = 2 } };
+    let w := Wrap(inner = { x = 1, y = 2 });
     assert(w.inner.x == 1);
     assert(w.inner.y == 2);
 
@@ -50,7 +50,7 @@ fun main() {
     assert(p.y == 9);
 
     // Multi-field projection of a nominal type's row.
-    let h := Handle { fd = 3, tag = 4, mode = 5 };
+    let h := Handle(fd = 3, tag = 4, mode = 5);
     let picked := h.{ fd, mode };
     assert(picked.fd == 3);
     assert(picked.mode == 5);

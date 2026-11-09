@@ -9,7 +9,7 @@ import decoy::marker;
 
 fun main() {
     let _unused := marker();
-    let c: dyn Shape := Circle { radius = 1.0 };
+    let c: dyn Shape := Circle(radius = 1.0);
     let a := c.area();
     assert(a > 3.0 && a < 3.2);
     println("ok");

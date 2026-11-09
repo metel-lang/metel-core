@@ -17,6 +17,6 @@ extend Person: Greet {
 }
 
 fun main() {
-    let p := Person { name = "Ada" };
+    let p := Person(name = "Ada");
     assert(p.greet() == "Hello, Ada");
 }

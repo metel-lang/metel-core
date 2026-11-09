@@ -1,5 +1,5 @@
 import coords::Coords;
 pub struct Shape { pub origin: Coords, pub size: i64 }
 pub fun make_shape(x: i64, y: i64, s: i64) -> Shape {
-    return Shape { origin = Coords { x = x, y = y }, size = s };
+    return Shape(origin = Coords(x = x, y = y), size = s);
 }

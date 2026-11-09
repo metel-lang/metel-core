@@ -4,7 +4,7 @@ import decoy::marker;
 
 fun main() {
     let _unused := marker();
-    let m: dyn Metric := Gauge { reading = 1.5 };
+    let m: dyn Metric := Gauge(reading = 1.5);
     let v := m.value();     // must be f64 (helper's Metric), not i64 (decoy's)
     assert(v == 3.0);
     assert(v / 2.0 == 1.5); // f64-only op — would not typecheck if v were i64
