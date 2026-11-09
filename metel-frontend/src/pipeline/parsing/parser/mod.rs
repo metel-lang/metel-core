@@ -304,6 +304,12 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
     Ok(out)
 }
 
+/// The aspect the `copy` class keyword is sugar for (RFC-0207 section 3), and whose `derives` brings the
+/// `Clone` it declares as a `deriving` super. The parser cannot read the aspect's declaration, so the
+/// expansion is keyed on this spelling until clause expansion moves after name resolution.
+// copy-by-name-allow: the `copy` class keyword is defined as sugar for std's `Copy`
+const COPY_CLASS_ASPECT: &str = "Copy";
+
 /// The marker impls a struct's or enum's declaration clauses stand for (RFC-0207): `struct T: A derives B`
 /// is `struct T` with `extend T: A;` and `extend T: B;`, so coherence sees an `extend` and a clause
 /// for the same aspect as the overlap they are (`T0015`). A generic type's impl is generic over the
@@ -437,7 +443,7 @@ fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
     }
     for entry in &clauses.derives {
         entries.push((entry.clone(), Some(entry.name.clone())));
-        if entry.name == crate::pipeline::type_checking::type_engine::COPY_ASPECT {
+        if entry.name == COPY_CLASS_ASPECT {
             entries.push((
                 ClauseEntry {
                     name: "Clone".to_string(),
@@ -821,7 +827,7 @@ fn parse_clause_part(
                 ));
             }
             clauses.derives.push(ClauseEntry {
-                name: crate::pipeline::type_checking::type_engine::COPY_ASPECT.to_string(),
+                name: COPY_CLASS_ASPECT.to_string(),
                 from_class_keyword: true,
                 span,
             });

@@ -1184,11 +1184,7 @@ impl Checker<'_> {
                 active.remove(id);
                 result
             }
-            _ => match self.abstract_has_aspect(
-                ty,
-                env,
-                crate::pipeline::type_checking::type_engine::COPY_ASPECT,
-            ) {
+            _ => match self.abstract_has_aspect(ty, env, self.registry.implicit_aspect_name()) {
                 Ok(copy) => Ok(copy),
                 Err(reason)
                     if reason.starts_with(UNDECIDED_NOMINAL) && self.is_nominal_record(ty) =>
@@ -1462,14 +1458,12 @@ impl Checker<'_> {
                 .iter()
                 .find(|fact| &fact.ty == ty)
                 .and_then(|fact| match name {
-                    n if n == crate::pipeline::type_checking::type_engine::COPY_ASPECT => {
-                        match fact.copy {
-                            crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
-                                Some(value)
-                            }
-                            crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
+                    n if n == self.registry.implicit_aspect_name() => match fact.copy {
+                        crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
+                            Some(value)
                         }
-                    }
+                        crate::data::abstract_body::AbstractNominalAspect::Conditional => None,
+                    },
                     "Drop" => match fact.drop {
                         crate::data::abstract_body::AbstractNominalAspect::Proven(value) => {
                             Some(value)

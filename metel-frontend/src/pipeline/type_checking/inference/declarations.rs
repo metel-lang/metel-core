@@ -310,17 +310,28 @@ pub(super) fn infer_decl(
                 } else if ib.from_clause && aspect_name == "Clone" {
                     // `derives Clone` (RFC-0207): every field must be `Clone`, judged at the field.
                     super::check_fields_have_aspect(ib, &target_name, ctx, "Clone")?;
-                } else if aspect_name == "Drop"
-                    && let Some(concrete_target) = closed_nominal_target(ib, &target_name)
-                    && ctx
+                }
+                // An exclusion the aspect's declaration states (`aspect A: !B`, RFC-0213 section 3): a
+                // closed nominal target that already has the other aspect cannot be granted this one.
+                if let Some(concrete_target) = closed_nominal_target(ib, &target_name) {
+                    for partner in ctx
                         .registry()
-                        .type_is_copy(ctx.current_module_path(), &concrete_target)
-                {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0001,
-                        format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
-                        &ib.span,
-                    ));
+                        .exclusion_partners(ctx.current_module_path(), aspect_name)
+                    {
+                        if ctx.registry().type_satisfies_aspect(
+                            ctx.current_module_path(),
+                            &concrete_target,
+                            &partner,
+                        ) {
+                            return Err(MetelError::type_error(
+                                TypeErrorCode::T0001,
+                                format!(
+                                    "`{target_name}` cannot implement both `{aspect_name}` and `{partner}`"
+                                ),
+                                &ib.span,
+                            ));
+                        }
+                    }
                 }
             }
             let mut inherited_defaults = vec![];

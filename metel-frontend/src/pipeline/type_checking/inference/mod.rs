@@ -746,12 +746,8 @@ fn check_copy_impl_eligibility(
     target_name: &str,
     ctx: &mut InferContext,
 ) -> Result<(), MetelError> {
-    check_fields_have_aspect(
-        ib,
-        target_name,
-        ctx,
-        crate::pipeline::type_checking::type_engine::COPY_ASPECT,
-    )
+    let implicit = ctx.registry().implicit_aspect_name().to_string();
+    check_fields_have_aspect(ib, target_name, ctx, &implicit)
 }
 
 /// Every field (or payload) of `target_name` must have `aspect` under the impl's own bounds
@@ -831,19 +827,6 @@ pub(super) fn check_fields_have_aspect(
                 }
             }
         }
-    }
-
-    if aspect == crate::pipeline::type_checking::type_engine::COPY_ASPECT
-        && let Some(concrete_target) = closed_nominal_target(ib, target_name)
-        && ctx
-            .registry()
-            .type_satisfies_aspect(ctx.current_module_path(), &concrete_target, "Drop")
-    {
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0001,
-            format!("`{target_name}` cannot implement both `Copy` and `Drop`"),
-            &ib.span,
-        ));
     }
 
     Ok(())

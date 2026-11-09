@@ -1071,6 +1071,16 @@ fn register_aspect_decl(
             .filter(|entry| !entry.negative)
             .map(|entry| entry.name.clone())
             .collect(),
+        excludes: ad
+            .supers
+            .iter()
+            .filter(|entry| entry.negative)
+            .map(|entry| entry.name.clone())
+            .collect(),
+        implicit: ad
+            .properties
+            .iter()
+            .any(|(property, _)| *property == crate::data::ast::AspectProperty::Implicit),
     };
     registry.register_aspect_decl(ad.name.clone(), entry);
 }

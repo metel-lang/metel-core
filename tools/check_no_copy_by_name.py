@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """CI backstop for metel-core#1799: the compiler must not identify the std `Copy` aspect by its spelling.
 
-`Copy` is recognised through its declaration identity (`TypeDefinitionRegistry::is_copy_aspect`,
-`copy_aspect_id`, `type_is_copy`, `infer_type_is_copy`), so an unrelated user aspect that shares the
-spelling is not mistaken for it and aspect properties (RFC-0212) can later be read from the declaration.
-The one place the spelling is written is `COPY_ASPECT` in `type_engine/mod.rs`.
+The compiler finds the aspect that behaves as `Copy` by its `implicit` property (RFC-0212), through
+`TypeDefinitionRegistry::implicit_aspect_name`, `is_copy_aspect`, `copy_aspect_id`, `type_is_copy` and
+`infer_type_is_copy`, so an unrelated user aspect that shares the spelling is not mistaken for it. The one
+place the spelling is written is the parser's `COPY_CLASS_ASPECT`, the target of the `copy` class keyword,
+which carries an allow comment.
 
 This scans non-test frontend and interpreter source for the exact string literal `"Copy"`. Diagnostic
 text is not matched, because it is never exactly that literal. A site that must compare by spelling is
@@ -27,10 +28,6 @@ SCAN_DIRS = [
     REPO_ROOT / "metel-frontend" / "src",
     REPO_ROOT / "metel-interpreter" / "src",
 ]
-DEFINITION = (
-    REPO_ROOT / "metel-frontend/src/pipeline/type_checking/type_engine/mod.rs",
-    "pub const COPY_ASPECT",
-)
 LITERAL = '"Copy"'
 ALLOW = "copy-by-name-allow:"
 
@@ -46,8 +43,6 @@ def findings_in(text: str, path: Path) -> list[int]:
         if "#[cfg(test)]" in line:
             break
         if LITERAL not in line:
-            continue
-        if path == DEFINITION[0] and DEFINITION[1] in line:
             continue
         previous = lines[number - 2] if number >= 2 else ""
         if ALLOW in line or ALLOW in previous:
