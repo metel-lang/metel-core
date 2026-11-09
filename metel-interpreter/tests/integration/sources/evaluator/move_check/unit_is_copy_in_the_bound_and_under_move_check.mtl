@@ -1,0 +1,9 @@
+// metel-core#1784: the unit type is `Copy` for a bound and for the move check alike.
+fun needs<T: Copy>(x: T) -> i64 { 1 }
+fun main() {
+    let x := ();
+    let a := x;
+    let b := x;
+    assert(needs(x) == 1);
+    assert(needs(()) == 1);
+}

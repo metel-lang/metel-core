@@ -3641,7 +3641,20 @@ fn eval_method_call_expr(
             InternalErrorCode::I0006,
             format!("method `{method}` not found on this value"),
         )
-    })?;
+    });
+    // A kind with no impl to write the `Clone` in (unit, tuple, `Copy` closure): the compiler provides it.
+    let method_entry = match method_entry {
+        Err(_) if method == "clone" => {
+            if let Some(cloned) = record_clone::provided_clone(&recv_type_view, span, runtime)? {
+                return Ok(Signal::Value(cloned));
+            }
+            return Err(MetelError::internal_with_code(
+                InternalErrorCode::I0006,
+                format!("method `{method}` not found on this value"),
+            ));
+        }
+        other => other?,
+    };
     let func = method_entry.body.clone();
     match method_entry.receiver {
         Some(crate::data::ast::ReceiverKind::Ref | crate::data::ast::ReceiverKind::RefMut) => {

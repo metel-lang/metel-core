@@ -1,0 +1,33 @@
+// RFC-0206 section 2, built-in kinds: the compiler provides `Clone` for scalars, the unit type, views and
+// arrays, tuples of `Clone` parts, records and `Copy` closures, in the bound and under `--move-check`.
+fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
+fun need_copy<T: Copy>(x: T) -> T { x }
+fun clone_of_copy<T: Copy>(x: &T) -> T { need_clone(x) }
+
+struct Token { id: i64 }
+extend Token: Clone { fun clone(&self) -> Token { Token(id = self.id + 100) } }
+
+fun main() {
+    assert(need_clone(&3) == 3);
+    assert(need_clone(&true));
+    let u := ();
+    need_clone(&u);
+    need_copy(u);
+    let view := [1, 2, 3];
+    assert(need_clone(&view)[2] == 3);
+    let fixed: [i64; 2] := [4, 5];
+    assert(need_clone(&fixed)[1] == 5);
+    let pair := (1, (true, ()));
+    let again := need_clone(&pair);
+    assert(again.0 == 1 && again.1.0);
+    assert(clone_of_copy(&pair).0 == 1);
+    let rec := { .a = 1, .b = 2 };
+    assert(need_clone(&rec).b == 2);
+    let k := 3;
+    let f := [k] || -> i64 { k };
+    let g := need_clone(&f);
+    assert(g() == 3);
+    // a tuple clones each part through that part's own clone
+    let held := (Token(id = 1), 2);
+    assert(need_clone(&held).0.id == 101);
+}

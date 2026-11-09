@@ -1440,6 +1440,35 @@ pub(super) fn construct_expr(
                 );
             }
 
+            // The `Clone` the compiler provides for a kind with no impl to write it in (RFC-0206 section
+            // 2): the unit type, a tuple of `Clone` parts, a `Copy` closure. The runtime performs the copy.
+            if method == "clone"
+                && args.is_empty()
+                && let provided @ (Type::Unit | Type::Tuple(_) | Type::Fun(..)) =
+                    peel_type_references(typed_receiver.ty())
+            {
+                if !ctx
+                    .registry
+                    .type_satisfies_aspect(ctx.current_module, provided, "Clone")
+                {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        format!("no method `clone` on `{provided}`: it is not `Clone`"),
+                        span,
+                    ));
+                }
+                let ty = provided.clone();
+                return Ok(TypedExpr::MethodCall {
+                    receiver: Box::new(typed_receiver),
+                    method: method.clone(),
+                    args: Vec::new(),
+                    ty,
+                    impl_site: None,
+                    dispatch: MethodDispatch::Dynamic,
+                    span: span.clone(),
+                });
+            }
+
             let (struct_name, receiver_type_args, struct_id) =
                 match peel_type_references(typed_receiver.ty()) {
                     Type::Named(name, targs, id) => (name.clone(), targs.clone(), id.get()),
