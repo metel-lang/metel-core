@@ -1,0 +1,12 @@
+struct Line { price: i64, qty: i64 }
+fun discount<record R: { .price: i64, .. }>(line: { ..R }, pct: i64) -> { ..R } {
+    { ..line, .price = line.price * (100 - pct) / 100 }
+}
+fun total(l: Line) -> i64 { l.price * l.qty }
+fun main() {
+    let l := Line(qty = 3, price = 200);
+    let d := discount(pct = 10, line = { .price = l.price, .qty = l.qty });
+    let back := Line(..d);
+    assert(total(back) == 540);
+    assert(total(Line(..discount({ .price = 100, .qty = 2 }, 50))) == 100);
+}
