@@ -1,4 +1,5 @@
 [options]
+spec = ["spec.ownership.clone.legality-2"]
 error = ["T0012"]
 
 [expect]

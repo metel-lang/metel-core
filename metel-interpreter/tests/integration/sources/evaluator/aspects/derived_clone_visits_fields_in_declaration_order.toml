@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-8", "spec.declarations.aspects.declaration-clauses.legality-9"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-8", "spec.declarations.aspects.declaration-clauses.legality-9", "spec.ownership.clone.dynamics-1"]
