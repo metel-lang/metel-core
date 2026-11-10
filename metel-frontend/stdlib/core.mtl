@@ -16,7 +16,7 @@
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
-pub enum Option<T> {
+pub enum Option<T> derives Clone {
     Some { pub value: T },
     None,
 }
@@ -83,7 +83,7 @@ extend Option<T> {
     }
 }
 
-pub enum Result<T, E> {
+pub enum Result<T, E> derives Clone {
     Ok { pub value: T },
     Err { pub error: E },
 }
@@ -497,6 +497,17 @@ extend<T: Display> [T]: Display {
             first = false;
         }
         return out + "]";
+    }
+}
+
+// A list clones each element through that element's own `clone`, in index order (RFC-0206 section 3).
+extend<T: Clone> List<T>: Clone {
+    fun clone(&self) -> List<T> {
+        var out: List<T> := List::new();
+        for (x in self.as_slice()) {
+            out.push(x.clone());
+        }
+        out
     }
 }
 

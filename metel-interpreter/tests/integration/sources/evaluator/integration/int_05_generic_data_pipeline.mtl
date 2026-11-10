@@ -59,17 +59,12 @@ fun record_swap<K, V>(r: Record<K, V>) -> Record<V, K> {
 
 // ── Generic pipeline combinators ──────────────────────────────────────────────
 
-// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
-// moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes the
-// filtered output owned. The callback is scaffolding, not part of what this fixture tests;
-// it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
-// the elements are `Copy` (#335, #328).
-fun filter_array<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> [T] {
+fun filter_array<T: Clone>(arr: [T], pred: |&T| -> boolean) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            out.push(clone(&arr[i as u64]));
+            out.push(arr[i as u64].clone());
         }
         i += 1;
     }
@@ -129,16 +124,9 @@ fun drop<T: Copy>(arr: [T], n: i64) -> [T] {
 
 // ── Domain: student grades pipeline ──────────────────────────────────────────
 
-struct Student {
+struct Student derives Clone {
     name:  String,
     grade: i64,
-}
-
-fun clone_student(student: &Student) -> Student {
-    Student(
-        name = (*student).name.substring(0, (*student).name.len()),
-        grade = (*student).grade,
-    )
 }
 
 fun student_passing(s: &Student) -> boolean {
@@ -221,7 +209,6 @@ fun main() {
     let evens := filter_array(
         nums,
         |x: &i64| -> boolean { *x % 2 == 0 },
-        |x: &i64| -> i64 { *x },
     );
     assert(evens.len() == 5);
     assert(evens[0] == 2);
@@ -231,7 +218,6 @@ fun main() {
     let big := filter_array(
         nums_big,
         |x: &i64| -> boolean { *x > 7 },
-        |x: &i64| -> i64 { *x },
     );
     assert(big.len() == 3);
 
@@ -309,7 +295,6 @@ fun main() {
     let passing := filter_array(
         students,
         |s: &Student| -> boolean { (*s).grade >= 60 },
-        clone_student,
     );
     assert(passing.len() == 3);
 
@@ -330,7 +315,6 @@ fun main() {
     let a_grades := filter_array(
         letters,
         |l: &String| -> boolean { *l == "A" },
-        |l: &String| -> String { (*l).substring(0, (*l).len()) },
     );
     assert(a_grades.len() == 1);
 
