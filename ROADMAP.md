@@ -24,7 +24,10 @@ changes the language. Until then nothing refers to a future number.
   holds the release-level issues (decisions, reconciliation, tracking); the stages hold the
   implementation. The release in progress is the numbered milestone together with its stages:
   `/gap-analysis`, the integration session and `/cut-release` read the whole set, and the tag waits
-  for all of it. A stage that slips leaves the release when its `Part of:` line is deleted; it stays
+  for all of it. A stage's title carries its release as a bracket tag, `[vX.Y.Z] Theme name`, so the
+  milestone list shows which stage belongs to which release; the `Part of:` line stays the source of
+  truth, and a stage that slips leaves the release when its `Part of:` line is deleted and the tag
+  dropped from the title; it stays
   a theme. At the cut the stages are closed. Stages do not count toward the limit on numbered
   milestones. To list a release's open issues:
 
@@ -35,6 +38,11 @@ gh api repos/metel-lang/metel-core/milestones --paginate \
   | jq -r --arg v "vX.Y.Z" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
   | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
 ```
+
+- **Milestone order.** GitHub lists milestones by due date, so every milestone carries a placeholder
+  due date that encodes only the order of this file: a release, then its stages, then the next
+  release, the `next` themes, the `later` themes and the `parallel` themes. The dates are not
+  deadlines; when the order changes, re-date the affected milestones to match.
 
 - **Every other milestone is a theme**, named for the capability it delivers and carrying no
   version number. The first line of its description is `Horizon: next`, `later` or
