@@ -1,7 +1,8 @@
 // #1350: a record with a non-Clone field does not receive Clone.
-record NotClone { values: List<i64> }
+struct Plain { n: i64 }
+record NotClone { value: Plain }
 
 fun main() {
-    let value := NotClone(values = List::new());
+    let value := NotClone(value = Plain(n = 1));
     let _copy := value.clone();
 }

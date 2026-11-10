@@ -88,17 +88,12 @@ fun stack_empty(s: &Stack) -> boolean {
 
 // ── Generic array combinators ─────────────────────────────────────────────────
 
-// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
-// moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes
-// filter/find extraction owned. The callback is scaffolding, not part of what this fixture
-// tests; it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
-// the elements are `Copy` (#335, #328).
-fun filter<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> [T] {
+fun filter<T: Clone>(arr: [T], pred: |&T| -> boolean) -> [T] {
     var out: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            out.push(clone(&arr[i as u64]));
+            out.push(arr[i as u64].clone());
         }
         i += 1;
     }
@@ -209,11 +204,11 @@ fun concat_int(a: [i64], b: [i64]) -> [i64] {
 
 // ── Option<T> combinators ────────────────────────────────────────────────────
 
-fun find_first<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> Option<T> {
+fun find_first<T: Clone>(arr: [T], pred: |&T| -> boolean) -> Option<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Option::Some(value = clone(&arr[i as u64]));
+            return Option::Some(value = arr[i as u64].clone());
         }
         i += 1;
     }
@@ -323,7 +318,6 @@ fun main() {
     let evens := filter(
         nums,
         |x: &i64| -> boolean { *x % 2 == 0 },
-        |x: &i64| -> i64 { *x },
     );
     assert(evens.len() == 5);
     assert(evens[0] == 2);
@@ -332,7 +326,6 @@ fun main() {
     let big := filter(
         nums_big,
         |x: &i64| -> boolean { *x > 7 },
-        |x: &i64| -> i64 { *x },
     );
     assert(big.len() == 3);
     assert(big[0] == 8);
@@ -341,7 +334,6 @@ fun main() {
     let long_words := filter(
         strs,
         |s: &String| -> boolean { (*s).len() > 5 },
-        |s: &String| -> String { (*s).substring(0, (*s).len()) },
     );
     assert(long_words.len() == 2);
 
@@ -464,14 +456,12 @@ fun main() {
     let first_big := find_first(
         nums_first_big,
         |x: &i64| -> boolean { *x > 6 },
-        |x: &i64| -> i64 { *x },
     );
     assert(perhaps_is_some(first_big));
     let nums_first_big_again: [i64] := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let first_big_again := find_first(
         nums_first_big_again,
         |x: &i64| -> boolean { *x > 6 },
-        |x: &i64| -> i64 { *x },
     );
     assert(perhaps_or(first_big_again, 0) == 7);
 
@@ -479,7 +469,6 @@ fun main() {
     let none_found := find_first(
         nums_none_found,
         |x: &i64| -> boolean { *x > 100 },
-        |x: &i64| -> i64 { *x },
     );
     assert(!perhaps_is_some(none_found));
 
@@ -488,14 +477,12 @@ fun main() {
     let first_long := find_first(
         strs_first_long,
         |s: &String| -> boolean { (*s).len() >= 6 },
-        |s: &String| -> String { (*s).substring(0, (*s).len()) },
     );
     assert(perhaps_is_some(first_long));
     let strs_first_long_again: [String] := ["apple", "banana", "cherry", "date"];
     let first_long_again := find_first(
         strs_first_long_again,
         |s: &String| -> boolean { (*s).len() >= 6 },
-        |s: &String| -> String { (*s).substring(0, (*s).len()) },
     );
     assert(perhaps_or(first_long_again, "") == "banana");
 

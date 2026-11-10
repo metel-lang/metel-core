@@ -1,17 +1,12 @@
 // Test: explicit type annotations using generic type params inside function bodies
 // Covers issue #128: T/U in body annotations must resolve to TypeVars, not Named types.
 
-// Ownership workaround (#328): `[T]` is a borrowed view, so a non-`Copy` element cannot be
-// moved out of it -- #329 enforces that. Indexing plus an explicit clone callback makes
-// retained values owned. The callback is scaffolding, not part of what this fixture tests;
-// it goes away once `Clone` has stdlib coverage, or sooner via a `T: Copy` bound where
-// the elements are `Copy` (#335, #328).
-fun collect_matching<T>(arr: [T], pred: |&T| -> boolean, clone: |&T| -> T) -> List<T> {
+fun collect_matching<T: Clone>(arr: [T], pred: |&T| -> boolean) -> List<T> {
     var result: List<T> := List::new();
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            result.push(clone(&arr[i as u64]));
+            result.push(arr[i as u64].clone());
         }
         i += 1;
     }
@@ -35,7 +30,6 @@ fun main() {
     let evens := collect_matching(
         nums_for_evens,
         |x: &i64| -> boolean { *x % 2 == 0 },
-        |x: &i64| -> i64 { *x },
     );
     assert((&evens).len() == 3);
     let evens_arr := (&evens).as_slice();
@@ -45,7 +39,6 @@ fun main() {
     let long := collect_matching(
         strs,
         |s: &String| -> boolean { (*s).len() > 2 },
-        |s: &String| -> String { (*s).substring(0, (*s).len()) },
     );
     assert(long.len() == 2);
 
