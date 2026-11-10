@@ -7,10 +7,9 @@ use crate::data::ast::{
     Bound, BoundHead, BreakExpr, CaptureSpec, ClauseEntry, Decl, DeclClauses, EnumDecl, ExportDecl,
     Expr, FieldDef, FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam,
     ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal, MatchArm,
-    MatchExpr, MutDecl, NameSpan, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
-    ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt,
-    StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
-    WhereConstraint, WhileStmt,
+    MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program, ReceiverKind,
+    ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt, StructDecl, StructKind,
+    TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -297,181 +296,9 @@ fn parse_decl(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Vec<D
             .map(Decl::Impl)
             .collect());
     }
-    let decl = parse_single_decl(inner, filename)?;
-    let impls = clause_impls(&decl);
-    let mut out = vec![decl];
-    out.extend(impls.into_iter().map(Decl::Impl));
-    Ok(out)
-}
-
-/// The aspect the `copy` class keyword is sugar for (RFC-0207 section 3), and whose `derives` brings the
-/// `Clone` it declares as a `deriving` super. The parser cannot read the aspect's declaration, so the
-/// expansion is keyed on this spelling until clause expansion moves after name resolution.
-// copy-by-name-allow: the `copy` class keyword is defined as sugar for std's `Copy`
-const COPY_CLASS_ASPECT: &str = "Copy";
-
-/// The marker impls a struct's or enum's declaration clauses stand for (RFC-0207): `struct T: A derives B`
-/// is `struct T` with `extend T: A;` and `extend T: B;`, so coherence sees an `extend` and a clause
-/// for the same aspect as the overlap they are (`T0015`). A generic type's impl is generic over the
-/// same parameters, so `copy struct W<T>` is `Copy` exactly when `T` is.
-/// Whether `ty` holds a `name` by value: not only behind a shared reference, which is `Clone` and
-/// `Copy` for every referent. `struct View<T> { r: &T }` is `Clone` for every `T`, so `T` is not
-/// bounded; a position this does not look through counts as owned.
-fn mentions_owned(ty: &TypeExpr, name: &str) -> bool {
-    match ty {
-        TypeExpr::Named(n, args, _) => n == name || args.iter().any(|a| mentions_owned(a, name)),
-        TypeExpr::Reference(_) => false,
-        TypeExpr::MutReference(inner) | TypeExpr::Array(inner) | TypeExpr::SizedArray(inner, _) => {
-            mentions_owned(inner, name)
-        }
-        TypeExpr::Tuple(items) => items.iter().any(|t| mentions_owned(t, name)),
-        TypeExpr::Record(fields) => fields.iter().any(|(_, t)| mentions_owned(t, name)),
-        _ => true,
-    }
-}
-
-/// The methods a derivation writes (RFC-0207 section 2): `Clone` is the host clone every record
-/// already uses, which clones each field through that field's own `clone` and keeps the active
-/// variant of an enum. `Copy` has none.
-fn derived_methods(entry: &ClauseEntry, target: &TypeExpr) -> Vec<FunDecl> {
-    if entry.name != "Clone" {
-        return Vec::new();
-    }
-    let span = entry.span.clone();
-    // `Self` resolves for a plain nominal target; an instantiated generic one is spelled out (`Self`
-    // does not resolve to it at run time).
-    let generic = matches!(target, TypeExpr::Named(_, args, _) if !args.is_empty());
-    let return_type = if generic {
-        target.clone()
-    } else {
-        TypeExpr::Named("Self".to_string(), Vec::new(), NameSpan(span.clone()))
-    };
-    vec![FunDecl {
-        visibility: Visibility::Public,
-        name: "clone".to_string(),
-        generics: Vec::new(),
-        where_clause: None,
-        params: vec![Param {
-            mutable: false,
-            receiver: Some(ReceiverKind::Ref),
-            name: "self".into(),
-            type_ann: None,
-            span: span.clone(),
-        }],
-        return_type: Some(return_type),
-        native: Some(NativeBinding {
-            key_path: ["std", "core", "record_clone"].map(String::from).to_vec(),
-            span: span.clone(),
-        }),
-        body: Block {
-            stmts: Vec::new(),
-            tail: None,
-            span: span.clone(),
-        },
-        span,
-    }]
-}
-
-/// The impl's generics: the declaration's own. A `derives` entry holds when each type parameter has the
-/// aspect (`copy struct W<T>` is `Copy` exactly when `T` is), so it is bounded by that aspect; this
-/// over-approximates a parameter no field mentions, and an exact per-instantiation rule replaces it
-/// with the row machinery (RFC-0207 section 2, rule 2). A colon-list marker is bounded by nothing.
-fn clause_impl_generics(
-    generics: &[GenericParam],
-    entry: &ClauseEntry,
-    bound: Option<&str>,
-    field_types: &[&TypeExpr],
-) -> Vec<GenericParam> {
-    generics
-        .iter()
-        .map(|g| {
-            let mut param = g.clone();
-            param.bounds = Vec::new();
-            if let Some(bound) = bound
-                && !g.is_record
-                && !g.is_row
-                && field_types.iter().any(|ty| mentions_owned(ty, &g.name))
-            {
-                param.bounds.push(Bound {
-                    polarity: Polarity::Positive,
-                    head: BoundHead::Aspect(TypeExpr::Named(
-                        bound.to_string(),
-                        Vec::new(),
-                        NameSpan(entry.span.clone()),
-                    )),
-                    assoc_bindings: Vec::new(),
-                    span: entry.span.clone(),
-                });
-            }
-            param
-        })
-        .collect()
-}
-
-fn clause_impls(decl: &Decl) -> Vec<ImplBlock> {
-    let (name, generics, clauses, span, field_types) = match decl {
-        Decl::Struct(sd) => (
-            &sd.name,
-            &sd.generics,
-            &sd.clauses,
-            &sd.span,
-            sd.fields.iter().map(|f| &f.type_ann).collect::<Vec<_>>(),
-        ),
-        Decl::Enum(ed) => (
-            &ed.name,
-            &ed.generics,
-            &ed.clauses,
-            &ed.span,
-            ed.variants
-                .iter()
-                .flat_map(|v| v.fields.iter().map(|f| &f.type_ann))
-                .collect::<Vec<_>>(),
-        ),
-        _ => return Vec::new(),
-    };
-    let args: Vec<TypeExpr> = generics
-        .iter()
-        .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(span.clone())))
-        .collect();
-    let target = TypeExpr::Named(name.clone(), args, NameSpan(span.clone()));
-    // Each entry with the aspect that bounds a generic type's parameters: a `derives` entry is bounded by
-    // itself, a colon-list marker by nothing. `derives Copy` also brings the `Clone` the compiler provides
-    // with it (RFC-0206 section 2, RFC-0213 section 4), under the same condition.
-    let mut entries: Vec<(ClauseEntry, Option<String>)> = Vec::new();
-    for entry in &clauses.colon {
-        entries.push((entry.clone(), None));
-    }
-    for entry in &clauses.derives {
-        entries.push((entry.clone(), Some(entry.name.clone())));
-        if entry.name == COPY_CLASS_ASPECT {
-            entries.push((
-                ClauseEntry {
-                    name: "Clone".to_string(),
-                    from_class_keyword: false,
-                    span: entry.span.clone(),
-                },
-                Some(entry.name.clone()),
-            ));
-        }
-    }
-    let mut seen = std::collections::HashSet::new();
-    entries
-        .iter()
-        // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
-        .filter(|(entry, _)| seen.insert(entry.name.clone()))
-        .map(|(entry, bound)| ImplBlock {
-            polarity: Polarity::Positive,
-            generics: clause_impl_generics(generics, entry, bound.as_deref(), &field_types),
-            aspect_name: Some(entry.name.clone()),
-            aspect_type_args: Vec::new(),
-            target_type: target.clone(),
-            where_clause: None,
-            assoc_type_defs: Vec::new(),
-            methods: derived_methods(entry, &target),
-            from_clause: true,
-            span: entry.span.clone(),
-        })
-        .collect()
+    // The impls a declaration's clauses stand for are written after name resolution, which can read the
+    // aspect declarations (`pipeline::clause_expansion`, RFC-0207).
+    Ok(vec![parse_single_decl(inner, filename)?])
 }
 
 fn parse_single_decl(
@@ -827,7 +654,9 @@ fn parse_clause_part(
                 ));
             }
             clauses.derives.push(ClauseEntry {
-                name: COPY_CLASS_ASPECT.to_string(),
+                // The aspect the `copy` keyword names is the one with the `implicit` property; the clause
+                // expansion fills the name in once names resolve.
+                name: String::new(),
                 from_class_keyword: true,
                 span,
             });

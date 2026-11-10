@@ -6,9 +6,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use metel::pipeline::clause_expansion;
 use metel::pipeline::coherence;
 use metel::pipeline::move_check;
-use metel::pipeline::name_resolution::name_resolver;
 use metel::pipeline::parsing::module_loader;
 use metel::pipeline::path_normalization;
 use metel::pipeline::type_checking;
@@ -35,10 +35,10 @@ fn collect_sources(path: &Path, out: &mut Vec<PathBuf>) {
 /// Returns the number of abstract bodies analysed and the incompleteness findings.
 fn analyze_fixture(root: &Path, fixture: &Path) -> (usize, Vec<String>) {
     let mut incomplete = Vec::new();
-    let Ok(graph) = module_loader::load_root(fixture) else {
+    let Ok(mut graph) = module_loader::load_root(fixture) else {
         return (0, incomplete);
     };
-    let Ok(names) = name_resolver::resolve(&graph) else {
+    let Ok(names) = clause_expansion::resolve_and_expand(&mut graph) else {
         return (0, incomplete);
     };
     let members = metel::identity::collect_members_for_graph(&graph, &names);

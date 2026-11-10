@@ -5,10 +5,10 @@ use serde::Serialize;
 use crate::data::error::MetelError;
 use crate::evaluator::{self, EvaluationReport, RuntimeIdentity};
 use crate::identity;
+use crate::pipeline::clause_expansion;
 use crate::pipeline::coherence;
 use crate::pipeline::elaboration;
 use crate::pipeline::move_check;
-use crate::pipeline::name_resolution::name_resolver;
 use crate::pipeline::parsing::module_loader;
 use crate::pipeline::path_normalization;
 use crate::pipeline::type_checking::{self, CorePrelude, TypecheckPhaseTimings};
@@ -67,11 +67,11 @@ pub fn run_file(filename: &str, options: &RunOptions) -> Result<RunReport, Metel
     let total_started = Instant::now();
 
     let started = Instant::now();
-    let graph = module_loader::load_root(filename)?;
+    let mut graph = module_loader::load_root(filename)?;
     let load_root_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let names = name_resolver::resolve(&graph)?;
+    let names = clause_expansion::resolve_and_expand(&mut graph)?;
     let resolve_ns = elapsed_ns(started);
 
     // Member identities (ADR-0054 / #1051) are derived from the parsed graph, so
@@ -154,11 +154,11 @@ pub fn run_source(source: &str, options: &RunOptions) -> Result<RunReport, Metel
     let provider = module_loader::InMemorySourceProvider::new(root, source);
 
     let started = Instant::now();
-    let graph = module_loader::load_virtual_root_with(root, &provider)?;
+    let mut graph = module_loader::load_virtual_root_with(root, &provider)?;
     let load_root_ns = elapsed_ns(started);
 
     let started = Instant::now();
-    let names = name_resolver::resolve(&graph)?;
+    let names = clause_expansion::resolve_and_expand(&mut graph)?;
     let resolve_ns = elapsed_ns(started);
 
     // Member identities (ADR-0054 / #1051) are derived from the parsed graph, so
@@ -246,8 +246,8 @@ pub fn run_evaluator_fixture(
     let total_started = Instant::now();
 
     let started = Instant::now();
-    let graph = module_loader::load_root(filename)?;
-    let names = name_resolver::resolve(&graph)?;
+    let mut graph = module_loader::load_root(filename)?;
+    let names = clause_expansion::resolve_and_expand(&mut graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
     let normalized = path_normalization::normalize(graph, names.clone())?;

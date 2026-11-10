@@ -1,6 +1,5 @@
 use super::*;
 use crate::pipeline::coherence;
-use crate::pipeline::name_resolution::name_resolver;
 use crate::pipeline::parsing::module_loader;
 use crate::pipeline::path_normalization;
 use crate::pipeline::type_checking;
@@ -42,8 +41,9 @@ fn move_report_for_source_with(
             .expect("write temp fixture");
     }
     let violations = (|| {
-        let graph = module_loader::load_root(&path).expect("load temp fixture");
-        let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
+        let mut graph = module_loader::load_root(&path).expect("load temp fixture");
+        let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)
+            .expect("resolve temp fixture");
         let members = crate::identity::collect_members_for_graph(&graph, &names);
         let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized =
@@ -3273,8 +3273,8 @@ fn assert_typecheck_error_contains(source: &str, needle: &str) {
         std::env::temp_dir().join(format!("metel_narrow_err_{}_{n}.mtl", std::process::id()));
     std::fs::write(&path, source).expect("write temp fixture");
     let result = (|| {
-        let graph = module_loader::load_root(&path)?;
-        let names = name_resolver::resolve(&graph)?;
+        let mut graph = module_loader::load_root(&path)?;
+        let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)?;
         let members = crate::identity::collect_members_for_graph(&graph, &names);
         let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized = path_normalization::normalize(graph, names)?;
@@ -3333,8 +3333,9 @@ fn move_warnings_for_source(source: &str) -> Vec<String> {
             .expect("write temp fixture");
     }
     let warnings = (|| {
-        let graph = module_loader::load_root(&path).expect("load temp fixture");
-        let names = name_resolver::resolve(&graph).expect("resolve temp fixture");
+        let mut graph = module_loader::load_root(&path).expect("load temp fixture");
+        let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)
+            .expect("resolve temp fixture");
         // Frozen identities are required to retain abstract bodies, exactly as in the
         // compiler pipeline.
         let members = crate::identity::collect_members_for_graph(&graph, &names);
