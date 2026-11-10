@@ -1,2 +1,3 @@
 [options]
+spec = ["spec.ownership.copy.legality-5"]
 move_check = true

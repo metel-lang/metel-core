@@ -1,7 +1,7 @@
 [options]
 move_check = true
 error = ["T0019"]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-5"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-5", "spec.ownership.copy.legality-5"]
 
 [expect]
 status = "typecheck_error"

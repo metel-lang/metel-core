@@ -1,6 +1,6 @@
 [options]
 error = ["T0012"]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-5"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-5", "spec.ownership.clone.legality-4"]
 
 [expect]
 status = "typecheck_error"

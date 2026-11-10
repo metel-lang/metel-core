@@ -1,4 +1,5 @@
 [options]
+spec = ["spec.ownership.copy.legality-7"]
 move_check = true
 error = ["T0019"]
 
