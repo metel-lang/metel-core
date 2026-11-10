@@ -1580,6 +1580,16 @@ fn infer_expr_inner(
                 return result;
             }
 
+            // `x.clone()` on `&&U` clones the `&U` it points at: a shared reference is `Clone` for every
+            // referent (RFC-0206 section 2; metel-core#1929). One reference layer is dropped.
+            if method == "clone"
+                && args.is_empty()
+                && let InferType::Reference(outer) = &recv_ty
+                && matches!(outer.as_ref(), InferType::Reference(_))
+            {
+                return Ok(outer.as_ref().clone());
+            }
+
             // Fast path: concrete named type — look up method as usual.
             let peeled_recv = peel_all_references(&recv_ty);
             if let InferType::Array(elem) | InferType::SizedArray(elem, _) = &peeled_recv {

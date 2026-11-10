@@ -1,0 +1,23 @@
+// RFC-0206 section 2: `&T` is `Clone` for every `T`, and the clone is another reference. `clone` on `&&U`
+// clones the `&U` it points at, in a generic body (T = &U) and directly (metel-core#1929).
+fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
+
+struct Counter { n: i64 }
+extend Counter: Clone { fun clone(&self) -> Counter { Counter(n = self.n + 100) } }
+
+fun main() {
+    let n := 5;
+    let r := &n;
+    let r2 := need_clone(&r);
+    assert(*r2 == 5);
+    let rr := &r;
+    let r3 := rr.clone();
+    assert(*r3 == 5);
+    // one layer less: the referent's own clone
+    assert(r.clone() == 5);
+    let c := Counter(n = 1);
+    let rc := &c;
+    assert(rc.clone().n == 101);
+    // the reference is copied, so the referent\'s clone does not run
+    assert(need_clone(&rc).n == 1);
+}

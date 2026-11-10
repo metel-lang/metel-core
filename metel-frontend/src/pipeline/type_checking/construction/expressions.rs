@@ -1440,6 +1440,26 @@ pub(super) fn construct_expr(
                 );
             }
 
+            // `x.clone()` on `&&U` clones the `&U` it points at, not the `U` (Rust's method probing finds
+            // `<&U as Clone>::clone` first): a shared reference is `Clone` for every referent, the clone
+            // being another reference (RFC-0206 section 2; metel-core#1929). One layer is dropped.
+            if method == "clone"
+                && args.is_empty()
+                && let Type::Reference(outer) = typed_receiver.ty()
+                && matches!(outer.as_ref(), Type::Reference(_))
+            {
+                let ty = outer.as_ref().clone();
+                return Ok(TypedExpr::MethodCall {
+                    receiver: Box::new(typed_receiver),
+                    method: method.clone(),
+                    args: Vec::new(),
+                    ty,
+                    impl_site: None,
+                    dispatch: MethodDispatch::Dynamic,
+                    span: span.clone(),
+                });
+            }
+
             // The `Clone` the compiler provides for a kind with no impl to write it in (RFC-0206 section
             // 2): the unit type, a tuple of `Clone` parts, a `Copy` closure. The runtime performs the copy.
             if method == "clone"
