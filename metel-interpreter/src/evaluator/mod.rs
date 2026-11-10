@@ -3508,6 +3508,18 @@ fn eval_method_call_expr(
     let static_arg_tys: Vec<crate::data::types::Type> =
         args.iter().map(|a| a.ty().clone()).collect();
     let static_receiver_ty = receiver.ty().clone();
+    // `clone` on `&&U` clones the `&U` (metel-core#1929): drop exactly one reference layer.
+    if method == "clone"
+        && args.is_empty()
+        && matches!(
+            &static_receiver_ty,
+            crate::data::types::Type::Reference(inner)
+                if matches!(inner.as_ref(), crate::data::types::Type::Reference(_))
+        )
+        && let Value::Reference(cell) = &recv_val
+    {
+        return Ok(Signal::Value(cell.borrow().clone()));
+    }
     // metel-core#1228: the receiver's own concrete type arguments, so dispatch
     // can prefer an exact per-instantiation `extend` (`extend W<i64>: Tag`)
     // over a blanket one, instead of picking whichever was registered last
