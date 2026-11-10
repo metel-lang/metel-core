@@ -1,0 +1,12 @@
+// RFC-0206 section 2 rule 3: the predicate is exact per instantiation, so `copy struct View<T> { r: &T }` is
+// `Copy` for every `T`, even a `T` that is not `Copy` itself.
+struct Name { text: String }
+copy struct View<T> { r: &T }
+
+fun main() {
+    let owner := Name(text = "ada");
+    let v := View(r = &owner);
+    let first := v;
+    let second := v;
+    assert(first.r.text == "ada" && second.r.text == "ada");
+}

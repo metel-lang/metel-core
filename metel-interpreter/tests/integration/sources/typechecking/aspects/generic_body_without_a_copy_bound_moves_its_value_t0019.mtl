@@ -1,0 +1,8 @@
+// The same read without the bound is a move, even when the call site passes a `Copy` type (parametricity).
+fun twice<T>(x: T) -> (T, T) {
+    (x, x) // ERROR[T0019]
+}
+
+fun main() {
+    let pair := twice(3);
+}
