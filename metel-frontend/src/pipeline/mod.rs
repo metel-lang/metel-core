@@ -3,6 +3,7 @@
 //! boundary into an earlier stage's internals (`architecture/engineering-standards.md`
 //! Standard 4).
 
+pub mod clause_expansion;
 pub mod coherence;
 pub mod elaboration;
 pub mod move_check;

@@ -90,7 +90,6 @@ fn prelude_schemes_cover_embedded_core_natives() {
 #[test]
 fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     use crate::pipeline::coherence;
-    use crate::pipeline::name_resolution::name_resolver;
     use crate::pipeline::parsing::module_loader;
     use crate::pipeline::path_normalization;
 
@@ -108,8 +107,8 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     .expect("write main");
 
     let result = (|| {
-        let graph = module_loader::load_root(&dir.join("main.mtl"))?;
-        let names = name_resolver::resolve(&graph)?;
+        let mut graph = module_loader::load_root(&dir.join("main.mtl"))?;
+        let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)?;
         let members = crate::identity::collect_members_for_graph(&graph, &names);
         let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized = path_normalization::normalize(graph, names)?;
@@ -156,7 +155,6 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
 #[test]
 fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
     use crate::pipeline::coherence;
-    use crate::pipeline::name_resolution::name_resolver;
     use crate::pipeline::parsing::module_loader;
     use crate::pipeline::path_normalization;
     use std::collections::BTreeMap;
@@ -175,8 +173,8 @@ fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
             std::fs::write(dir.join(name), source).expect("write module");
         }
         let result = (|| {
-            let graph = module_loader::load_root(&dir.join("main.mtl"))?;
-            let names = name_resolver::resolve(&graph)?;
+            let mut graph = module_loader::load_root(&dir.join("main.mtl"))?;
+            let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)?;
             let members = crate::identity::collect_members_for_graph(&graph, &names);
             let allocation = crate::identity::allocate_for_graph(&graph, &names);
             let normalized = path_normalization::normalize(graph, names)?;
@@ -270,7 +268,6 @@ fn overload_ids_do_not_depend_on_what_was_compiled_earlier_in_the_process() {
 #[test]
 fn a_local_is_resolved_by_its_binding_not_its_spelling() {
     use crate::pipeline::coherence;
-    use crate::pipeline::name_resolution::name_resolver;
     use crate::pipeline::parsing::module_loader;
     use crate::pipeline::path_normalization;
 
@@ -282,8 +279,8 @@ fn a_local_is_resolved_by_its_binding_not_its_spelling() {
     )
     .expect("write main");
     let result = (|| {
-        let graph = module_loader::load_root(&dir.join("main.mtl"))?;
-        let names = name_resolver::resolve(&graph)?;
+        let mut graph = module_loader::load_root(&dir.join("main.mtl"))?;
+        let names = crate::pipeline::clause_expansion::resolve_and_expand(&mut graph)?;
         let members = crate::identity::collect_members_for_graph(&graph, &names);
         let allocation = crate::identity::allocate_for_graph(&graph, &names);
         let normalized = path_normalization::normalize(graph, names)?;

@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use metel::pipeline::clause_expansion;
 use metel::pipeline::coherence;
 use metel::pipeline::move_check;
-use metel::pipeline::name_resolution::name_resolver;
 use metel::pipeline::parsing::module_loader;
 use metel::pipeline::path_normalization;
 use metel::pipeline::type_checking;
@@ -37,10 +37,10 @@ fn main() {
         if index > 0 && index % 50 == 0 {
             eprintln!("processed={index}");
         }
-        let Ok(graph) = module_loader::load_root(&fixture) else {
+        let Ok(mut graph) = module_loader::load_root(&fixture) else {
             continue;
         };
-        let Ok(names) = name_resolver::resolve(&graph) else {
+        let Ok(names) = clause_expansion::resolve_and_expand(&mut graph) else {
             continue;
         };
         let members = metel::identity::collect_members_for_graph(&graph, &names);

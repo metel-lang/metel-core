@@ -34,7 +34,11 @@ use crate::pipeline::type_checking::type_engine::{
 /// import / local declaration -> glob, user tier before std; the two cannot share a name) — duplicated
 /// here in miniature because coherence runs before `TypeDefinitionRegistry`
 /// exists.
-fn resolve_id(names: &ResolvedNames, current_module: &[String], name: &str) -> Option<SymbolId> {
+pub(crate) fn resolve_id(
+    names: &ResolvedNames,
+    current_module: &[String],
+    name: &str,
+) -> Option<SymbolId> {
     // An explicit import wins over a `symbols` entry for `(current_module, name)`:
     // importing `name` *through* a module that merely imports it (not a
     // declaration there) interns a placeholder under that module, and trusting it

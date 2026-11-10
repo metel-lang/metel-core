@@ -5,9 +5,9 @@ use metel::data::error::MetelError;
 use metel::evaluator;
 use metel::identity;
 use metel::orchestrator;
+use metel::pipeline::clause_expansion;
 use metel::pipeline::coherence;
 use metel::pipeline::elaboration;
-use metel::pipeline::name_resolution::name_resolver;
 use metel::pipeline::parsing::{module_loader, parser};
 use metel::pipeline::path_normalization;
 use metel::pipeline::type_checking;
@@ -76,8 +76,8 @@ fn run_parse(path: &Path) -> Result<(), MetelError> {
 // core free functions (e.g. the print/println Display wrappers, METEL-192). The
 // pub single-program API remains for the benchmark binary only.
 fn run_typecheck(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
-    let graph = module_loader::load_root(main_source_path(path))?;
-    let names = name_resolver::resolve(&graph)?;
+    let mut graph = module_loader::load_root(main_source_path(path))?;
+    let names = clause_expansion::resolve_and_expand(&mut graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
     let normalized = path_normalization::normalize(graph, names)?;
@@ -140,9 +140,9 @@ fn run_load_graph(path: &Path, checks: &GraphChecks) -> Result<(), MetelError> {
 }
 
 fn run_full_pipeline(path: &Path, config: &FixtureConfig) -> Result<(), MetelError> {
-    let graph = module_loader::load_root(main_source_path(path))?;
+    let mut graph = module_loader::load_root(main_source_path(path))?;
     assert_graph_checks(path, &graph, &config.graph);
-    let names = name_resolver::resolve(&graph)?;
+    let names = clause_expansion::resolve_and_expand(&mut graph)?;
     let members = identity::collect_members_for_graph(&graph, &names);
     let allocation = identity::allocate_for_graph(&graph, &names);
     let normalized = path_normalization::normalize(graph, names.clone())?;

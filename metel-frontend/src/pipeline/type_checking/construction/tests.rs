@@ -1330,9 +1330,10 @@ fn typecheck_sources(root: &str, source: &str, files: &[(&str, &str)]) -> TypedF
     for (path, source) in files {
         provider = provider.with_file(*path, *source);
     }
-    let graph =
+    let mut graph =
         module_loader::load_virtual_root_with(root, &provider).expect("in-memory root loads");
-    let names = crate::pipeline::name_resolution::name_resolver::resolve(&graph).expect("resolves");
+    let names =
+        crate::pipeline::clause_expansion::resolve_and_expand(&mut graph).expect("resolves");
     let members = crate::identity::collect_members_for_graph(&graph, &names);
     let allocation = crate::identity::allocate_for_graph(&graph, &names);
     let normalized =
