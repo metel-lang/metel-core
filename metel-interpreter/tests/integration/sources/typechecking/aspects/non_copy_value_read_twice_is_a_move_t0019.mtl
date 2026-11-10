@@ -1,0 +1,10 @@
+// RFC-0206 section 2, copy site 1: a place read in value position of a type that is not `Copy` is a move.
+struct Token { id: i64 }
+
+fun take(t: Token) -> i64 { t.id }
+
+fun main() {
+    let a := Token(id = 1);
+    let n := take(a);
+    let m := take(a); // ERROR[T0019]
+}

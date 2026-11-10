@@ -1,0 +1,29 @@
+// RFC-0206 section 2, copy sites: a place read in value position copies a `Copy` value. The copy is the
+// representation copy, so the original is untouched and a later change to it does not reach the copy.
+copy struct Point { x: i64, y: i64 }
+struct Holder { p: Point }
+
+fun take(p: Point) -> i64 { p.x }
+fun give(p: Point) -> Point { return p; }
+extend Point { fun sum(self) -> i64 { self.x + self.y } }
+
+fun main() {
+    var a := Point(x = 1, y = 2);
+    let b := a;                         // let
+    let c := take(a);                   // call argument
+    let d := give(a);                   // return
+    let h := Holder(p = a);             // struct field
+    let both := [a, a];                 // array elements
+    let s := a.sum();                   // by-value self
+    let k := [a] || -> i64 { k_of(a) }; // by-copy capture
+    let xs := [a, a];
+    let from_index := xs[1];            // index
+    let r := &a;
+    let through := *r;                  // dereference
+    a.x = 100;
+    assert(b.x == 1 && c == 1 && d.x == 1 && h.p.x == 1 && both[0].x == 1);
+    assert(s == 3 && from_index.y == 2 && through.x == 1);
+    assert(a.x == 100);
+}
+
+fun k_of(p: Point) -> i64 { p.x }

@@ -1,0 +1,12 @@
+// RFC-0206 section 2, copy site 4: a generic body decides at its definition from the bounds visible there.
+// Under `T: Copy` a read is a copy, so the value can be used twice.
+fun twice<T: Copy>(x: T) -> (T, T) { (x, x) }
+
+copy struct Pt { x: i64 }
+
+fun main() {
+    let pair := twice(Pt(x = 4));
+    assert(pair.0.x == 4 && pair.1.x == 4);
+    let nums := twice(3);
+    assert(nums.0 + nums.1 == 6);
+}
