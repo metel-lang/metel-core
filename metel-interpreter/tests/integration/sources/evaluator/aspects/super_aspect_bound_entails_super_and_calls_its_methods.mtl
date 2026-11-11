@@ -13,7 +13,7 @@ fun through_loud<T: Loud>(x: &T) -> String { both(x) }
 fun method_of_super<T: Loud>(x: &T) -> String { x.name() }
 
 fun main() {
-    let p := P(n = 1);
+    let p := P { n = 1 };
     assert(both(&p) == "p");
     assert(through_loud(&p) == "p");
     assert(method_of_super(&p) == "p");

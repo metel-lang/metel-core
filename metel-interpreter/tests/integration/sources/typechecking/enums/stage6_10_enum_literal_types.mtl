@@ -1,20 +1,20 @@
 // Stage 6: enum variant literals correctly preserve type arguments.
 
 // Option<i64> literal
-let _: Option<i64> := Option::Some(value = 42);
+let _: Option<i64> := Option::Some { value = 42 };
 
 // Option<boolean> literal
-let _: Option<boolean> := Option::Some(value = true);
+let _: Option<boolean> := Option::Some { value = true };
 
 // Option<String> literal
-let _: Option<String> := Option::Some(value = "hello");
+let _: Option<String> := Option::Some { value = "hello" };
 
 // Result<i64, String> literal
-let _: Result<i64, String> := Result::Ok(value = 0);
+let _: Result<i64, String> := Result::Ok { value = 0 };
 
 // Result<boolean, i64> literal
-let _: Result<boolean, i64> := Result::Err(error = 42);
+let _: Result<boolean, i64> := Result::Err { error = 42 };
 
 // Single-segment struct literals (no generics)
 struct Point { x: i64, y: i64 }
-let _: Point := Point(x = 1, y = 2);
+let _: Point := Point { x = 1, y = 2 };

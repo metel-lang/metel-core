@@ -8,7 +8,7 @@ type View := dyn Describe;
 type Callback := once || -> String;
 
 fun main() {
-    let user := User(name = "captured");
+    let user := User { name = "captured" };
     let view: View := user;
     let callback: Callback := [view] once || { view.describe() };
     assert(callback() == "captured");

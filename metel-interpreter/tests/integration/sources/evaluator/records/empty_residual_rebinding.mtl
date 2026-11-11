@@ -3,7 +3,7 @@ type Empty := Pair.{};
 type Callback := once || -> Pair;
 
 fun empty() -> Pair.{} {
-    let pair := Pair(left = "old", right = "gone");
+    let pair := Pair { left = "old", right = "gone" };
     let left := pair.left;
     let right := pair.right;
     pair

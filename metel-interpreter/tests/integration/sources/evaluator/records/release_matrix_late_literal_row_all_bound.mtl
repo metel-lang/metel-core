@@ -7,6 +7,6 @@ fun id_of<record R>(r: Req<..{ .id: i64, ..R }>) -> (i64, i64) where ..R: Copy {
 }
 
 fun main() {
-    let r := Req(data = { .id = 4, .n = 1 });
+    let r := Req { data = { .id = 4, .n = 1 } };
     assert(id_of(r).0 == 4);
 }

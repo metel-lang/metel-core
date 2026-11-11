@@ -7,7 +7,7 @@ extend S {
 }
 
 fun main() {
-    var s := S(n = 0);
+    var s := S { n = 0 };
     let f := [s] || { s.inc(); }; // missing `var` qualifier
     f();
 }

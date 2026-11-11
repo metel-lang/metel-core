@@ -22,7 +22,7 @@ fun main() {
     assert({ .w = 2, .h = 3 }.describe() == "a record");
     assert({ .w = 2, .h = 3 }.area() == 6);
     assert({ .w = 2, .h = 3, .label = "x" }.area() == 6);
-    let r := Rect(w = 4, h = 5);
+    let r := Rect { w = 4, h = 5 };
     assert(r.area() == 20);
     assert(r.describe() == "a record");
     assert(total(&r) == 20);

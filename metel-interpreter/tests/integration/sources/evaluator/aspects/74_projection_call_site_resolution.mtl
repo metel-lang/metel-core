@@ -28,7 +28,7 @@ fun peek<T: Container>(x: T) -> T::Item {
 }
 
 fun main() {
-    let b := IntBox(value = 42);
+    let b := IntBox { value = 42 };
     let v: i64 := peek(b);
     assert(v == 42);
 }

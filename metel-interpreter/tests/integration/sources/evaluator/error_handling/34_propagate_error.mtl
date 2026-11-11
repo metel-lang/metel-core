@@ -1,16 +1,16 @@
 // ? on Ok unwraps the value; ? on Err propagates out of the calling function.
 fun safe_div(a: i64, b: i64) -> Result<i64, i64> {
     if (b == 0) {
-        Result::Err(error = -1)
+        Result::Err { error = -1 }
     } else {
-        Result::Ok(value = a / b)
+        Result::Ok { value = a / b }
     }
 }
 // Uses ? internally — if safe_div returns Ok(q), continues with Ok(q+1).
 // If safe_div returns Err(e), ? propagates so try_div returns Err(e).
 fun try_div(a: i64, b: i64) -> Result<i64, i64> {
     let q := safe_div(a, b)?;
-    Result::Ok(value = q + 1)
+    Result::Ok { value = q + 1 }
 }
 fun main() {
     // ? on Ok: unwraps, continues, returns Ok(6).

@@ -6,12 +6,12 @@ record Packet<record R> { data: { ..R } }
 extend<record R> Packet<..R>: Describe { fun describe(&self) -> String { "packet".to_string() } }
 fun show(d: &dyn Describe) -> String { d.describe() }
 fun main() {
-    let p := Point(x = 1, y = 2);
+    let p := Point { x = 1, y = 2 };
     assert(show(&p) == "point");
-    let pk := Packet(data = { .a = 1 });
+    let pk := Packet { data = { .a = 1 } };
     assert(show(&pk) == "packet");
     let anon := { .a = 1, .b = true };
     assert(show(&anon) == "copy-row");
-    let boxed: dyn Describe := Packet(data = { .n = 2 });
+    let boxed: dyn Describe := Packet { data = { .n = 2 } };
     assert(boxed.describe() == "packet");
 }

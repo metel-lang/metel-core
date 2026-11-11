@@ -1,6 +1,6 @@
 
 import point::*;
 fun main() -> i64 {
-    let p := Point(x = 3, y = 4);
+    let p := Point { x = 3, y = 4 };
     return p.x;
 }

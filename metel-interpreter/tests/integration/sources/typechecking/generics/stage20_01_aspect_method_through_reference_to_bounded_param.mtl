@@ -19,6 +19,6 @@ fun render<T: Show>(x: &T) -> String {
 }
 
 fun main() {
-    let b := B(v = 1);
+    let b := B { v = 1 };
     assert(render(&b) == "b");
 }

@@ -4,7 +4,7 @@ pub fun norm1(p: Pt) -> i64 {
     x + y
 }
 fun main() {
-    let p := Pt(y = 4, x = 3);
+    let p := Pt { y = 4, x = 3 };
     let { .x, ..rest } := { .x = p.x, .y = p.y };
     assert(x + rest.y == norm1(p));
 }

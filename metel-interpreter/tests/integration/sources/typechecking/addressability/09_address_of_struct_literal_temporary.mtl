@@ -4,6 +4,6 @@
 struct P { x: i64 }
 
 fun main() {
-    let p: &P := &P(x = 7);
+    let p: &P := &P { x = 7 };
     assert(p.x == 7);
 }

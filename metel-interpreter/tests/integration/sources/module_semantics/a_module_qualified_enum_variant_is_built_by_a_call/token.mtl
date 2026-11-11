@@ -1,1 +1,0 @@
-pub enum Kind { A { pub n: i64, pub m: i64 }, B }

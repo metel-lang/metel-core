@@ -14,20 +14,20 @@ struct AppError {
 
 extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
-        return AppError(msg = "parse error: " + value.msg);
+        return AppError { msg = "parse error: " + value.msg };
     }
 }
 
 fun parse_int(s: String) -> Result<i64, ParseError> {
     if (s == "42") {
-        return Result::Ok(value = 42);
+        return Result::Ok { value = 42 };
     }
-    return Result::Err(error = ParseError(msg = "invalid integer"));
+    return Result::Err { error = ParseError { msg = "invalid integer" } };
 }
 
 fun load(s: String) -> Result<i64, AppError> {
     let n := parse_int(s)?;
-    return Result::Ok(value = n * 2);
+    return Result::Ok { value = n * 2 };
 }
 
 fun main() {

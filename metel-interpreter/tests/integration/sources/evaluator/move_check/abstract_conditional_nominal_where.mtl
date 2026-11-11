@@ -19,7 +19,7 @@ fun copied<T: Copy>(value: Wrapper<T>) -> T {
 fun extract<T: !Marker>(value: Guard<T>) -> String { value.name }
 
 fun main() {
-    assert(copied(Wrapper(value = 7)) == 7);
-    let guarded := Guard(name = "clear", tag = Clear(count = 2));
+    assert(copied(Wrapper { value = 7 }) == 7);
+    let guarded := Guard { name = "clear", tag = Clear { count = 2 } };
     assert(extract(guarded) == "clear");
 }

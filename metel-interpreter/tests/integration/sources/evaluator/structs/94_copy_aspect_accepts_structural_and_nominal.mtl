@@ -33,11 +33,11 @@ fun main() {
     assert(fixed[0] == 1);
     assert(fixed[2] == 3);
 
-    let pair := id_copy(Pair(left = 4, right = false));
+    let pair := id_copy(Pair { left = 4, right = false });
     assert(pair.left == 4);
     assert(!pair.right);
 
-    let maybe := id_copy(MaybeInt::Some(value = 8));
+    let maybe := id_copy(MaybeInt::Some { value = 8 });
     match (maybe) {
         MaybeInt::Some { value } => assert(value == 8),
         MaybeInt::None => assert(false),

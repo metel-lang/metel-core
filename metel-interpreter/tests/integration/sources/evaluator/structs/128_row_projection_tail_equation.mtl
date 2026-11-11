@@ -11,7 +11,7 @@ where R = { .extra: String, ..Rest } {
 }
 
 fun main() {
-    let h := Handle(fd = 7, extra = "e");
+    let h := Handle { fd = 7, extra = "e" };
     assert(use_it(h) == 7);
     println("ok");
 }

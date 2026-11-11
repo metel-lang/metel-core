@@ -3,9 +3,9 @@
 struct Box<T> { v: T }
 
 extend<T> Box<T> {
-    fun wrap(v: T) -> Box<T> { Box(v = v) }
-    fun twice(first: T, second: T) -> Pair<T> { Pair(first = first, second = second) }
-    fun again(v: T) -> Box<T> { Self(v) }
+    fun wrap(v: T) -> Box<T> { Box { v = v } }
+    fun twice(first: T, second: T) -> Pair<T> { Pair { first = first, second = second } }
+    fun again(v: T) -> Box<T> { Box { v } }
 }
 
 struct Pair<T> { first: T, second: T }

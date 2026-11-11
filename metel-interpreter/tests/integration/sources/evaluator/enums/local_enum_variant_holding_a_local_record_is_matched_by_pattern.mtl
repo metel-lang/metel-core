@@ -3,7 +3,7 @@
 fun main() {
     record Pt { x: i64, y: i64 }
     enum Shape { At { p: Pt }, Nowhere }
-    let s := Shape::At(p = Pt(x = 1, y = 2));
+    let s := Shape::At { p = Pt { x = 1, y = 2 } };
     var sum := 0;
     match (s) {
         Shape::At { p } => {

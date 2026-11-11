@@ -23,12 +23,12 @@ extend W<i64> { fun which(self) -> i64 { 10 } }
 extend W<String> { fun which(self) -> i64 { 20 } }
 
 fun main() {
-    let tagged := Box(v = 1);
-    let plain := Box(v = "s");
+    let tagged := Box { v = 1 };
+    let plain := Box { v = "s" };
     assert(tagged.kind() == 1);
     assert(plain.kind() == 2);
 
-    assert(W(v = 1).which() == 10);
-    assert(W(v = "s").which() == 20);
+    assert(W { v = 1 }.which() == 10);
+    assert(W { v = "s" }.which() == 20);
     println("ok");
 }

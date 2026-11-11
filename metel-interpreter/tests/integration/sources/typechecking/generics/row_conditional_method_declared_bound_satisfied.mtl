@@ -15,9 +15,9 @@ fun use_session<record R: { .token: String, .. }>(session: Session<..R>) -> i64 
 }
 
 fun main() {
-    let session: Session<{ .token: String }> := Session(
+    let session: Session<{ .token: String }> := Session {
         id = 1,
         data = { .token = "token" },
-    );
+    };
     println(use_session(session));
 }

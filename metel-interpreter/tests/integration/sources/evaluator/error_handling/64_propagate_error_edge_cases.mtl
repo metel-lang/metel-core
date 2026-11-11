@@ -24,60 +24,60 @@ struct AppError    { msg: String }
 
 extend AppError: From<IoError> {
     fun from(value: IoError) -> AppError {
-        AppError(msg = "io: " + value.msg)
+        AppError { msg = "io: " + value.msg }
     }
 }
 
 extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
-        AppError(msg = "parse: " + value.msg)
+        AppError { msg = "parse: " + value.msg }
     }
 }
 
 // IoError → ParseError (for multi-level chain test)
 extend ParseError: From<IoError> {
     fun from(value: IoError) -> ParseError {
-        ParseError(msg = "from_io: " + value.msg)
+        ParseError { msg = "from_io: " + value.msg }
     }
 }
 
 // ── Fallible producers ────────────────────────────────────────────────────────
 
 fun read_file(path: String) -> Result<String, IoError> {
-    if (path == "data.txt") { Result::Ok(value = "42") }
-    else { Result::Err(error = IoError(msg = "no file: " + path)) }
+    if (path == "data.txt") { Result::Ok  { value = "42" } }
+    else { Result::Err { error = IoError { msg = "no file: " + path } } }
 }
 
 fun parse_int(s: String) -> Result<i64, ParseError> {
-    if (s == "42") { Result::Ok(value = 42) }
-    else if (s == "0") { Result::Ok(value = 0) }
-    else { Result::Err(error = ParseError(msg = "bad int: " + s)) }
+    if (s == "42") { Result::Ok  { value = 42 } }
+    else if (s == "0") { Result::Ok { value = 0 } }
+    else { Result::Err { error = ParseError { msg = "bad int: " + s } } }
 }
 
 // same-type ?: ParseError stays ParseError
 fun parse_checked(s: String) -> Result<i64, ParseError> {
     let n := parse_int(s)?;
-    Result::Ok(value = n)
+    Result::Ok { value = n }
 }
 
 // multi-step: cross-type ? coercion
 fun load_and_parse(path: String) -> Result<i64, AppError> {
     let contents := read_file(path)?;
     let n := parse_int(contents)?;
-    Result::Ok(value = n)
+    Result::Ok { value = n }
 }
 
 // ? on first statement
 fun first_stmt(path: String) -> Result<i64, AppError> {
     let contents := read_file(path)?;
-    Result::Ok(value = 1)
+    Result::Ok { value = 1 }
 }
 
 // ? on last statement
 fun last_stmt(s: String) -> Result<i64, AppError> {
     let doubled := 2;
     let n := parse_int(s)?;
-    Result::Ok(value = n * doubled)
+    Result::Ok { value = n * doubled }
 }
 
 // multiple cross-type ? conversions in one function
@@ -85,7 +85,7 @@ fun multi_q(path: String) -> Result<i64, AppError> {
     let a := read_file(path)?;
     let b := parse_int(a)?;
     let c := parse_int("42")?;
-    Result::Ok(value = b + c)
+    Result::Ok { value = b + c }
 }
 
 // ── Counter Iterable ──────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ fun multi_q(path: String) -> Result<i64, AppError> {
 struct Counter { current: i64, limit: i64 }
 
 extend Counter {
-    fun new(limit: i64) -> Counter { Counter(current = 0, limit = limit) }
+    fun new(limit: i64) -> Counter { Counter { current = 0, limit = limit } }
 }
 
 extend Counter: Iterable<i64> {
@@ -101,7 +101,7 @@ extend Counter: Iterable<i64> {
         if (self.current < self.limit) {
             let v := self.current;
             self.current = self.current + 1;
-            Option::Some(value = v)
+            Option::Some { value = v }
         } else {
             None
         }
@@ -182,17 +182,17 @@ fun main() {
     };
 
     // Direct From cast: IoError → AppError
-    let io_err := IoError(msg = "disk full");
+    let io_err := IoError { msg = "disk full" };
     let app_err := io_err as AppError;
     assert(app_err.msg == "io: disk full");
 
     // Direct From cast: ParseError → AppError
-    let pe := ParseError(msg = "bad");
+    let pe := ParseError { msg = "bad" };
     let ae := pe as AppError;
     assert(ae.msg == "parse: bad");
 
     // Direct From cast: IoError → ParseError (multi-level)
-    let io2 := IoError(msg = "read fail");
+    let io2 := IoError { msg = "read fail" };
     let pe2 := io2 as ParseError;
     assert(pe2.msg == "from_io: read fail");
 }

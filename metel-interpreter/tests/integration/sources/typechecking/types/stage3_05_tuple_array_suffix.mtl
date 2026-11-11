@@ -10,6 +10,6 @@ fun keep(rows: [(String, i64)]) -> [(String, i64)] {
 }
 
 let rows_for_table: [(String, i64)] := [("alpha", 1), ("beta", 2)];
-let table := PairTable(rows = keep(rows_for_table));
+let table := PairTable { rows = keep(rows_for_table) };
 let name: &String := &table.rows[0].0;
 let value: i64 := table.rows[0].1;

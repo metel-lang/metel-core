@@ -11,7 +11,7 @@ extend Point {
     }
 
     fun translate(self, dx: f64, dy: f64) -> Point {
-        Point(x = self.x + dx, y = self.y + dy)
+        Point { x = self.x + dx, y = self.y + dy }
     }
 
     fun scale(&var self, factor: f64) {
@@ -21,7 +21,7 @@ extend Point {
 }
 
 // Struct instantiation
-let p := Point(x = 1.0, y = 2.0);
+let p := Point { x = 1.0, y = 2.0 };
 
 // Field access
 let x: f64 := p.x;
@@ -52,6 +52,6 @@ extend Counter {
     }
 }
 
-let c := Counter(value = 5);
+let c := Counter { value = 5 };
 let v: i64 := c.get();
-let total: i64 := c.add(Counter(value = 10));
+let total: i64 := c.add(Counter { value = 10 });

@@ -3,7 +3,7 @@ struct Guard derives Clone { fd: i64 }
 extend Guard: Drop { fun drop(&var self) { } }
 
 fun main() {
-    let g := Guard(fd = 3);
+    let g := Guard { fd = 3 };
     let h := g.clone();
     assert(h.fd == 3);
 }

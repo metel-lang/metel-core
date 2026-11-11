@@ -3,7 +3,7 @@
 record Tok { value: String, id: i64, n: i64 }
 
 fun mk() -> Tok {
-    Tok(value = "y".to_string(), id = 2, n = 3)
+    Tok { value = "y".to_string(), id = 2, n = 3 }
 }
 
 fun main() {

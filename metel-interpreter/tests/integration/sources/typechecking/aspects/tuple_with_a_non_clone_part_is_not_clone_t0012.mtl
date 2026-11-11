@@ -1,6 +1,6 @@
 struct Plain { n: i64 }
 fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
 fun main() {
-    let t := (1, Plain(n = 2));
+    let t := (1, Plain { n = 2 });
     let u := need_clone(&t); // ERROR[T0012]
 }

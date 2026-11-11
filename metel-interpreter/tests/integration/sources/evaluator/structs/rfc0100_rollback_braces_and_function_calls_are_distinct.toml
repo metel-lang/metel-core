@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1", "spec.declarations.structs.instantiation-and-field-access.dynamics-1"]
+
+[expect]
+status = "success"

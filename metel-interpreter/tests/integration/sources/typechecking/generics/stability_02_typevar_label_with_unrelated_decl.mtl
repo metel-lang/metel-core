@@ -9,6 +9,6 @@ struct Wrap<T> { v: T }
 enum E { A }
 
 fun main() {
-    let w := Wrap(v = 1);
+    let w := Wrap { v = 1 };
     let n: E := w; // ERROR[T0001]
 }

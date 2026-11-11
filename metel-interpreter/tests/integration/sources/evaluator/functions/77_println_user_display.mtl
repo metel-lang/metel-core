@@ -25,7 +25,7 @@ extend Color: Display {
 
 fun main() {
 	// struct with a user Display impl
-	println(Point(x = 1, y = 2));
+	println(Point { x = 1, y = 2 });
 	// enum with a user Display impl
 	print(Color::Red);
 	println(Color::Green);

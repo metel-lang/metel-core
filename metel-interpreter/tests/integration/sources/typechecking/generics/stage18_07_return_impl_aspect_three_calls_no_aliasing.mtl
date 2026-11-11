@@ -34,11 +34,11 @@ extend MyString: Display {
 }
 
 fun make_int() -> extends Display {
-	MyInt(value = 1)
+	MyInt { value = 1 }
 }
 
 fun make_string() -> extends Display {
-	MyString(value = "x".to_string())
+	MyString { value = "x".to_string() }
 }
 
 fun main() {

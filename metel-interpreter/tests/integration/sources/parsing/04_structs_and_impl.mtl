@@ -9,7 +9,7 @@ struct Point {
 
 extend Point {
     fun new(x: f64, y: f64) -> Point {
-        return Point(x = x, y = y);
+        return Point { x = x, y = y };
     }
 
     fun to_string(self) -> String {
@@ -37,7 +37,7 @@ struct Pair<A, B> {
 
 extend Pair<i64, String> {
     fun new(a: i64, b: String) -> Pair<i64, String> {
-        return Pair(first = a, second = b);
+        return Pair { first = a, second = b };
     }
 
     fun describe(self) -> String {
@@ -51,7 +51,7 @@ struct Counter {
 
 extend Counter {
     fun new() -> Counter {
-        return Counter(value = 0);
+        return Counter { value = 0 };
     }
 
     fun increment(&var self) {

@@ -6,4 +6,4 @@ extend Box<T> {
     fun pick(self) -> i64 { self.value } // ERROR[T0001]
 }
 
-fun main() { Box(value = 1).pick(); }
+fun main() { Box { value = 1 }.pick(); }

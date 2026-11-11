@@ -16,7 +16,7 @@ extend MyCounter: Counter {
 }
 
 fun main() {
-    var c: dyn Counter := MyCounter(n = 0);
+    var c: dyn Counter := MyCounter { n = 0 };
     c.increment();
     c.increment();
     c.increment();

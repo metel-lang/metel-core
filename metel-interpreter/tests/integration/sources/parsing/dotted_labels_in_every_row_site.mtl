@@ -28,7 +28,7 @@ fun main() {
     assert(nested.a.b == 3);
     assert({ .k = 4 }.k == 4);
     assert(norm({ .x = 9, .z = 1 }) == 9);
-    let h := Handle(fd = 3, name = 4);
+    let h := Handle { fd = 3, name = 4 };
     assert(read(h) == 3);
     let arm := if (true) { .v = 1 } else { .v = 2 };
     assert(arm.v == 1);

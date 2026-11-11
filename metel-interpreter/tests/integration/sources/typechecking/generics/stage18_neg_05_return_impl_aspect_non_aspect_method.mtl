@@ -24,7 +24,7 @@ extend MyInt: Display {
 
 // Function returning extends Display
 fun make_int() -> extends Display {
-	MyInt(value = 42)
+	MyInt { value = 42 }
 }
 
 fun main() {

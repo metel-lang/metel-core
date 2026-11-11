@@ -2,14 +2,14 @@
 
 fun a() -> i64 {
     record P { x: i64, y: i64 }
-    let p := P(x = 1, y = 2);
+    let p := P { x = 1, y = 2 };
     let q := p.{ .x };
     q.x
 }
 
 fun b() -> String {
     record P { x: String, z: String }
-    let p := P(x = "a", z = "b");
+    let p := P { x = "a", z = "b" };
     let q := p.{ .x };
     q.x
 }

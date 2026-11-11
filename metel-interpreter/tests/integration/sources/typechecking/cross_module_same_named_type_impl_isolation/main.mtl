@@ -16,6 +16,6 @@ fun needs_label<T: Labelled>(value: T) -> String {
 }
 
 fun main() {
-    let item := Item(x = 1);
+    let item := Item { x = 1 };
     let _ := needs_label(item); // ERROR[T0012]
 }

@@ -4,5 +4,5 @@ struct No {}
 
 fun main() {
     struct Box<T: Tag> { x: T }
-    let b := Box(x = No());
+    let b := Box { x = No {} };
 }

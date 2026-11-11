@@ -11,6 +11,6 @@ extend Item {
 }
 
 fun main() {
-    let item := Item(name = Name(value = "n"), count = 1);
+    let item := Item { name = Name { value = "n" }, count = 1 };
     let _ := item.peek();
 }

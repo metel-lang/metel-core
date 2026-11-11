@@ -5,7 +5,7 @@ struct Counter {
 fun bump(r: &var Counter) { }
 
 fun main() {
-    var c := Counter(value = 0);
+    var c := Counter { value = 0 };
     let r := &var c;
     let q := r;
     bump(r);

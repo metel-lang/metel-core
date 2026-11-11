@@ -270,9 +270,7 @@ postfix          = {
 // RFC-0223: keyword arguments at every call. `keyword_arg` is tried before `expr` (keyword-first is
 // mandatory once `=` is an assignment expression, and harmless today: assignment is spelled `:=`).
 arg_list    = { call_arg ~ ("," ~ call_arg)* ~ ","? }
-call_arg    = { keyword_arg | spread_arg | expr }
-// RFC-0100 section 7: `Type(..r)` builds a struct from a record of exactly its row.
-spread_arg  = { ".." ~ expr }
+call_arg    = { keyword_arg | expr }
 keyword_arg = { ident ~ "=" ~ !"=" ~ expr }
 
 primary_expr = {
@@ -296,6 +294,7 @@ primary_expr = {
   | continue_expr
   | record_projection_expr
   | record_lit
+  | struct_literal
   | path_expr
 }
 
@@ -345,8 +344,8 @@ closure_expr = { capture_list? ~ once_kw? ~ mut_kw? ~ "|" ~ param_list? ~ "|" ~ 
 capture_list = { "[" ~ (capture_item ~ ("," ~ capture_item)* ~ ","?)? ~ "]" }
 capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "(" ~ ")" | ident }
 
-// RFC-0100: a struct or enum struct-variant is built by a call (`Type(args)`), not by a brace literal; the
-// braces after a type name survive only in declarations and patterns.
+struct_literal = { type_path ~ "{" ~ (struct_field_init ~ ("," ~ struct_field_init)* ~ ","?)? ~ "}" }
+struct_field_init = { ident ~ ("=" ~ expr)? }
 record_lit = { "{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
 record_projection_expr = { type_path ~ ".{" ~ label ~ ("," ~ label)* ~ ","? ~ "}" }
 // RFC-0221: a label of a row is written `.name` (or `.0`), never bare. `$` keeps the dot and the name

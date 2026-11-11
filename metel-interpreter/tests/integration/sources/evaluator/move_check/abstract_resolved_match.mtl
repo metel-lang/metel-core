@@ -4,7 +4,7 @@ struct Envelope<T> { value: T }
 copy struct Ticket { count: i64 }
 
 fun copy_witness<T>(unused: T) -> i64 {
-    let witness := Ticket(count = 2);
+    let witness := Ticket { count = 2 };
     let first := witness;
     let again := witness;
     first.count + again.count
@@ -30,7 +30,7 @@ fun whole<T>(value: T) -> T {
 
 fun make<T>(value: T, mark: &var i64) -> Option<T> {
     *mark = *mark + 1;
-    Option::Some(value = value)
+    Option::Some { value = value }
 }
 
 fun extract<T>(value: T, mark: &var i64) -> T {
@@ -46,7 +46,7 @@ fun main() {
     var mark := 0;
     assert(extract("payload", &var mark) == "payload");
     assert(mark == 1);
-    assert(extract_saved(Payload::Present(value = "saved")) == "saved");
-    assert(unwrap(Envelope(value = "enclosed")) == "enclosed");
+    assert(extract_saved(Payload::Present { value = "saved" }) == "saved");
+    assert(unwrap(Envelope { value = "enclosed" }) == "enclosed");
     assert(copy_witness("unused") == 4);
 }

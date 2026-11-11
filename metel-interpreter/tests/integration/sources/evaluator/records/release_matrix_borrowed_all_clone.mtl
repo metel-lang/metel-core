@@ -19,7 +19,7 @@ fun main() {
     let empty := clone_row(&{});
     let with_id := { ..empty, .id = 8 };
     assert(copy_head(with_id) == 8);
-    let copied: CopyAlias := CopyRow(id = 3, count = 7);
+    let copied: CopyAlias := CopyRow { id = 3, count = 7 };
     assert(copy_head(copied) == 3);
     assert(copied.count == 7);
 }

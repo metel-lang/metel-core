@@ -4,6 +4,6 @@
 enum Result { Good, Bad }
 
 fun main() {
-    let r: std::core::Result<i64, String> := std::core::Result::Ok(value = 1);
+    let r: std::core::Result<i64, String> := std::core::Result::Ok { value = 1 };
     assert(r.unwrap_or(0) == 1);
 }

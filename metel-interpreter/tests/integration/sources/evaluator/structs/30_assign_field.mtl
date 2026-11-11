@@ -2,7 +2,7 @@ struct Counter { value: i64, step: i64 }
 
 fun main() {
     // Plain field assignment.
-    var c := Counter(value = 0, step = 1);
+    var c := Counter { value = 0, step = 1 };
     c.value = 42;
     assert(c.value == 42);
     // Compound field assignment operators.

@@ -5,24 +5,24 @@
 fun parse_positive(s: String) -> Result<i64, String> {
     // pretend parsing: accept only "1" through "5" for simplicity
     match (s) {
-        "1" => Result::Ok(value = 1),
-        "2" => Result::Ok(value = 2),
-        "3" => Result::Ok(value = 3),
-        "4" => Result::Ok(value = 4),
-        "5" => Result::Ok(value = 5),
-        _   => Result::Err(error = "not a recognised digit: " + s),
+        "1" => Result::Ok { value = 1 },
+        "2" => Result::Ok { value = 2 },
+        "3" => Result::Ok { value = 3 },
+        "4" => Result::Ok { value = 4 },
+        "5" => Result::Ok { value = 5 },
+        _   => Result::Err { error = "not a recognised digit: " + s },
     }
 }
 
 fun double_parsed(s: String) -> Result<i64, String> {
     let n := parse_positive(s)?;   // propagates Err early
-    return Result::Ok(value = n * 2);
+    return Result::Ok { value = n * 2 };
 }
 
 fun sum_parsed(a: String, b: String) -> Result<i64, String> {
     let x := parse_positive(a)?;
     let y := parse_positive(b)?;
-    return Result::Ok(value = x + y);
+    return Result::Ok { value = x + y };
 }
 
 fun lookup(arr: [String], index: i64) -> Option<String> {

@@ -7,16 +7,16 @@ pub copy struct Wrapper<T> { v: T }
 copy enum Dir { Up, Down }
 
 fun main() {
-    let p := Point(x = 1, y = 2);
+    let p := Point { x = 1, y = 2 };
     let q := p;
     assert(p.x + q.y == 3);
-    let px := Pixel(v = 4);
+    let px := Pixel { v = 4 };
     let py := px;
     assert(px.v + py.v == 8);
-    let b := Both(n = 5);
+    let b := Both { n = 5 };
     let c := b;
     assert(b.n + c.n == 10);
-    let w := Wrapper(v = 3);
+    let w := Wrapper { v = 3 };
     let w2 := w;
     assert(w.v + w2.v == 6);
     let d := Dir::Up;

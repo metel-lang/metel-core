@@ -3,7 +3,7 @@
 fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
 
 struct Counter { n: i64 }
-extend Counter: Clone { fun clone(&self) -> Counter { Counter(n = self.n + 100) } }
+extend Counter: Clone { fun clone(&self) -> Counter { Counter { n = self.n + 100 } } }
 
 fun main() {
     let n := 5;
@@ -15,7 +15,7 @@ fun main() {
     assert(*r3 == 5);
     // one layer less: the referent's own clone
     assert(r.clone() == 5);
-    let c := Counter(n = 1);
+    let c := Counter { n = 1 };
     let rc := &c;
     assert(rc.clone().n == 101);
     // the reference is copied, so the referent\'s clone does not run

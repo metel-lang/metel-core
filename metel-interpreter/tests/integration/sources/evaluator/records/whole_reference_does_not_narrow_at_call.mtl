@@ -7,6 +7,6 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle(fd = 7, name = "a".to_string());
+    let h := Handle { fd = 7, name = "a".to_string() };
     let _n := Handle::nm(&h);
 }

@@ -20,15 +20,15 @@ fun erase(p: Point) -> {} {
 fun show(d: &dyn Describe) -> String { d.describe() }
 
 fun main() {
-    let e: {} := erase(Point(x = 1, y = 2));
+    let e: {} := erase(Point { x = 1, y = 2 });
     assert(e.describe() == "copy-row");
     assert(show(&e) == "copy-row");
 
-    let t := Tok(value = "x".to_string(), id = 1, n = 2);
+    let t := Tok { value = "x".to_string(), id = 1, n = 2 };
     let { .value: _, ..rest } := t;
     assert(rest.key() == "row");
 
-    let u := Point(x = 1, y = 2);
+    let u := Point { x = 1, y = 2 };
     let moved := u.x;
     assert(u.describe() == "point");
     assert(moved == 1);

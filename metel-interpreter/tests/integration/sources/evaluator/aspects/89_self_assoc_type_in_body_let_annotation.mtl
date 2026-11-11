@@ -27,7 +27,7 @@ fun unwrap<T: Container>(c: &T) -> i64 {
 }
 
 fun main() {
-    let b := Box1(v = 7);
+    let b := Box1 { v = 7 };
     assert(b.get() == 7);
     assert(unwrap(&b) == 7);
 }

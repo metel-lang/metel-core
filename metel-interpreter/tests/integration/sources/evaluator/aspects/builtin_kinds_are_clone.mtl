@@ -5,7 +5,7 @@ fun need_copy<T: Copy>(x: T) -> T { x }
 fun clone_of_copy<T: Copy>(x: &T) -> T { need_clone(x) }
 
 struct Token { id: i64 }
-extend Token: Clone { fun clone(&self) -> Token { Token(id = self.id + 100) } }
+extend Token: Clone { fun clone(&self) -> Token { Token { id = self.id + 100 } } }
 
 fun main() {
     assert(need_clone(&3) == 3);
@@ -28,6 +28,6 @@ fun main() {
     let g := need_clone(&f);
     assert(g() == 3);
     // a tuple clones each part through that part's own clone
-    let held := (Token(id = 1), 2);
+    let held := (Token { id = 1 }, 2);
     assert(need_clone(&held).0.id == 101);
 }

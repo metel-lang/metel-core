@@ -18,6 +18,6 @@ extend Box1: Container {
 }
 
 fun main() {
-    let b := Box1(v = 7);
+    let b := Box1 { v = 7 };
     assert(b.get() == 7);
 }

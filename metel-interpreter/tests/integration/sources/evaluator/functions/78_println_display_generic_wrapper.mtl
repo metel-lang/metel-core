@@ -32,7 +32,7 @@ fun log_value<T: Display>(first: T, second: T) {
 }
 
 fun main() {
-    log_value(User(name = "Ada"), User(name = "Ada"));
+    log_value(User { name = "Ada" }, User { name = "Ada" });
     log_value(Status::Ready, Status::Ready);
     log_value(42, 42);
     log_value("done", "done");

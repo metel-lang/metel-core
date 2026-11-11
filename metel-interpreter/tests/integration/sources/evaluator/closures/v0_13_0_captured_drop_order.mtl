@@ -12,8 +12,8 @@ struct Owned {
 }
 
 fun main() {
-    let a := Owned(id = 1);
-    let b := Owned(id = 2);
+    let a := Owned { id = 1 };
+    let b := Owned { id = 2 };
     let f := [a, b] || { a.id + b.id };
     assert(f() == 3);
     // at scope end `f` drops: `a` then `b`, capture-list order.

@@ -4,12 +4,12 @@ record Req<record R> { data: { ..R } }
 
 extend<record R: !{ .host }> Req<..R> {
     fun host(self, h: String) -> Req<..{ .host: String, ..R }> {
-        Req(data = { .host = h, ..self.data })
+        Req { data = { .host = h, ..self.data } }
     }
 }
 
 fun main() {
-    let r := Req(data = {}).host("a".to_string());
+    let r := Req { data = {} }.host("a".to_string());
     let { .data } := r;
     let { .host } := data;
     assert(host == "a");

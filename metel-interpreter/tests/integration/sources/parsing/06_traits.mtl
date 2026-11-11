@@ -27,7 +27,7 @@ struct Temperature {
 
 extend Temperature {
     fun new(c: f64) -> Temperature {
-        return Temperature(celsius = c);
+        return Temperature { celsius = c };
     }
 
     fun to_fahrenheit(self) -> f64 {
@@ -58,7 +58,7 @@ struct Score {
 
 extend Score {
     fun new(points: i64, label: String) -> Score {
-        return Score(points = points, label = label);
+        return Score { points = points, label = label };
     }
 }
 

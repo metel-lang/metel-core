@@ -1,5 +1,5 @@
 pub struct Token { pub kind: i64, offset: i64 }
 
 pub fun make_token(kind: i64, offset: i64) -> Token {
-    return Token(kind = kind, offset = offset);
+    return Token { kind = kind, offset = offset };
 }

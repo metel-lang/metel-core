@@ -3,11 +3,11 @@ enum Wrapper { Val { n: i64 } }
 
 fun main() {
     // Field access on struct.
-    let v := Vec2(x = 10, y = 20);
+    let v := Vec2 { x = 10, y = 20 };
     assert(v.x == 10);
     assert(v.y == 20);
     // Field access on enum variant with named fields.
-    let w := Wrapper::Val(n = 42);
+    let w := Wrapper::Val { n = 42 };
     let n := match (w) { Wrapper::Val { n } => n, };
     assert(n == 42);
     // Chained field access via intermediate binding.

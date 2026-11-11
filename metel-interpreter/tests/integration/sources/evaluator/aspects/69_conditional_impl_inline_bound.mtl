@@ -21,6 +21,6 @@ extend<T: Display> Box1<T>: Greet {
 }
 
 fun main() {
-    let a := Box1(value = 5);
+    let a := Box1 { value = 5 };
     assert(a.greet() == "hello, 5");
 }

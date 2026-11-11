@@ -21,6 +21,6 @@ extend Handle: Greet {
 }
 
 fun main() {
-    let h := Handle(fd = 3);
+    let h := Handle { fd = 3 };
     assert(h.greet() == "handle");
 }

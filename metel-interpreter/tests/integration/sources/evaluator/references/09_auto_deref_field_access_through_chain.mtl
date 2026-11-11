@@ -13,7 +13,7 @@ extend Counter {
 }
 
 fun main() {
-    var c := Counter(value = 1);
+    var c := Counter { value = 1 };
     let r: &var Counter := &var c;
     let rr: &&var Counter := &r;
 

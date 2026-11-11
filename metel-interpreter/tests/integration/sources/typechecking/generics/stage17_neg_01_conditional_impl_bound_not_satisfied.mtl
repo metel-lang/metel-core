@@ -20,6 +20,6 @@ extend<A: Printable, B: Printable> Pair<A, B>: Printable {
 }
 
 fun main() {
-    let p := Pair(first = 5, second = NoPrint(value = 0));
+    let p := Pair { first = 5, second = NoPrint { value = 0 } };
     let s: String := p.print(); // ERROR[T0012]
 }

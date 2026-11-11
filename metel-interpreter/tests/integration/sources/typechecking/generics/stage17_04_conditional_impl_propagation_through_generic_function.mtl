@@ -24,6 +24,6 @@ fun print_pair<A: Printable, B: Printable>(p: Pair<A, B>) {
 }
 
 fun main() {
-    let p := Pair(first = 5, second = 10);
+    let p := Pair { first = 5, second = 10 };
     print_pair(p);
 }

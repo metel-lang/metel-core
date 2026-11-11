@@ -11,7 +11,7 @@ fun fib(n: i64) -> i64 {
 fun unwrap_task(r: Result<Task, ValidationError>) -> Task {
     match (r) {
         Result::Ok  { value } => value,
-        Result::Err { error } => Task(title = "error", priority = Priority::Low, status = Status::Done, effort = 0),
+        Result::Err { error } => Task { title = "error", priority = Priority::Low, status = Status::Done, effort = 0 },
     }
 }
 

@@ -4,4 +4,4 @@ struct Counter {
     value: i64,
 }
 
-let c := Counter(value = true); // ERROR[T0001]
+let c := Counter { value = true }; // ERROR[T0001]

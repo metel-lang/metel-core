@@ -9,5 +9,5 @@ fun empty_from<S: Source<Item = { .token: String }>>(source: S) -> {} {
     rest
 }
 fun main() {
-    let empty: {} := empty_from(Holder(value = { .token = "owned" }));
+    let empty: {} := empty_from(Holder { value = { .token = "owned" } });
 }

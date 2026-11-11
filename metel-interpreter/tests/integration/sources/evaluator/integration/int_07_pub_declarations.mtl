@@ -15,13 +15,13 @@ fun classify(d: Direction) -> i64 {
 }
 
 pub fun main() -> () {
-    let p := Point(x = 3, y = 4);
+    let p := Point { x = 3, y = 4 };
     assert(distance(p) == 7);
 
     let d := Direction::East;
     assert(classify(d) == 3);
 
-    let p2 := Point(x = 10, y = 20);
+    let p2 := Point { x = 10, y = 20 };
     assert(p2.x == 10);
     assert(p2.y == 20);
 }

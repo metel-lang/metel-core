@@ -8,6 +8,6 @@ struct Other { fd: i64 }
 fun get_fd<record R>(h: Handle.{ .fd, ..R }) -> i64 { h.fd }
 
 fun main() {
-    let o := Other(fd = 1);
+    let o := Other { fd = 1 };
     let _ := get_fd(o);
 }

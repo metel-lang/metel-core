@@ -24,7 +24,7 @@ extend Outer {
 }
 
 fun main() {
-    var o := Outer(inner = Inner(n = 0));
+    var o := Outer { inner = Inner { n = 0 } };
     o.bump();
     o.bump();
     assert(o.peek() == 2);

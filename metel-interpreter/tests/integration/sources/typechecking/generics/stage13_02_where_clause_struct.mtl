@@ -20,5 +20,5 @@ extend Key: Serializable {
 }
 
 fun make_cache(k: Key, v: i64) -> Cache<Key, i64> {
-    Cache(key = k, value = v)
+    Cache { key = k, value = v }
 }

@@ -10,7 +10,7 @@ fun right_of(r: { .right: i64 }) -> i64 { r.right }
 
 fun main() {
     // Struct: narrowed to Handle.{ fd }, then moved in by value once.
-    let h := Handle(fd = 3, name = "x");
+    let h := Handle { fd = 3, name = "x" };
     let hn := h.name;
     assert(take_fd(h) == 3);
 
@@ -20,7 +20,7 @@ fun main() {
     assert(right_of(r) == 9);
 
     // A narrowed binding read (not moved) as a whole is fine too.
-    let g := Handle(fd = 4, name = "y");
+    let g := Handle { fd = 4, name = "y" };
     let gn := g.name;
     let alias := g.{ .fd };
     assert(alias.fd == 4);

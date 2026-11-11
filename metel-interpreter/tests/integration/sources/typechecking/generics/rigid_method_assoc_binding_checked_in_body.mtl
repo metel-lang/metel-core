@@ -11,4 +11,4 @@ extend Host {
     }
 }
 
-fun main() { Host().wrong(IntBox(value = 1)); }
+fun main() { Host {}.wrong(IntBox { value = 1 }); }

@@ -4,4 +4,4 @@ pub record Point { x: i64, y: i64 }
 // A `struct`'s unmarked field stays module-private; `pub` still means public there.
 pub struct Counter { pub total: i64, hidden: i64 }
 
-pub fun counter() -> Counter { Counter(total = 3, hidden = 4) }
+pub fun counter() -> Counter { Counter { total = 3, hidden = 4 } }

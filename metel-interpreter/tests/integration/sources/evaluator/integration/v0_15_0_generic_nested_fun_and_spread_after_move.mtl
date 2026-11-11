@@ -2,7 +2,7 @@
 record Pair { a: String, b: i64 }
 fun keep<T>(x: T) -> T {
     fun id(p: Pair) -> Pair { return p; }
-    let p := Pair(a = "s", b = 2);
+    let p := Pair { a = "s", b = 2 };
     let moved := p.a;
     let rest := { ..p };
     let _ := moved;

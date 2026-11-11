@@ -27,8 +27,8 @@ extend<U> Wrap<U>: Source {
 }
 
 fun main() {
-    assert(Box(v = 1).again() == 3);
-    assert(Wrap(v = "s").bare() == 9);
-    assert(Wrap(v = "s").qualified() == 9);
+    assert(Box { v = 1 }.again() == 3);
+    assert(Wrap { v = "s" }.bare() == 9);
+    assert(Wrap { v = "s" }.qualified() == 9);
     println("ok");
 }

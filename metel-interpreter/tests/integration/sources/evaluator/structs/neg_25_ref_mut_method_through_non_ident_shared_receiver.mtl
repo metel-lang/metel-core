@@ -13,7 +13,7 @@ extend Counter {
 }
 
 fun main() {
-    var c := Counter(value = 0);
+    var c := Counter { value = 0 };
     let pair: (&Counter, i64) := (&c, 1);
     pair.0.increment();
 }

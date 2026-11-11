@@ -1,5 +1,0 @@
-struct Point { x: i64, y: i64 }
-
-fun main() {
-    let p := Point(x = 1, z = 2);
-}

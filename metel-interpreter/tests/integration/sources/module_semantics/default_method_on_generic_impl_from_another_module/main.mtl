@@ -8,7 +8,7 @@ struct Box<U> { pub v: U }
 extend<U> Box<U>: Describe { fun describe(self) -> i64 { 4 } }
 
 fun main() {
-    assert(Box(v = "s").twice() == 8);
-    assert(Box(v = 1).twice() == 8);
+    assert(Box { v = "s" }.twice() == 8);
+    assert(Box { v = 1 }.twice() == 8);
     println("ok");
 }

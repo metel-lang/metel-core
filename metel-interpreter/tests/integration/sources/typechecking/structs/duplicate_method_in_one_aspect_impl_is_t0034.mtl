@@ -6,4 +6,4 @@ extend S: Tag {
     fun t(&self) -> i64 { 1 }
     fun t(&self) -> i64 { 2 }
 }
-fun main() { let s := S(); println("${s.t()}"); }
+fun main() { let s := S {}; println("${s.t()}"); }

@@ -7,12 +7,12 @@ struct Counter {
 
 extend Counter {
     fun new(step: i64) -> Counter {
-        Counter(value = 0, step = step)
+        Counter { value = 0, step = step }
     }
 
     // value receiver: returns a new Counter, does not mutate in place
     fun with_value(&self, n: i64) -> Counter {
-        Counter(value = n, step = self.step)
+        Counter { value = n, step = self.step }
     }
 
     // &self: read-only, non-consuming
@@ -134,15 +134,15 @@ struct Builder {
 
 extend Builder {
     fun new() -> Builder {
-        Builder(x = 0, y = 0, label = "")
+        Builder { x = 0, y = 0, label = "" }
     }
 
     fun set_x(self, x: i64) -> Builder {
-        Builder(x = x, y = self.y, label = self.label)
+        Builder { x = x, y = self.y, label = self.label }
     }
 
     fun set_y(self, y: i64) -> Builder {
-        Builder(x = self.x, y = y, label = self.label)
+        Builder { x = self.x, y = y, label = self.label }
     }
 
     fun sum(&self) -> i64 {

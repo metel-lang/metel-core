@@ -11,7 +11,7 @@ extend Resource: Drop { fun drop(self) {} }
 // Pair<Resource, Resource> DOES implement Drop via the conditional impl,
 // violating the !Drop bound. Before the fix, this would incorrectly succeed.
 fun bad(r: Resource) -> Arena<Pair<Resource, Resource>> {
-    Arena(items = [Pair(first = r, second = r)])  // ERROR[T0012]
+    Arena { items = [Pair { first = r, second = r }] }  // ERROR[T0012]
 }
 
 fun main() {}

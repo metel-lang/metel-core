@@ -13,6 +13,6 @@ extend<T> Wrap<T> {
 }
 
 fun main() {
-    let w := Wrap(value = 3);
+    let w := Wrap { value = 3 };
     w.get();
 }

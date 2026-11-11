@@ -5,6 +5,6 @@ aspect Mapper {
 struct Item {}
 extend Item: Mapper { fun ordinary(&self) -> i64 { 1 } }
 fun main() {
-    let value: (dyn Mapper, i64) := (Item(), 0);
+    let value: (dyn Mapper, i64) := (Item {}, 0);
     value.0.identity(1); // ERROR[T0003]
 }

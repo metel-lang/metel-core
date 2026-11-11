@@ -4,12 +4,12 @@
 // From coercion for arbitrary type pairs is deferred to #13.
 
 fun inner() -> Result<i64, String> {
-    Result::Ok(value = 42)
+    Result::Ok { value = 42 }
 }
 
 fun outer() -> Result<i64, i64> {
     let x := inner()?; // ERROR[T0007]
-    Result::Ok(value = x)
+    Result::Ok { value = x }
 }
 
 fun main() {}

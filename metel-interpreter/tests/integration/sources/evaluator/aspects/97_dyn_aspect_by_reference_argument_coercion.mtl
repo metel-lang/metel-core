@@ -17,5 +17,5 @@ extend Rock: Display {
 fun show(x: &dyn Display) -> String { x.to_string() }
 
 fun main() {
-    assert(show(&Rock( )) == "rock");
+    assert(show(&Rock { }) == "rock");
 }

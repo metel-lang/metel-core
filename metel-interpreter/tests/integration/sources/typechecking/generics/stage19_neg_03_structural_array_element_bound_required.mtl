@@ -12,6 +12,6 @@ fun show<T: Display>(x: T) -> String {
 }
 
 fun main() {
-    let items := [Opaque(value = 1), Opaque(value = 2)];
+    let items := [Opaque { value = 1 }, Opaque { value = 2 }];
     let _ := show(items); // ERROR[T0012]
 }

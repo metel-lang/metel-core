@@ -3,5 +3,5 @@
 import lib::Pair;
 
 fun main() {
-    let p: Pair<i64, String> := Pair(first = 5, second = 6);
+    let p: Pair<i64, String> := Pair { first = 5, second = 6 };
 }

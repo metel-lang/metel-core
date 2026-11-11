@@ -5,7 +5,7 @@
 record Wrap<record R> { data: { .x: i64, ..R } }
 
 fun main() {
-    var wrap := Wrap(data = { .x = 1, .y = 2 });
+    var wrap := Wrap { data = { .x = 1, .y = 2 } };
     wrap.data.x = 3;
     assert(wrap.data.x == 3);
     assert(wrap.data.y == 2);

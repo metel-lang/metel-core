@@ -12,5 +12,5 @@ extend S: A { fun a(&self) -> i64 { 4 } }
 fun sum<T: A>(x: &T) -> i64 { x.a() + x.b() + x.c() + x.d() }
 
 fun main() {
-    assert(sum(&S(n = 0)) == 10);
+    assert(sum(&S { n = 0 }) == 10);
 }

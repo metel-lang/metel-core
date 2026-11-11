@@ -8,11 +8,11 @@ type P := Point;
 type D := Dir;
 
 fun origin() -> P {
-    P(x = 0, y = 0)
+    P { x = 0, y = 0 }
 }
 
 fun main() {
-    let p := P(x = 3, y = 4);
+    let p := P { x = 3, y = 4 };
     assert(p.x == 3);
 
     let just_x := p.{ .x };

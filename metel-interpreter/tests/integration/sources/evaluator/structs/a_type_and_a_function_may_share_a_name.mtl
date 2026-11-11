@@ -7,7 +7,7 @@ enum Bar { A }
 let Bar := 7;
 
 fun main() {
-    let a := Foo(x = 1);
+    let a := Foo { x = 1 };
     assert(a.x == 1);
     assert(Foo() == 5);
     let b := Bar::A;

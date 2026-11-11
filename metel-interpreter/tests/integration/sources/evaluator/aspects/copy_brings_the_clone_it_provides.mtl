@@ -11,11 +11,11 @@ fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
 fun via_copy<T: Copy>(x: &T) -> T { need_clone(x) }
 
 fun main() {
-    let p := Point(x = 1, y = 2);
+    let p := Point { x = 1, y = 2 };
     assert(p.clone().x == 1);
     assert(dup(&p).y == 2);
-    assert(via_copy(&Pixel(v = 3)).v == 3);
-    assert(Wrapper(v = 5).clone().v == 5);
+    assert(via_copy(&Pixel { v = 3 }).v == 3);
+    assert(Wrapper { v = 5 }.clone().v == 5);
     let down := Dir::Down;
     match (need_clone(&down)) { Dir::Down => assert(true), Dir::Up => assert(false) }
 }

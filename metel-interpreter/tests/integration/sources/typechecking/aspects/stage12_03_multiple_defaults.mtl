@@ -23,7 +23,7 @@ extend Value: Ops {
 }
 
 fun main() {
-    let v := Value(n = 4);
+    let v := Value { n = 4 };
     let _: i64 := v.doubled();
     let _: i64 := v.tripled();
 }

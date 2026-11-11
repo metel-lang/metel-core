@@ -1,6 +1,6 @@
 struct Rock { }
 
-fun make() -> dyn Display { Rock( ) }
+fun make() -> dyn Display { Rock { } }
 
 fun main() {
     make();

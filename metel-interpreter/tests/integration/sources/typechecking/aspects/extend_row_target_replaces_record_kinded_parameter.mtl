@@ -10,6 +10,6 @@ record P { x: f64 }
 
 fun main() {
     assert({ .x = 1.0, .y = 2.0 }.f() == 1);
-    assert(P(x = 3.0).f() == 1);
+    assert(P { x = 3.0 }.f() == 1);
     println("ok");
 }

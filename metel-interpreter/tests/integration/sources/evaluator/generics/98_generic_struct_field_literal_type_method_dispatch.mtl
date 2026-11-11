@@ -20,7 +20,7 @@
 struct Pair<A, B> { first: A, second: B }
 
 fun main() {
-    let p := Pair(first = 1, second = "one");
+    let p := Pair { first = 1, second = "one" };
 
     // The issue's own repro: direct method dispatch on an unannotated field.
     assert(p.first.to_string() == "1");
@@ -37,7 +37,7 @@ fun main() {
 
     // Float literals are tagged and defaulted the same way as integers —
     // cover that path too, not just i64.
-    let q := Pair(first = 2.5, second = "half");
+    let q := Pair { first = 2.5, second = "half" };
     assert(q.first.to_string() == "2.5");
 
     // Two hops through unannotated locals, to exercise a longer chain of

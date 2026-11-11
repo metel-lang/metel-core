@@ -11,7 +11,7 @@ extend<record R: !{ .right }> { ..R }: State {
 }
 
 fun main() {
-    var pair: PairAlias := Pair(left = "left", right = "right");
+    var pair: PairAlias := Pair { left = "left", right = "right" };
     assert(pair.state() == 1);
     let left := pair.left;
     let partial := pair.clone();

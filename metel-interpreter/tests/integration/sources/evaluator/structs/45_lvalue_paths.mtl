@@ -8,7 +8,7 @@ fun main() {
     struct Container { items: [i64; 3] }
 
     // Chained field assignment: a.b.c = val (#110)
-    var ln := Line(start = Point(x = 0, y = 0), end = Point(x = 10, y = 10));
+    var ln := Line { start = Point { x = 0, y = 0 }, end = Point { x = 10, y = 10 } };
     ln.start.x = 5;
     ln.start.y = 7;
     ln.end.x   = 20;
@@ -18,7 +18,7 @@ fun main() {
     assert(ln.end.y   == 10);  // unchanged
 
     // Index assignment via a field-access receiver: a.field[i] = val (#110)
-    var c := Container(items = [1, 2, 3]);
+    var c := Container { items = [1, 2, 3] };
     c.items[1] = 99;
     assert(c.items[1] == 99);
     assert(c.items[0] == 1);   // unchanged

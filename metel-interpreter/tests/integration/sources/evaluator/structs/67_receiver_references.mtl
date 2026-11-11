@@ -13,7 +13,7 @@ extend Counter {
 }
 
 fun main() {
-    var counter := Counter(value = 0);
+    var counter := Counter { value = 0 };
     counter.increment();
     counter.increment();
     assert(counter.current() == 2);

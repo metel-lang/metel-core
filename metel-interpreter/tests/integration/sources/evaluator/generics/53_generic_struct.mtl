@@ -9,24 +9,24 @@ struct Pair<A, B> {
 
 fun main() {
     // Box<i64>
-    let b_int := Box(value = 42);
+    let b_int := Box { value = 42 };
     assert(b_int.value == 42);
 
     // Box<boolean>
-    let b_bool := Box(value = true);
+    let b_bool := Box { value = true };
     assert(b_bool.value);
 
     // Box<String>
-    let b_str := Box(value = "hello");
+    let b_str := Box { value = "hello" };
     assert(b_str.value == "hello");
 
     // Pair<i64, boolean>
-    let p := Pair(first = 10, second = false);
+    let p := Pair { first = 10, second = false };
     assert(p.first == 10);
     assert(!p.second);
 
     // Pair<boolean, i64>
-    let q := Pair(first = true, second = 99);
+    let q := Pair { first = true, second = 99 };
     assert(q.first);
     assert(q.second == 99);
 }

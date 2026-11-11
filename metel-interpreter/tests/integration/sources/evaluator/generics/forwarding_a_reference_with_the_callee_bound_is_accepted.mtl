@@ -5,5 +5,5 @@ fun label<T: Named>(x: &T) -> String { x.name() }
 fun pass<T: Named>(x: &T) -> String { label(x) }
 
 fun main() {
-    assert(pass(&P(n = 1)) == "p");
+    assert(pass(&P { n = 1 }) == "p");
 }

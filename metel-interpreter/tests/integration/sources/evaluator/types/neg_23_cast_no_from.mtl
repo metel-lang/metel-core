@@ -5,6 +5,6 @@ struct Foo { x: i64 }
 struct Bar { y: i64 }
 
 fun main() {
-    let f := Foo(x = 1);
+    let f := Foo { x = 1 };
     let b := f as Bar; // no From<Foo> for Bar — type error
 }

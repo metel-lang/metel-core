@@ -20,7 +20,7 @@ fun first_err(xs: [i64]) -> Option<i64> {
         0 => return None,
         n => n,
     };
-    Option::Some(value = a)
+    Option::Some { value = a }
 }
 
 fun find_nonzero(arr: [i64]) -> i64 {

@@ -14,7 +14,7 @@ fun main() {
     assert(zeros[1] == 200);
     assert(zeros[2] == 5);
 
-    var gauge := Gauge(g = 1, h = 2, f = 0.5);
+    var gauge := Gauge { g = 1, h = 2, f = 0.5 };
     gauge.g += 250;
     gauge.h = -300;
     gauge.f = gauge.f + 1.5;
@@ -30,8 +30,8 @@ fun main() {
     assert(nested.1.1 == 2.5);
     assert(nested.0 == 9);
 
-    var level := Level::On(v = 1);
-    level = Level::On(v = 255);
+    var level := Level::On { v = 1 };
+    level = Level::On { v = 255 };
     match (level) {
         On { v } => {
             assert(v == 255);
@@ -41,7 +41,7 @@ fun main() {
     }
 
     var maybe: Option<u8> := Option::None;
-    maybe = Option::Some(value = 7);
+    maybe = Option::Some { value = 7 };
     assert(match (maybe) { Some { value } => value == 7, None => false });
 
     var pair: [u8; 2] := [0, 0];

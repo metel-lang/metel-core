@@ -3,6 +3,6 @@ struct Thing {
 }
 
 fun main() {
-    let t := Thing(value = 1);
+    let t := Thing { value = 1 };
     println(t.value.to_string());
 }

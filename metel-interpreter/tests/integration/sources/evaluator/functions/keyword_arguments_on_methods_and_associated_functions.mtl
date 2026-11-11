@@ -5,7 +5,7 @@ struct Acc {
 }
 
 extend Acc {
-    fun new(start: i64) -> Acc { Acc(total = start) }
+    fun new(start: i64) -> Acc { Acc { total = start } }
     fun add(&self, amount: i64, times: i64) -> i64 { self.total + amount * times }
 }
 

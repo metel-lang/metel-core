@@ -9,7 +9,7 @@
 import pair_module::{Pair, Greet};
 
 fun main() {
-    let p := Pair(first = 5, second = "hello");
+    let p := Pair { first = 5, second = "hello" };
     let s: String := p.greet();
     assert(s == "pair");
 }

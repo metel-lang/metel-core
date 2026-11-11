@@ -21,12 +21,12 @@ extend<T: !Tag> Box<T>: Describe {
 fun show<D: Describe>(d: D) -> i64 { d.describe() }
 
 fun main() {
-    let tagged := Box(v = 1);
-    let plain := Box(v = "s");
+    let tagged := Box { v = 1 };
+    let plain := Box { v = "s" };
     assert(tagged.describe() == 1);
     assert(plain.describe() == 2);
     // Each by-value use gets its own value: `describe(self)` and `show` consume it.
-    assert(show(Box(v = 1)) == 1);
-    assert(show(Box(v = "s")) == 2);
+    assert(show(Box { v = 1 }) == 1);
+    assert(show(Box { v = "s" }) == 2);
     println("ok");
 }

@@ -4,5 +4,5 @@ struct No {}
 
 fun main() {
     enum Wrap<T: Tag> { Has { v: T }, Empty }
-    let w := Wrap::Has(v = No());
+    let w := Wrap::Has { v = No {} };
 }

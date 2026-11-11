@@ -6,6 +6,6 @@ struct Test {
 }
 
 fun main() {
-    let x := Test(attr = 1i8);
+    let x := Test { attr = 1i8 };
     println(x); // ERROR[T0012]
 }

@@ -5,22 +5,22 @@ struct Custom { value: i64 }
 
 extend Custom: Clone {
     fun clone(&self) -> Self {
-        Custom(value = self.value + 1)
+        Custom { value = self.value + 1 }
     }
 }
 
 fun main() {
-    let original := Outer(
+    let original := Outer {
         name = "copy",
-        inner = Inner(value = 7),
+        inner = Inner { value = 7 },
         values = [1, 2, 3],
-    );
+    };
     let copied := original.clone();
     assert(copied.name == "copy");
     assert(copied.inner.value == 7);
     assert(copied.values.to_string() == "[1, 2, 3]");
 
-    let custom_record := { .item = Custom(value = 4) };
+    let custom_record := { .item = Custom { value = 4 } };
     let custom_copy := custom_record.clone();
     assert(custom_copy.item.value == 5);
     println("ok");

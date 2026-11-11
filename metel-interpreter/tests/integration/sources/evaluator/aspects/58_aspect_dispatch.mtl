@@ -19,7 +19,7 @@ struct Rectangle {
 
 extend Circle {
     fun new(r: i64) -> Circle {
-        return Circle(radius = r);
+        return Circle { radius = r };
     }
     fun area(&self) -> i64 {
         return self.radius * self.radius;
@@ -28,7 +28,7 @@ extend Circle {
 
 extend Rectangle {
     fun new(w: i64, h: i64) -> Rectangle {
-        return Rectangle(width = w, height = h);
+        return Rectangle { width = w, height = h };
     }
 }
 

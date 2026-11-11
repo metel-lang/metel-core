@@ -540,11 +540,6 @@ pest = "label_index"
 mode = "terminal"
 name = "INT"
 [[rule]]
-pest = "spread_arg"
-mode = "named"
-name = "SpreadArgument"
-section = "Expressions"
-[[rule]]
 pest = "keyword_arg"
 mode = "named"
 name = "KeywordArgument"
@@ -633,6 +628,11 @@ section = "Expressions"
 pest = "capture_item"
 mode = "named"
 name = "CaptureItem"
+section = "Expressions"
+[[rule]]
+pest = "struct_literal"
+mode = "named"
+name = "StructLiteral"
 section = "Expressions"
 [[rule]]
 pest = "record_lit"
@@ -961,3 +961,9 @@ name = "IDENTIFIER"
 [[rule]]
 pest = "keyword"
 mode = "omit"
+
+[[rule]]
+pest = "struct_field_init"
+mode = "named"
+name = "StructFieldInit"
+section = "Expressions"

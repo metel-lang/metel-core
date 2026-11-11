@@ -10,5 +10,5 @@ fun use_result(r: Result<i64, !>) -> i64 {
 }
 
 fun main() -> i64 {
-    use_result(Result::Ok(value = 3))
+    use_result(Result::Ok { value = 3 })
 }

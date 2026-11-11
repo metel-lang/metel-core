@@ -1036,14 +1036,8 @@ impl BodyFreezer<'_, '_> {
             Expr::TupleAccess { object, index, .. } => self.tuple_field(object, *index, &ty)?,
             Expr::Index { object, index, .. } => self.index(object, index, &ty)?,
             Expr::Call {
-                callee,
-                type_args,
-                args,
-                span,
+                callee, args, span, ..
             } => {
-                if self.facts.definition_construction(span).is_some() {
-                    return self.construction_call(callee, type_args, args, span);
-                }
                 let args = self.positional_call_arguments(callee, args, span)?;
                 AbstractExprKind::Call(self.call(callee, &args, span, &ty)?)
             }
@@ -1058,7 +1052,16 @@ impl BodyFreezer<'_, '_> {
                 args,
                 span,
                 ..
-            } => self.method_call_kind(receiver, method, args, span, &ty)?,
+            } => {
+                if self.facts.definition_array_length(span) {
+                    AbstractExprKind::ArrayLength(Box::new(self.expression(receiver)?))
+                } else {
+                    let args = self.positional_method_arguments(receiver, method, args, span)?;
+                    AbstractExprKind::MethodCall(
+                        self.method_call(receiver, method, &args, span, &ty)?,
+                    )
+                }
+            }
             Expr::Match(matched) => self.match_expression(matched, &ty)?,
             Expr::PropagateError { expr, span } => self.propagate_error(expr, span)?,
             Expr::Return(_)
@@ -1069,45 +1072,6 @@ impl BodyFreezer<'_, '_> {
             _ => self.operator(expression, &ty)?,
         };
         Self::finish_expression(ty, kind, expression.span())
-    }
-
-    /// A method call, or the array-length builtin it may resolve to.
-    fn method_call_kind(
-        &self,
-        receiver: &Expr,
-        method: &str,
-        args: &[Expr],
-        span: &Span,
-        ty: &AbstractType,
-    ) -> Result<AbstractExprKind, String> {
-        if self.facts.definition_array_length(span) {
-            return Ok(AbstractExprKind::ArrayLength(Box::new(
-                self.expression(receiver)?,
-            )));
-        }
-        let args = self.positional_method_arguments(receiver, method, args, span)?;
-        Ok(AbstractExprKind::MethodCall(
-            self.method_call(receiver, method, &args, span, ty)?,
-        ))
-    }
-
-    /// RFC-0100: a construction call is the struct literal inference checked.
-    fn construction_call(
-        &self,
-        callee: &Expr,
-        type_args: &[crate::data::ast::TypeExpr],
-        args: &[Expr],
-        span: &Span,
-    ) -> Result<AbstractExpr, String> {
-        let names = self
-            .facts
-            .definition_construction(span)
-            .ok_or("construction call lost its field names")?;
-        let literal = super::super::super::construction_call::literal_for(
-            callee, type_args, args, span, names, false,
-        )
-        .map_err(|error| error.to_string())?;
-        self.expression(&literal)
     }
 
     /// The call's arguments in declaration order: a keyword call is bound exactly as inference and

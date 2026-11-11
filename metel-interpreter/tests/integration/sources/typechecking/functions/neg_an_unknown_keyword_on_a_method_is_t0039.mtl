@@ -7,6 +7,6 @@ extend Acc {
 }
 
 fun main() {
-    let acc := Acc(total = 1);
+    let acc := Acc { total = 1 };
     let _ := acc.add(nope = 3);
 }

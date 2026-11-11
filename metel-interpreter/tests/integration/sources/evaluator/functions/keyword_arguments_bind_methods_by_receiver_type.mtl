@@ -17,8 +17,8 @@ extend Right {
 }
 
 fun main() {
-    let left := Left(n = 1);
-    let right := Right(n = 100);
+    let left := Left { n = 1 };
+    let right := Right { n = 100 };
     assert(left.put(extra = 3, value = 2) == 24);
     assert(right.put(item = 5) == 105);
     let through := &right;

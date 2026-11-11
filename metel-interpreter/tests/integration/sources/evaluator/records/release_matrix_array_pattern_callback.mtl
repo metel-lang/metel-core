@@ -9,7 +9,7 @@ fun sum_head<record R>(value: { .samples: Samples, ..R }) -> i64 where ..R: Copy
 }
 
 fun main() {
-    let batch := Batch(samples = [1, 2, 3], label = "batch");
+    let batch := Batch { samples = [1, 2, 3], label = "batch" };
     let { .label, ..rest } := batch;
     assert(label == "batch");
     let copied := rest.clone();

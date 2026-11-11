@@ -3,5 +3,5 @@ struct Rock { }
 fun show(x: &dyn Display) -> String { x.to_string() }
 
 fun main() {
-    show(&Rock( ));
+    show(&Rock { });
 }

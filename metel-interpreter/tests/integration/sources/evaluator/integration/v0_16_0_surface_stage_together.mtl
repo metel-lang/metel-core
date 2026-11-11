@@ -1,10 +1,10 @@
-// The v0.16.0 surface stage (metel-core#1868): `pub`, `=` as a statement, construction by call, keyword
+// The v0.16.0 surface stage (metel-core#1868): `pub`, `=` as a statement, nominal brace construction (RFC-0100 rolled back by #1945), keyword
 // arguments at every call, dotted row labels, negative row-bound entries and replacement in a record spread,
 // in one program, so a contradiction between any two of them is a failure here.
 pub struct Reading { pub sensor: i64, value: i64 }
 
 extend Reading {
-    pub fun new(sensor: i64, value: i64) -> Reading { Self(sensor = sensor, value = value) }
+    pub fun new(sensor: i64, value: i64) -> Reading { Reading { sensor, value } }
     pub fun scaled(&self, by: i64, offset: i64) -> i64 { self.value * by + offset }
 }
 
@@ -39,7 +39,7 @@ fun describe(e: Event) -> i64 {
 }
 
 fun main() {
-    // construction by call, positional and keyword, in either order
+    // ordinary factory calls, positional and keyword, in either order
     let a := Reading::new(sensor = 1, value = 5);
     let b := Reading::new(value = 6, sensor = 2);
     assert(a.sensor + b.sensor == 3);
@@ -57,8 +57,8 @@ fun main() {
     let { .id, .level } := sample;
     assert(id == 7 && level == 4);
 
-    // enum struct-variant built by a call with keywords, destructured with braces
-    assert(describe(Event::Sample(level = 4, id = 7)) == 704);
+    // enum struct-variant built and destructured with nominal braces
+    assert(describe(Event::Sample { level = 4, id = 7 }) == 704);
     assert(describe(Event::Idle) == 0);
 
     // a record spread replacing a present field and adding an absent one
@@ -66,13 +66,13 @@ fun main() {
     assert(bumped.level == 5 && bumped.id == 7 && bumped.note == 1);
 
     // a negative row-bound entry selects the impl; a bound with a negative entry accepts the record
-    let tagged := Frame(seq = 1, data = { .tag = 9 });
-    let plain := Frame(seq = 2, data = { .count = 3 });
+    let tagged := Frame { seq = 1, data = { .tag = 9 } };
+    let plain := Frame { seq = 2, data = { .count = 3 } };
     assert(tagged.kind() == 1 && plain.kind() == 2);
     assert(clamp({ .level = 8, .extra = 1 }) == 8);
 
     // a construction call whose arguments carry side effects evaluates them as written
-    var counter := Counter(0);
-    let first := Reading(value = counter.next(), sensor = counter.next() * 10);
+    var counter := Counter { n = 0 };
+    let first := Reading { value = counter.next(), sensor = counter.next() * 10 };
     assert(first.value == 1 && first.sensor == 20);
 }

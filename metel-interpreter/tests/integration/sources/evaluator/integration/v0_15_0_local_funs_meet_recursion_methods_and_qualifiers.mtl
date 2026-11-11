@@ -42,5 +42,5 @@ fun main() {
     assert(pure(1) == 3);
     assert(pure(2) == 5);
 
-    assert(Holder(n = 1).run() == 3);
+    assert(Holder { n = 1 }.run() == 3);
 }

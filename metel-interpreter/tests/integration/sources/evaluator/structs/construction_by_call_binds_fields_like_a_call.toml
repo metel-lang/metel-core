@@ -1,2 +1,0 @@
-[options]
-spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1", "spec.declarations.structs.instantiation-and-field-access.legality-2", "spec.declarations.structs.instantiation-and-field-access.dynamics-2"]

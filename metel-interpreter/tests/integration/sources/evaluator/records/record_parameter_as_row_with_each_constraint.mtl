@@ -19,7 +19,7 @@ fun main() {
     let each := 3;
     assert(each == 3);
 
-    let p := Point(x = 1, name = 2);
+    let p := Point { x = 1, name = 2 };
     assert(get_x(p) == 1);
     assert(rest_of(p).name == 2);
 

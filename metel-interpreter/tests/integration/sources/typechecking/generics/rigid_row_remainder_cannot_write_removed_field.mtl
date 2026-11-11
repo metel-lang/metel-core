@@ -8,6 +8,6 @@ where R = { .token: String, ..Rest } {
 }
 
 fun main() {
-    var value := Session(data = { .extra = 1 });
+    var value := Session { data = { .extra = 1 } };
     write_removed(&var value);
 }

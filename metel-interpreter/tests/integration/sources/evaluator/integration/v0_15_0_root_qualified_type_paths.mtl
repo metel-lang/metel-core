@@ -3,7 +3,7 @@
 enum Kind { A, B { n: i64 } }
 struct Counter { n: i64 }
 extend Counter {
-    fun new() -> Counter { return Counter(n = 7); }
+    fun new() -> Counter { return Counter { n = 7 }; }
     fun kind() -> i64 { return 3; }
 }
 
@@ -13,10 +13,10 @@ fun main() {
     assert(self::Counter::new().n == 7);
     let make := root::Counter::new;
     assert(make().n == 7);
-    let c := root::Counter(n = 2);
+    let c := root::Counter { n = 2 };
     assert(c.n == 2);
     let k := root::Kind::A;
     assert(match (k) { A => true, B { n } => false });
-    let b := root::Kind::B(n = 5);
+    let b := root::Kind::B { n = 5 };
     assert(match (b) { A => false, B { n } => n == 5 });
 }

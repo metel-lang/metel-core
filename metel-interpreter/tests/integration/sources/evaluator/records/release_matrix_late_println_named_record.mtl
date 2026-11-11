@@ -4,7 +4,7 @@
 record P { x: i64, y: i64 }
 
 fun main() {
-    let r := P(x = 1, y = 2);
+    let r := P { x = 1, y = 2 };
     println(r.to_string());
     println(r);
 }
