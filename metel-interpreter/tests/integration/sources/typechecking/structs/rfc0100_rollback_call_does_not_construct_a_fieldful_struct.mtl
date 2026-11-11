@@ -1,0 +1,3 @@
+// metel-core#1945: a normal call does not fall back to the type namespace.
+struct Ticket { value: i64 }
+fun main() { let ticket := Ticket(1); }

@@ -2,5 +2,5 @@ pub record Packet<record R> { id: i64, data: { ..R } }
 pub type EmptyPacket := Packet<{}>;
 pub struct Box<T> { pub value: T }
 pub type NumericBox := Box<i64>;
-pub fun make_packet() -> EmptyPacket { Packet(id = 7, data = {}) }
-pub fun make_box() -> NumericBox { Box(value = 9) }
+pub fun make_packet() -> EmptyPacket { Packet { id = 7, data = {} } }
+pub fun make_box() -> NumericBox { Box { value = 9 } }

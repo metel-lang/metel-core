@@ -16,8 +16,8 @@ fun main() {
     assert(p.to_string() == "{ s: hi, x: 1, y: 2.5 }");
     assert("${p}" == "{ s: hi, x: 1, y: 2.5 }");
     assert("${{ .a = 1, .b = { .c = 2 } }}" == "{ a: 1, b: { c: 2 } }");
-    assert("${{ .t = Tag(v = 1), .n = 7 }}" == "{ n: 7, t: tag }");
-    let pt := Pt(x = 3, y = 4);
+    assert("${{ .t = Tag { v = 1 }, .n = 7 }}" == "{ n: 7, t: tag }");
+    let pt := Pt { x = 3, y = 4 };
     assert(pt.to_string() == "Pt { x: 3, y: 4 }");
     assert(show(&pt) == "Pt { x: 3, y: 4 }");
     assert(show(&p) == "{ s: hi, x: 1, y: 2.5 }");

@@ -1,9 +1,0 @@
-// RFC-0100 section 1: the field shorthand is retired with the brace form; the call form is
-// `Point(x = x, y = y)`.
-struct Point { x: i64, y: i64 }
-
-fun main() {
-    let x := 1;
-    let y := 2;
-    let p := Point { x, y };
-}

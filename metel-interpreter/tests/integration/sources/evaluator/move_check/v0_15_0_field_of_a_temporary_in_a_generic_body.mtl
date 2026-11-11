@@ -5,7 +5,7 @@ struct Inner { n: i64 }
 struct Outer { inner: Inner, tag: i64 }
 
 fun make(n: i64) -> Outer {
-    return Outer(inner = Inner(n = n), tag = n);
+    return Outer { inner = Inner { n = n }, tag = n };
 }
 
 fun read<T: Copy>(x: T) -> T {

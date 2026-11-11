@@ -21,6 +21,6 @@ extend S: B {
 }
 
 fun main() {
-    let s := S(value = 0);
+    let s := S { value = 0 };
     let _n := s.label();
 }

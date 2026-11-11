@@ -1,6 +1,0 @@
-// RFC-0100 section 5: a struct is built by a call, so the brace literal is the ordinary parse error.
-struct Point { x: i64, y: i64 }
-
-fun main() {
-    let p := Point { x = 1, y = 2 };
-}

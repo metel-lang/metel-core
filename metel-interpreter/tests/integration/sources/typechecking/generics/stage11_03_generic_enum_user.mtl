@@ -6,11 +6,11 @@ enum Maybe<T> {
 }
 
 fun wrap_int(n: i64) -> Maybe<i64> {
-    Maybe::Some(value = n)
+    Maybe::Some { value = n }
 }
 
 fun wrap_bool(b: boolean) -> Maybe<boolean> {
-    Maybe::Some(value = b)
+    Maybe::Some { value = b }
 }
 
 fun unwrap_or(m: Maybe<i64>, default: i64) -> i64 {

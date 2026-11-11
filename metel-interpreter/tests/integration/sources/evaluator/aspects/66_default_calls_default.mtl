@@ -23,7 +23,7 @@ extend Measurement: Ops {
 }
 
 fun main() {
-    let m := Measurement(raw = 7);
+    let m := Measurement { raw = 7 };
     assert(m.raw() == 7);
     assert(m.scaled() == 70);
     assert(m.summary() == "raw=7 scaled=70");

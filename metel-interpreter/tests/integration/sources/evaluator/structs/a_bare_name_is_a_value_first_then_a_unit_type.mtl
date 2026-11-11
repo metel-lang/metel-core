@@ -11,6 +11,6 @@ fun Both() -> i64 {
 
 fun main() {
     let u := Unit;
-    let b := Both();
+    let b := Both {};
     assert(Both() == 4);
 }

@@ -3,6 +3,6 @@ struct Plain { n: i64 }
 record NotClone { value: Plain }
 
 fun main() {
-    let value := NotClone(value = Plain(n = 1));
+    let value := NotClone { value = Plain { n = 1 } };
     let _copy := value.clone();
 }

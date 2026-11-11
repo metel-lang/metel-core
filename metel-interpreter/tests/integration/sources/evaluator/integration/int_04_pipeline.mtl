@@ -35,13 +35,13 @@ struct AppError   { msg: String }
 
 extend AppError: From<LexError> {
     fun from(value: LexError) -> AppError {
-        AppError(msg = "lex: " + value.msg)
+        AppError { msg = "lex: " + value.msg }
     }
 }
 
 extend AppError: From<ParseError> {
     fun from(value: ParseError) -> AppError {
-        AppError(msg = "parse: " + value.msg)
+        AppError { msg = "parse: " + value.msg }
     }
 }
 
@@ -66,7 +66,7 @@ extend Number: Summarizable {
 struct NumberList { data: [i64], pos: i64 }
 
 extend NumberList {
-    fun new(data: [i64]) -> NumberList { NumberList(data = data, pos = 0) }
+    fun new(data: [i64]) -> NumberList { NumberList { data = data, pos = 0 } }
     fun len(&self) -> i64 { self.data.len() }
 }
 
@@ -75,7 +75,7 @@ extend NumberList: Iterable<i64> {
         if (self.pos < self.data.len()) {
             let v := self.data[self.pos as u64];
             self.pos = self.pos + 1;
-            Option::Some(value = v)
+            Option::Some { value = v }
         } else {
             None
         }
@@ -85,17 +85,17 @@ extend NumberList: Iterable<i64> {
 // ── Fallible token parser ──────────────────────────────────────────────────────
 
 fun lex_token(s: String) -> Result<Token, LexError> {
-    if (s == "1") { Result::Ok(value = Token(kind = "num", value = 1)) }
-    else if (s == "2") { Result::Ok(value = Token(kind = "num", value = 2)) }
-    else if (s == "3") { Result::Ok(value = Token(kind = "num", value = 3)) }
-    else { Result::Err(error = LexError(msg = "unknown token: " + s)) }
+    if (s == "1") { Result::Ok { value = Token { kind = "num", value = 1 } } }
+    else if (s == "2") { Result::Ok { value = Token { kind = "num", value = 2 } } }
+    else if (s == "3") { Result::Ok { value = Token { kind = "num", value = 3 } } }
+    else { Result::Err { error = LexError { msg = "unknown token: " + s } } }
 }
 
 fun parse_number(t: Token) -> Result<Number, ParseError> {
     if (t.kind == "num") {
-        Result::Ok(value = Number(raw = t.value))
+        Result::Ok { value = Number { raw = t.value } }
     } else {
-        Result::Err(error = ParseError(msg = "expected num, got " + t.kind))
+        Result::Err { error = ParseError { msg = "expected num, got " + t.kind } }
     }
 }
 
@@ -103,26 +103,26 @@ fun parse_number(t: Token) -> Result<Number, ParseError> {
 fun pipeline_step(s: String) -> Result<Number, AppError> {
     let tok := match (lex_token(s)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err(error = error as AppError); },
+        Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
     let num := match (parse_number(tok)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err(error = error as AppError); },
+        Result::Err { error } => { return Result::Err { error = error as AppError }; },
     };
-    Result::Ok(value = num)
+    Result::Ok { value = num }
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
 
 fun main() {
     // Aspect methods: Transformable
-    let n5 := Number(raw = 5);
+    let n5 := Number { raw = 5 };
     assert(n5.double() == 10);
     assert(n5.negate() == -5);
 
     // Aspect methods: Summarizable
     assert(n5.summary() == "Number(5)");
-    let n0 := Number(raw = 0);
+    let n0 := Number { raw = 0 };
     assert(n0.summary() == "Number(0)");
 
     // to_string on i64
@@ -168,12 +168,12 @@ fun main() {
     };
 
     // From<LexError> for AppError: direct conversion
-    let le := LexError(msg = "oops");
+    let le := LexError { msg = "oops" };
     let ae := le as AppError;
     assert(ae.msg == "lex: oops");
 
     // From<ParseError> for AppError: direct conversion
-    let pe := ParseError(msg = "bad");
+    let pe := ParseError { msg = "bad" };
     let ae2 := pe as AppError;
     assert(ae2.msg == "parse: bad");
 

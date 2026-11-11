@@ -11,5 +11,5 @@ extend Host {
 }
 
 fun main() {
-    Host().read_removed(Session(data = { .extra = 1 }));
+    Host {}.read_removed(Session { data = { .extra = 1 } });
 }

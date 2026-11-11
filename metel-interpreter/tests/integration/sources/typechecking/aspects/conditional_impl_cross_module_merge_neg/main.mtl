@@ -6,7 +6,7 @@
 import pair_module::{Pair, Greet};
 
 fun main() {
-    let inner: Pair<i64, i64> := Pair(first = 1, second = 2);
-    let p := Pair(first = 5, second = inner);
+    let inner: Pair<i64, i64> := Pair { first = 1, second = 2 };
+    let p := Pair { first = 5, second = inner };
     let s: String := p.greet(); // ERROR[T0012]
 }

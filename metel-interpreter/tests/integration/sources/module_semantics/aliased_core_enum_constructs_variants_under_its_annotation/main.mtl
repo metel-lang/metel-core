@@ -3,8 +3,8 @@
 import std::core::Result as CR;
 
 fun main() {
-    let ok: CR<i64, String> := CR::Ok(value = 1);
-    let bad: CR<i64, String> := CR::Err(error = "e");
+    let ok: CR<i64, String> := CR::Ok { value = 1 };
+    let bad: CR<i64, String> := CR::Err { error = "e" };
     let a := match (ok) {
         Ok { value } => { value },
         Err { error } => { 0 },

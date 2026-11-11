@@ -20,11 +20,11 @@ fun id<X: Copy>(x: X) -> X {
 }
 
 fun main() {
-    let h := Holder(marker = 1);
+    let h := Holder { marker = 1 };
     let copied := id(h);
     assert(copied.marker == 1);
 
     // The struct `T` is untouched by any of this and still usable.
-    let real := T(s = "not copy");
+    let real := T { s = "not copy" };
     assert(real.s.len() == 8);
 }

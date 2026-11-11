@@ -4,4 +4,4 @@ extend Handle {
     pub fun add<record R>(self, t: { .x: i64, ..R }) -> i64 { self.fd + t.x }
 }
 
-pub fun make() -> Handle { Handle(fd = 1) }
+pub fun make() -> Handle { Handle { fd = 1 } }

@@ -24,5 +24,5 @@ extend Partial: Printable {
 // Partial does NOT implement Comparable.
 
 fun bad(p: Partial) -> SortedList<Partial> {
-    SortedList(items = [p]) // ERROR[T0012]
+    SortedList { items = [p] } // ERROR[T0012]
 }

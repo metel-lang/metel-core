@@ -7,12 +7,12 @@ fun describe(d: &dyn Show) -> String { d.show() }
 fun pick<T: Copy>(o: Option<T>, d: T) -> T { match (o) { Option::Some { value } => value, None => d } }
 record Pt { x: i64, y: i64 }
 fun main() {
-    assert(show_all([Num(v = 1), Num(v = 2)]) == 2);
-    assert(describe(&Num(v = 3)) == "num");
-    assert(pick(Option::Some(value = 3), 9) == 3);
+    assert(show_all([Num { v = 1 }, Num { v = 2 }]) == 2);
+    assert(describe(&Num { v = 3 }) == "num");
+    assert(pick(Option::Some { value = 3 }, 9) == 3);
     let n: Option<i64> := None;
     assert(pick(n, 9) == 9);
-    let p := Pt(x = 1, y = 2);
+    let p := Pt { x = 1, y = 2 };
     match (p.clone()) { Pt { x, y } => assert(x + y == 3) }
     assert("${p}" == "Pt { x: 1, y: 2 }");
 }

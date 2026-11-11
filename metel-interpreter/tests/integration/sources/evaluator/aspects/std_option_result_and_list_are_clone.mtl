@@ -1,16 +1,16 @@
 // metel-core#270: the std types clone through the standard bound: `Option` and `Result` derive `Clone`, a `List`
 // clones each element through that element's own `clone`, in index order, into an independent list.
 struct Token { id: i64 }
-extend Token: Clone { fun clone(&self) -> Token { Token(id = self.id + 100) } }
+extend Token: Clone { fun clone(&self) -> Token { Token { id = self.id + 100 } } }
 fun need_clone<T: Clone>(x: &T) -> T { x.clone() }
 fun id_of(o: Option<Token>) -> i64 { match (o) { Option::Some { value } => value.id, Option::None => 0 - 1 } }
 fun int_of(o: Option<i64>) -> i64 { match (o) { Option::Some { value } => value, Option::None => 0 - 1 } }
 fun main() {
-    let o: Option<i64> := Option::Some(value = 3);
+    let o: Option<i64> := Option::Some { value = 3 };
     assert(int_of(o.clone()) == 3);
-    let t: Option<Token> := Option::Some(value = Token(id = 1));
+    let t: Option<Token> := Option::Some { value = Token { id = 1 } };
     assert(id_of(need_clone(&t)) == 101);
-    let r: Result<i64, String> := Result::Ok(value = 4);
+    let r: Result<i64, String> := Result::Ok { value = 4 };
     match (r.clone()) { Result::Ok { value } => assert(value == 4), Result::Err { error } => assert(false) }
     var l: List<i64> := List::new();
     l.push(1); l.push(2);
@@ -19,7 +19,7 @@ fun main() {
     assert(l.len() == 2);
     assert(m.len() == 3);
     var lt: List<Token> := List::new();
-    lt.push(Token(id = 5));
+    lt.push(Token { id = 5 });
     let lc := lt.clone();
     assert(id_of(lc.get(0)) == 105);
     let n: Option<i64> := Option::None;

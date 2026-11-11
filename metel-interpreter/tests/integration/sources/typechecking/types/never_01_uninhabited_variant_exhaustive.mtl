@@ -14,5 +14,5 @@ fun handle(f: Foo) -> i64 {
 }
 
 fun main() -> i64 {
-    handle(Foo::A(x = 5))
+    handle(Foo::A { x = 5 })
 }

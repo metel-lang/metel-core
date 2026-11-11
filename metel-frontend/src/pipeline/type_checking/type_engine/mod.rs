@@ -6049,28 +6049,6 @@ impl TypeDefinitionRegistry {
         self.enum_env.get(&id)
     }
 
-    /// The declared field names of the struct-like variant called `variant_name`, written without its
-    /// enum (RFC-0100: `Some(value = 1)`), when every enum declaring a variant of that name declares
-    /// the same fields. `None` for a unit variant or an unknown or ambiguous name.
-    #[must_use]
-    pub fn unqualified_variant_field_names(&self, variant_name: &str) -> Option<Vec<String>> {
-        let mut found: Option<Vec<String>> = None;
-        for id in self.variant_declaring_enums.get(variant_name)? {
-            let variant = self
-                .enum_env
-                .get(id)?
-                .variants
-                .iter()
-                .find(|v| v.name == variant_name)?;
-            let names: Vec<String> = variant.fields.iter().map(|f| f.name.clone()).collect();
-            match &found {
-                Some(previous) if *previous != names => return None,
-                _ => found = Some(names),
-            }
-        }
-        found.filter(|names| !names.is_empty())
-    }
-
     #[must_use]
     pub fn has_variant_named(&self, variant_name: &str) -> bool {
         self.variant_declaring_enums.contains_key(variant_name)
@@ -7077,7 +7055,6 @@ pub struct InferContext {
     definition_call_types: HashMap<Span, InferType>,
     definition_paths: HashMap<Span, DefinitionPathFact>,
     definition_array_lengths: HashSet<Span>,
-    definition_constructions: HashMap<Span, Vec<String>>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
     definition_method_facts: HashMap<Span, DefinitionMethodFact>,
     definition_capture_types: HashMap<Span, InferType>,
@@ -7217,7 +7194,6 @@ impl InferContext {
             definition_call_types: HashMap::new(),
             definition_paths: HashMap::new(),
             definition_array_lengths: HashSet::new(),
-            definition_constructions: HashMap::new(),
             definition_nominal_fields: HashMap::new(),
             definition_method_facts: HashMap::new(),
             definition_capture_types: HashMap::new(),
@@ -9175,14 +9151,6 @@ impl InferContext {
 
     pub(crate) fn record_definition_array_length(&mut self, span: Span) {
         self.definition_array_lengths.insert(span);
-    }
-
-    pub(crate) fn record_definition_construction(&mut self, span: Span, names: Vec<String>) {
-        self.definition_constructions.insert(span, names);
-    }
-
-    pub(crate) fn definition_constructions(&self) -> &HashMap<Span, Vec<String>> {
-        &self.definition_constructions
     }
 
     pub(crate) fn definition_array_lengths(&self) -> &HashSet<Span> {

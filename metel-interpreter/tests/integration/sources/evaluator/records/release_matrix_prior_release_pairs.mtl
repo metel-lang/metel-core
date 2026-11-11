@@ -17,7 +17,7 @@ fun main() {
     let add := 10;
     let h: Handler := [add] once |v: i64| { v + add };
     assert(apply(h, 5) == 15);
-    let msgs := [Msg::Num(n = 1), Msg::Text(s = "hi".to_string())];
+    let msgs := [Msg::Num { n = 1 }, Msg::Text { s = "hi".to_string() }];
     var acc := 0;
     for (m in msgs) {
         let f := [m] once || {
@@ -26,13 +26,13 @@ fun main() {
         acc = acc + f();
     }
     assert(acc == 3);
-    let dogs: [dyn Speak] := [Dog(), Dog()];
+    let dogs: [dyn Speak] := [Dog {}, Dog {}];
     var barks := 0;
     for (d in dogs) { if (d.speak() == "woof") { barks = barks + 1; } }
     assert(barks == 2);
     let moved := names;
     assert(moved.len() == 2);
-    match (identity(Msg::Num(n = 4))) { Msg::Num { n } => assert(n == 4), Msg::Text { s } => assert(false) }
-    let o: Option<[i64]> := Option::Some(value = [1, 2]);
+    match (identity(Msg::Num { n = 4 })) { Msg::Num { n } => assert(n == 4), Msg::Text { s } => assert(false) }
+    let o: Option<[i64]> := Option::Some { value = [1, 2] };
     match (o) { Option::Some { value } => assert(value.len() == 2), None => assert(false) }
 }

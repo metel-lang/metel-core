@@ -3,5 +3,5 @@ fun main() {
     struct u8 {
         x: i64,
     }
-    let a := u8(x = 1);
+    let a := u8 { x = 1 };
 }

@@ -16,5 +16,5 @@ extend Resource: Drop {
 }
 
 fun bad(r: Resource) -> Arena<Resource> {
-    Arena(items = [r]) // ERROR[T0012]
+    Arena { items = [r] } // ERROR[T0012]
 }

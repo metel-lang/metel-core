@@ -458,7 +458,6 @@ fn normalize_expr(
             normalize_expr(value, scope, current_module, module_names, symbols)
         }
         Expr::Call { callee, args, .. } => {
-            normalize_construction_callee(callee, scope, current_module, module_names, symbols)?;
             normalize_expr(callee, scope, current_module, module_names, symbols)?;
             for a in args {
                 normalize_expr(a, scope, current_module, module_names, symbols)?;
@@ -910,67 +909,6 @@ fn try_normalize_static_member_path(
 /// `type[+variant]` path and the constructed type's stable `SymbolId` (METEL-185).
 /// For `["std", "core", "Option", "Some"]` returns `(["Option", "Some"], id_of(Option))`.
 /// Returns `None` if the path starts with a type name, not a module.
-/// RFC-0100: a call `m::Type(..)` or `Alias(..)` may be a construction call of a type another module
-/// declares. Resolve the callee the way a struct literal's path is resolved, so the checker finds the
-/// declaration by identity: the callee becomes a `ResolvedPath` spelled by the type's own name that
-/// carries its symbol. A callee that names a function or a type of this module is left alone.
-fn normalize_construction_callee(
-    callee: &mut Expr,
-    scope: Option<&ModuleScope>,
-    current_module: &[String],
-    module_names: &HashSet<String>,
-    symbols: &PathSymbols<'_>,
-) -> Result<(), MetelError> {
-    match callee {
-        Expr::Path(segments, _, span) => {
-            // Only a struct (`m::Type`, one segment after the module prefix): a longer remainder is
-            // `m::Type::method`, an associated function, which is an ordinary call.
-            let resolved =
-                try_normalize_struct_path(segments, scope, current_module, module_names, symbols);
-            if let Some(message) = symbols.cycle.borrow_mut().take() {
-                return Err(MetelError::parse(
-                    crate::data::error::ParseErrorCode::P0001,
-                    message,
-                    span,
-                ));
-            }
-            if let Some((local, Some(id))) = resolved
-                && (local.len() == 1
-                    || (local.len() == 2
-                        && local[1].chars().next().is_some_and(char::is_uppercase)))
-            {
-                *callee = Expr::ResolvedPath {
-                    resolved: local.join("::"),
-                    symbol_id: Some(id),
-                    original: std::mem::take(segments),
-                    span: span.clone(),
-                };
-            }
-        }
-        Expr::Ident(name, span) => {
-            // An alias that also names a value is an ordinary call of that value.
-            let names_a_value =
-                scope.is_some_and(|s| s.explicit.contains_key(&(Namespace::Value, name.clone())));
-            if !names_a_value
-                && let Some(binding) =
-                    scope.and_then(|s| s.explicit.get(&(Namespace::Type, name.clone())))
-                && binding.kind
-                    == crate::pipeline::name_resolution::name_resolver::BindingKind::Item
-                && binding.source_name != *name
-            {
-                *callee = Expr::ResolvedPath {
-                    resolved: binding.source_name.clone(),
-                    symbol_id: Some(binding.symbol_id),
-                    original: vec![name.clone()],
-                    span: span.clone(),
-                };
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
 fn try_normalize_struct_path(
     path: &[String],
     scope: Option<&ModuleScope>,

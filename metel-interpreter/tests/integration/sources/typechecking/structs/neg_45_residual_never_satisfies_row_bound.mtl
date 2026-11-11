@@ -10,6 +10,6 @@ struct Handle { fd: i64, name: String, extra: i64 }
 fun wants_a_record<record T: { .fd: i64, .. }>(t: T) -> i64 { t.fd }
 
 fun main() {
-    let h := Handle(fd = 3, name = "x", extra = 9);
+    let h := Handle { fd = 3, name = "x", extra = 9 };
     let _ := wants_a_record(h.{ .fd });
 }

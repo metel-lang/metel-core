@@ -3,6 +3,6 @@
 
 fun use_local_struct() -> i64 {
     struct Pair { a: i64, b: i64 }
-    let p := Pair(a = 10, b = 32);
+    let p := Pair { a = 10, b = 32 };
     p.a + p.b
 }

@@ -26,8 +26,8 @@ fun whole_value_struct(p: StructPoint) -> f64 { p.magnitude() }
 fun whole_value_record(p: RecordPoint) -> f64 { p.magnitude() }
 
 fun main() {
-    let sp := StructPoint(x = 3.0, y = 4.0);
-    let rp := RecordPoint(x = 3.0, y = 4.0);
+    let sp := StructPoint { x = 3.0, y = 4.0 };
+    let rp := RecordPoint { x = 3.0, y = 4.0 };
     assert(whole_value_struct(sp) == 25.0);
     assert(whole_value_record(rp) == 25.0);
     assert(sp.magnitude() == rp.magnitude());

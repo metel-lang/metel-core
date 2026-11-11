@@ -15,7 +15,7 @@ fun main() {
     let tagged_value := tagged(9, { .text = "tail" });
     assert(tagged_value.tag == 9);
     assert(tagged_value.text == "tail");
-    let packet: PacketAlias<{}> := Packet(data = {});
-    let pair: Nested<{ .count: i64 }> := ({ .count = 3 }, Packet(data = { .count = 5 }));
+    let packet: PacketAlias<{}> := Packet { data = {} };
+    let pair: Nested<{ .count: i64 }> := ({ .count = 3 }, Packet { data = { .count = 5 } });
     assert(pair.0.count + pair.1.data.count == 8);
 }

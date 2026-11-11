@@ -13,7 +13,7 @@ extend Point {
 }
 
 fun main() {
-    let p := Point(x = 21);
+    let p := Point { x = 21 };
     assert(p.describe() == "point");
     assert(p.twice() == 42);
 }

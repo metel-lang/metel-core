@@ -15,15 +15,15 @@ enum MyResult<T, E> {
 
 fun result_map<T, U, E>(r: MyResult<T, E>, f: |T| -> U) -> MyResult<U, E> {
     match (r) {
-        MyResult::Ok  { value } => MyResult::Ok(value = f(value)),
-        MyResult::Err { error } => MyResult::Err(error = error),
+        MyResult::Ok  { value } => MyResult::Ok  { value = f(value) },
+        MyResult::Err { error } => MyResult::Err { error = error },
     }
 }
 
 fun result_and_then<T, U, E>(r: MyResult<T, E>, f: |T| -> MyResult<U, E>) -> MyResult<U, E> {
     match (r) {
         MyResult::Ok  { value } => f(value),
-        MyResult::Err { error } => MyResult::Err(error = error),
+        MyResult::Err { error } => MyResult::Err { error = error },
     }
 }
 
@@ -42,22 +42,22 @@ fun result_unwrap_or<T, E>(r: MyResult<T, E>, default: T) -> T {
 }
 
 fun safe_div(a: i64, b: i64) -> MyResult<i64, String> {
-    if (b == 0) { MyResult::Err(error = "division by zero") }
-    else        { MyResult::Ok(value = a / b) }
+    if (b == 0) { MyResult::Err { error = "division by zero" } }
+    else        { MyResult::Ok  { value = a / b } }
 }
 
 fun safe_sqrt(n: i64) -> MyResult<i64, String> {
-    if (n < 0) { return MyResult::Err(error = "negative input"); }
+    if (n < 0) { return MyResult::Err { error = "negative input" }; }
     var i := 0;
     while ((i + 1) * (i + 1) <= n) { i += 1; }
-    MyResult::Ok(value = i)
+    MyResult::Ok { value = i }
 }
 
 fun safe_sqrt_2(n: i64) -> MyResult<i64, String> {
-    if (n < 0) { return MyResult::Err(error = "negative input"); }
+    if (n < 0) { return MyResult::Err { error = "negative input" }; }
     var i := 0;
     while ((i + 1) * (i + 1) <= n) { i += 1; }
-    MyResult::Ok(value = i)
+    MyResult::Ok { value = i }
 }
 
 // ── Generic Stack<T> backed by i64 ───────────────────────────────────────────
@@ -69,13 +69,13 @@ struct Stack {
 
 fun stack_new() -> Stack {
     let items: [i64] := [];
-    Stack(items = items, size = 0)
+    Stack { items = items, size = 0 }
 }
 
 fun stack_push(s: Stack, v: i64) -> Stack {
     var items_list := List::from(s.items);
     items_list.push(v);
-    Stack(items = items_list.as_slice(), size = s.size + 1)
+    Stack { items = items_list.as_slice(), size = s.size + 1 }
 }
 
 fun stack_top(s: &Stack) -> i64 {
@@ -208,7 +208,7 @@ fun find_first<T: Clone>(arr: [T], pred: |&T| -> boolean) -> Option<T> {
     var i := 0;
     while (i < arr.len()) {
         if (pred(&arr[i as u64])) {
-            return Option::Some(value = arr[i as u64].clone());
+            return Option::Some { value = arr[i as u64].clone() };
         }
         i += 1;
     }
@@ -245,47 +245,47 @@ fun main() {
     assert(s3.size == 3);
 
     // ── MyResult<T, E>: multi-param generic enum (issue #129) ─────────────────
-    let ok42:  MyResult<i64, String> := MyResult::Ok(value = 42);
-    let err_s: MyResult<i64, String> := MyResult::Err(error = "oops");
+    let ok42:  MyResult<i64, String> := MyResult::Ok  { value = 42 };
+    let err_s: MyResult<i64, String> := MyResult::Err { error = "oops" };
 
     assert(result_is_ok(ok42));
     assert(!result_is_ok(err_s));
-    let ok42_again: MyResult<i64, String> := MyResult::Ok(value = 42);
-    let err_s_again: MyResult<i64, String> := MyResult::Err(error = "oops");
+    let ok42_again: MyResult<i64, String> := MyResult::Ok { value = 42 };
+    let err_s_again: MyResult<i64, String> := MyResult::Err { error = "oops" };
     assert(result_unwrap_or(ok42_again, 0) == 42);
     assert(result_unwrap_or(err_s_again, 0) == 0);
 
     // map Ok → Ok
-    let ok42_map: MyResult<i64, String> := MyResult::Ok(value = 42);
+    let ok42_map: MyResult<i64, String> := MyResult::Ok { value = 42 };
     let doubled := result_map(ok42_map, |x: i64| -> i64 { x * 2 });
     assert(result_is_ok(doubled));
-    let ok42_map_again: MyResult<i64, String> := MyResult::Ok(value = 42);
+    let ok42_map_again: MyResult<i64, String> := MyResult::Ok { value = 42 };
     let doubled_again := result_map(ok42_map_again, |x: i64| -> i64 { x * 2 });
     assert(result_unwrap_or(doubled_again, 0) == 84);
 
     // map Err → Err (error passes through)
-    let err_map: MyResult<i64, String> := MyResult::Err(error = "oops");
+    let err_map: MyResult<i64, String> := MyResult::Err { error = "oops" };
     let mapped_err := result_map(err_map, |x: i64| -> i64 { x + 1 });
     assert(!result_is_ok(mapped_err));
 
     // and_then: Ok chains
-    let ok42_chain: MyResult<i64, String> := MyResult::Ok(value = 42);
+    let ok42_chain: MyResult<i64, String> := MyResult::Ok { value = 42 };
     let chained := result_and_then(ok42_chain, |x: i64| -> MyResult<i64, String> {
-        if (x > 0) { MyResult::Ok(value = x + 1) }
-        else       { MyResult::Err(error = "non-positive") }
+        if (x > 0) { MyResult::Ok { value = x + 1 } }
+        else       { MyResult::Err { error = "non-positive" } }
     });
     assert(result_is_ok(chained));
-    let ok42_chain_again: MyResult<i64, String> := MyResult::Ok(value = 42);
+    let ok42_chain_again: MyResult<i64, String> := MyResult::Ok { value = 42 };
     let chained_again := result_and_then(ok42_chain_again, |x: i64| -> MyResult<i64, String> {
-        if (x > 0) { MyResult::Ok(value = x + 1) }
-        else       { MyResult::Err(error = "non-positive") }
+        if (x > 0) { MyResult::Ok { value = x + 1 } }
+        else       { MyResult::Err { error = "non-positive" } }
     });
     assert(result_unwrap_or(chained_again, 0) == 43);
 
     // and_then: Err short-circuits
-    let err_short: MyResult<i64, String> := MyResult::Err(error = "oops");
+    let err_short: MyResult<i64, String> := MyResult::Err { error = "oops" };
     let short := result_and_then(err_short, |x: i64| -> MyResult<i64, String> {
-        MyResult::Ok(value = x * 100)
+        MyResult::Ok { value = x * 100 }
     });
     assert(!result_is_ok(short));
 
@@ -309,7 +309,7 @@ fun main() {
     assert(!result_is_ok(chain_err));
 
     // MyResult<boolean, String>
-    let ok_b: MyResult<boolean, String> := MyResult::Ok(value = true);
+    let ok_b: MyResult<boolean, String> := MyResult::Ok { value = true };
     let neg := result_map(ok_b, |b: boolean| -> boolean { !b });
     assert(!result_unwrap_or(neg, true));
 

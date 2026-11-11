@@ -4,6 +4,6 @@ record Box<record R> {
 }
 
 fun main() {
-    let boxed := Box(value = { .x = 1, .extra = "ok" });
+    let boxed := Box { value = { .x = 1, .extra = "ok" } };
     assert(boxed.value.x == 1);
 }

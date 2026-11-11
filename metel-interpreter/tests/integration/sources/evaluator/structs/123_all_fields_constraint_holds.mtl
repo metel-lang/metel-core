@@ -29,7 +29,7 @@ fun main() {
     assert(id_of({ .id = 8 }) == 8);
     assert(token_of({ .token = 4, .a = 1, .b = 2.0 }) == 4);
     assert(whole({ .token = 5, .ratio = 0.5 }) == 5);
-    let item := Item(id = 9, weight = 2.0);
+    let item := Item { id = 9, weight = 2.0 };
     assert(id_of(item) == 9);
     println("ok");
 }

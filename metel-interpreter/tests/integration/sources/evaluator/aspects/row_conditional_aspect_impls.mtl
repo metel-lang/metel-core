@@ -30,17 +30,17 @@ fun show<T: Describe>(t: T) -> i64 { t.describe() }
 
 fun main() {
     let authed: Session<{ .token: String }> :=
-        Session(id = 1, data = { .token = "t" });
-    let anon: Session<{ .extra: i64 }> := Session(id = 2, data = { .extra = 1 });
+        Session { id = 1, data = { .token = "t" } };
+    let anon: Session<{ .extra: i64 }> := Session { id = 2, data = { .extra = 1 } };
     assert(authed.describe() == 1);
     assert(anon.describe() == 2);
     // a generic bound is satisfied by exactly the matching impl
     // `show` consumes its argument, so it gets fresh values.
-    assert(show(Session(id = 1, data = { .token = "t" })) == 1);
-    assert(show(Session(id = 2, data = { .extra = 1 })) == 2);
+    assert(show(Session { id = 1, data = { .token = "t" } }) == 1);
+    assert(show(Session { id = 2, data = { .extra = 1 } }) == 2);
 
-    let int_a: Session<{ .a: i64 }> := Session(id = 3, data = { .a = 1 });
-    let str_a: Session<{ .a: String }> := Session(id = 4, data = { .a = "x" });
+    let int_a: Session<{ .a: i64 }> := Session { id = 3, data = { .a = 1 } };
+    let str_a: Session<{ .a: String }> := Session { id = 4, data = { .a = "x" } };
     assert(int_a.tag() == 10);
     assert(str_a.tag() == 20);
     println("ok");

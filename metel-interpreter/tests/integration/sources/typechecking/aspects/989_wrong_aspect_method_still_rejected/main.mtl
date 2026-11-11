@@ -7,6 +7,6 @@ import decoy::marker;
 
 fun main() {
     let _unused := marker();
-    let c: dyn Shape := Circle(radius = 1.0);
+    let c: dyn Shape := Circle { radius = 1.0 };
     let p := c.perimeter(); // ERROR[T0003]
 }

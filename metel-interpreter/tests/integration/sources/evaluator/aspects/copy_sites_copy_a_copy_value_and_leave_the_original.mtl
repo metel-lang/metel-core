@@ -8,11 +8,11 @@ fun give(p: Point) -> Point { return p; }
 extend Point { fun sum(self) -> i64 { self.x + self.y } }
 
 fun main() {
-    var a := Point(x = 1, y = 2);
+    var a := Point { x = 1, y = 2 };
     let b := a;                         // let
     let c := take(a);                   // call argument
     let d := give(a);                   // return
-    let h := Holder(p = a);             // struct field
+    let h := Holder { p = a };             // struct field
     let both := [a, a];                 // array elements
     let s := a.sum();                   // by-value self
     let k := [a] || -> i64 { k_of(a) }; // by-copy capture

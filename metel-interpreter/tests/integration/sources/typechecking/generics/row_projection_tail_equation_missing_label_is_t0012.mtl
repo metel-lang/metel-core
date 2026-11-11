@@ -10,6 +10,6 @@ where R = { .extra: i64, ..Rest } {
 }
 
 fun main() {
-    let h := Handle(fd = 1, other = 2);
+    let h := Handle { fd = 1, other = 2 };
     println(use_it(h));
 }

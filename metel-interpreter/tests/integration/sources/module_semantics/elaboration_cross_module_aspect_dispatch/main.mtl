@@ -8,22 +8,22 @@ import geometry::*;
 // moved out of a reference), so each call gets its own instance rather than
 // reusing one binding across both.
 fun main() {
-    let c := Circle(radius = 5);
-    let r := Rectangle(width = 3, height = 4);
+    let c := Circle { radius = 5 };
+    let r := Rectangle { width = 3, height = 4 };
 
     // Aspect method dispatch on Circle
     assert(c.describe() == "Circle(r=5)");
-    let c_scale := Circle(radius = 5);
+    let c_scale := Circle { radius = 5 };
     assert(c_scale.scale(2) == 10);
 
     // Aspect method dispatch on Rectangle — same method name, different receiver type
     assert(r.describe() == "Rect(3x4)");
-    let r_scale := Rectangle(width = 3, height = 4);
+    let r_scale := Rectangle { width = 3, height = 4 };
     assert(r_scale.scale(3) == 36);
 
     // Second instance
-    let c2 := Circle(radius = 10);
+    let c2 := Circle { radius = 10 };
     assert(c2.describe() == "Circle(r=10)");
-    let c2_scale := Circle(radius = 10);
+    let c2_scale := Circle { radius = 10 };
     assert(c2_scale.scale(5) == 50);
 }

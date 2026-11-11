@@ -4,16 +4,16 @@ fun id<T>(v: T) -> T { v }
 
 fun main() {
     record Box<T> { x: T }
-    let b := Box(x = 1);
+    let b := Box { x = 1 };
     assert(b.x == 1);
 
     // The written type argument and the constructed one agree, and a field reads at it.
-    let annotated: Box<i64> := Box(x = 2);
+    let annotated: Box<i64> := Box { x = 2 };
     let n: i64 := annotated.x;
     assert(n == 2);
 
     struct Pair<A, B> { a: A, b: B }
-    var p := Pair(a = id(3), b = "s");
+    var p := Pair { a = id(3), b = "s" };
     assert(p.a == 3);
     assert(p.b == "s");
     p.a = 5;
@@ -22,11 +22,11 @@ fun main() {
 
     // A parameter no field mentions comes from the expected type.
     record Marker<T> {}
-    let m: Marker<i64> := Marker();
+    let m: Marker<i64> := Marker {};
 
     enum Opt<T> { Some { value: T }, None }
     var got := 0;
-    match (Opt::Some(value = 7)) {
+    match (Opt::Some { value = 7 }) {
         Opt::Some { value } => { got = value; },
         Opt::None => { got = -1; },
     }

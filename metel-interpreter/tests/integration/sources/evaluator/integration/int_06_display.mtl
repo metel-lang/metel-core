@@ -31,11 +31,11 @@ struct Score       { points: i64 }
 struct Temperature { celsius: f64 }
 
 extend Score: From<i64> {
-    fun from(value: i64) -> Score { Score(points = value) }
+    fun from(value: i64) -> Score { Score { points = value } }
 }
 
 extend Temperature: From<f64> {
-    fun from(value: f64) -> Temperature { Temperature(celsius = value) }
+    fun from(value: f64) -> Temperature { Temperature { celsius = value } }
 }
 
 extend Score: Printable {
@@ -55,7 +55,7 @@ extend Temperature: Printable {
 struct StringBag { items: [String], pos: i64 }
 
 extend StringBag {
-    fun new(items: [String]) -> StringBag { StringBag(items = items, pos = 0) }
+    fun new(items: [String]) -> StringBag { StringBag { items = items, pos = 0 } }
     fun len(&self) -> i64 { self.items.len() }
 }
 
@@ -65,7 +65,7 @@ extend StringBag: Iterable<String> {
             let pos := self.pos;
             self.pos = pos + 1;
             let v := (&self.items[pos as u64]).to_string();
-            Option::Some(value = v)
+            Option::Some { value = v }
         } else {
             None
         }
@@ -79,23 +79,23 @@ struct RenderError { msg: String }
 
 extend RenderError: From<FormatError> {
     fun from(value: FormatError) -> RenderError {
-        RenderError(msg = "fmt: " + value.msg)
+        RenderError { msg = "fmt: " + value.msg }
     }
 }
 
 fun parse_score(s: String) -> Result<Score, FormatError> {
-    if (s == "100") { Result::Ok(value = Score(points = 100)) }
-    else if (s == "0") { Result::Ok(value = Score(points = 0)) }
-    else { Result::Err(error = FormatError(msg = "bad score: " + s)) }
+    if (s == "100") { Result::Ok { value = Score { points = 100 } } }
+    else if (s == "0") { Result::Ok { value = Score { points = 0 } } }
+    else { Result::Err { error = FormatError { msg = "bad score: " + s } } }
 }
 
 fun render_score(s: String) -> Result<String, RenderError> {
     // cross-type match + as-cast (? cross-type deferred to #13)
     let sc := match (parse_score(s)) {
         Result::Ok { value } => value,
-        Result::Err { error } => { return Result::Err(error = error as RenderError); },
+        Result::Err { error } => { return Result::Err { error = error as RenderError }; },
     };
-    Result::Ok(value = sc.format())
+    Result::Ok { value = sc.format() }
 }
 
 // ── main ───────────────────────────────────────────────────────────────────────
@@ -156,9 +156,9 @@ fun main() {
     assert(t37.format() == "Temp(37.5)");
 
     // Printable format on Score 0 and large value
-    let s0 := Score(points = 0);
+    let s0 := Score { points = 0 };
     assert(s0.format() == "Score(0)");
-    let s1000 := Score(points = 1000);
+    let s1000 := Score { points = 1000 };
     assert(s1000.format() == "Score(1000)");
 
     // StringBag Iterable: concatenate labels

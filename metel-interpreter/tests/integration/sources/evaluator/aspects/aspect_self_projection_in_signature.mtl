@@ -14,7 +14,7 @@ extend Box: Source {
 }
 
 fun main() {
-    assert(Box(v = 1).first() == 9);
-    assert(Box(v = 1).again() == 9);
+    assert(Box { v = 1 }.first() == 9);
+    assert(Box { v = 1 }.again() == 9);
     println("ok");
 }

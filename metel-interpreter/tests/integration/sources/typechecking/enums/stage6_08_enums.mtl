@@ -16,8 +16,8 @@ enum Shape {
     Rectangle { width: f64, height: f64 },
 }
 
-let s1: Shape := Shape::Circle(radius = 5.0);
-let s2: Shape := Shape::Rectangle(width = 3.0, height = 4.0);
+let s1: Shape := Shape::Circle { radius = 5.0 };
+let s2: Shape := Shape::Rectangle { width = 3.0, height = 4.0 };
 
 // Match on user enum
 let area: f64 := match (s1) {
@@ -26,7 +26,7 @@ let area: f64 := match (s1) {
 };
 
 // Built-in Option<T>
-let some_val: Option<i64> := Option::Some(value = 42);
+let some_val: Option<i64> := Option::Some { value = 42 };
 let no_val: Option<i64> := Option::None;
 
 // Match on Option
@@ -36,8 +36,8 @@ let result_int: i64 := match (some_val) {
 };
 
 // Built-in Result<T, E>
-let ok_val: Result<i64, String> := Result::Ok(value = 10);
-let err_val: Result<i64, String> := Result::Err(error = "oops");
+let ok_val: Result<i64, String> := Result::Ok { value = 10 };
+let err_val: Result<i64, String> := Result::Err { error = "oops" };
 
 // Match on Result
 let extracted: i64 := match (ok_val) {

@@ -1,7 +1,0 @@
-// RFC-0100 section 8 (metel-core#1860): a positional argument supplies the label of the field it
-// binds, so a call supplying a private field from outside the module is T0009, as the literal was.
-import token::Token;
-
-fun main() {
-    let t := Token(1, 2);
-}

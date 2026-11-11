@@ -2,6 +2,6 @@
 struct Witness<T> { count: i64 }
 
 fun main() {
-    let text: Witness<String> := Witness(count = 1);
+    let text: Witness<String> := Witness { count = 1 };
     let number: Witness<i64> := text;
 }

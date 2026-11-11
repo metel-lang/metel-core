@@ -6,5 +6,5 @@ struct L { t: String }
 extend L: P { fun p(&self) {} }
 
 fun main() {
-    let value := L(t = "x") as extends P; // ERROR[T0022]
+    let value := L { t = "x" } as extends P; // ERROR[T0022]
 }

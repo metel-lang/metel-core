@@ -7,16 +7,16 @@ struct Wrapper<T> derives Clone { v: T }
 enum Shape derives Clone { Circle { r: i64 }, Rect { w: i64, h: i64 }, Empty }
 fun twice<T: Clone>(x: &T) -> T { x.clone() }
 fun main() {
-    let d := Doc(title = "a", pages = 3);
+    let d := Doc { title = "a", pages = 3 };
     let e := d.clone();
     assert(e.pages == 3 && d.title == e.title);
-    let w := Wrapper(v = 5);
+    let w := Wrapper { v = 5 };
     assert(w.clone().v == 5);
     let n := 7;
-    let v := View(r = &n);
+    let v := View { r = &n };
     let v2 := twice(&v);
     assert(*v2.r == 7);
-    let s := Shape::Rect(w = 2, h = 3);
+    let s := Shape::Rect { w = 2, h = 3 };
     match (s.clone()) { Shape::Rect { w, h } => assert(w * h == 6), _ => assert(false) }
     match (twice(&Shape::Empty)) { Shape::Empty => assert(true), _ => assert(false) }
 }

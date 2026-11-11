@@ -27,8 +27,8 @@ extend Rectangle: Shape {
 
 fun main() {
     var shapes: List<dyn Shape> := List::new();
-    shapes.push(Circle(radius = 5.0));
-    shapes.push(Rectangle(w = 3.0, h = 4.0));
+    shapes.push(Circle { radius = 5.0 });
+    shapes.push(Rectangle { w = 3.0, h = 4.0 });
 
     var total := 0.0;
     for (shape in shapes.as_slice()) {

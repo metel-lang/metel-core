@@ -23,7 +23,7 @@ let _: i64 := two_arrays([] : [i64], [] : [f64]);
 // Ascription on a struct literal
 struct Point { x: i64, y: i64 }
 fun check_struct() {
-    let p: Point := Point(x = 1, y = 2) : Point;
+    let p: Point := Point { x = 1, y = 2 } : Point;
 }
 
 // Ascription on a tuple

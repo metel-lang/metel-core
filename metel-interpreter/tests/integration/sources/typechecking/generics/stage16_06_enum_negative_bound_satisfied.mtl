@@ -15,5 +15,5 @@ struct Clean { x: i64 }
 // Clean does NOT implement Drop.
 
 fun make_some(c: Clean) -> Opt<Clean> {
-    Opt::Some(value = c)
+    Opt::Some { value = c }
 }

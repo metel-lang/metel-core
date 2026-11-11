@@ -5,7 +5,7 @@ extend Yes: Tag { fun t(&self) -> i64 { 1 } }
 
 fun main() {
     struct Box<T: Tag> { x: T }
-    let b := Box(x = Yes());
+    let b := Box { x = Yes {} };
     enum Wrap<T: Tag> { Has { v: T }, Empty }
-    let w := Wrap::Has(v = Yes());
+    let w := Wrap::Has { v = Yes {} };
 }

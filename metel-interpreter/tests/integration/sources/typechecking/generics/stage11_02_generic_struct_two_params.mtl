@@ -6,7 +6,7 @@ struct Pair<A, B> {
 }
 
 fun make_pair(a: i64, b: boolean) -> Pair<i64, boolean> {
-    Pair(first = a, second = b)
+    Pair { first = a, second = b }
 }
 
 fun get_first(p: Pair<i64, boolean>) -> i64 {

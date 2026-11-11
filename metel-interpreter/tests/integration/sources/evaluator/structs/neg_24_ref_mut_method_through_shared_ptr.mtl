@@ -12,7 +12,7 @@ extend Counter {
 }
 
 fun main() {
-    var c := Counter(value = 0);
+    var c := Counter { value = 0 };
     let p: &Counter := &c;
     p.increment();
 }

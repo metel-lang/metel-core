@@ -3,14 +3,14 @@
 // name, has only an `i64` and is. Each is judged by its own fields, so `b` may copy `p` freely.
 fun a() -> i64 {
     record P { x: String }
-    let p := P(x = "s");
+    let p := P { x = "s" };
     let u := p;
     0
 }
 
 fun b() -> i64 {
     record P { x: i64 }
-    let p := P(x = 1);
+    let p := P { x = 1 };
     let u := p;
     let v := p;
     u.x + v.x

@@ -10,4 +10,4 @@ fun radius<T>(v: T) -> f64 {
     }
 }
 
-fun main() { radius(Shape::Circle(r = 1.0)); }
+fun main() { radius(Shape::Circle { r = 1.0 }); }

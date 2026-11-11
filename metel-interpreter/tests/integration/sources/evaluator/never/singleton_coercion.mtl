@@ -7,11 +7,11 @@ enum Wrapper<T> {
 }
 
 fun infallible() -> Wrapper<i64> {
-    Wrapper::Present(value = 42)
+    Wrapper::Present { value = 42 }
 }
 
 fun infallible_result() -> Result<i64, !> {
-    Result::Ok(value = 7)
+    Result::Ok { value = 7 }
 }
 
 fun main() {

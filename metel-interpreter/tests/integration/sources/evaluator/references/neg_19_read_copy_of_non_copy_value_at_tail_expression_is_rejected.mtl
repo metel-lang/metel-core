@@ -8,7 +8,7 @@ fun pick(cond: boolean, a: &NotCopy, b: &NotCopy) -> NotCopy {
 }
 
 fun main() {
-    let x := NotCopy(v = "x");
-    let y := NotCopy(v = "y");
+    let x := NotCopy { v = "x" };
+    let y := NotCopy { v = "y" };
     let _ := pick(true, &x, &y);
 }

@@ -6,7 +6,7 @@ enum Shape {
     Rectangle { width: f64, height: f64 },
 }
 
-let s: Shape := Shape::Circle(radius = 3.0);
+let s: Shape := Shape::Circle { radius = 3.0 };
 
 // Block arm with a local binding and computation.
 let area: f64 := match (s) {
@@ -18,7 +18,7 @@ let area: f64 := match (s) {
 };
 
 // Block arm producing unit (no tail expression).
-let msg: Option<i64> := Option::Some(value = 1);
+let msg: Option<i64> := Option::Some { value = 1 };
 match (msg) {
     Option::Some { value } => {
         let v := value;
@@ -27,7 +27,7 @@ match (msg) {
 };
 
 // Mixed: one arm is a bare expr, one is a block.
-let ok: Result<i64, String> := Result::Ok(value = 5);
+let ok: Result<i64, String> := Result::Ok { value = 5 };
 let n: i64 := match (ok) {
     Result::Ok { value } => value,
     Result::Err { error } => {

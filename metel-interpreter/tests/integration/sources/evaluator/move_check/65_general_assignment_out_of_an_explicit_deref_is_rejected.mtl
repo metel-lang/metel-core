@@ -2,7 +2,7 @@
 struct B { v: String }
 
 fun main() {
-    let b := B(v = "x");
+    let b := B { v = "x" };
     let r := &b;
     let x: B := *r;
 }

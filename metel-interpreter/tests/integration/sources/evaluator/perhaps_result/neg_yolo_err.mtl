@@ -2,6 +2,6 @@
 // issue #232: .yolo() on Err panics with R0013, and the message includes the
 // Err value's debug representation (verified via a distinctive error string).
 fun main() {
-    let err: Result<i64, String> := Result::Err(error = "not found ok");
+    let err: Result<i64, String> := Result::Err { error = "not found ok" };
     let _ := err.yolo();
 }

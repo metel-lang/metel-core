@@ -20,13 +20,13 @@ fun stroke(g: &Glyph) -> i64 { g.ink() }
 
 fun main() {
     // coercion of a concrete value into the alias, in `let` and argument position
-    let a: Glyph := Dot(weight = 2);
+    let a: Glyph := Dot { weight = 2 };
     assert(stroke(&a) == 2);
 
     // a List of the alias holds different concrete types, dispatched at runtime
     var glyphs: List<Glyph> := List::new();
-    glyphs.push(Dot(weight = 1));
-    glyphs.push(Dash(weight = 4));
+    glyphs.push(Dot  { weight = 1 });
+    glyphs.push(Dash { weight = 4 });
     var total := 0;
     for (g in glyphs.as_slice()) {
         total = total + g.ink();

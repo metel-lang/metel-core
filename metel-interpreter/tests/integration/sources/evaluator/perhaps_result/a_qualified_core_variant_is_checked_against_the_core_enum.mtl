@@ -3,5 +3,5 @@
 enum Option { Maybe, Not }
 
 fun main() {
-    let r := std::core::Option::Maybe(value = 1);
+    let r := std::core::Option::Maybe { value = 1 };
 }

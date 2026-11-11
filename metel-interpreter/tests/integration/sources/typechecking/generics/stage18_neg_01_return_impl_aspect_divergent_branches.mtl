@@ -28,9 +28,9 @@ extend MyString: Display {
 // RFC §1.1 - divergent branches returning different concrete types
 fun bad(flag: boolean) -> extends Display {
 	if (flag) { // ERROR[T0001]
-		MyInt(value = 42)
+		MyInt { value = 42 }
 	} else {
-		MyString(value = "hello".to_string())
+		MyString { value = "hello".to_string() }
 	}
 }
 

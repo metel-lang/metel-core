@@ -9,12 +9,12 @@ copy struct Counter {
 
 extend Counter {
     fun incremented(self) -> Counter {
-        Counter(value = self.value + 1)
+        Counter { value = self.value + 1 }
     }
 }
 
 fun main() {
-    let original := Counter(value = 0);
+    let original := Counter { value = 0 };
     let next := original.incremented();
     assert(original.value == 0);
     assert(next.value == 1);

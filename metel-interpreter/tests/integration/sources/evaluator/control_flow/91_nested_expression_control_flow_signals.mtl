@@ -23,7 +23,7 @@ fun return_in_tuple_elem() -> i64 {
 }
 
 fun return_in_struct_field() -> i64 {
-    let value := Pair(first = return 7, second = 1);
+    let value := Pair { first = return 7, second = 1 };
     0
 }
 
@@ -75,7 +75,7 @@ fun break_in_tuple_elem() -> i64 {
 
 fun break_in_struct_field() -> i64 {
     loop {
-        let value := Pair(first = break 7, second = 1);
+        let value := Pair { first = break 7, second = 1 };
     }
 }
 
@@ -163,7 +163,7 @@ fun continue_in_struct_field() -> i64 {
     loop {
         i += 1;
         if (i < 3) {
-            let value := Pair(first = continue, second = 1);
+            let value := Pair { first = continue, second = 1 };
         }
         hits += 1;
         if (i == 3) { break hits; }

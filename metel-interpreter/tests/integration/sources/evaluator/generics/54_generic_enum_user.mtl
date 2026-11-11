@@ -18,13 +18,13 @@ fun unwrap_or_bool(m: Maybe<boolean>, default: boolean) -> boolean {
 }
 
 fun main() {
-    let some_int := Maybe::Some(value = 42);
+    let some_int := Maybe::Some { value = 42 };
     assert(unwrap_or_int(some_int, 0) == 42);
 
     let none_int: Maybe<i64> := Maybe::None;
     assert(unwrap_or_int(none_int, 99) == 99);
 
-    let some_bool := Maybe::Some(value = true);
+    let some_bool := Maybe::Some { value = true };
     assert(unwrap_or_bool(some_bool, false));
 
     let none_bool: Maybe<boolean> := Maybe::None;

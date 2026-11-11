@@ -2,7 +2,7 @@ fun find(arr: [i64], target: i64) -> Option<i64> {
     var i := 0;
     while (i < arr.len()) {
         if (arr[i as u64] == target) {
-            return Option::Some(value = i);
+            return Option::Some { value = i };
         }
         i += 1;
     }
@@ -15,7 +15,7 @@ fun main() {
     let r1 := match (n) { None => -1, Option::Some { value } => value, };
     assert(r1 == -1);
     // Option::Some construction and field extraction via match.
-    let s := Option::Some(value = 42);
+    let s := Option::Some { value = 42 };
     let r2 := match (s) { None => -1, Option::Some { value } => value, };
     assert(r2 == 42);
     // Option as function return type — found case.

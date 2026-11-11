@@ -17,7 +17,7 @@ extend Foo {
 struct Silent { value: i64 }
 
 fun main() {
-    let f := Foo(x = 1);
-    let s := Silent(value = 1);
+    let f := Foo { x = 1 };
+    let s := Silent { value = 1 };
     f.describe(s); // ERROR[T0012]
 }

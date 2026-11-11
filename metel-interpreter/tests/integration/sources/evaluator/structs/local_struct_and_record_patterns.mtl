@@ -3,7 +3,7 @@
 // registry, where a block-local name is already out of scope.
 fun main() {
     struct Point { x: i64, y: String }
-    let p := Point(x = 1, y = "s");
+    let p := Point { x = 1, y = "s" };
     match (p) {
         Point { x, y } => {
             assert(x == 1);
@@ -15,21 +15,21 @@ fun main() {
     }
 
     record Pair { a: i64, b: i64 }
-    let q := Pair(a = 2, b = 3);
+    let q := Pair { a = 2, b = 3 };
     match (q) {
         Pair { a, b } => { assert(a + b == 5); },
     }
 
     // A generic local type binds its fields at the scrutinee's type arguments.
     struct Box<T> { v: T }
-    let b := Box(v = 7);
+    let b := Box { v = 7 };
     match (b) {
         Box { v } => { assert(v + 1 == 8); },
     }
 
     // A scrutinee typed by an annotation carries no identity of its own: the written name is
     // resolved in the block, once, and the pattern binds against that declaration.
-    let annotated: Box<i64> := Box(v = 9);
+    let annotated: Box<i64> := Box { v = 9 };
     match (annotated) {
         Box { v } => { assert(v == 9); },
     }
@@ -40,7 +40,7 @@ fun main() {
     // An inner block's type of the same name is matched as itself, and the outer one after it.
     if (true) {
         struct Point { z: String }
-        let inner := Point(z = "in");
+        let inner := Point { z = "in" };
         match (inner) {
             Point { z } => { assert(z == "in"); },
         }

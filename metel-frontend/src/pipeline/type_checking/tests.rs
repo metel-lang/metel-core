@@ -97,12 +97,12 @@ fn block_local_types_in_two_modules_keep_distinct_ids_through_check_graph() {
     std::fs::create_dir_all(&dir).expect("create temp dir");
     std::fs::write(
         dir.join("helper.mtl"),
-        "pub fun from_helper() -> i64 {\n    record Handle { pad: i64, fd: i64 }\n    let h := Handle(pad = 100, fd = 3);\n    h.fd\n}\n",
+        "pub fun from_helper() -> i64 {\n    record Handle { pad: i64, fd: i64 }\n    let h := Handle { pad = 100, fd = 3 };\n    h.fd\n}\n",
     )
     .expect("write helper");
     std::fs::write(
         dir.join("main.mtl"),
-        "import helper::from_helper;\nfun main() {\n    record Handle { name: String, fd: i64 }\n    let h := Handle(name = \"n\", fd = 42);\n    assert(from_helper() == 3);\n    assert(h.fd == 42);\n}\n",
+        "import helper::from_helper;\nfun main() {\n    record Handle { name: String, fd: i64 }\n    let h := Handle { name = \"n\", fd = 42 };\n    assert(from_helper() == 3);\n    assert(h.fd == 42);\n}\n",
     )
     .expect("write main");
 

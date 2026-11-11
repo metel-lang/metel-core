@@ -3,14 +3,14 @@ pub type EmptyPacket := Packet<{}>;
 pub type Callback := once || -> i64;
 
 pub fun make<record R>(id: i64, data: { ..R }) -> Packet<..R> {
-    Packet(id = id, data = data)
+    Packet { id = id, data = data }
 }
 
 pub fun strip<record R, record Rest>(packet: Packet<..R>) -> Packet<..Rest>
 where R = { .token: String, ..Rest } {
     let { .id, .data } := packet;
     let { .token: _, ..rest } := data;
-    Packet(id = id, data = rest)
+    Packet { id = id, data = rest }
 }
 
 pub fun callback(packet: EmptyPacket) -> Callback {

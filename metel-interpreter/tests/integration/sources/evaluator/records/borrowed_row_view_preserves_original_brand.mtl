@@ -13,7 +13,7 @@ fun read<record R>(p: &{ .x: String, ..R }) -> i64 {
 }
 
 fun main() {
-    let p := P(x = "Ada".to_string());
+    let p := P { x = "Ada".to_string() };
     assert(read(&p) == 3);
     assert(p.brand() == 7);
 }

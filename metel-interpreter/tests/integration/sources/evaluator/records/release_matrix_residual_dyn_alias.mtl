@@ -8,7 +8,7 @@ type Callback := once || -> String;
 fun display(value: &View) -> String { value.describe() }
 
 fun main() {
-    let item := Item(name = "kept", token = "discarded");
+    let item := Item { name = "kept", token = "discarded" };
     let token := item.token;
     let object: View := item;
     assert(display(&object) == "kept");

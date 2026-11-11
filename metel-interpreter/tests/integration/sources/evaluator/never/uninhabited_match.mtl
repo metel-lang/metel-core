@@ -14,5 +14,5 @@ fun handle(f: Foo) -> i64 {
 }
 
 fun main() {
-    assert(handle(Foo::A(x = 5)) == 5);
+    assert(handle(Foo::A { x = 5 }) == 5);
 }

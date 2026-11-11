@@ -13,6 +13,6 @@ extend Arc: Send { fun send(self) {} }
 fun needs_not_send<T: !Send>(value: T) {}
 
 fun main() {
-    needs_not_send(Rc(value = 1));
-    needs_not_send(Arc(value = 2)); // ERROR[T0012]
+    needs_not_send(Rc { value = 1 });
+    needs_not_send(Arc { value = 2 }); // ERROR[T0012]
 }

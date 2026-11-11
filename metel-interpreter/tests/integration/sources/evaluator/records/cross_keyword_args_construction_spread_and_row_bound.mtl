@@ -1,12 +1,14 @@
+// #1945: ordinary function keyword arguments and record updates remain independent.
 struct Line { price: i64, qty: i64 }
 fun discount<record R: { .price: i64, .. }>(line: { ..R }, pct: i64) -> { ..R } {
     { ..line, .price = line.price * (100 - pct) / 100 }
 }
 fun total(l: Line) -> i64 { l.price * l.qty }
 fun main() {
-    let l := Line(qty = 3, price = 200);
+    let l := Line { qty = 3, price = 200 };
     let d := discount(pct = 10, line = { .price = l.price, .qty = l.qty });
-    let back := Line(..d);
+    let back := Line { price = d.price, qty = d.qty };
     assert(total(back) == 540);
-    assert(total(Line(..discount({ .price = 100, .qty = 2 }, 50))) == 100);
+    let other := discount({ .price = 100, .qty = 2 }, 50);
+    assert(total(Line { price = other.price, qty = other.qty }) == 100);
 }

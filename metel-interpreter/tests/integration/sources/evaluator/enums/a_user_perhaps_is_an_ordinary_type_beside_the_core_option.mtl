@@ -10,6 +10,6 @@ fun main() {
         Perhaps::Not => { s = 2; },
     }
     assert(s == 1);
-    let o: Option<i64> := Some(value = 3);
+    let o: Option<i64> := Some { value = 3 };
     assert(o.unwrap_or(0) == 3);
 }

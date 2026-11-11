@@ -21,6 +21,6 @@ extend<A: Printable, B: Printable> Pair<A, B>: Printable {
 }
 
 fun main() {
-    let p := Pair(first = 5, second = 10);
+    let p := Pair { first = 5, second = 10 };
     let s: String := p.print();
 }

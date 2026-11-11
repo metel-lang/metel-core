@@ -25,7 +25,7 @@ extend Point: Shape {
 }
 
 fun main() {
-    let p := Point(x = 3, y = 4);
+    let p := Point { x = 3, y = 4 };
     assert(p.label() == "(3, 4)");
     assert(p.describe() == "Point(3, 4)");
 }

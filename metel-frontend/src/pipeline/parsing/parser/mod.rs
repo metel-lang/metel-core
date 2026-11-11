@@ -768,13 +768,6 @@ fn parse_impl_block(
     }
 }
 
-thread_local! {
-    /// The nominal type the `extend` block being parsed targets, so a call `Self(..)` in a method body
-    /// names it (RFC-0100: inside an impl `Self(...)` is a construction call). `None` outside an
-    /// `extend` block over a plain named type, where `Self` stays an ordinary name.
-    static IMPL_SELF_TARGET: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
-}
-
 #[allow(clippy::too_many_lines)]
 fn parse_extend_impl_block(
     pair: pest::iterators::Pair<Rule>,
@@ -820,16 +813,7 @@ fn parse_extend_impl_block(
                         Rule::assoc_type_def => {
                             assoc_type_defs.push(parse_assoc_type_def(inner, filename)?);
                         }
-                        Rule::fun_decl => {
-                            let target = match &target_type {
-                                Some(TypeExpr::Named(name, ..)) => Some(name.clone()),
-                                _ => None,
-                            };
-                            let previous = IMPL_SELF_TARGET.with(|t| t.replace(target));
-                            let parsed = parse_fun_decl(inner, filename, true);
-                            IMPL_SELF_TARGET.with(|t| *t.borrow_mut() = previous);
-                            methods.push(parsed?);
-                        }
+                        Rule::fun_decl => methods.push(parse_fun_decl(inner, filename, true)?),
                         _ => {}
                     }
                 }
@@ -1315,6 +1299,7 @@ fn parse_expr(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Expr,
         Rule::closure_expr => parse_closure_expr(pair, filename),
         Rule::record_lit => parse_record_literal(pair, filename),
         Rule::record_projection_expr => parse_record_projection_expr(pair, filename),
+        Rule::struct_literal => parse_struct_literal(pair, filename),
         r => Err(MetelError::internal(format!(
             "parse_expr: unexpected rule {r:?}"
         ))),
@@ -2325,6 +2310,40 @@ fn unlabel(pair: pest::iterators::Pair<Rule>) -> pest::iterators::Pair<Rule> {
     }
 }
 
+fn parse_struct_literal(
+    pair: pest::iterators::Pair<Rule>,
+    filename: &str,
+) -> Result<Expr, MetelError> {
+    let span = Span::of(&pair, filename);
+    let mut inner = pair.into_inner();
+    let path_pair = inner
+        .next()
+        .ok_or_else(|| MetelError::internal("struct_literal: expected path"))?;
+    let path = collect_path_components(path_pair)?;
+    let mut fields = vec![];
+    for p in inner {
+        if p.as_rule() == Rule::struct_field_init {
+            let field_span = Span::of(&p, filename);
+            let mut it = p.into_inner();
+            let name_pair = it
+                .next()
+                .ok_or_else(|| MetelError::internal("struct_literal: expected field name"))?;
+            let name = name_pair.as_str().to_string();
+            let value = match it.next() {
+                Some(expr_pair) => parse_expr(expr_pair, filename)?,
+                None => Expr::Ident(name.clone(), field_span),
+            };
+            fields.push((name, value));
+        }
+    }
+    Ok(Expr::StructLiteral {
+        path,
+        fields,
+        symbol_id: None,
+        span,
+    })
+}
+
 fn parse_record_literal(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
@@ -2687,16 +2706,6 @@ fn apply_postfix(
             Some(a) if a.as_rule() == Rule::arg_list => collect_args(a.into_inner(), filename)?,
             _ => vec![],
         };
-        // Inside `extend T { .. }` the call `Self(..)` is a construction call of `T`.
-        let base = match base {
-            Expr::Ident(name, ident_span) if name == "Self" => {
-                match IMPL_SELF_TARGET.with(|t| t.borrow().clone()) {
-                    Some(target) => Expr::Ident(target, ident_span),
-                    None => Expr::Ident(name, ident_span),
-                }
-            }
-            other => other,
-        };
         Ok(Expr::Call {
             callee: Box::new(base),
             type_args: vec![],
@@ -2823,21 +2832,6 @@ fn parse_call_arg(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<E
             )?;
             Ok(Expr::NamedArg {
                 name,
-                value: Box::new(value),
-                span,
-            })
-        }
-        Rule::spread_arg => {
-            let span = Span::of(&inner, filename);
-            let value = parse_expr(
-                inner
-                    .into_inner()
-                    .next()
-                    .ok_or_else(|| MetelError::internal("spread_arg: expected a value"))?,
-                filename,
-            )?;
-            Ok(Expr::NamedArg {
-                name: crate::data::ast::SPREAD_ARG.to_string(),
                 value: Box::new(value),
                 span,
             })

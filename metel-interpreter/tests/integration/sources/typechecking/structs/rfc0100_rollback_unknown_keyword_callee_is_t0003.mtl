@@ -1,0 +1,2 @@
+// #1945: preserve the independent keyword-call undefined-name diagnostic.
+fun main() { missing(x = 1); }

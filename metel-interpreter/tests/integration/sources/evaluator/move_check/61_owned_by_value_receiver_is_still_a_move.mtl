@@ -17,7 +17,7 @@ extend B: Consume {
 // using it again afterward is the ordinary use-after-move check, unaffected
 // by #348.
 fun main() {
-    let b := B(v = "owned");
+    let b := B { v = "owned" };
     let out := b.eat();
     let again := b.v;
 }

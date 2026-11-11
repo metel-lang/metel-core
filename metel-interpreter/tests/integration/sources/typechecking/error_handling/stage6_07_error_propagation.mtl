@@ -3,21 +3,21 @@
 // Helper that may fail
 fun parse_positive(n: i64) -> Result<i64, String> {
     if (n > 0) {
-        Result::Ok(value = n)
+        Result::Ok { value = n }
     } else {
-        Result::Err(error = "must be positive")
+        Result::Err { error = "must be positive" }
     }
 }
 
 // Function using ? to propagate errors
 fun double_positive(n: i64) -> Result<i64, String> {
     let x: i64 := parse_positive(n)?;
-    Result::Ok(value = x * 2)
+    Result::Ok { value = x * 2 }
 }
 
 // Chained ? calls
 fun sum_positive(a: i64, b: i64) -> Result<i64, String> {
     let x: i64 := parse_positive(a)?;
     let y: i64 := parse_positive(b)?;
-    Result::Ok(value = x + y)
+    Result::Ok { value = x + y }
 }

@@ -4,8 +4,8 @@ struct Name { text: String }
 copy struct View<T> { r: &T }
 
 fun main() {
-    let owner := Name(text = "ada");
-    let v := View(r = &owner);
+    let owner := Name { text = "ada" };
+    let v := View { r = &owner };
     let first := v;
     let second := v;
     assert(first.r.text == "ada" && second.r.text == "ada");

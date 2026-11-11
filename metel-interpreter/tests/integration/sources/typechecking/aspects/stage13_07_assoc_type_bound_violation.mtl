@@ -17,11 +17,11 @@ struct IntBox {
 extend IntBox: Container { // ERROR[T0012]
     type Item := Plain;
     fun get(&self) -> Plain {
-        return Plain(x = self.value);
+        return Plain { x = self.value };
     }
 }
 
 fun main() {
-    let b := IntBox(value = 42);
+    let b := IntBox { value = 42 };
     assert(1 == 1);
 }

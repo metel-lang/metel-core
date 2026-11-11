@@ -26,6 +26,6 @@ fun use_item<T: A + B>(x: T) -> T::Item { // ERROR[T0013]
 }
 
 fun main() {
-    let w := Wrapper(value = 42);
+    let w := Wrapper { value = 42 };
     let _: i64 := use_item(w);
 }

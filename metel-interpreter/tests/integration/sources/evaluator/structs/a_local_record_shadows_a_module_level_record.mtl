@@ -3,6 +3,6 @@ record P { x: i64 }
 
 fun main() {
     record P { y: i64 }
-    let q := P(y = 2);
+    let q := P { y = 2 };
     assert(q.y == 2);
 }

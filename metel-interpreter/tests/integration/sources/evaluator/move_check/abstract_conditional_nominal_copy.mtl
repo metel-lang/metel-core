@@ -8,5 +8,5 @@ fun copied<T: Copy>(value: Wrapper<T>) -> T {
 }
 
 fun main() {
-    assert(copied(Wrapper(value = 7)) == 7);
+    assert(copied(Wrapper { value = 7 }) == 7);
 }

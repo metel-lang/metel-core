@@ -16,14 +16,14 @@ fun main() {
     // Route A: a partial move narrows `h` in place; a borrowed whole-value use
     // of the narrowed value is accepted, projection and move producing the same
     // residual type.
-    let h := Handle(fd = 7, name = "a");
+    let h := Handle { fd = 7, name = "a" };
     let taken := h.name;                    // h : Handle.{ fd } from here on
     assert(h.fd == 7);                      // the sibling field stays readable
     assert(Handle::describe(&h) == 7);      // narrowed value fits `&Self.{ fd }`
     assert(Handle::describe(&h.{ .fd }) == 7); // re-projecting the residual: same type
 
     // Route B: an explicit projection off a fresh value produces the same type.
-    let h2 := Handle(fd = 7, name = "b");
+    let h2 := Handle { fd = 7, name = "b" };
     assert(Handle::describe(&h2.{ .fd }) == 7);
 
     println(taken);

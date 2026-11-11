@@ -28,5 +28,5 @@ extend Item: Comparable {
 }
 
 fun make_list(item: Item) -> SortedList<Item> {
-    SortedList(items = [item])
+    SortedList { items = [item] }
 }

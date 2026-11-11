@@ -5,6 +5,6 @@ extend S { fun each_read(&self, f: || -> ()) { f(); } }
 
 fun main() {
     var v := 0;
-    let s := S(n = 0);
+    let s := S { n = 0 };
     s.each_read(|| { v = 1; });
 }

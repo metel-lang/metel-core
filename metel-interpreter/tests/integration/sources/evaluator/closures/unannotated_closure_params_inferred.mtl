@@ -13,7 +13,7 @@ fun main() {
     assert(inc(1) == 2);
 
     // a struct field with a written function type
-    let op := Op(f = |x| { x - 1 });
+    let op := Op { f = |x| { x - 1 } };
     assert((op.f)(10) == 9);
 
     // no expected type: the body determines it

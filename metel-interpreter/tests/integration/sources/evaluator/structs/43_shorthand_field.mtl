@@ -5,20 +5,20 @@ struct Point { x: i64, y: i64 }
 struct Named { name: String, value: i64 }
 
 fun make_point(x: i64, y: i64) -> Point {
-    Point(x = x, y = y)
+    Point { x, y }
 }
 
 fun main() {
     // Basic shorthand: both fields.
     let x := 3;
     let y := 7;
-    let p := Point(x = x, y = y);
+    let p := Point { x, y };
     assert(p.x == 3);
     assert(p.y == 7);
 
     // Mixed: shorthand and explicit.
     let x2 := 10;
-    let p2 := Point(x = x2, y = 20);
+    let p2 := Point { x = x2, y = 20 };
     assert(p2.x == 10);
     assert(p2.y == 20);
 
@@ -30,7 +30,7 @@ fun main() {
     // String field.
     let name := "hello";
     let value := 42;
-    let n := Named(name = name, value = value);
+    let n := Named { name, value };
     assert(n.value == 42);
     assert(n.name.len() == 5);
 }

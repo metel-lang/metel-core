@@ -1,6 +1,0 @@
-// RFC-0100 section 1: an enum struct-variant is built by `Enum::Variant(args)`.
-enum Shape { Circle { r: i64 } }
-
-fun main() {
-    let s := Shape::Circle { r = 1 };
-}

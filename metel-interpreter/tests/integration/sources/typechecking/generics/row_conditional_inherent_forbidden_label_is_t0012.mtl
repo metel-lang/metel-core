@@ -8,6 +8,6 @@ extend<record R: !{ .token }> Session<..R> {
 }
 
 fun main() {
-    let s: Session<{ .token: String }> := Session(id = 1, data = { .token = "t" });
+    let s: Session<{ .token: String }> := Session { id = 1, data = { .token = "t" } };
     println(s.send_data());
 }

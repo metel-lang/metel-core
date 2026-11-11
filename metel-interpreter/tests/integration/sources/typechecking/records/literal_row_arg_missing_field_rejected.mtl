@@ -4,6 +4,6 @@ record Req<record R> { data: { ..R } }
 fun host_of<record R>(r: Req<..{ .host: String, ..R }>) -> String { r.data.host }
 
 fun main() {
-    let r := Req(data = { .port = 1 });
+    let r := Req { data = { .port = 1 } };
     let _ := host_of(r); // ERROR[T0001]
 }

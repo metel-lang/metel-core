@@ -1,6 +1,0 @@
-// RFC-0100 section 1: a zero-field struct is its bare name or the call `Empty()`; `Empty {}` is retired.
-struct Empty {}
-
-fun main() {
-    let e := Empty {};
-}

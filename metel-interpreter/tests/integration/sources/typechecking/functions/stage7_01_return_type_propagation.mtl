@@ -10,9 +10,9 @@ fun find(arr: [i64], target: i64) -> Option<i64> {
 // Return Result::Err where T is not present in Err's fields.
 fun divide(a: f64, b: f64) -> Result<f64, String> {
     if (b == 0.0) {
-        return Result::Err(error = "division by zero");
+        return Result::Err { error = "division by zero" };
     }
-    return Result::Ok(value = a / b);
+    return Result::Ok { value = a / b };
 }
 
 // Break None in a loop whose result is annotated as Option<i64>.

@@ -1,8 +1,0 @@
-[options]
-error = ["T0039"]
-spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1"]
-
-[expect]
-status = "typecheck_error"
-code = "T0039"
-contains = "has no field named `z`"

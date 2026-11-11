@@ -3,7 +3,7 @@
 // the diagnostic names `.ok()`.
 fun parse(r: Result<i64, String>) -> Option<i64> {
     let x := r?;
-    Some(value = x)
+    Some { value = x }
 }
 
 fun main() {}

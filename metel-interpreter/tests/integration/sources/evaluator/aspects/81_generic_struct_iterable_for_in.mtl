@@ -31,12 +31,12 @@ extend<T: Clone> Wrapper<T>: Iterable<T> {
             return None;
         }
         self.used = true;
-        return Option::Some(value = self.value.clone());
+        return Option::Some { value = self.value.clone() };
     }
 }
 
 fun main() {
-    let var w := Wrapper(value = 42, used = false);
+    let var w := Wrapper { value = 42, used = false };
     for (x in w) {
         assert(x + 1 == 43);
     }

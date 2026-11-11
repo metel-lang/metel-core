@@ -1,8 +1,8 @@
 [options]
-error = ["T0039"]
+error = ["T0003"]
 spec = ["spec.declarations.variables.scoping-and-shadowing.legality-1"]
 
 [expect]
 status = "typecheck_error"
-code = "T0039"
-contains = "`P` has no parameter named `y`"
+code = "T0003"
+contains = "no field `y` on `P`"

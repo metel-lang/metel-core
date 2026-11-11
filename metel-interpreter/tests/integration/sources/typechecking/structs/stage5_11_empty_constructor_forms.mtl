@@ -5,6 +5,6 @@ enum Flag {
 }
 
 let _: Empty := Empty;
-let _: Empty := Empty();
+let _: Empty := Empty {};
 let _: Flag := Flag::On;
-let _: Flag := Flag::On;
+let _: Flag := Flag::On {};

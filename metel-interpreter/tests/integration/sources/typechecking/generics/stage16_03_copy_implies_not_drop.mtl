@@ -39,7 +39,7 @@ fun via_copy<T: Copy>(x: T) -> T {
 }
 
 fun main() {
-    let b := Both(x = 1);
+    let b := Both { x = 1 };
     let direct := needs_no_drop(b);
     assert(direct.x == 1);
 

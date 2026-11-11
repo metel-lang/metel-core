@@ -1,8 +1,8 @@
 // issue #232: .yolo() on Some/Ok returns the contained value without panicking.
 fun main() {
-    let some: Option<i64> := Option::Some(value = 7);
+    let some: Option<i64> := Option::Some { value = 7 };
     assert(some.yolo() == 7);
 
-    let ok: Result<i64, String> := Result::Ok(value = 9);
+    let ok: Result<i64, String> := Result::Ok { value = 9 };
     assert(ok.yolo() == 9);
 }

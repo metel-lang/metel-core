@@ -14,6 +14,6 @@ extend Rock: Display {
 struct Holder { item: dyn Display }
 
 fun main() {
-    let h := Holder(item = Rock( ));
+    let h := Holder { item = Rock { } };
     assert(h.item.to_string() == "rock");
 }

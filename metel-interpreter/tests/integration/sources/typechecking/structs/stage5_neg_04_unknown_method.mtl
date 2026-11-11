@@ -5,5 +5,5 @@ struct Point {
     y: f64,
 }
 
-let p := Point(x = 1.0, y = 2.0);
+let p := Point { x = 1.0, y = 2.0 };
 let n := p.nonexistent(); // ERROR[T0003]

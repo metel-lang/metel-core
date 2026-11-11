@@ -8,6 +8,6 @@ extend<record R, record Rest> Session<..R> where R = { .token: String, ..Rest } 
 }
 
 fun main() {
-    let session := Session(data = { .token = "x", .extra = 1 });
-    session.read_removed(Session(data = { .extra = 1 }));
+    let session := Session { data = { .token = "x", .extra = 1 } };
+    session.read_removed(Session { data = { .extra = 1 } });
 }

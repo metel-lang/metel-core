@@ -4,7 +4,7 @@ struct Token { id: i64 }
 fun take(t: Token) -> i64 { t.id }
 
 fun main() {
-    let a := Token(id = 1);
+    let a := Token { id = 1 };
     let n := take(a);
     let m := take(a); // ERROR[T0019]
 }

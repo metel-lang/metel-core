@@ -18,8 +18,8 @@ fun main() {
     assert(route({ .path = "q", .session = "s" }) == "q");
     assert(only_open({ .a = 1 }) == 7);
     assert(not_a_u8({ .x = 1 }) == 1);
-    let tagged := Session(id = 1, data = { .token = "t" });
-    let plain := Session(id = 2, data = { .count = 3 });
+    let tagged := Session { id = 1, data = { .token = "t" } };
+    let plain := Session { id = 2, data = { .count = 3 } };
     assert(tagged.kind() == 1);
     assert(plain.kind() == 2);
 }

@@ -1091,14 +1091,6 @@ impl Expander<'_> {
                 args,
                 ..
             } => {
-                // RFC-0100: a call of an alias of a plain type, `P(x = 0)`, constructs the aliased type.
-                if let Expr::Ident(name, _) = callee.as_mut() {
-                    let mut segments = vec![name.clone()];
-                    self.rewrite_value_path(&mut segments)?;
-                    if let [target] = segments.as_slice() {
-                        name.clone_from(target);
-                    }
-                }
                 self.walk_expr(callee)?;
                 for t in type_args {
                     self.subst_type(t)?;

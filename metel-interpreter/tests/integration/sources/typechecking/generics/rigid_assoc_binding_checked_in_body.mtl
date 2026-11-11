@@ -8,4 +8,4 @@ fun wrong<T: Container<Item = i64>>(value: T) -> String {
     value.get() // ERROR[T0001]
 }
 
-fun main() { wrong(IntBox(value = 1)); }
+fun main() { wrong(IntBox { value = 1 }); }

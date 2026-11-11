@@ -49,7 +49,7 @@ fun main() {
         let r := sl[idx];
         let s := scale(r, factor);
         let b := bucket_of(s, bucket_size);
-        samples.push(Sample(raw = r, scaled = s, bucket = b));
+        samples.push(Sample { raw = r, scaled = s, bucket = b });
         idx += 1;
     }
 
@@ -116,7 +116,7 @@ fun main() {
     assert(z_slice[3] == 0i32);
 
     // Polymorphic literal flows through function return and struct field.
-    let s0: Sample := Sample(raw = 0, scaled = 0.0, bucket = 0);
+    let s0: Sample := Sample { raw = 0, scaled = 0.0, bucket = 0 };
     assert(s0.raw    == 0i16);
     assert(s0.scaled == 0.0f32);
     assert(s0.bucket == 0u8);

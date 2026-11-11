@@ -4,7 +4,7 @@ struct Outer { inner: Inner }
 struct Cell { value: i64 }
 
 fun struct_projection_through_reference() {
-    let p := Pair(a = "hi", b = 1);
+    let p := Pair { a = "hi", b = 1 };
     let r: &Pair := &p;
 
     let implicit: &String := &r.a;
@@ -30,7 +30,7 @@ fun tuple_projection_through_reference() {
 }
 
 fun nested_projection_through_reference() {
-    let outer := Outer(inner = Inner(field = 7));
+    let outer := Outer { inner = Inner { field = 7 } };
     let r: &Outer := &outer;
 
     let implicit: &i64 := &r.inner.field;
@@ -54,7 +54,7 @@ fun array_projection_through_reference() {
 }
 
 fun mutable_projection_through_mut_reference() {
-    var c := Cell(value = 1);
+    var c := Cell { value = 1 };
     let r: &var Cell := &var c;
 
     let implicit: &var i64 := &var r.value;
@@ -67,7 +67,7 @@ fun mutable_projection_through_mut_reference() {
 }
 
 fun chained_reference_projection() {
-    let outer := Outer(inner = Inner(field = 12));
+    let outer := Outer { inner = Inner { field = 12 } };
     let r: &Outer := &outer;
     let rr: &&Outer := &r;
 

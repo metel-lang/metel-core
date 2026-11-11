@@ -3,5 +3,5 @@
 struct Counter<T> { n: u64, v: T }
 
 fun main() {
-    let c := Counter(n = "one", v = 2);
+    let c := Counter { n = "one", v = 2 };
 }

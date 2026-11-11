@@ -8,5 +8,5 @@ where R = { .token: String, ..Rest } {
 }
 
 fun main() {
-    read_removed(Session(data = { .extra = 1 }));
+    read_removed(Session { data = { .extra = 1 } });
 }

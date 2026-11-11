@@ -1,9 +1,9 @@
 // RFC-0182 x closures x RFC-0185: `?` on Option in a closure that returns Option, and an explicit `*r`.
 fun first_even(xs: [i64; 3]) -> Option<i64> {
     let pick := |i: i64| -> Option<i64> {
-        let v: Option<i64> := if (xs[i as u64] % 2 == 0) { Option::Some(value = xs[i as u64]) } else { Option::None };
+        let v: Option<i64> := if (xs[i as u64] % 2 == 0) { Option::Some { value = xs[i as u64] } } else { Option::None };
         let got := v?;
-        return Option::Some(value = got + 100);
+        return Option::Some { value = got + 100 };
     };
     return pick(1);
 }

@@ -4,7 +4,7 @@ enum MaybeText {
 }
 
 fun main() {
-    let value := MaybeText::Full(text = "x");
+    let value := MaybeText::Full { text = "x" };
     let n := match (value) {
         MaybeText::Full { text } => text.len(),
         MaybeText::Empty => 0,

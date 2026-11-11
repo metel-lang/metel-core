@@ -9,7 +9,7 @@ struct Point {
 }
 
 fun test_field_address_of() {
-    let p := Point(x = 3, y = 7);
+    let p := Point { x = 3, y = 7 };
     let px: &i64 := &p.x;
     let py: &i64 := &p.y;
     assert(*px == 3);
@@ -44,10 +44,10 @@ struct Pair {
 }
 
 fun test_chained_field_address_of() {
-    let pair := Pair(
-        a = Point(x = 1, y = 2),
-        b = Point(x = 10, y = 20),
-    );
+    let pair := Pair {
+        a = Point { x = 1, y = 2 },
+        b = Point { x = 10, y = 20 },
+    };
     let pax: &i64 := &pair.a.x;
     let pby: &i64 := &pair.b.y;
     assert(*pax == 1);
@@ -86,7 +86,7 @@ fun sum_pair(a: &i64, b: &i64) -> i64 {
 }
 
 fun test_field_ptr_as_arg() {
-    let p := Point(x = 5, y = 8);
+    let p := Point { x = 5, y = 8 };
     let result := sum_pair(&p.x, &p.y);
     assert(result == 13);
 }

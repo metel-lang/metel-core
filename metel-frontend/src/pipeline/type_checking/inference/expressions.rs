@@ -758,40 +758,6 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
-        } if construction_field_names(callee, args, ctx).is_some() => {
-            // RFC-0100: `Type(args)` builds the struct or variant directly; check the literal it is
-            // equivalent to, and keep the field names for the abstract-body builder.
-            let names = construction_field_names(callee, args, ctx)
-                .ok_or_else(|| MetelError::internal("construction call lost its type"))?;
-            // `Type(..r)` takes a record of exactly the type's row (RFC-0100 section 7).
-            if let [
-                Expr::NamedArg {
-                    name,
-                    value,
-                    span: arg_span,
-                },
-            ] = args.as_slice()
-                && name == crate::data::ast::SPREAD_ARG
-            {
-                let raw = infer_expr(value, ctx, fun_generalizations)?;
-                let solved = ctx.solve()?.apply(&raw);
-                if let InferType::Record(labels) = peel_all_references(&solved) {
-                    super::super::construction_call::check_spread_row(
-                        &labels, &names, callee, arg_span,
-                    )?;
-                }
-            }
-            let literal = super::super::construction_call::literal_for(
-                callee, type_args, args, span, &names, true,
-            )?;
-            ctx.record_definition_construction(span.clone(), names);
-            infer_expr(&literal, ctx, fun_generalizations)
-        }
-        Expr::Call {
-            callee,
-            type_args,
-            args,
-            span,
         } if super::super::keyword_binding::has_keyword(args)
             && keyword_callee_is_defined(callee, ctx)
             && !super::super::overload::callee_name(callee)
@@ -3588,81 +3554,7 @@ fn keyword_call_positional(
     .map(|positional| positional.args)
 }
 
-/// The declared field names of the struct or struct-like variant a call's callee names, when it names
-/// one: the call is then a construction call (RFC-0100). An empty list means the callee spells a
-/// variant the registry does not know, so the literal it becomes reports the unknown variant or enum.
-fn construction_field_names(
-    callee: &Expr,
-    args: &[Expr],
-    ctx: &mut InferContext,
-) -> Option<Vec<String>> {
-    use super::super::construction_call::{Target, callee_symbol, is_variant_like, target_of};
-    use super::super::keyword_binding::has_keyword;
-    let id = callee_symbol(callee);
-    match target_of(callee)? {
-        Target::Struct(name) => {
-            let fields: Option<Vec<String>> = match id {
-                Some(id) => ctx.registry().struct_fields_by_id(id),
-                None => ctx.get_struct_fields(name),
-            }
-            .map(|fields| fields.iter().map(|field| field.name.clone()).collect());
-            if let Some(fields) = fields {
-                return (!function_takes_the_call(callee, args, name, ctx)).then_some(fields);
-            }
-            // A struct-like variant written without its enum and given keyword arguments
-            // (`Some(value = 1)`): a positional `Some(1)` is the variant constructor function.
-            if has_keyword(args) && ctx.callee_params_at(callee.span()).is_none() {
-                return ctx.registry().unqualified_variant_field_names(name);
-            }
-            None
-        }
-        Target::Variant(enum_name, variant) => {
-            let info = match id {
-                Some(id) => ctx.registry().enum_info_by_id(id),
-                None => ctx.get_enum(enum_name),
-            };
-            match info {
-                Some(info) => match info.variants.iter().find(|v| v.name == variant) {
-                    Some(found) if !found.fields.is_empty() => Some(
-                        found
-                            .fields
-                            .iter()
-                            .map(|field| field.name.clone())
-                            .collect(),
-                    ),
-                    Some(_) => None,
-                    None => (is_variant_like(variant) && has_keyword(args)).then(Vec::new),
-                },
-                None => {
-                    (id.is_none() && is_variant_like(variant) && has_keyword(args)).then(Vec::new)
-                }
-            }
-        }
-    }
-}
-
-/// Whether a function of the callee's name takes the call, when a struct of that name exists too: a
-/// type and a function may share a name (their namespaces differ), and `Name(args)` is the function
-/// call exactly when its arguments bind to the function's parameters (RFC-0100).
-fn function_takes_the_call(
-    callee: &Expr,
-    args: &[Expr],
-    name: &str,
-    ctx: &mut InferContext,
-) -> bool {
-    use super::super::keyword_binding::{ParamSlot, bind_arguments};
-    if let Some(params) = ctx.callee_params_at(callee.span()) {
-        let slots: Vec<ParamSlot<'_>> = params.iter().map(|name| ParamSlot { name }).collect();
-        return bind_arguments(name, &slots, args, callee.span()).is_ok();
-    }
-    ctx.poly_scheme(name).is_some()
-        || ctx.is_overloaded(name)
-        || matches!(ctx.lookup(name), Some(InferType::Fun(..)))
-}
-
-/// A keyword call binds against its callee's declaration, so the callee must be one: a plain name that
-/// nothing defines is an undefined name, reported as such by the ordinary call path, not as a call
-/// through a function value (RFC-0223, RFC-0100).
+// Keep RFC-0223 undefined-callee diagnostics independent of constructor syntax.
 fn keyword_callee_is_defined(callee: &Expr, ctx: &mut InferContext) -> bool {
     match callee {
         Expr::Ident(name, _) => {

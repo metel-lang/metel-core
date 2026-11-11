@@ -21,7 +21,7 @@ fun transform(x: extends Display) -> extends Display {
 }
 
 fun main() {
-	let original := MyInt(value = 42);
+	let original := MyInt { value = 42 };
 	let result := transform(original);
 	
 	// In the linked case, the caller should be able to name the concrete type

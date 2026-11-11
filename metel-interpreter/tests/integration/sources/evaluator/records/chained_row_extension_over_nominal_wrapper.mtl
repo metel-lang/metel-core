@@ -4,15 +4,15 @@
 record Req<record R> { data: { ..R } }
 
 fun add_host<record R: !{ .host }>(r: Req<..R>, h: String) -> Req<..{ .host: String, ..R }> {
-    Req(data = { .host = h, ..r.data })
+    Req { data = { .host = h, ..r.data } }
 }
 
 fun add_port<record R: !{ .port }>(r: Req<..R>, p: i64) -> Req<..{ .port: i64, ..R }> {
-    Req(data = { .port = p, ..r.data })
+    Req { data = { .port = p, ..r.data } }
 }
 
 fun add_tls<record R: !{ .tls }>(r: Req<..R>, t: i64) -> Req<..{ .tls: i64, ..R }> {
-    Req(data = { .tls = t, ..r.data })
+    Req { data = { .tls = t, ..r.data } }
 }
 
 extend<record R: { .host: String, .port: i64, .. }> Req<..R> {
@@ -20,7 +20,7 @@ extend<record R: { .host: String, .port: i64, .. }> Req<..R> {
 }
 
 fun main() {
-    let two := add_port(add_host(Req(data = {}), "example.org".to_string()), 80);
+    let two := add_port(add_host(Req { data = {} }, "example.org".to_string()), 80);
     assert(two.data.host == "example.org");
     assert(two.data.port == 80);
 

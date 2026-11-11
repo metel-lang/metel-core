@@ -7,7 +7,7 @@ extend Stove: Hot;
 extend Ice: Cold;
 
 fun main() {
-    let a := Stove(n = 1);
-    let b := Ice(n = 2);
+    let a := Stove { n = 1 };
+    let b := Ice { n = 2 };
     assert(a.n + b.n == 3);
 }

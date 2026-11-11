@@ -15,9 +15,9 @@ struct Plain {
 }
 
 fun main() {
-    let h := Handle(fd = 1);
+    let h := Handle { fd = 1 };
     assert(h.fd == 1);
     // `Handle` is genuinely `Drop`, so it is excluded from a `!Drop` bound,
     // while a plain struct satisfies it.
-    assert(takes_non_drop(Plain(v = 2)) == 1);
+    assert(takes_non_drop(Plain { v = 2 }) == 1);
 }

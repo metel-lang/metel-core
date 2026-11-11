@@ -4,5 +4,5 @@ pub struct Pair<A, B> {
 }
 
 pub fun swap<A, B>(p: Pair<A, B>) -> Pair<B, A> {
-    Pair(first = p.second, second = p.first)
+    Pair { first = p.second, second = p.first }
 }

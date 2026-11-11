@@ -54,9 +54,9 @@ fun main() {
     assert(selected("unused") == 1);
     assert(indexed([3, 7]) == 7);
     assert(measured(["one", "two"]) == 4);
-    assert(borrowed(Holder(value = 1)) == 2);
+    assert(borrowed(Holder { value = 1 }) == 2);
     assert(strip({ .token = "discard", .count = 4 }).count == 4);
     assert(strip_two({ .token = "discard", .count = 4, .kept = "owned" }).kept == "owned");
     assert(alternate({ .a = 3, .b = 4, .kept = "owned" }).kept == "owned");
-    copied_item(NumberSource(value = 7));
+    copied_item(NumberSource { value = 7 });
 }

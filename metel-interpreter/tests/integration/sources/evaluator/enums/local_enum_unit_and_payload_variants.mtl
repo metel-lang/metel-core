@@ -11,7 +11,7 @@ fun main() {
     assert(s == 2);
 
     enum Shape { Circle { r: i64 }, Dot }
-    let c := Shape::Circle(r = 7);
+    let c := Shape::Circle { r = 7 };
     var got := 0;
     match (c) {
         Shape::Circle { r } => { got = r; },

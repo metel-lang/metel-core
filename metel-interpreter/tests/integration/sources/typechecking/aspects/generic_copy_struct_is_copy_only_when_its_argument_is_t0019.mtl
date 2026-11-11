@@ -2,7 +2,7 @@ copy struct Wrapper<T> { v: T }
 struct Token { id: i64 }
 
 fun main() {
-    let w := Wrapper(v = Token(id = 1));
+    let w := Wrapper { v = Token { id = 1 } };
     let w2 := w;
     let w3 := w; // ERROR[T0019]
 }

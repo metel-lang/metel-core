@@ -39,7 +39,7 @@ extend Option<T> {
     // Transform the contained value, leaving `None` untouched.
     pub fun map<U>(self, f: |T| -> U) -> Option<U> {
         match (self) {
-            Option::Some { value } => Option::Some(value = f(value)),
+            Option::Some { value } => Option::Some { value = f(value) },
             _ => Option::None,
         }
     }
@@ -77,8 +77,8 @@ extend Option<T> {
     // becomes `Err { error }`.
     pub fun ok_or<E>(self, error: E) -> Result<T, E> {
         match (self) {
-            Option::Some { value } => Result::Ok(value = value),
-            _ => Result::Err(error = error),
+            Option::Some { value } => Result::Ok { value = value },
+            _ => Result::Err { error = error },
         }
     }
 }
@@ -106,15 +106,15 @@ extend Result<T, E> {
     // Transform the success value, leaving `Err` untouched.
     pub fun map<U>(self, f: |T| -> U) -> Result<U, E> {
         match (self) {
-            Result::Ok { value } => Result::Ok(value = f(value)),
-            Result::Err { error } => Result::Err(error = error),
+            Result::Ok { value } => Result::Ok { value = f(value) },
+            Result::Err { error } => Result::Err { error = error },
         }
     }
     // Chain a computation that itself returns a `Result`.
     pub fun and_then<U>(self, f: |T| -> Result<U, E>) -> Result<U, E> {
         match (self) {
             Result::Ok { value } => f(value),
-            Result::Err { error } => Result::Err(error = error),
+            Result::Err { error } => Result::Err { error = error },
         }
     }
     // The success value, or `fallback` when `Err`.
@@ -144,15 +144,15 @@ extend Result<T, E> {
     // converting between error types.
     pub fun map_err<F>(self, f: |E| -> F) -> Result<T, F> {
         match (self) {
-            Result::Ok { value } => Result::Ok(value = value),
-            Result::Err { error } => Result::Err(error = f(error)),
+            Result::Ok { value } => Result::Ok { value = value },
+            Result::Err { error } => Result::Err { error = f(error) },
         }
     }
     // Converts to `Option<T>`: `Ok { value }` becomes `Some { value }`; `Err`
     // becomes `None`. The error value is discarded.
     pub fun ok(self) -> Option<T> {
         match (self) {
-            Result::Ok { value } => Option::Some(value = value),
+            Result::Ok { value } => Option::Some { value = value },
             _ => Option::None,
         }
     }
@@ -286,7 +286,7 @@ extend List<T> {
     pub fun find(&self, pred: |T| -> boolean) -> Option<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
-                return Option::Some(value = x);
+                return Option::Some { value = x };
             }
         }
         Option::None

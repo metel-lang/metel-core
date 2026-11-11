@@ -30,12 +30,12 @@ extend C: Bump {
 // keep working through a reference, repeatedly — #348 is only about a
 // by-value receiver.
 fun main() {
-    let b := B(v = "x");
+    let b := B { v = "x" };
     let r := &b;
     assert(r.show() == "x");
     assert(r.show() == "x");
 
-    var c := C(v = 0);
+    var c := C { v = 0 };
     let rc := &var c;
     rc.bump();
     rc.bump();

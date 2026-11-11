@@ -12,6 +12,6 @@ extend Rock: Display {
 fun show(x: &dyn Display) -> String { x.to_string() }
 
 fun main() {
-    let x: dyn Display := Rock( );
+    let x: dyn Display := Rock { };
     assert(show(&x) == "rock");
 }

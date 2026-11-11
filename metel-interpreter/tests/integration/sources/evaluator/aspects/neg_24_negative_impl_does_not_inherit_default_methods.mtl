@@ -19,6 +19,6 @@ struct Robot {
 extend Robot: !Greet;
 
 fun main() {
-    let r := Robot(id = 1);
+    let r := Robot { id = 1 };
     println(r.greeting());
 }

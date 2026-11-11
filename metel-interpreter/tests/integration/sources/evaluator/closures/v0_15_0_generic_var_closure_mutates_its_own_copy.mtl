@@ -14,5 +14,5 @@ fun run<T: Bump + Copy>(x: T) {
 }
 
 fun main() {
-    run(C(n = 0));
+    run(C { n = 0 });
 }

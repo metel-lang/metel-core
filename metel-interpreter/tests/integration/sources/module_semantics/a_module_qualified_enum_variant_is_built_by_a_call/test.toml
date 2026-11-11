@@ -1,5 +1,0 @@
-runner = "full_pipeline"
-prelude = "default"
-
-[options]
-spec = ["spec.declarations.enums.instantiation.legality-1"]

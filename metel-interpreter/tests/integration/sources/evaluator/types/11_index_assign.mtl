@@ -25,7 +25,7 @@ fun main() {
     assert(arr[0] == 7);
 
     // Field chain then computed index assignment.
-    var s := S(data = [1, 2, 3]);
+    var s := S { data = [1, 2, 3] };
     s.data[i as u64] = 42;
     assert(s.data[1] == 42);
     s.data[(i + 1) as u64] = 55;

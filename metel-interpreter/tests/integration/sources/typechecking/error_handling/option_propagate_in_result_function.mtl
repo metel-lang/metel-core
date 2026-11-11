@@ -3,7 +3,7 @@
 // bridge, `.ok_or(...)`.
 fun load(o: Option<i64>) -> Result<i64, String> {
     let x := o?;
-    Ok(value = x)
+    Ok { value = x }
 }
 
 fun main() {}

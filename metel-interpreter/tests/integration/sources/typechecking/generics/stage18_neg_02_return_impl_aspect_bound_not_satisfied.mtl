@@ -12,7 +12,7 @@ struct MyInt {
 
 // Function claims to return extends Display but returns MyInt
 fun bad_int() -> extends Display { // ERROR[T0012]
-	MyInt(value = 42)
+	MyInt { value = 42 }
 }
 
 fun main() {

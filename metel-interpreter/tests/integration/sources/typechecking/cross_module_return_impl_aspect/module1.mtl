@@ -15,5 +15,5 @@ extend MyInt: Display {
 }
 
 pub fun make_public_int() -> extends Display {
-	MyInt(value = 42)
+	MyInt { value = 42 }
 }

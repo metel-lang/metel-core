@@ -13,7 +13,7 @@ fun main() {
     assert(a.x == 1);
     assert(b.y == 2);
 
-    let p := Pt(x = 3, y = 4);
+    let p := Pt { x = 3, y = 4 };
     let q := dup(p);
     assert(p.x == 3);
     assert(q.y == 4);

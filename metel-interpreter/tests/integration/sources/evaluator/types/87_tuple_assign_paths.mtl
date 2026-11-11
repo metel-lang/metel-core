@@ -11,7 +11,7 @@ fun main() {
     nested.1.0 = 99;
     assert(nested.1.0 == 99);
 
-    var s := Holder(t = (7, (8, 9)));
+    var s := Holder { t = (7, (8, 9)) };
     s.t.0 = 11;
     assert(s.t.0 == 11);
 
@@ -40,7 +40,7 @@ fun tuple_assign_through_references() {
     assert(t.0 == 9);
     assert(t.1 == 7);
 
-    var rh := RefHolder(pair = (1, 2));
+    var rh := RefHolder { pair = (1, 2) };
     set_nested(&var rh);
     assert(rh.pair.0 == 42);
     assert(rh.pair.1 == 5);

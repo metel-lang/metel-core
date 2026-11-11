@@ -3,7 +3,7 @@ copy struct Cell { v: i64 }
 
 fun main() {
     let a := [0; 3];
-    let b := [Cell(v = 2); 2];
-    let c := [Token(id = 1); 1];
+    let b := [Cell { v = 2 }; 2];
+    let c := [Token { id = 1 }; 1];
     assert(a[2] == 0 && b[1].v == 2 && c[0].id == 1);
 }

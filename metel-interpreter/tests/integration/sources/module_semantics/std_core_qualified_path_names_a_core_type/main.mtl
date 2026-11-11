@@ -8,7 +8,7 @@ fun first(values: [i64]) -> std::core::Option<i64> {
     if (values.len() == 0) {
         return None;
     }
-    Some(value = values[0])
+    Some { value = values[0] }
 }
 
 fun main() {

@@ -21,6 +21,6 @@ fun consume_sneak<T: Consume>(pair: (&T, i64)) -> String {
 }
 
 fun main() {
-    let b := B(v = "owned");
+    let b := B { v = "owned" };
     let result := consume_sneak((&b, 1));
 }
