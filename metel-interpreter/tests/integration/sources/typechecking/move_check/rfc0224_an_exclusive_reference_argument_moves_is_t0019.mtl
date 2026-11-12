@@ -1,0 +1,9 @@
+// RFC-0224 section 2: `&var T` is never `Copy`, so `Wrapper<&var T>` moves whatever `T` is.
+struct Wrapper<T> derives Copy via T { value: T }
+
+fun f<T: Copy>(w: Wrapper<&var T>) {
+    let first := w;
+    let again := w; // ERROR[T0019]
+}
+
+fun main() {}

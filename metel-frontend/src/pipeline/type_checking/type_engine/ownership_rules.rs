@@ -3,7 +3,7 @@ use crate::data::abstract_body::{
     AbstractBound, AbstractParameterFacts, AbstractType, equal_parameter_facts,
 };
 use crate::data::ast::{Bound, BoundHead, GenericParam, ImplBlock, Polarity, TypeExpr};
-use crate::data::types::NominalId;
+use crate::data::types::{NominalId, UseMultiplicity};
 use crate::identity::symbols::SymbolId;
 use std::collections::HashSet;
 
@@ -180,16 +180,26 @@ fn ordinary_where_clause(implementation: &ImplBlock) -> bool {
     })
 }
 
-/// RFC-0224 prototype. One atom `Param: Copy` of a stored flow set, evaluated for the argument at that
-/// position: a parameter is `Copy` when a bound says so and otherwise is not known `Copy` (the value moves;
-/// this is not evidence of `!Copy`), a nested application reduces through its own stored rule, and a concrete
-/// type is asked directly.
+/// RFC-0224 section 2. One atom `Param: Copy` of a stored flow set, evaluated for the argument at that
+/// position, by the `Copy` rule of the argument's own type form (RFC-0206 section 2):
+/// - a type parameter is `Copy` when a bound says so and otherwise is not known `Copy` (the value moves; this
+///   is not evidence of `!Copy`);
+/// - a nested application reduces through its own stored rule, a concrete type is asked directly;
+/// - a tuple and a record are `Copy` when every component is; a sized array when its element is;
+/// - a shared reference and the borrowed `T[]` view are always `Copy`, `&var T` never;
+/// - a function type is `Copy` when it says so.
+///
+/// `None` is *undecided*: an open row, a residual, a `dyn` value, or a component that is. A component that is
+/// definitely not `Copy` decides the whole conjunction.
 fn flow_condition(
     registry: &TypeDefinitionRegistry,
     argument: &AbstractType,
     identity: SymbolId,
     facts: &[AbstractParameterFacts],
 ) -> Option<bool> {
+    let all = |items: &mut dyn Iterator<Item = &AbstractType>| {
+        conjunction(items.map(|item| flow_condition(registry, item, identity, facts)))
+    };
     match argument {
         AbstractType::Parameter(parameter) => {
             let equal = equal_parameter_facts(facts, *parameter);
@@ -212,6 +222,12 @@ fn flow_condition(
             facts,
         ),
         AbstractType::Concrete(ty) => Some(registry.type_is_copy(&[], ty)),
+        AbstractType::Tuple(items) => all(&mut items.iter()),
+        AbstractType::Record(fields) => all(&mut fields.iter().map(|(_, ty)| ty)),
+        AbstractType::SizedArray(item, _) => flow_condition(registry, item, identity, facts),
+        AbstractType::Reference(_) | AbstractType::Array(_) => Some(true),
+        AbstractType::MutReference(_) => Some(false),
+        AbstractType::Function { usage, .. } => Some(*usage == UseMultiplicity::Copy),
         _ => None,
     }
 }
