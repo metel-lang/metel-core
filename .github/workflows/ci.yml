@@ -309,6 +309,9 @@ jobs:
       - name: sweep_pub.py self-test (RFC-0218, metel-core#1849)
         run: python3 tools/test_sweep_pub.py
 
+      - name: push_scope.py self-test (pre-push skips the full suite for docs-only pushes)
+        run: python3 tools/test_push_scope.py
+
   clippy-allow-ratchet:
     name: clippy-allow ratchet
     runs-on: ubuntu-latest

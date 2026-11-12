@@ -201,7 +201,13 @@ git config core.hooksPath .githooks
 plus the two instant text-scan tools (`clippy_allow_ratchet.py --check`,
 `check_no_semantic_name_lookup.py`); `pre-push` runs clippy, `cargo test --workspace`,
 `check_no_flat_module_dir_collision.py --check`, and refuses to push a merge commit
-reaching `develop`. Not a substitute for Tier 3 or CI —
+reaching `develop`. A push that changes only the `docs` pin, `ROADMAP.md`, `docs/` or the
+root process documents (`AGENTS.md`, `CLAUDE.md`, `PROCESSES.md`, `RELEASING.md`) skips
+clippy and the test suite (`tools/push_scope.py` decides; `METEL_PREPUSH_FULL=1` forces the
+full run); CI still runs everything on the pull request. The hook is the full local run: do
+not run `cargo test --workspace` by hand right before a push, which doubles the wait. Batch
+small documentation changes into one pull request, and let a docs pin bump ride along with
+the next code pull request unless something needs the new pin sooner. Not a substitute for Tier 3 or CI —
 branch protection ("Require linear history" on `develop`) is the actual backstop; these
 hooks just catch the same classes of mistake earlier, for whoever has them enabled.
 

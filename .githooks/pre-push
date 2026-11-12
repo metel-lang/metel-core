@@ -10,11 +10,22 @@ unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_A
 
 set -e
 
-echo "pre-push: cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic"
-cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic
+# git passes one line per pushed ref on stdin; read it once, the checks below both need it.
+refs=$(cat)
 
-echo "pre-push: cargo test --workspace"
-cargo test --workspace
+# A push that changes only the docs pin, ROADMAP.md, the process documents or docs/ cannot change what clippy
+# and the test suite check (about ten minutes), so they are skipped; CI still runs everything on the pull
+# request. METEL_PREPUSH_FULL=1 forces the full run. See tools/push_scope.py for the exact set of paths.
+scope=$(printf '%s\n' "$refs" | python3 tools/push_scope.py)
+if [ "$scope" = "docs-only" ] && [ -z "${METEL_PREPUSH_FULL:-}" ]; then
+    echo "pre-push: docs-only push (docs pin, ROADMAP.md, process documents), skipping clippy and cargo test"
+else
+    echo "pre-push: cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic"
+    cargo clippy --workspace --lib -- -D warnings -D clippy::pedantic
+
+    echo "pre-push: cargo test --workspace"
+    cargo test --workspace
+fi
 
 echo "pre-push: no flat module file beside its own directory"
 python3 tools/check_no_flat_module_dir_collision.py --check
@@ -24,7 +35,7 @@ python3 tools/check_no_copy_by_name.py --check
 # merge commit never lands on it. This catches a merge commit in a local push to
 # develop before the push even leaves the machine.
 zero="0000000000000000000000000000000000000000"
-while read -r local_ref local_sha remote_ref remote_sha; do
+printf '%s\n' "$refs" | while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$remote_ref" = "refs/heads/develop" ] || continue
     [ "$local_sha" = "$zero" ] && continue  # a delete, nothing to check
 
