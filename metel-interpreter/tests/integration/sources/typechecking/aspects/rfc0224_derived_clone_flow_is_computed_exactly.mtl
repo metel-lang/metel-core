@@ -1,0 +1,12 @@
+// RFC-0207 section 2 rule 2 with RFC-0224's computed flow: a derived `Clone` holds exactly when every field type has
+// it, so a parameter held only through a view is not bounded, and a nested application reduces through the flow
+// of each type it names.
+copy struct View<T> { r: &T }
+struct W<T> derives Clone { v: View<T> }
+struct Wrapper<T> derives Clone { value: T }
+struct Outer<A, B> derives Clone { w: Wrapper<A>, n: B }
+
+fun dup_w<T>(w: &W<T>) -> W<T> { w.clone() }
+fun dup_outer<A: Clone, B: Clone>(o: &Outer<A, B>) -> Outer<A, B> { o.clone() }
+
+fun main() {}

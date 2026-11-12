@@ -1,0 +1,8 @@
+// RFC-0224 section 2 rule 1 for `Clone`: `Outer<A, B>` is `Clone` when `A` and `B` are (through `Wrapper<A>` and the
+// plain field), so cloning it with `A` unbounded is rejected.
+struct Wrapper<T> derives Clone { value: T }
+struct Outer<A, B> derives Clone { w: Wrapper<A>, n: B }
+
+fun dup<A, B: Clone>(o: &Outer<A, B>) -> Outer<A, B> { o.clone() } // ERROR[T0035]
+
+fun main() {}
