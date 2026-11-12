@@ -1,7 +1,7 @@
-fun price_of<T, record R: { .price: T, .. }>(r: R, v: T) -> i64 {
+fun price_of<T, record R: .{ .price: T, .. }>(r: R, v: T) -> i64 {
     1
 }
 
 fun main() -> i64 {
-    price_of({ .price = "x", .a = 2 }, 7) // ERROR[T0012]
+    price_of(.{ .price = "x", .a = 2 }, 7) // ERROR[T0012]
 }

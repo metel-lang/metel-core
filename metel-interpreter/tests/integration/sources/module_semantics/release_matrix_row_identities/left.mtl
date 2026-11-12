@@ -1,9 +1,9 @@
-pub record LeftPacket<record R> { data: { ..R } }
+pub record LeftPacket<record R> { data: .{ ..R } }
 pub aspect LeftRead { fun read(&self) -> i64; }
-extend<record R: { .count: i64, .. }> LeftPacket<..R>: LeftRead {
+extend<record R: .{ .count: i64, .. }> LeftPacket<..R>: LeftRead {
     fun read(&self) -> i64 { self.data.count }
 }
-pub fun inspect_left<record R: { .count: i64, .. }>(packet: &LeftPacket<..R>) -> i64 {
+pub fun inspect_left<record R: .{ .count: i64, .. }>(packet: &LeftPacket<..R>) -> i64 {
     packet.read()
 }
 pub fun identity_left<record R>(packet: LeftPacket<..R>) -> LeftPacket<..R> { packet }

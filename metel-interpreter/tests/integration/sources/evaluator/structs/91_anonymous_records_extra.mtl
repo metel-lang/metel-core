@@ -2,37 +2,37 @@
 // fields, whole-value and field mutation, multi-field projection, the
 // order-insensitive identity across a function boundary, and pattern binding.
 
-struct Wrap { inner: { .x: i64, .y: i64 } }
+struct Wrap { inner: .{ .x: i64, .y: i64 } }
 
 struct Handle { fd: i64, tag: i64, mode: i64 }
 
 // The declared return row is written `{ b, a }`; the call site below annotates
 // `{ a, b }`. They are the same type — field order is not part of identity.
-fun swap_names(a: i64, b: i64) -> { .b: i64, .a: i64 } {
-    ({ .a = a, .b = b })
+fun swap_names(a: i64, b: i64) -> .{ .b: i64, .a: i64 } {
+    (.{ .a = a, .b = b })
 }
 
 // A block whose tail is a record-typed identifier is a perfectly ordinary
 // record return — no parentheses needed. (Regression guard: an earlier
 // block-vs-record heuristic wrongly rejected this valid form.)
-fun via_ident() -> { .a: i64 } {
-    let r := ({ .a = 1 });
+fun via_ident() -> .{ .a: i64 } {
+    let r := (.{ .a = 1 });
     r
 }
 
 fun main() {
     // Nested records, and access through two levels.
-    let nested := { .outer = { .inner = 7 } };
+    let nested := .{ .outer = .{ .inner = 7 } };
     assert(nested.outer.inner == 7);
 
     // A record as a struct field.
-    let w := Wrap { inner = { .x = 1, .y = 2 } };
+    let w := Wrap { inner = .{ .x = 1, .y = 2 } };
     assert(w.inner.x == 1);
     assert(w.inner.y == 2);
 
     // Order-insensitive identity across a call: `{ b, a }` result used where
     // `{ a, b }` is annotated.
-    let ab: { .a: i64, .b: i64 } := swap_names(10, 20);
+    let ab: .{ .a: i64, .b: i64 } := swap_names(10, 20);
     assert(ab.a == 10);
     assert(ab.b == 20);
 
@@ -40,8 +40,8 @@ fun main() {
     assert(via_ident().a == 1);
 
     // Whole-value mutation through a `var` binding.
-    var p := { .x = 1, .y = 1 };
-    p = { .x = 5, .y = 6 };
+    var p := .{ .x = 1, .y = 1 };
+    p = .{ .x = 5, .y = 6 };
     assert(p.x == 5);
     assert(p.y == 6);
 
@@ -56,6 +56,6 @@ fun main() {
     assert(picked.mode == 5);
 
     // Pattern binding, both fields used.
-    let total := match (p) { { .x, .y } => x + y, };
+    let total := match (p) { .{ .x, .y } => x + y, };
     assert(total == 14);
 }

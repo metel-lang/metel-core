@@ -1,0 +1,2 @@
+fun f<record R: !.{ .token: i64 }>(r: R) { }
+fun main() { }

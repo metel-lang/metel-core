@@ -5,9 +5,9 @@
 
 aspect Describe { fun describe(self) -> i64; }
 
-record Session<record R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: .{ ..R } }
 
-extend<record R: { .token: String, .. }> Session<..R>: Describe {
+extend<record R: .{ .token: String, .. }> Session<..R>: Describe {
     fun describe(self) -> i64 { 1 }
 }
 
@@ -18,29 +18,29 @@ extend<record R: !{ .token }> Session<..R>: Describe {
 // `a: i64` and `a: String` cannot both hold of one row, so these are disjoint too.
 aspect Tag { fun tag(self) -> i64; }
 
-extend<record R: { .a: i64, .. }> Session<..R>: Tag {
+extend<record R: .{ .a: i64, .. }> Session<..R>: Tag {
     fun tag(self) -> i64 { 10 }
 }
 
-extend<record R: { .a: String, .. }> Session<..R>: Tag {
+extend<record R: .{ .a: String, .. }> Session<..R>: Tag {
     fun tag(self) -> i64 { 20 }
 }
 
 fun show<T: Describe>(t: T) -> i64 { t.describe() }
 
 fun main() {
-    let authed: Session<{ .token: String }> :=
-        Session { id = 1, data = { .token = "t" } };
-    let anon: Session<{ .extra: i64 }> := Session { id = 2, data = { .extra = 1 } };
+    let authed: Session<.{ .token: String }> :=
+        Session { id = 1, data = .{ .token = "t" } };
+    let anon: Session<.{ .extra: i64 }> := Session { id = 2, data = .{ .extra = 1 } };
     assert(authed.describe() == 1);
     assert(anon.describe() == 2);
     // a generic bound is satisfied by exactly the matching impl
     // `show` consumes its argument, so it gets fresh values.
-    assert(show(Session { id = 1, data = { .token = "t" } }) == 1);
-    assert(show(Session { id = 2, data = { .extra = 1 } }) == 2);
+    assert(show(Session { id = 1, data = .{ .token = "t" } }) == 1);
+    assert(show(Session { id = 2, data = .{ .extra = 1 } }) == 2);
 
-    let int_a: Session<{ .a: i64 }> := Session { id = 3, data = { .a = 1 } };
-    let str_a: Session<{ .a: String }> := Session { id = 4, data = { .a = "x" } };
+    let int_a: Session<.{ .a: i64 }> := Session { id = 3, data = .{ .a = 1 } };
+    let str_a: Session<.{ .a: String }> := Session { id = 4, data = .{ .a = "x" } };
     assert(int_a.tag() == 10);
     assert(str_a.tag() == 20);
     println("ok");

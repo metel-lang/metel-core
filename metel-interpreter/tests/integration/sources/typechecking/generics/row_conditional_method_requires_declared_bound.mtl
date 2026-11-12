@@ -3,10 +3,10 @@
 
 record Session<record R> {
     id: i64,
-    data: { ..R },
+    data: .{ ..R },
 }
 
-extend<record R: { .token: String, .. }> Session<..R> {
+extend<record R: .{ .token: String, .. }> Session<..R> {
     fun with_token(self) -> i64 { self.id }
 }
 

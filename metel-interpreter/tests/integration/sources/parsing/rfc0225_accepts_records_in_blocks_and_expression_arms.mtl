@@ -1,0 +1,14 @@
+// RFC-0225: a record value in a function body, an if expression arm and a match arm; an empty block is a block.
+fun nothing() { }
+fun pick(flag: bool) -> .{ .x: i64 } { if (flag) .{ .x = 1 } else .{ .x = 0 } }
+fun arm(n: i64) -> .{ .x: i64 } { match (n) { 0 => .{ .x = 0 }, _ => .{ .x = n } } }
+fun empty() -> .{} { .{} }
+fun main() {
+    nothing();
+    let _ := pick(true);
+    let _ := arm(3);
+    let _ := empty();
+    let closure := |v: i64| { .{ .x = v } };
+    let _ := closure(2);
+    println("ok");
+}

@@ -5,10 +5,10 @@
 // no distinct type marker, so the diagnostic is the ordinary record-shape
 // mismatch.
 
-fun wants_full(r: { .left: String, .right: i64 }) -> i64 { r.right }
+fun wants_full(r: .{ .left: String, .right: i64 }) -> i64 { r.right }
 
 fun main() {
-    let r := { .left = "a".to_string(), .right = 1 };
+    let r := .{ .left = "a".to_string(), .right = 1 };
     let taken := r.left;
     let _ := wants_full(r);
     println(taken);

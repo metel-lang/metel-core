@@ -4,10 +4,10 @@
 aspect Mark {}
 aspect Label { fun label(&self) -> String; }
 
-extend<record R> { ..R }: Label where ..R: Mark {
+extend<record R> .{ ..R }: Label where ..R: Mark {
     fun label(&self) -> String { "marked".to_string() }
 }
 
-fun use<record R>(value: { ..R }) -> String {
+fun use<record R>(value: .{ ..R }) -> String {
     value.label() // ERROR[T0035]
 }

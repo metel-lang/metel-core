@@ -1,0 +1,3 @@
+record Req<record R> { data: .{ ..R } }
+fun m(a: Req<.. .{ .x: i64 }>) { }
+fun main() { }

@@ -1,0 +1,11 @@
+// RFC-0225: a literal-row argument keeps its dedicated `..{` introducer.
+record Req<record R> { data: .{ ..R } }
+fun add_host<record R: !{ .host }>(r: Req<..R>, h: String) -> Req<..{ .host: String, ..R }> {
+    Req { data = .{ .host = h, ..r.data } }
+}
+fun empty_row(r: Req<..{}>) -> Req<..{}> { r }
+fun main() {
+    let first := add_host(Req { data = .{} }, "a".to_string());
+    let _ := empty_row(Req { data = .{} });
+    println("ok");
+}

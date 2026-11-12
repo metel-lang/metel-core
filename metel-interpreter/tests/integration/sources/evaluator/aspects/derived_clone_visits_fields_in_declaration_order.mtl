@@ -19,7 +19,7 @@ fun main() {
     let t := s.clone();
     assert(log == 12345);
     log = 0;
-    let r := { .zed = Mark { n = 1 }, .alpha = Mark { n = 2 }, .mid = Mark { n = 3 } };
+    let r := .{ .zed = Mark { n = 1 }, .alpha = Mark { n = 2 }, .mid = Mark { n = 3 } };
     let c := r.clone();
     assert(log == 231);
 }

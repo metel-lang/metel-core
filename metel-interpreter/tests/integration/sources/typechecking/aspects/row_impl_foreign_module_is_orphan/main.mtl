@@ -8,6 +8,6 @@ import other_row_impl::touch;
 
 fun main() {
     touch();
-    let r := { .w = 1, .h = 2 };
+    let r := .{ .w = 1, .h = 2 };
     println(r.describe());
 }

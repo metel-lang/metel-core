@@ -48,7 +48,12 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
             message: removed_field_wise_keyword(source, start).map_or_else(
                 || {
                     public_binding_keyword(source, start).map_or_else(
-                        || e.variant.to_string(),
+                        || {
+                            legacy_record_brace(source, start).map_or_else(
+                                || e.variant.to_string(),
+                                |hint| hint.to_string(),
+                            )
+                        },
                         |keyword| {
                             format!(
                                 "`pub` is not valid on `{keyword}`: top-level bindings are private; to export a function, write `pub fun` with its parameter and return types"
@@ -68,6 +73,25 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
     })?;
 
     parse_program(&mut pairs, filename)
+}
+
+/// RFC-0225: an anonymous record opens with `.{`. Where the grammar fails at a bare `{` that is followed by
+/// a dotted label (`{ .x = 1 }`, `{ .x: i64 }`, `{ ..R }`, `{ !.token }`), no block could continue there, so the
+/// old record form is named with its fix. A bare `{}` is not diagnosed: it is a valid block, and a missed
+/// empty-record site cannot be told from one.
+fn legacy_record_brace(source: &str, offset: usize) -> Option<&'static str> {
+    let rest = source.get(offset..)?.strip_prefix('{')?;
+    let rest = rest.trim_start();
+    let dotted = rest.starts_with("..") || rest.starts_with("!.") || {
+        let mut chars = rest.chars();
+        chars.next() == Some('.')
+            && chars
+                .next()
+                .is_some_and(|c| c.is_alphanumeric() || c == '_')
+    };
+    dotted.then_some(
+        "an anonymous record is written `.{ ... }`: insert a `.` before this `{` (RFC-0225)",
+    )
 }
 
 /// RFC-0193 §3: `pub` is valid on `struct`, `enum`, `fun` and `aspect` only. At the grammar's
@@ -3352,7 +3376,7 @@ fn parse_type_expr(
                 .collect::<Result<_, _>>()?;
             Ok(TypeExpr::Tuple(elems))
         }
-        Rule::record_type => {
+        Rule::record_type | Rule::row_literal_closed => {
             let span = Span::of(&pair, filename);
             let mut fields = vec![];
             for field_pair in pair.into_inner() {
@@ -3382,7 +3406,7 @@ fn parse_type_expr(
         // `fun_decl` parameter's type (`fun_decl_param`'s own
         // `open_record_type | type_expr` alternative, not `param`'s plain
         // `type_expr`) -- see `TypeExpr::OpenRecord`'s doc comment.
-        Rule::open_record_type => {
+        Rule::open_record_type | Rule::row_literal_open => {
             let (fields, tail) = parse_open_record_fields_and_tail(pair, filename)?;
             Ok(TypeExpr::OpenRecord(fields, tail))
         }
@@ -3908,6 +3932,11 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::bang => polarity = Polarity::Negative,
+            // RFC-0225: a whole-row negative bound, `!{ .token: i64, .. }`.
+            Rule::neg_row_bound => {
+                polarity = Polarity::Negative;
+                head = Some(BoundHead::Row(parse_row_bound(p, filename)?));
+            }
             Rule::bound_head => {
                 let mut inner = p.into_inner();
                 let first = inner
@@ -3915,6 +3944,13 @@ fn parse_bound(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Boun
                     .ok_or_else(|| MetelError::internal("bound_head: expected content"))?;
                 match first.as_rule() {
                     Rule::row_bound => {
+                        if polarity == Polarity::Negative {
+                            return Err(MetelError::parse(
+                                ParseErrorCode::P0001,
+                                "a whole-row negative bound is written `!{ ... }`, not `!.{ ... }`",
+                                &Span::of(&first, filename),
+                            ));
+                        }
                         head = Some(BoundHead::Row(parse_row_bound(first, filename)?));
                     }
                     Rule::type_path => {

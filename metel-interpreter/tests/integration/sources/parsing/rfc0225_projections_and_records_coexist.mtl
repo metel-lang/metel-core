@@ -1,0 +1,22 @@
+// RFC-0225: the projection `value.{ .x }`, the anonymous record `.{ .x = 1 }`, the literal-row
+// introducer `..{` and the whole-row negative bound `!{` are four different forms and parse in one
+// program; a projection has a preceding path, an anonymous record has none.
+struct Point { x: i64, y: i64 }
+record Req<record R> { data: .{ ..R } }
+
+fun narrow(p: Point) -> i64 {
+    let just_x := p.{ .x };
+    just_x.x
+}
+
+fun add<record R: !{ .tag }>(r: Req<..R>) -> Req<..{ .tag: i64, ..R }> {
+    Req { data = .{ .tag = 1, ..r.data } }
+}
+
+fun main() {
+    let p := Point { x = 3, y = 4 };
+    let r := add(Req { data = .{ .id = 7 } });
+    let q := .{ .x = narrow(p) };
+    assert(q.x == 3);
+    println("ok");
+}

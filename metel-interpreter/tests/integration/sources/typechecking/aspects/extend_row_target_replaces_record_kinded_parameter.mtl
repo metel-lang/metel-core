@@ -2,14 +2,14 @@
 // records and nominal `record`s whose row carries the bound's fields.
 aspect A { fun f(self) -> i64; }
 
-extend<record R: { .x: f64, .. }> { ..R }: A {
+extend<record R: .{ .x: f64, .. }> .{ ..R }: A {
     fun f(self) -> i64 { 1 }
 }
 
 record P { x: f64 }
 
 fun main() {
-    assert({ .x = 1.0, .y = 2.0 }.f() == 1);
+    assert(.{ .x = 1.0, .y = 2.0 }.f() == 1);
     assert(P { x = 3.0 }.f() == 1);
     println("ok");
 }

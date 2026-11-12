@@ -3,19 +3,19 @@
 // tail, or through a `where R = { .. }` decomposition -- is kept visible and
 // owned, so passing a record that carries it by value is fine.
 
-fun take_name<record R>(p: { .name: String, ..R }) -> String { p.name }
+fun take_name<record R>(p: .{ .name: String, ..R }) -> String { p.name }
 
-fun take_both<record R, record Rest>(p: { .name: String, ..R }) -> String
-where R = { .note: String, ..Rest }
+fun take_both<record R, record Rest>(p: .{ .name: String, ..R }) -> String
+where R = .{ .note: String, ..Rest }
 {
     p.name + p.note
 }
 
 fun main() {
-    let r := { .name = "a".to_string(), .count = 1 };
+    let r := .{ .name = "a".to_string(), .count = 1 };
     assert(take_name(r) == "a");
 
-    let s := { .name = "a".to_string(), .note = "b".to_string(), .count = 2 };
+    let s := .{ .name = "a".to_string(), .note = "b".to_string(), .count = 2 };
     assert(take_both(s) == "ab");
     println("ok");
 }

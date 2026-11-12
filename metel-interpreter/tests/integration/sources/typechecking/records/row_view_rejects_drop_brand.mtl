@@ -5,8 +5,8 @@ extend P: Drop {
     fun drop(&var self) { }
 }
 
-fun row<record R>(p: R) -> { ..R } { p }
-fun forward<record R>(p: R) -> { ..R } { row(p) }
+fun row<record R>(p: R) -> .{ ..R } { p }
+fun forward<record R>(p: R) -> .{ ..R } { row(p) }
 
 fun main() {
     let p := P { x = "owned".to_string() };

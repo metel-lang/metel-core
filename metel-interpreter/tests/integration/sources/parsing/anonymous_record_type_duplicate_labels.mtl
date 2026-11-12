@@ -1,2 +1,2 @@
 // Negative: a duplicate label in a record *type* is rejected, like the value case.
-fun f(p: { .x: i64, .x: f64 }) -> i64 { 0 }
+fun f(p: .{ .x: i64, .x: f64 }) -> i64 { 0 }

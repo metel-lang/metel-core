@@ -1,7 +1,7 @@
 record Counter { n: i64, label: String }
 fun main() {
     let c := Counter { n = 1, label = "c" };
-    let { .label, ..rest } := c;
+    let .{ .label, ..rest } := c;
     let f := [rest] once || { rest.n + 1 };
     assert(f() == 2);
     assert(label == "c");

@@ -1,11 +1,11 @@
 // #646: `..` discards fields the pattern doesn't name -- it doesn't let the pattern name
 // a field the bound never promised is there, even one a particular caller happens to pass.
-fun describe<record T: { .x: f64, .. }>(p: T) -> f64 {
+fun describe<record T: .{ .x: f64, .. }>(p: T) -> f64 {
     match (p) {
-        { .x, .z, .. } => x + z,
+        .{ .x, .z, .. } => x + z,
     }
 }
 
 fun main() {
-    println(describe({ .x = 1.0, .z = 2.0 }));
+    println(describe(.{ .x = 1.0, .z = 2.0 }));
 }
