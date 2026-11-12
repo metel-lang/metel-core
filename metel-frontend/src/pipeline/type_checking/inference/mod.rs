@@ -2083,10 +2083,10 @@ fn infer_block(
             _ => {}
         }
     }
-    // An impl of `Copy` written in this block for one of its own types (metel-core#1908).
+    // An impl written in this block for one of its own types (metel-core#1908, #1970).
     for decl in &block.stmts {
         if let Decl::Impl(ib) = decl {
-            ctx.register_local_copy_impl(ib);
+            ctx.register_local_aspect_impl(ib);
         }
     }
     hoist_fun_decls(&block.stmts, ctx);

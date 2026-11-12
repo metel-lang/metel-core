@@ -1,0 +1,10 @@
+// metel-core#1970: a conditional local impl holds only where its bounds do.
+aspect Marker {}
+fun need<T: Marker>(x: &T) {}
+
+fun main() {
+    struct W<T> { v: T }
+    extend<T: Marker> W<T>: Marker;
+    let w := W { v = 1 };
+    need(&w);
+}

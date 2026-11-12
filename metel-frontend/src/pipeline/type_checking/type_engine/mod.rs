@@ -4434,13 +4434,14 @@ impl TypeDefinitionRegistry {
             .map_or(&[], Vec::as_slice)
     }
 
-    /// metel-core#1908: an impl of `Copy` written in a block body (`extend L: Copy;`, or the one a block-local
-    /// `copy struct` or `derives Copy` stands for, RFC-0207) for a block-local type. The module-level
-    /// registration pass sees only module declarations, so the impl was accepted but never recorded, and the
-    /// type was moved. Called when the block's declarations are hoisted, with the local type in scope: it
-    /// records the impl under the local type's id, unconditionally or with the impl's bounds on the type's
-    /// parameters, as the module-level pass does.
-    pub fn register_local_copy_impl(
+    /// metel-core#1908, #1970: a positive impl written in a block body (`extend L: Copy;`, `extend L: Marker;`,
+    /// or the one a block-local `copy struct` or `derives A` stands for, RFC-0207) for a block-local type. The
+    /// module-level registration pass sees only module declarations, so the impl was accepted but never recorded,
+    /// and the local type neither satisfied the aspect's bounds nor was `Copy`. Called when the block's
+    /// declarations are hoisted, with the local type in scope: it records the impl under the local type's id,
+    /// unconditionally or with the impl's bounds on the type's parameters, as the module-level pass does. An impl
+    /// that names aspect type arguments or associated types, and a negative impl, are not recorded here.
+    pub fn register_local_aspect_impl(
         &mut self,
         module: &[String],
         ib: &crate::data::ast::ImplBlock,
@@ -4450,7 +4451,13 @@ impl TypeDefinitionRegistry {
             impl_generics_with_row_aliases, synth_generics_for_impl,
         };
         use crate::data::ast::{Polarity, TypeExpr};
-        if ib.polarity != Polarity::Positive {
+        // An impl with hand-written methods is not recorded: the evaluator does not yet register methods
+        // declared in a block, so recording it would turn a type error into an internal error at run time.
+        if ib.polarity != Polarity::Positive
+            || !(ib.from_clause || ib.methods.is_empty())
+            || !ib.aspect_type_args.is_empty()
+            || !ib.assoc_type_defs.is_empty()
+        {
             return;
         }
         let (Some(aspect), TypeExpr::Named(name, _, _)) =
@@ -4458,12 +4465,12 @@ impl TypeDefinitionRegistry {
         else {
             return;
         };
-        if !self.is_copy_aspect(module, aspect) {
-            return;
-        }
         let Some(id) = self.local_type_decl_ids.get(name).copied() else {
             return;
         };
+        if let Some(aspect_id) = self.resolve_type_id(module, aspect) {
+            self.record_nominal_ownership_candidate(module, ib, aspect_id, Some(id));
+        }
         let generic_names = self
             .struct_generic_names_by_id(id)
             .cloned()
@@ -5165,6 +5172,19 @@ impl TypeDefinitionRegistry {
             }
             _ => return,
         };
+        self.record_nominal_ownership_candidate(module, implementation, aspect_id, target);
+    }
+
+    /// Records `implementation` as an ownership candidate of `target` (`None`: an impl over a type
+    /// parameter) for the aspect `aspect_id`. A block-local impl supplies its own target id
+    /// (metel-core#1969, #1970), which name resolution cannot find.
+    pub(super) fn record_nominal_ownership_candidate(
+        &mut self,
+        module: &[String],
+        implementation: &crate::data::ast::ImplBlock,
+        aspect_id: SymbolId,
+        target: Option<SymbolId>,
+    ) {
         if let Some(target) = target {
             let rule = self.nominal_ownership_rule(module, target, implementation);
             self.ownership_rules
@@ -7384,10 +7404,10 @@ impl InferContext {
         }
     }
 
-    /// See [`TypeDefinitionRegistry::register_local_copy_impl`].
-    pub fn register_local_copy_impl(&mut self, ib: &crate::data::ast::ImplBlock) {
+    /// See [`TypeDefinitionRegistry::register_local_aspect_impl`].
+    pub fn register_local_aspect_impl(&mut self, ib: &crate::data::ast::ImplBlock) {
         let module = self.current_module_path.clone();
-        self.registry.register_local_copy_impl(&module, ib);
+        self.registry.register_local_aspect_impl(&module, ib);
     }
 
     #[must_use]
