@@ -121,6 +121,9 @@ struct ConstructCtx<'a> {
     /// stack selects the candidate belonging to the current lexical block.
     // resolution-freeze-allow: the one place a written block-local type name becomes an id (`written_type_id`, and the annotation converter via `AssocResolveCtx::local_types`); every later use reads the id off the type (metel-core#1568).
     local_struct_ids: Vec<HashMap<String, SymbolId>>,
+    /// Impls written in a block body for a type declared there, lifted to the module so the evaluator
+    /// registers their methods once, before any code runs (metel-core#1973).
+    lifted_local_impls: Vec<TypedDecl>,
     /// Unified registry — source of truth for type definitions across all passes. See ADR-0025.
     registry: &'a TypeDefinitionRegistry,
     /// Concrete method-type map derived from the registry's own `method_env`
@@ -225,6 +228,7 @@ impl<'a> ConstructCtx<'a> {
             next_synthetic_local: u64::MAX,
             struct_scopes: vec![concrete_struct_env], // global scope pre-pushed
             local_struct_ids: vec![HashMap::new()],
+            lifted_local_impls: Vec::new(),
             registry,
             method_env,
             type_var_gen,
@@ -1297,6 +1301,7 @@ pub(super) fn construct_program(
         }
         out.push(typed);
     }
+    out.append(&mut ctx.lifted_local_impls);
     Ok(out)
 }
 
@@ -1353,7 +1358,16 @@ fn construct_block(
     }
     let mut stmts = vec![];
     for stmt in &block.stmts {
-        stmts.push(construct_decl(stmt, ctx)?);
+        let typed = construct_decl(stmt, ctx)?;
+        if let TypedDecl::Impl(implementation) = &typed
+            && matches!(
+                implementation.target_type_id,
+                Some(crate::identity::symbols::SymbolId::BlockLocal(_))
+            )
+        {
+            ctx.lifted_local_impls.push(typed.clone());
+        }
+        stmts.push(typed);
     }
     let tail = match &block.tail {
         Some(e) => {

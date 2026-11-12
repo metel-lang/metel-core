@@ -4451,10 +4451,7 @@ impl TypeDefinitionRegistry {
             impl_generics_with_row_aliases, synth_generics_for_impl,
         };
         use crate::data::ast::{Polarity, TypeExpr};
-        // An impl with hand-written methods is not recorded: the evaluator does not yet register methods
-        // declared in a block, so recording it would turn a type error into an internal error at run time.
         if ib.polarity != Polarity::Positive
-            || !(ib.from_clause || ib.methods.is_empty())
             || !ib.aspect_type_args.is_empty()
             || !ib.assoc_type_defs.is_empty()
         {
@@ -4468,13 +4465,19 @@ impl TypeDefinitionRegistry {
         let Some(id) = self.local_type_decl_ids.get(name).copied() else {
             return;
         };
-        if let Some(aspect_id) = self.resolve_type_id(module, aspect) {
-            self.record_nominal_ownership_candidate(module, ib, aspect_id, Some(id));
-        }
         let generic_names = self
             .struct_generic_names_by_id(id)
             .cloned()
             .unwrap_or_default();
+        // A generic block-local target with hand-written methods is not recorded: calling such a method
+        // through a bound (`render<T: A>(&w)` with `w: W<i64>`) makes the generic definition's
+        // reconstruction fail (metel-core#1973, residual), so it stays a type error, not an internal one.
+        if !generic_names.is_empty() && !ib.from_clause && !ib.methods.is_empty() {
+            return;
+        }
+        if let Some(aspect_id) = self.resolve_type_id(module, aspect) {
+            self.record_nominal_ownership_candidate(module, ib, aspect_id, Some(id));
+        }
         if generic_names.is_empty() {
             self.register_aspect_impl_by_id(id, aspect, Vec::new());
             return;
