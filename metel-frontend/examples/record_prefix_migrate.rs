@@ -14,6 +14,7 @@
 //! Usage:
 //!   cargo run -p metel-frontend --example record_prefix_migrate -- [--check] [--md | --rs] <path>...
 
+use std::cell::RefCell;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -21,6 +22,23 @@ use std::process::ExitCode;
 use metel_frontend::pipeline::parsing::parser::MetelParser;
 use metel_frontend::pipeline::parsing::parser::Rule;
 use pest::Parser;
+
+thread_local! {
+    /// Problems the tool refuses to guess about: a comment in an introducer gap, an interpolation it cannot
+    /// map back to the source. A file with any problem is not written, and the run fails.
+    static PROBLEMS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static CURRENT: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+fn problem(msg: String) {
+    let file = CURRENT.with(|c| c.borrow().clone());
+    eprintln!("MANUAL {file}: {msg}");
+    PROBLEMS.with(|p| p.borrow_mut().push(msg));
+}
+
+fn problem_count() -> usize {
+    PROBLEMS.with(|p| p.borrow().len())
+}
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
@@ -50,6 +68,7 @@ fn main() -> ExitCode {
 
     let mut changed = 0usize;
     let mut parse_failures = 0usize;
+    let mut manual_files = 0usize;
     for path in &files {
         let src = match fs::read_to_string(path) {
             Ok(s) => s,
@@ -58,6 +77,8 @@ fn main() -> ExitCode {
                 continue;
             }
         };
+        CURRENT.with(|c| *c.borrow_mut() = path.display().to_string());
+        let problems_before = problem_count();
         let (new_src, n_sites, failed) = if md {
             rewrite_md_metel_fences(&src)
         } else if rs {
@@ -75,6 +96,10 @@ fn main() -> ExitCode {
             parse_failures += 1;
             continue;
         }
+        if problem_count() > problems_before {
+            manual_files += 1;
+            continue; // never write a half-migrated file
+        }
         if n_sites == 0 {
             continue;
         }
@@ -87,13 +112,14 @@ fn main() -> ExitCode {
     }
 
     eprintln!(
-        "{} file(s) scanned, {} {}, {} parse failure(s)",
+        "{} file(s) scanned, {} {}, {} parse failure(s), {} file(s) need manual migration",
         files.len(),
         changed,
         if check { "would change" } else { "rewritten" },
-        parse_failures
+        parse_failures,
+        manual_files
     );
-    if check && changed > 0 {
+    if parse_failures > 0 || manual_files > 0 || (check && changed > 0) {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -128,18 +154,26 @@ fn rewrite_rs_raw_strings(src: &str) -> (String, usize, bool) {
     let mut i = 0;
     let mut total_sites = 0usize;
     let mut in_rust_str = false; // inside an ordinary "..." (with \" escapes)
+    let mut str_start = 0usize;
     while i < bytes.len() {
         if in_rust_str {
             if bytes[i] == b'\\' {
-                out.push_str(&src[i..(i + 2).min(bytes.len())]);
-                i += 2;
+                let next = src[i + 1..].chars().next().map_or(0, char::len_utf8);
+                out.push_str(&src[i..i + 1 + next]);
+                i += 1 + next;
                 continue;
             }
             if bytes[i] == b'"' {
                 in_rust_str = false;
+                if looks_like_old_record(&src[str_start..i]) {
+                    problem(format!(
+                        "an ordinary Rust string (byte {str_start}) holds an old-form record; migrate it by hand"
+                    ));
+                }
             }
-            out.push(bytes[i] as char);
-            i += 1;
+            let ch = src[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
             continue;
         }
         // A raw-string prefix: `r` at a token boundary, then optional `#`s, then `"`.
@@ -151,6 +185,7 @@ fn rewrite_rs_raw_strings(src: &str) -> (String, usize, bool) {
             in_rust_str = true;
             out.push('"');
             i += 1;
+            str_start = i;
             continue;
         }
         if bytes[i] == b'r' && at_boundary {
@@ -272,19 +307,16 @@ fn edits_for(src: &str) -> Result<Vec<Edit>, String> {
     let pairs = MetelParser::parse(Rule::program, src).map_err(|e| e.to_string())?;
     let mut edits = Vec::new();
     for pair in pairs {
-        walk(pair, &mut edits);
+        walk(pair, src, &mut edits);
     }
     edits.sort_by_key(|e| e.start);
     edits.dedup_by_key(|e| e.start);
     Ok(edits)
 }
 
-/// Insert a dot before the `{` that opens each anonymous record form.
-fn walk(pair: pest::iterators::Pair<Rule>, edits: &mut Vec<Edit>) {
-    walk_in(pair, edits, false);
-}
-
-fn walk_in(pair: pest::iterators::Pair<Rule>, edits: &mut Vec<Edit>, skip_open: bool) {
+/// Insert a dot before the `{` that opens each anonymous record form. `src` is the text the pairs were
+/// parsed from, so that the gap between an introducer's tokens can be read.
+fn walk(pair: pest::iterators::Pair<Rule>, src: &str, edits: &mut Vec<Edit>) {
     let rule = pair.as_rule();
     let opens_record = matches!(
         rule,
@@ -294,34 +326,47 @@ fn walk_in(pair: pest::iterators::Pair<Rule>, edits: &mut Vec<Edit>, skip_open: 
             | Rule::open_record_type
             | Rule::row_bound
     );
-    if opens_record && !skip_open && pair.as_str().starts_with('{') {
+    if opens_record && pair.as_str().starts_with('{') {
         edits.push(Edit {
             start: pair.as_span().start(),
             len: 0,
             insert: ".",
         });
     }
-    // A record inside a string interpolation `"${ ... }"`: the compiler parses each interpolation separately,
-    // so the walk above never sees it. Parse each balanced `${ ... }` body on its own and edit by offset.
+    // A record inside a string interpolation `"${ ... }"`: the compiler parses each interpolation separately
+    // (after unescaping), so the walk never sees it. Parse each balanced body on its own, through an offset
+    // map back to the source, and edit there.
     if rule == Rule::string_lit {
         let start = pair.as_span().start();
         let text = pair.as_str();
         for (open, close) in interpolations(text) {
             let inner = &text[open + 2..close];
-            if inner.contains('\\') {
-                continue; // unescaping would shift the offsets; none exist in the corpus
-            }
-            if let Ok(pairs) = MetelParser::parse(Rule::interp_expr_entry, inner) {
-                let mut sub = Vec::new();
-                for p in pairs {
-                    walk_in(p, &mut sub, false);
+            let (unescaped, map) = unescape_mapped(inner);
+            match MetelParser::parse(Rule::interp_expr_entry, &unescaped) {
+                Ok(pairs) => {
+                    let mut sub = Vec::new();
+                    for p in pairs {
+                        walk(p, &unescaped, &mut sub);
+                    }
+                    for e in sub {
+                        let from = map[e.start];
+                        let len = if e.len > 0 {
+                            map[e.start + e.len] - from
+                        } else {
+                            0
+                        };
+                        edits.push(Edit {
+                            start: start + open + 2 + from,
+                            len,
+                            insert: e.insert,
+                        });
+                    }
                 }
-                for e in sub {
-                    edits.push(Edit {
-                        start: start + open + 2 + e.start,
-                        ..e
-                    });
-                }
+                Err(_) if looks_like_old_record(inner) => problem(format!(
+                    "an interpolation at byte {} holds an old-form record the tool cannot parse on its own",
+                    start + open
+                )),
+                Err(_) => {}
             }
         }
     }
@@ -332,31 +377,54 @@ fn walk_in(pair: pest::iterators::Pair<Rule>, edits: &mut Vec<Edit>, skip_open: 
         if let Some(body) = children.next() {
             let brace = body.as_span().start();
             if brace > start + 2 {
-                edits.push(Edit {
-                    start: start + 2,
-                    len: brace - (start + 2),
-                    insert: "",
-                });
+                let gap = &src[start + 2..brace];
+                if gap_is_blank(gap) {
+                    edits.push(Edit {
+                        start: start + 2,
+                        len: brace - (start + 2),
+                        insert: "",
+                    });
+                } else {
+                    problem(format!(
+                        "a comment between `..` and `{{` at byte {start}; make the introducer `..{{` by hand"
+                    ));
+                }
             }
             for inner in body.into_inner() {
-                walk_in(inner, edits, false);
+                walk(inner, src, edits);
             }
         }
         return;
     }
-    // `!{ ... }`: a whole-row negative bound keeps its introducer.
+    // `!{ ... }`: a whole-row negative bound keeps its introducer, contiguous.
     if rule == Rule::bound {
         let mut children = pair.clone().into_inner();
         let first = children.next();
-        if first.as_ref().is_some_and(|f| f.as_rule() == Rule::bang) {
+        if let Some(bang) = first.filter(|f| f.as_rule() == Rule::bang) {
             if let Some(head) = children.next() {
                 for inner in head.into_inner() {
                     if inner.as_rule() == Rule::row_bound {
+                        let bang_end = bang.as_span().end();
+                        let brace = inner.as_span().start();
+                        if brace > bang_end {
+                            let gap = &src[bang_end..brace];
+                            if gap_is_blank(gap) {
+                                edits.push(Edit {
+                                    start: bang_end,
+                                    len: brace - bang_end,
+                                    insert: "",
+                                });
+                            } else {
+                                problem(format!(
+                                    "a comment between `!` and `{{` at byte {bang_end}; make the introducer `!{{` by hand"
+                                ));
+                            }
+                        }
                         for entry in inner.into_inner() {
-                            walk_in(entry, edits, false);
+                            walk(entry, src, edits);
                         }
                     } else {
-                        walk_in(inner, edits, false);
+                        walk(inner, src, edits);
                     }
                 }
             }
@@ -364,8 +432,74 @@ fn walk_in(pair: pest::iterators::Pair<Rule>, edits: &mut Vec<Edit>, skip_open: 
         }
     }
     for inner in pair.into_inner() {
-        walk_in(inner, edits, false);
+        walk(inner, src, edits);
     }
+}
+
+/// Whether an ordinary Rust string's text holds a bare `{` followed by a dotted label: an old-form record
+/// that the raw-string scanner does not rewrite. It is reported, not edited.
+fn looks_like_old_record(text: &str) -> bool {
+    // Only text that reads as Metel source: a diagnostic message that quotes a record is not an example.
+    if !(text.contains("fun ") || text.contains("let ") || text.contains("struct ")) {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    for (i, b) in bytes.iter().enumerate() {
+        if *b != b'{' {
+            continue;
+        }
+        if i > 0 && matches!(bytes[i - 1], b'.' | b'$' | b'!' | b'{' | b'}') {
+            continue;
+        }
+        let rest = text[i + 1..].trim_start();
+        let dotted = rest.starts_with("..") || {
+            let mut cs = rest.chars();
+            cs.next() == Some('.') && cs.next().is_some_and(|c| c.is_alphanumeric() || c == '_')
+        };
+        if dotted {
+            return true;
+        }
+    }
+    false
+}
+
+/// `Some(true)` when `gap` is only whitespace, `Some(false)` when it holds a comment.
+fn gap_is_blank(gap: &str) -> bool {
+    gap.trim().is_empty()
+}
+
+/// Apply the compiler's string unescape to an interpolation body, with a map from each byte of the result
+/// back to its byte offset in the source text.
+fn unescape_mapped(s: &str) -> (String, Vec<usize>) {
+    let mut out = String::with_capacity(s.len());
+    let mut map = Vec::with_capacity(s.len() + 1);
+    let mut chars = s.char_indices().peekable();
+    let push = |out: &mut String, map: &mut Vec<usize>, ch: char, at: usize| {
+        out.push(ch);
+        for _ in 0..ch.len_utf8() {
+            map.push(at);
+        }
+    };
+    while let Some((at, c)) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some((_, 'n')) => push(&mut out, &mut map, '\n', at),
+                Some((_, 't')) => push(&mut out, &mut map, '\t', at),
+                Some((_, 'r')) => push(&mut out, &mut map, '\r', at),
+                Some((_, '\\')) | None => push(&mut out, &mut map, '\\', at),
+                Some((_, '"')) => push(&mut out, &mut map, '"', at),
+                Some((_, '$')) => push(&mut out, &mut map, '$', at),
+                Some((_, c2)) => {
+                    push(&mut out, &mut map, '\\', at);
+                    push(&mut out, &mut map, c2, at + 1);
+                }
+            }
+        } else {
+            push(&mut out, &mut map, c, at);
+        }
+    }
+    map.push(s.len());
+    (out, map)
 }
 
 /// Byte ranges of the `${` and matching `}` of each top-level interpolation in a string literal's text,
@@ -386,7 +520,7 @@ fn interpolations(text: &str) -> Vec<(usize, usize)> {
             let mut in_str = false;
             while j < bytes.len() && depth > 0 {
                 match bytes[j] {
-                    b'\\' if in_str => j += 1,
+                    b'\\' => j += 1, // an escaped character, inside a nested string or not
                     b'"' => in_str = !in_str,
                     b'{' if !in_str => depth += 1,
                     b'}' if !in_str => depth -= 1,
@@ -399,6 +533,9 @@ fn interpolations(text: &str) -> Vec<(usize, usize)> {
                 i = j;
                 continue;
             }
+            problem(format!(
+                "an unterminated or unbalanced `${{` interpolation at byte {open}; check it by hand"
+            ));
         }
         i += 1;
     }

@@ -163,10 +163,13 @@ bound_list    = { bound ~ ("+" ~ bound)* }
 // RFC-0225: a whole-row negative bound keeps its own contiguous introducer `!{`; `!.{` is not an
 // alternative spelling (the parser rejects `bang` followed by a `.{` row bound).
 bound         = { neg_row_bound | bang? ~ bound_head }
-neg_row_bound = { "!{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ "..")? ~ ","? ~ "}" }
+neg_row_bound = { "!{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ row_bound_tail)? ~ ","? ~ "}" }
+// The trailing `..` of a row bound is a pair of its own, so the parser reads openness from the tree and never
+// from the bound's source text (which a comment or a nested row type could mimic).
+row_bound_tail = { ".." }
 bang          = { "!" }
 bound_head    = { row_bound | type_path ~ ("<" ~ bound_arg ~ ("," ~ bound_arg)* ~ ","? ~ ">")? }
-row_bound     = { ".{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ "..")? ~ ","? ~ "}" }
+row_bound     = { ".{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ row_bound_tail)? ~ ","? ~ "}" }
 // RFC-0189: an entry may be negative, `!.x` (no such label) or `!.x: T` (no such label of that type).
 row_field     = { bang? ~ label ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }

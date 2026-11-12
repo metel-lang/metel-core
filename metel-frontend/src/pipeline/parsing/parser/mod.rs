@@ -81,6 +81,18 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
 /// empty-record site cannot be told from one.
 fn legacy_record_brace(source: &str, offset: usize) -> Option<&'static str> {
     let rest = source.get(offset..)?.strip_prefix('{')?;
+    // The introducers `!{` and `..{` are contiguous: name the gap, not a missing dot (a dot would make `!.{`).
+    let before = source.get(..offset)?.trim_end();
+    if before.ends_with('!') {
+        return Some(
+            "a whole-row negative bound is written `!{ ... }` with no space between `!` and `{` (RFC-0225)",
+        );
+    }
+    if before.ends_with("..") && !before.ends_with("...") {
+        return Some(
+            "a literal-row argument is written `..{ ... }` with no space between `..` and `{` (RFC-0225)",
+        );
+    }
     let rest = rest.trim_start();
     let dotted = rest.starts_with("..") || rest.starts_with("!.") || {
         let mut chars = rest.chars();
@@ -4034,7 +4046,10 @@ fn parse_row_bound(
 ) -> Result<RowBound, MetelError> {
     let span = Span::of(&pair, filename);
     let mut fields = Vec::new();
-    let open = pair.as_str().contains("..");
+    let open = pair
+        .clone()
+        .into_inner()
+        .any(|p| p.as_rule() == Rule::row_bound_tail);
     for p in pair.into_inner() {
         // The only other thing `row_bound` can yield is the trailing `..`, which is
         // already captured in `open` above.
