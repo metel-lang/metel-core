@@ -1,0 +1,2 @@
+pub copy struct View<T> { r: &T }
+pub struct Wrapper<T> derives Copy via T { value: T }

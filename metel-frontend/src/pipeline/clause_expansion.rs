@@ -11,11 +11,11 @@
 //! A generic type's impl is generic over the same parameters, and a `derives` impl bounds each parameter a
 //! field holds by value by the derived aspect, so `copy struct W<T>` is `Copy` exactly when `T` is.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::data::ast::{
-    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FlowParam, FunDecl, GenericParam,
-    ImplBlock, NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
+    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FunDecl, GenericParam, ImplBlock,
+    NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::{Namespace, SymbolId};
@@ -87,10 +87,12 @@ pub fn expand(graph: &mut ModuleGraph, names: &ResolvedNames) -> Result<(), Mete
             "Clone".to_string(),
         ))
         .copied();
+    let flows = compute_flows(graph, names, &aspects);
     let ctx = Ctx {
         names,
         aspects: &aspects,
         clone_id,
+        flows: &flows,
     };
     for module in &mut graph.modules {
         let path = module.module_path.clone();
@@ -103,6 +105,197 @@ struct Ctx<'a> {
     names: &'a ResolvedNames,
     aspects: &'a HashMap<SymbolId, Aspect>,
     clone_id: Option<SymbolId>,
+    /// The flow set of every module-level type that derives `Copy` (RFC-0224), stated or computed.
+    flows: &'a CopyFlows,
+}
+
+/// RFC-0224 section 1: the type parameters each module-level `Copy` declaration's copy-ness flows from, by
+/// declaration. A stated `via` set is the interface as written; an unstated one is computed here from the
+/// fields, by substituting the flow of every type a field names (RFC-0224 section 2 rule 1).
+#[derive(Default)]
+struct CopyFlows {
+    by_id: HashMap<SymbolId, FlowEntry>,
+}
+
+struct FlowEntry {
+    /// Every generic parameter of the declaration in order: the position of an argument is its index.
+    generics: Vec<String>,
+    /// The parameters the declaration's `Copy` flows from.
+    set: BTreeSet<String>,
+}
+
+/// What the flow computation reads of a declaration that derives `Copy`.
+struct FlowDecl {
+    module: Vec<String>,
+    /// Every generic parameter in order, and the type-kinded ones among them (a row- or record-kinded
+    /// parameter is rejected elsewhere).
+    generics: Vec<String>,
+    params: Vec<String>,
+    fields: Vec<TypeExpr>,
+    stated: Option<Vec<String>>,
+}
+
+/// Compute the flow set of every module-level declaration that derives `Copy`, across the module graph and
+/// independent of source order. A stated set is taken as written; an unstated one starts empty and grows to
+/// the smallest set that covers what its fields depend on. The iteration is monotone over finitely many
+/// parameters, so it reaches a fixed point, which is also the answer for mutually recursive declarations.
+fn compute_flows(
+    graph: &ModuleGraph,
+    names: &ResolvedNames,
+    aspects: &HashMap<SymbolId, Aspect>,
+) -> CopyFlows {
+    let implicit = aspects.iter().find(|(_, a)| a.implicit).map(|(id, _)| *id);
+    let mut decls: HashMap<SymbolId, FlowDecl> = HashMap::new();
+    for module in &graph.modules {
+        for decl in &module.program.decls {
+            let (name, generics, clauses, fields): (&str, &[GenericParam], _, Vec<TypeExpr>) =
+                match decl {
+                    Decl::Struct(sd) => (
+                        &sd.name,
+                        &sd.generics,
+                        &sd.clauses,
+                        sd.fields.iter().map(|f| f.type_ann.clone()).collect(),
+                    ),
+                    Decl::Enum(ed) => (
+                        &ed.name,
+                        &ed.generics,
+                        &ed.clauses,
+                        ed.variants
+                            .iter()
+                            .flat_map(|v| v.fields.iter().map(|f| f.type_ann.clone()))
+                            .collect(),
+                    ),
+                    _ => continue,
+                };
+            let Some(entry) = clauses.derives.iter().find(|e| {
+                e.from_class_keyword
+                    || (implicit.is_some()
+                        && super::coherence::resolve_id(names, &module.module_path, &e.name)
+                            == implicit)
+            }) else {
+                continue;
+            };
+            let Some(id) = names.symbols.get(&(
+                module.module_path.clone(),
+                Namespace::Type,
+                name.to_string(),
+            )) else {
+                continue;
+            };
+            decls.insert(
+                *id,
+                FlowDecl {
+                    module: module.module_path.clone(),
+                    generics: generics.iter().map(|g| g.name.clone()).collect(),
+                    params: generics
+                        .iter()
+                        .filter(|g| !g.is_record && !g.is_row)
+                        .map(|g| g.name.clone())
+                        .collect(),
+                    fields,
+                    stated: entry
+                        .flow
+                        .as_ref()
+                        .map(|flow| flow.iter().map(|p| p.name.clone()).collect()),
+                },
+            );
+        }
+    }
+    let mut flows = CopyFlows::default();
+    for (id, decl) in &decls {
+        flows.by_id.insert(
+            *id,
+            FlowEntry {
+                generics: decl.generics.clone(),
+                set: decl
+                    .stated
+                    .as_ref()
+                    .map(|s| s.iter().cloned().collect())
+                    .unwrap_or_default(),
+            },
+        );
+    }
+    loop {
+        let mut changed = false;
+        for (id, decl) in &decls {
+            if decl.stated.is_some() {
+                continue;
+            }
+            let computed =
+                dependence_of_fields(&decl.fields, &decl.params, &decl.module, names, &flows);
+            if let Some(entry) = flows.by_id.get_mut(id) {
+                for param in computed {
+                    changed |= entry.set.insert(param);
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    flows
+}
+
+/// The type parameters (of `params`) a set of field types' `Copy` depends on, by the `Copy` rule of each
+/// type form (RFC-0224 section 2 rule 1): a parameter on itself; a nominal application on the arguments at
+/// the positions in its own flow set; a tuple, record or sized array on its components; a reference and the
+/// borrowed view on nothing. A nominal that has no stored flow (it does not derive `Copy`, or is declared
+/// outside the module graph) and any form this does not look through depend on every argument that mentions
+/// a parameter, which is the conservative reading.
+fn dependence_of_fields(
+    fields: &[TypeExpr],
+    params: &[String],
+    module: &[String],
+    names: &ResolvedNames,
+    flows: &CopyFlows,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for ty in fields {
+        collect_dependence(ty, params, module, names, flows, &mut out);
+    }
+    out
+}
+
+fn collect_dependence(
+    ty: &TypeExpr,
+    params: &[String],
+    module: &[String],
+    names: &ResolvedNames,
+    flows: &CopyFlows,
+    out: &mut BTreeSet<String>,
+) {
+    let recurse = |t: &TypeExpr, out: &mut BTreeSet<String>| {
+        collect_dependence(t, params, module, names, flows, out);
+    };
+    match ty {
+        TypeExpr::Named(name, args, _) => {
+            if args.is_empty() && params.iter().any(|p| p == name) {
+                out.insert(name.clone());
+                return;
+            }
+            let flow = super::coherence::resolve_id(names, module, name)
+                .and_then(|id| flows.by_id.get(&id));
+            match flow {
+                Some(entry) => {
+                    for (i, arg) in args.iter().enumerate() {
+                        if entry.generics.get(i).is_some_and(|g| entry.set.contains(g)) {
+                            recurse(arg, out);
+                        }
+                    }
+                }
+                None => {
+                    for arg in args {
+                        recurse(arg, out);
+                    }
+                }
+            }
+        }
+        TypeExpr::Reference(_) | TypeExpr::Array(_) => {}
+        TypeExpr::MutReference(inner) | TypeExpr::SizedArray(inner, _) => recurse(inner, out),
+        TypeExpr::Tuple(items) => items.iter().for_each(|t| recurse(t, out)),
+        TypeExpr::Record(fields) => fields.iter().for_each(|(_, t)| recurse(t, out)),
+        _ => out.extend(params.iter().cloned()),
+    }
 }
 
 /// Expand a declaration list, and the declaration lists of the function bodies inside it.
@@ -290,9 +483,29 @@ fn clause_impls(
         let original = bound.as_deref() == Some(entry.name.as_str());
         let is_copy_entry = implicit_id.is_some()
             && super::coherence::resolve_id(ctx.names, module, &entry.name) == implicit_id;
+        // The `Copy` entry and the supers it brings carry the flow of the `Copy` declaration: stated, or
+        // computed from the fields through the stored flows of the types they name (RFC-0224).
+        let from_copy = is_copy_entry
+            || (implicit_id.is_some()
+                && bound.as_deref().is_some_and(|b| {
+                    super::coherence::resolve_id(ctx.names, module, b) == implicit_id
+                }));
         if original {
-            check_flow(entry, is_copy_entry, generics, field_types)?;
+            check_flow(entry, is_copy_entry, generics, field_types, module, ctx)?;
         }
+        let self_id =
+            ctx.names
+                .symbols
+                .get(&(module.to_vec(), Namespace::Type, type_name.to_string()));
+        let flow: Option<Vec<String>> = if !from_copy {
+            None
+        } else if let Some(stated) = &entry.flow {
+            Some(stated.iter().map(|p| p.name.clone()).collect())
+        } else {
+            self_id
+                .and_then(|id| ctx.flows.by_id.get(id))
+                .map(|e| e.set.iter().cloned().collect())
+        };
         impls.push(ImplBlock {
             polarity: Polarity::Positive,
             generics: impl_generics(
@@ -300,7 +513,7 @@ fn clause_impls(
                 entry,
                 bound.as_deref(),
                 field_types,
-                entry.flow.as_deref(),
+                flow.as_deref(),
             ),
             aspect_name: Some(entry.name.clone()),
             aspect_type_args: Vec::new(),
@@ -326,6 +539,8 @@ fn check_flow(
     is_copy_entry: bool,
     generics: &[GenericParam],
     field_types: &[TypeExpr],
+    module: &[String],
+    ctx: &Ctx<'_>,
 ) -> Result<(), MetelError> {
     let invalid =
         |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
@@ -379,8 +594,14 @@ fn check_flow(
         }
     }
     if let Some(flow) = &entry.flow {
+        let params: Vec<String> = generics
+            .iter()
+            .filter(|g| !g.is_record && !g.is_row)
+            .map(|g| g.name.clone())
+            .collect();
+        let needs = dependence_of_fields(field_types, &params, module, ctx.names, ctx.flows);
         for g in generics.iter().filter(|g| !g.is_record && !g.is_row) {
-            let needed = field_types.iter().any(|ty| mentions_owned(ty, &g.name));
+            let needed = needs.contains(&g.name);
             if needed && !flow.iter().any(|p| p.name == g.name) {
                 let stated: Vec<&str> = flow.iter().map(|p| p.name.as_str()).collect();
                 let mut fixed = stated.clone();
@@ -475,7 +696,7 @@ fn impl_generics(
     entry: &ClauseEntry,
     bound: Option<&str>,
     field_types: &[TypeExpr],
-    flow: Option<&[FlowParam]>,
+    flow: Option<&[String]>,
 ) -> Vec<GenericParam> {
     generics
         .iter()
@@ -485,7 +706,7 @@ fn impl_generics(
             // A stated flow (`via A + B`) bounds exactly the parameters it names; without one the compiler
             // computes the set from the fields.
             let in_flow = match flow {
-                Some(flow) => flow.iter().any(|p| p.name == g.name),
+                Some(flow) => flow.iter().any(|p| *p == g.name),
                 None => field_types.iter().any(|ty| mentions_owned(ty, &g.name)),
             };
             if let Some(bound) = bound
