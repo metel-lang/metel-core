@@ -1,0 +1,11 @@
+// RFC-0224 for a block-local type: `Hold<T>` states its flow `via T`, so `Hold<String>` is not `Copy` although its
+// field holds the parameter only through a view.
+copy struct View<T> { r: &T }
+
+fun main() {
+    struct Hold<T> derives Copy via T { v: View<T> }
+    let s := "x".to_string();
+    let h: Hold<String> := Hold { v = View { r = &s } };
+    let a := h;
+    let b := h; // ERROR[T0019]
+}

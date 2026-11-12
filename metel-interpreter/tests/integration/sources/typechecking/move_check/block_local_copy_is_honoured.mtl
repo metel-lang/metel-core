@@ -1,0 +1,24 @@
+// metel-core#1908: a type declared in a function body that is granted `Copy` is `Copy` in the scope that declares it:
+// by `extend L: Copy;`, by `copy struct`, by `derives Copy`, and with a computed flow (a parameter held only through
+// a view is not bounded, RFC-0224).
+copy struct View<T> { r: &T }
+
+fun main() {
+    struct L { n: i64 }
+    extend L: Copy;
+    copy struct K { n: i64 }
+    struct D derives Copy { n: i64 }
+    struct Hold<T> derives Copy { v: View<T> }
+
+    let l := L { n = 1 };
+    let l2 := l;
+    let k := K { n = 2 };
+    let k2 := k;
+    let d := D { n = 3 };
+    let d2 := d;
+    let s := "x".to_string();
+    let h: Hold<String> := Hold { v = View { r = &s } };
+    let h2 := h;
+    let h3 := h;
+    assert(l.n + l2.n + k.n + k2.n + d.n + d2.n == 12);
+}

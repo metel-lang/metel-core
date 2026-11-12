@@ -4434,6 +4434,60 @@ impl TypeDefinitionRegistry {
             .map_or(&[], Vec::as_slice)
     }
 
+    /// metel-core#1908: an impl of `Copy` written in a block body (`extend L: Copy;`, or the one a block-local
+    /// `copy struct` or `derives Copy` stands for, RFC-0207) for a block-local type. The module-level
+    /// registration pass sees only module declarations, so the impl was accepted but never recorded, and the
+    /// type was moved. Called when the block's declarations are hoisted, with the local type in scope: it
+    /// records the impl under the local type's id, unconditionally or with the impl's bounds on the type's
+    /// parameters, as the module-level pass does.
+    pub fn register_local_copy_impl(
+        &mut self,
+        module: &[String],
+        ib: &crate::data::ast::ImplBlock,
+    ) {
+        use super::registry::{
+            collect_negative_type_param_bounds, collect_type_param_bounds,
+            impl_generics_with_row_aliases, synth_generics_for_impl,
+        };
+        use crate::data::ast::{Polarity, TypeExpr};
+        if ib.polarity != Polarity::Positive {
+            return;
+        }
+        let (Some(aspect), TypeExpr::Named(name, _, _)) =
+            (ib.aspect_name.as_deref(), &ib.target_type)
+        else {
+            return;
+        };
+        if !self.is_copy_aspect(module, aspect) {
+            return;
+        }
+        let Some(id) = self.local_type_decl_ids.get(name).copied() else {
+            return;
+        };
+        let generic_names = self
+            .struct_generic_names_by_id(id)
+            .cloned()
+            .unwrap_or_default();
+        if generic_names.is_empty() {
+            self.register_aspect_impl_by_id(id, aspect, Vec::new());
+            return;
+        }
+        let synth = synth_generics_for_impl(
+            &generic_names,
+            &impl_generics_with_row_aliases(ib, &generic_names),
+        );
+        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
+        let neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
+        if pos_bounds.iter().any(|b| !b.is_empty()) || neg_bounds.iter().any(|b| !b.is_empty()) {
+            self.conditional_impl_bounds
+                .entry((id, aspect.to_string()))
+                .or_default()
+                .push((pos_bounds, neg_bounds));
+        } else {
+            self.register_aspect_impl_by_id(id, aspect, Vec::new());
+        }
+    }
+
     /// Register the conditional impl bounds for a `(target_id, aspect)` key (RFC-0036).
     pub fn register_conditional_impl_bounds(
         &mut self,
@@ -7328,6 +7382,12 @@ impl InferContext {
                 type_params,
             );
         }
+    }
+
+    /// See [`TypeDefinitionRegistry::register_local_copy_impl`].
+    pub fn register_local_copy_impl(&mut self, ib: &crate::data::ast::ImplBlock) {
+        let module = self.current_module_path.clone();
+        self.registry.register_local_copy_impl(&module, ib);
     }
 
     #[must_use]
