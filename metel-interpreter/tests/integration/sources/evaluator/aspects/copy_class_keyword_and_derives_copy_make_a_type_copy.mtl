@@ -3,7 +3,7 @@
 copy struct Point { x: i64, y: i64 }
 struct Pixel derives Copy { v: i64 }
 copy struct Both derives Copy { n: i64 }
-pub copy struct Wrapper<T> { v: T }
+copy struct Wrapper<T> { v: T }
 copy enum Dir { Up, Down }
 
 fun main() {

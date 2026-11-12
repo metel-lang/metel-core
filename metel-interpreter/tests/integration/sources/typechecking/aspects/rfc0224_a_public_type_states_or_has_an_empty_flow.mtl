@@ -1,0 +1,23 @@
+// RFC-0224 rule 3: a `pub` generic type states a non-empty flow; an empty computed flow (a view, a phantom
+// parameter) and a non-generic type need no `via`; a non-`pub` type may omit it.
+copy struct View<T> { r: &T }
+pub struct Handle<T> derives Copy via T { id: i64 }
+pub copy struct Seen<T> { r: &T }
+pub copy struct Tagged<T> { id: i64 }
+pub copy struct Plain { id: i64 }
+copy struct Local<T> { value: T }
+
+fun main() {
+    let h: Handle<i64> := Handle { id = 1 };
+    let h2 := h;
+    let s := "x".to_string();
+    let v: Seen<String> := Seen { r = &s };
+    let v2 := v;
+    let t: Tagged<String> := Tagged { id = 2 };
+    let t2 := t;
+    let p := Plain { id = 3 };
+    let p2 := p;
+    let l := Local { value = 4 };
+    let l2 := l;
+    assert(h.id + h2.id + t.id + t2.id + p.id + p2.id + l.value + l2.value == 18);
+}
