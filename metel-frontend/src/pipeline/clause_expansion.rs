@@ -493,19 +493,7 @@ fn clause_impls(
         if original {
             check_flow(entry, is_copy_entry, generics, field_types, module, ctx)?;
         }
-        let self_id =
-            ctx.names
-                .symbols
-                .get(&(module.to_vec(), Namespace::Type, type_name.to_string()));
-        let flow: Option<Vec<String>> = if !from_copy {
-            None
-        } else if let Some(stated) = &entry.flow {
-            Some(stated.iter().map(|p| p.name.clone()).collect())
-        } else {
-            self_id
-                .and_then(|id| ctx.flows.by_id.get(id))
-                .map(|e| e.set.iter().cloned().collect())
-        };
+        let flow = entry_flow(entry, from_copy, type_name, module, ctx);
         impls.push(ImplBlock {
             polarity: Polarity::Positive,
             generics: impl_generics(
@@ -526,6 +514,32 @@ fn clause_impls(
         });
     }
     Ok(impls)
+}
+
+/// The flow an entry's impl is generated with (RFC-0224): the `Copy` entry and the supers it brings carry the
+/// `Copy` declaration's flow, stated with `via` or computed from the fields (`ctx.flows`); any other entry has
+/// none (its parameters are bounded by the per-parameter rule).
+fn entry_flow(
+    entry: &ClauseEntry,
+    from_copy: bool,
+    type_name: &str,
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> Option<Vec<String>> {
+    if !from_copy {
+        return None;
+    }
+    if let Some(stated) = &entry.flow {
+        return Some(stated.iter().map(|p| p.name.clone()).collect());
+    }
+    let id = ctx
+        .names
+        .symbols
+        .get(&(module.to_vec(), Namespace::Type, type_name.to_string()))?;
+    ctx.flows
+        .by_id
+        .get(id)
+        .map(|e| e.set.iter().cloned().collect())
 }
 
 /// RFC-0224 section 2: the checks on a `derives Copy` entry's flow, stated or computed. A `via` clause is
@@ -706,7 +720,7 @@ fn impl_generics(
             // A stated flow (`via A + B`) bounds exactly the parameters it names; without one the compiler
             // computes the set from the fields.
             let in_flow = match flow {
-                Some(flow) => flow.iter().any(|p| *p == g.name),
+                Some(flow) => flow.contains(&g.name),
                 None => field_types.iter().any(|ty| mentions_owned(ty, &g.name)),
             };
             if let Some(bound) = bound
