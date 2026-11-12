@@ -1,0 +1,24 @@
+// metel-core#1973: an impl with hand-written methods written in a function body for a type declared there is
+// recorded and its methods run: a direct call, an inherent method reading `self`, a call through a bound, `Display`
+// used by interpolation, and a body that is entered more than once.
+aspect Show { fun show(&self) -> String; }
+fun render<T: Show>(x: &T) -> String { x.show() }
+
+fun label(n: i64) -> String {
+    struct L { n: i64 }
+    extend L { fun get(&self) -> i64 { self.n } }
+    extend L: Show { fun show(&self) -> String { "L" + self.get().to_string() } }
+    extend L: Display { fun to_string(&self) -> String { "<" + self.show() + ">" } }
+    let l := L { n = n };
+    assert("${l}" == "<L${n}>");
+    render(&l)
+}
+
+fun main() {
+    struct K { n: i64 }
+    extend K: Show { fun show(&self) -> String { "K" } }
+    assert(K { n = 1 }.show() == "K");
+    assert(render(&K { n = 2 }) == "K");
+    assert(label(1) == "L1");
+    assert(label(2) == "L2");
+}

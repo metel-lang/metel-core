@@ -1437,13 +1437,30 @@ impl Walker<'_> {
                 self.leave();
             }
             Decl::Stmt(stmt) => self.walk_stmt(stmt),
-            // Types, impls, aspects, aliases inside a body are out of scope for
-            // #1048's value-binding walk.
-            Decl::Struct(_)
-            | Decl::Enum(_)
-            | Decl::Impl(_)
-            | Decl::Aspect(_)
-            | Decl::TypeAlias(_) => {}
+            // An impl written in a body (metel-core#1973): each method is a function-shaped scope of
+            // its own, like a nested `fun`, and sees none of the enclosing bindings.
+            Decl::Impl(ib) => {
+                for method in &ib.methods {
+                    self.enter(LexicalSeg::NestedFn(method.name.clone()));
+                    let outer_params = self.declare_signature(
+                        &SigTypes::of_method(&ib.generics, method),
+                        &method.params,
+                    );
+                    for (i, param) in method.params.iter().enumerate() {
+                        self.bind(
+                            &param.name,
+                            &param.span,
+                            DefinitionKind::Param,
+                            LexicalSeg::Param(u32::try_from(i).unwrap_or(u32::MAX)),
+                        );
+                    }
+                    self.walk_block(&method.body);
+                    self.type_params = outer_params;
+                    self.leave();
+                }
+            }
+            // Types, aspects, aliases inside a body are out of scope for #1048's value-binding walk.
+            Decl::Struct(_) | Decl::Enum(_) | Decl::Aspect(_) | Decl::TypeAlias(_) => {}
         }
     }
 

@@ -2362,6 +2362,208 @@ fn check_program_entry_point(root_decls: &[TypedDecl]) -> Result<SymbolId, Metel
     }
 }
 
+/// Registers the methods of one impl block with the runtime: aspect, inherent and static methods, derived
+/// clone orders, and the record and array target forms. Called for a module-level impl by [`run_passes`] and for
+/// a lifted block-level impl (metel-core#1973).
+// clippy-allow: one dispatch over every impl target form (named, record, array); the arms share `env` and `runtime`.
+#[allow(clippy::too_many_lines)]
+pub(crate) fn register_impl_block(
+    impl_block: &crate::data::typed_ast::TypedImplBlock,
+    env: &Environment,
+    runtime: &mut RuntimeRegistry,
+) {
+    match &impl_block.target_type {
+        crate::data::ast::TypeExpr::Named(type_name, _, _) => {
+            let Some(target_id) = impl_block
+                .target_type_id
+                .or_else(|| builtins::builtin_type_id(type_name))
+            else {
+                return;
+            };
+            if let Some(order) = &impl_block.derived_clone_order {
+                runtime.register_clone_order(target_id, type_name, order.clone());
+            }
+            // metel-core#1228: `None` (matches every instantiation) unless
+            // construction determined this impl names one specific
+            // instantiation (`extend W<i64>: Tag`) -- see
+            // `TypedImplBlock::target_instantiation_args`'s own doc for why
+            // that decision needs registry access construction has and the
+            // evaluator doesn't.
+            let target_type_args = impl_block
+                .target_instantiation_args
+                .as_ref()
+                .map(|args| args.iter().map(runtime_type_key).collect::<Vec<_>>());
+            for method in &impl_block.methods {
+                let body_callable = match &method.body {
+                    FunBody::Native(key) => crate::evaluator::builtins::native_host_impl(*key),
+                    FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                        name: Some(method.name.clone()),
+                        captures: vec![],
+                        capture_ids: vec![],
+                        capture_types: vec![],
+                        params: method.params.clone(),
+                        param_ids: method.param_ids.clone(),
+                        body: ClosureBody::Typed(b.clone()),
+                        captured: env.clone(),
+                        call_mutation: crate::data::types::CallMutation::Reading,
+                        in_call: Cell::new(false),
+                        type_ctx: None,
+                        generic_method_scheme: None,
+                        scheme_id: None,
+                        fun_type: None,
+                    })),
+                    FunBody::Generic(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                        name: Some(method.name.clone()),
+                        captures: vec![],
+                        capture_ids: vec![],
+                        capture_types: vec![],
+                        params: method.params.clone(),
+                        param_ids: method.param_ids.clone(),
+                        body: ClosureBody::Untyped(b.clone()),
+                        captured: env.clone(),
+                        call_mutation: crate::data::types::CallMutation::Reading,
+                        in_call: Cell::new(false),
+                        type_ctx: env.type_ctx.clone(),
+                        generic_method_scheme: generic_method_scheme(method, env),
+                        scheme_id: None,
+                        fun_type: None,
+                    })),
+                };
+                let runtime_method = runtime_method_from_decl(
+                    format!("{type_name}::{}", method.name),
+                    method,
+                    body_callable,
+                );
+                if let Some(aspect_name) = &impl_block.aspect_name {
+                    let aspect_type_args = impl_block
+                        .aspect_type_args
+                        .iter()
+                        .map(runtime_type_key)
+                        .collect();
+                    runtime.register_aspect_method(
+                        target_id,
+                        type_name,
+                        aspect_name,
+                        impl_block.aspect_id,
+                        aspect_type_args,
+                        target_type_args.clone(),
+                        &impl_block.row_guards,
+                        &method.name,
+                        runtime_method,
+                    );
+                } else if runtime_method.receiver.is_none() {
+                    runtime.register_type_value(target_id, type_name, &method.name, runtime_method);
+                } else {
+                    runtime.register_inherent_method(
+                        target_id,
+                        type_name,
+                        target_type_args.clone(),
+                        &impl_block.row_guards,
+                        &method.name,
+                        runtime_method,
+                    );
+                }
+            }
+        }
+        crate::data::ast::TypeExpr::Record(_) | crate::data::ast::TypeExpr::OpenRecord(..) => {
+            // RFC-0121 §3: an impl on a record target. Bodies are deferred
+            // (`FunBody::Generic`) and checked per call against the receiver.
+            let (Some(aspect_name), crate::data::ast::Polarity::Positive) =
+                (&impl_block.aspect_name, impl_block.polarity)
+            else {
+                return;
+            };
+            let mut methods = HashMap::new();
+            for method in &impl_block.methods {
+                let body_callable = structural_method_callable(method, env);
+                let runtime_method = runtime_method_from_decl(
+                    format!("{{record}}::{}", method.name),
+                    method,
+                    body_callable,
+                );
+                methods.insert(method.name.clone(), runtime_method);
+            }
+            runtime.register_record_aspect_impl(
+                aspect_name,
+                impl_block.aspect_id,
+                &impl_block.row_guards,
+                methods,
+            );
+        }
+        crate::data::ast::TypeExpr::Array(_) => {
+            for method in &impl_block.methods {
+                let body_callable = match &method.body {
+                    FunBody::Native(key) => crate::evaluator::builtins::native_host_impl(*key),
+                    FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                        name: Some(method.name.clone()),
+                        captures: vec![],
+                        capture_ids: vec![],
+                        capture_types: vec![],
+                        params: method.params.clone(),
+                        param_ids: method.param_ids.clone(),
+                        body: ClosureBody::Typed(b.clone()),
+                        captured: env.clone(),
+                        call_mutation: crate::data::types::CallMutation::Reading,
+                        in_call: Cell::new(false),
+                        type_ctx: None,
+                        generic_method_scheme: None,
+                        scheme_id: None,
+                        fun_type: None,
+                    })),
+                    FunBody::Generic(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
+                        name: Some(method.name.clone()),
+                        captures: vec![],
+                        capture_ids: vec![],
+                        capture_types: vec![],
+                        params: method.params.clone(),
+                        param_ids: method.param_ids.clone(),
+                        body: ClosureBody::Untyped(b.clone()),
+                        captured: env.clone(),
+                        call_mutation: crate::data::types::CallMutation::Reading,
+                        in_call: Cell::new(false),
+                        type_ctx: env.type_ctx.clone(),
+                        generic_method_scheme: generic_method_scheme(method, env),
+                        scheme_id: None,
+                        fun_type: None,
+                    })),
+                };
+                let runtime_method = runtime_method_from_decl(
+                    format!("Array::{}", method.name),
+                    method,
+                    body_callable,
+                );
+                if runtime_method.receiver.is_some() {
+                    // Also register aspect-tagged (issue #272), mirroring the
+                    // `TypeExpr::Named` arm above: `register_pattern_method`
+                    // alone can't distinguish two different aspects providing
+                    // the same method name for `T[]`, silently keeping only
+                    // the last one registered. Construction now stamps
+                    // `MethodDispatch::Aspect { aspect_id }` once it has
+                    // already picked the right one via bound satisfaction, so
+                    // the aspect-tagged entry is what that dispatch mode
+                    // actually looks up; `register_pattern_method` stays for
+                    // the plain-name (`Inherent`/`Dynamic`) fallback path.
+                    if let Some(aspect_name) = &impl_block.aspect_name {
+                        runtime.register_pattern_aspect_method(
+                            RuntimeTypePattern::Array,
+                            aspect_name,
+                            impl_block.aspect_id,
+                            &method.name,
+                            runtime_method.clone(),
+                        );
+                    }
+                    runtime.register_pattern_method(
+                        RuntimeTypePattern::Array,
+                        &method.name,
+                        runtime_method,
+                    );
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Run the standard evaluation passes on `decls` into `env`.
 ///
 /// Pass 0: record top-level `let`/`mut` identities so a later `Call::
@@ -2461,210 +2663,7 @@ fn run_passes(
                     runtime.register_symbol_value(id, value);
                 }
             }
-            TypedDecl::Impl(impl_block) => match &impl_block.target_type {
-                crate::data::ast::TypeExpr::Named(type_name, _, _) => {
-                    let Some(target_id) = impl_block
-                        .target_type_id
-                        .or_else(|| builtins::builtin_type_id(type_name))
-                    else {
-                        continue;
-                    };
-                    if let Some(order) = &impl_block.derived_clone_order {
-                        runtime.register_clone_order(target_id, type_name, order.clone());
-                    }
-                    // metel-core#1228: `None` (matches every instantiation) unless
-                    // construction determined this impl names one specific
-                    // instantiation (`extend W<i64>: Tag`) -- see
-                    // `TypedImplBlock::target_instantiation_args`'s own doc for why
-                    // that decision needs registry access construction has and the
-                    // evaluator doesn't.
-                    let target_type_args = impl_block
-                        .target_instantiation_args
-                        .as_ref()
-                        .map(|args| args.iter().map(runtime_type_key).collect::<Vec<_>>());
-                    for method in &impl_block.methods {
-                        let body_callable = match &method.body {
-                            FunBody::Native(key) => {
-                                crate::evaluator::builtins::native_host_impl(*key)
-                            }
-                            FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
-                                name: Some(method.name.clone()),
-                                captures: vec![],
-                                capture_ids: vec![],
-                                capture_types: vec![],
-                                params: method.params.clone(),
-                                param_ids: method.param_ids.clone(),
-                                body: ClosureBody::Typed(b.clone()),
-                                captured: env.clone(),
-                                call_mutation: crate::data::types::CallMutation::Reading,
-                                in_call: Cell::new(false),
-                                type_ctx: None,
-                                generic_method_scheme: None,
-                                scheme_id: None,
-                                fun_type: None,
-                            })),
-                            FunBody::Generic(b) => {
-                                RuntimeCallable::Closure(Rc::new(ClosureValue {
-                                    name: Some(method.name.clone()),
-                                    captures: vec![],
-                                    capture_ids: vec![],
-                                    capture_types: vec![],
-                                    params: method.params.clone(),
-                                    param_ids: method.param_ids.clone(),
-                                    body: ClosureBody::Untyped(b.clone()),
-                                    captured: env.clone(),
-                                    call_mutation: crate::data::types::CallMutation::Reading,
-                                    in_call: Cell::new(false),
-                                    type_ctx: env.type_ctx.clone(),
-                                    generic_method_scheme: generic_method_scheme(method, env),
-                                    scheme_id: None,
-                                    fun_type: None,
-                                }))
-                            }
-                        };
-                        let runtime_method = runtime_method_from_decl(
-                            format!("{type_name}::{}", method.name),
-                            method,
-                            body_callable,
-                        );
-                        if let Some(aspect_name) = &impl_block.aspect_name {
-                            let aspect_type_args = impl_block
-                                .aspect_type_args
-                                .iter()
-                                .map(runtime_type_key)
-                                .collect();
-                            runtime.register_aspect_method(
-                                target_id,
-                                type_name,
-                                aspect_name,
-                                impl_block.aspect_id,
-                                aspect_type_args,
-                                target_type_args.clone(),
-                                &impl_block.row_guards,
-                                &method.name,
-                                runtime_method,
-                            );
-                        } else if runtime_method.receiver.is_none() {
-                            runtime.register_type_value(
-                                target_id,
-                                type_name,
-                                &method.name,
-                                runtime_method,
-                            );
-                        } else {
-                            runtime.register_inherent_method(
-                                target_id,
-                                type_name,
-                                target_type_args.clone(),
-                                &impl_block.row_guards,
-                                &method.name,
-                                runtime_method,
-                            );
-                        }
-                    }
-                }
-                crate::data::ast::TypeExpr::Record(_)
-                | crate::data::ast::TypeExpr::OpenRecord(..) => {
-                    // RFC-0121 §3: an impl on a record target. Bodies are deferred
-                    // (`FunBody::Generic`) and checked per call against the receiver.
-                    let (Some(aspect_name), crate::data::ast::Polarity::Positive) =
-                        (&impl_block.aspect_name, impl_block.polarity)
-                    else {
-                        continue;
-                    };
-                    let mut methods = HashMap::new();
-                    for method in &impl_block.methods {
-                        let body_callable = structural_method_callable(method, env);
-                        let runtime_method = runtime_method_from_decl(
-                            format!("{{record}}::{}", method.name),
-                            method,
-                            body_callable,
-                        );
-                        methods.insert(method.name.clone(), runtime_method);
-                    }
-                    runtime.register_record_aspect_impl(
-                        aspect_name,
-                        impl_block.aspect_id,
-                        &impl_block.row_guards,
-                        methods,
-                    );
-                }
-                crate::data::ast::TypeExpr::Array(_) => {
-                    for method in &impl_block.methods {
-                        let body_callable = match &method.body {
-                            FunBody::Native(key) => {
-                                crate::evaluator::builtins::native_host_impl(*key)
-                            }
-                            FunBody::Typed(b) => RuntimeCallable::Closure(Rc::new(ClosureValue {
-                                name: Some(method.name.clone()),
-                                captures: vec![],
-                                capture_ids: vec![],
-                                capture_types: vec![],
-                                params: method.params.clone(),
-                                param_ids: method.param_ids.clone(),
-                                body: ClosureBody::Typed(b.clone()),
-                                captured: env.clone(),
-                                call_mutation: crate::data::types::CallMutation::Reading,
-                                in_call: Cell::new(false),
-                                type_ctx: None,
-                                generic_method_scheme: None,
-                                scheme_id: None,
-                                fun_type: None,
-                            })),
-                            FunBody::Generic(b) => {
-                                RuntimeCallable::Closure(Rc::new(ClosureValue {
-                                    name: Some(method.name.clone()),
-                                    captures: vec![],
-                                    capture_ids: vec![],
-                                    capture_types: vec![],
-                                    params: method.params.clone(),
-                                    param_ids: method.param_ids.clone(),
-                                    body: ClosureBody::Untyped(b.clone()),
-                                    captured: env.clone(),
-                                    call_mutation: crate::data::types::CallMutation::Reading,
-                                    in_call: Cell::new(false),
-                                    type_ctx: env.type_ctx.clone(),
-                                    generic_method_scheme: generic_method_scheme(method, env),
-                                    scheme_id: None,
-                                    fun_type: None,
-                                }))
-                            }
-                        };
-                        let runtime_method = runtime_method_from_decl(
-                            format!("Array::{}", method.name),
-                            method,
-                            body_callable,
-                        );
-                        if runtime_method.receiver.is_some() {
-                            // Also register aspect-tagged (issue #272), mirroring the
-                            // `TypeExpr::Named` arm above: `register_pattern_method`
-                            // alone can't distinguish two different aspects providing
-                            // the same method name for `T[]`, silently keeping only
-                            // the last one registered. Construction now stamps
-                            // `MethodDispatch::Aspect { aspect_id }` once it has
-                            // already picked the right one via bound satisfaction, so
-                            // the aspect-tagged entry is what that dispatch mode
-                            // actually looks up; `register_pattern_method` stays for
-                            // the plain-name (`Inherent`/`Dynamic`) fallback path.
-                            if let Some(aspect_name) = &impl_block.aspect_name {
-                                runtime.register_pattern_aspect_method(
-                                    RuntimeTypePattern::Array,
-                                    aspect_name,
-                                    impl_block.aspect_id,
-                                    &method.name,
-                                    runtime_method.clone(),
-                                );
-                            }
-                            runtime.register_pattern_method(
-                                RuntimeTypePattern::Array,
-                                &method.name,
-                                runtime_method,
-                            );
-                        }
-                    }
-                }
-                _ => {}
-            },
+            TypedDecl::Impl(impl_block) => register_impl_block(impl_block, env, runtime),
             _ => {}
         }
     }
