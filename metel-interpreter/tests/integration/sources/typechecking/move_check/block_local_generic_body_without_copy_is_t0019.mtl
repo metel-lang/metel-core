@@ -1,0 +1,9 @@
+// metel-core#1969: the local type in a generic body is analysed, so a local type without `Copy` still moves.
+fun f<T>(x: T) {
+    struct L { n: i64 }
+    let a := L { n = 1 };
+    let b := a;
+    let c := a;
+}
+
+fun main() {}

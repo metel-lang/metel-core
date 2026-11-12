@@ -1,0 +1,15 @@
+// metel-core#1970: a marker impl written in a function body for a type declared there satisfies the aspect's bound,
+// unconditionally and under the impl's own bounds.
+aspect Marker {}
+fun need<T: Marker>(x: &T) {}
+
+fun main() {
+    struct L { n: i64 }
+    extend L: Marker;
+    struct W<T> { v: T }
+    extend<T: Marker> W<T>: Marker;
+    let l := L { n = 1 };
+    need(&l);
+    let w := W { v = L { n = 2 } };
+    need(&w);
+}

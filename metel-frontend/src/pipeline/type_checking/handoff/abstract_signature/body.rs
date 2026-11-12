@@ -253,12 +253,17 @@ impl BodyFreezer<'_, '_> {
         // bindings or type parameters (RFC-0195). It is prepared and analysed as a definition of its
         // own (ADR-0068), so it is not a statement of this block. A `struct` or `enum` declares a
         // type, which has no ownership effect here; its members are reached through the selection
-        // facts of the expressions that use them.
+        // facts of the expressions that use them. The same holds for an impl of such a type that
+        // carries no hand-written method body (a clause-derived impl, whose `clone` is native, or a
+        // marker `extend L: Copy;`, metel-core#1969). An impl with methods stays unretained, and so
+        // reports `I0011`, until its method bodies are prepared as definitions of their own.
         let statements = block
             .stmts
             .iter()
-            .filter(|statement| {
-                !matches!(statement, Decl::Fun(_) | Decl::Struct(_) | Decl::Enum(_))
+            .filter(|statement| match statement {
+                Decl::Fun(_) | Decl::Struct(_) | Decl::Enum(_) => false,
+                Decl::Impl(block) => !(block.from_clause || block.methods.is_empty()),
+                _ => true,
             })
             .map(|statement| self.statement(statement))
             .collect::<Result<_, _>>()?;
