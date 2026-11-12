@@ -1,0 +1,10 @@
+// RFC-0224: a nested application reduces through the flow of each type it names, down to `T`.
+struct Wrapper<T> derives Copy via T { value: T }
+struct Pair<A, B> derives Copy via A + B { a: A, b: B }
+
+fun twice<T>(p: Pair<Wrapper<T>, i64>) {
+    let first := p;
+    let again := p; // ERROR[T0019]
+}
+
+fun main() {}

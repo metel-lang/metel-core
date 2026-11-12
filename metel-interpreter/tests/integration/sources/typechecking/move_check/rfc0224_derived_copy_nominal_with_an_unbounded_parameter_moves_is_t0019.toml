@@ -1,7 +1,7 @@
 [options]
-arch_verifies = ["arch.move-check.requirement-8"]
-error = ["T0019"]
 move_check = true
+error = ["T0019"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-15"]
 
 [expect]
 status = "typecheck_error"

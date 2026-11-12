@@ -1,0 +1,3 @@
+copy struct Wrapper<T> via T { value: T }
+
+fun main() {}

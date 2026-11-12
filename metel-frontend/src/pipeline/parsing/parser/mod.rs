@@ -5,11 +5,12 @@ use pest_derive::Parser;
 use crate::data::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
     Bound, BoundHead, BreakExpr, CaptureSpec, ClauseEntry, Decl, DeclClauses, EnumDecl, ExportDecl,
-    Expr, FieldDef, FieldWiseConstraint, ForInStmt, ForInit, ForStmt, FunDecl, GenericParam,
-    ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal, MatchArm,
-    MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program, ReceiverKind,
-    ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt, StructDecl, StructKind,
-    TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause, WhereConstraint, WhileStmt,
+    Expr, FieldDef, FieldWiseConstraint, FlowParam, ForInStmt, ForInit, ForStmt, FunDecl,
+    GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal,
+    MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
+    ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt,
+    StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
+    WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
 use crate::data::types::{CallMultiplicity, CallMutation};
@@ -694,12 +695,28 @@ fn parse_clause_part(
                 // expansion fills the name in once names resolve.
                 name: String::new(),
                 from_class_keyword: true,
+                flow: None,
                 span,
             });
         }
         Rule::colon_list | Rule::derives_clause => {
             let is_colon = pair.as_rule() == Rule::colon_list;
             for entry in pair.into_inner() {
+                // RFC-0224: a `via` clause belongs to the entry just before it.
+                if entry.as_rule() == Rule::via_clause {
+                    let flow = entry
+                        .into_inner()
+                        .filter(|p| p.as_rule() == Rule::ident)
+                        .map(|p| FlowParam {
+                            name: p.as_str().to_string(),
+                            span: Span::of(&p, filename),
+                        })
+                        .collect::<Vec<_>>();
+                    if let Some(last) = clauses.derives.last_mut() {
+                        last.flow = Some(flow);
+                    }
+                    continue;
+                }
                 if entry.as_rule() != Rule::clause_entry {
                     continue;
                 }
@@ -720,6 +737,7 @@ fn parse_clause_part(
                 let entry = ClauseEntry {
                     name,
                     from_class_keyword: false,
+                    flow: None,
                     span: entry_span,
                 };
                 if is_colon {

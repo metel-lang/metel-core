@@ -1567,15 +1567,10 @@ aspect Marker {}
 aspect Other {}
 struct Guard<A, B> { name: String }
 extend<A, B> Guard<A, B>: Drop where A: Marker, B: Other { fun drop(&var self) {} }
-copy struct Witness<A, B> { count: i64 }
-extend<A, B> Witness<A, B>: !Copy where A: Marker, B: Other;
 copy struct Token<T> { value: T }
 fun extract<A: !Marker, B>(value: Guard<A, B>) -> String { value.name }
 fun unknown_drop<A: Marker, B>(value: Guard<A, B>) -> String { value.name }
-fun copied<A: !Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
-fun unknown_override<A: Marker, B>(value: Witness<A, B>) { let first := value; let again := value; }
 fun token<T: Copy>(value: Token<T>) { let first := value; let again := value; }
-fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
 fun main() {}
 "#,
         |graph| {
@@ -1586,11 +1581,11 @@ fun main() {}
     );
     assert_eq!(
         report.checked_abstract_generic_bodies.len(),
-        4,
+        3,
         "{report:#?}"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
-    assert_eq!(report.skipped_generic_bodies_user, 3, "{report:#?}");
+    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
 #[test]
@@ -1620,34 +1615,6 @@ fun main() {}
     );
     assert_eq!(report.violations.len(), 1, "{report:#?}");
     assert_eq!(report.violations[0].use_span.line, 8, "{report:#?}");
-    assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
-}
-
-#[test]
-fn abstract_ownership_proves_conditional_negative_override() {
-    let report = move_report_for_source_with(
-        r#"
-aspect Marker {}
-copy struct Witness<T> { count: i64 }
-extend<T: Marker> Witness<T>: !Copy;
-fun allowed<T: !Marker>(value: Witness<T>) { let first := value; let again := value; }
-fun denied<T: Marker>(value: Witness<T>) { let first := value; let again := value; }
-fun unknown<T>(value: Witness<T>) { let first := value; let again := value; }
-fun main() {}
-"#,
-        |graph| {
-            for module in &mut graph.modules {
-                module.scheme_ids.clear();
-            }
-        },
-    );
-    assert_eq!(
-        report.checked_abstract_generic_bodies.len(),
-        2,
-        "{report:#?}"
-    );
-    assert_eq!(report.violations.len(), 1, "{report:#?}");
-    assert_eq!(report.violations[0].use_span.line, 6, "{report:#?}");
     assert_eq!(report.skipped_generic_bodies_user, 1, "{report:#?}");
 }
 
@@ -1770,33 +1737,16 @@ fun main() {}
 }
 
 #[test]
-fn abstract_ownership_keeps_aliased_negative_overrides_pending() {
-    let report = move_report_for_source_with(
-        r#"
-import std::core::Copy as Repeatable;
-copy struct Witness<T> { count: i64 }
-extend Witness<String>: !Repeatable;
-fun repeated<T>(value: Witness<T>) { let first := value; let again := value; }
-fun main() {}
-"#,
-        |graph| {
-            for module in &mut graph.modules {
-                module.scheme_ids.clear();
-            }
-        },
+fn a_negative_copy_grant_on_a_derived_copy_type_is_an_error() {
+    // RFC-0224 rule 8: a derived `Copy` is exact by its flow, so no negative grant (conditional, aliased
+    // or not) sits beside it.
+    assert_typecheck_error_contains(
+        "aspect Marker {} copy struct Witness<T> { count: i64 } extend<T: Marker> Witness<T>: !Copy; fun main() {}",
+        "[T0015]",
     );
-    assert!(
-        report.checked_abstract_generic_bodies.is_empty(),
-        "{report:#?}"
-    );
-    assert!(
-        report
-            .abstract_body_fallbacks
-            .iter()
-            .any(|fallback| fallback
-                .reason
-                .starts_with(super::abstract_bodies::UNDECIDED_NOMINAL)),
-        "{report:#?}"
+    assert_typecheck_error_contains(
+        "import std::core::Copy as Repeatable; copy struct Witness<T> { count: i64 } extend Witness<String>: !Repeatable; fun main() {}",
+        "[T0015]",
     );
 }
 
@@ -2014,9 +1964,9 @@ fun main() {}
 fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial_results() {
     let report = move_report_for_source_with(
         r#"
-copy struct Holder<T> { value: T }
+aspect Marker;
 fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } let pair := (|k: i64| -> i64 { k }, 1); }
-fun ownership<T>(value: T, holder: Holder<T>) {
+fun ownership<T>(value: T, holder: dyn Marker) {
     let first := value; let second := value; let held := holder;
 }
 fun completed<T: Copy>(value: T) { let first := value; let second := value; }
@@ -2043,7 +1993,7 @@ fun main() {}
     // The undecided question names the type it was about (metel-core#1814).
     assert_eq!(
         fallbacks[1].reason,
-        "abstract conditional nominal aspect entailment is not yet retained: Holder<_>"
+        "abstract nominal aspect entailment is not yet retained: dyn Marker"
     );
     assert!(report.violations.is_empty(), "{report:#?}");
     // `completed`, and the function declared inside `preparation`, which is a definition of its own.
@@ -5422,8 +5372,7 @@ fn an_undecided_ownership_names_its_type_and_is_not_an_internal_fallback() {
     let report = move_report_for_source_with(
         r#"
 aspect Marker;
-copy struct Token<T> { value: T }
-fun unknown_token<T: Marker>(value: Token<T>) { let first := value; let again := value; }
+fun unknown_dyn<T>(value: dyn Marker, other: T) { let first := value; let again := value; }
 fun fine<T: Copy>(value: T) { let first := value; let again := value; }
 fun main() {}
 "#,
@@ -5438,7 +5387,7 @@ fun main() {}
         .iter()
         .filter_map(|body| body.undecided.as_deref())
         .collect();
-    assert_eq!(undecided, ["Token<_>"], "{report:#?}");
+    assert_eq!(undecided, ["dyn Marker"], "{report:#?}");
     assert!(report.violations.is_empty(), "{report:#?}");
     // The decided body stays analysed (established proofs are preserved).
     assert_eq!(

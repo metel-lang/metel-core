@@ -1,9 +1,0 @@
-[options]
-move_check = true
-error = ["T0047"]
-spec = ["spec.ownership.copy.legality-2"]
-
-[expect]
-status = "typecheck_error"
-code = "T0047"
-contains = "cannot decide whether `Token<_>` is copied or moved"

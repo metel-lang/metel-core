@@ -1,0 +1,15 @@
+// RFC-0224 section 1: `via` states the type parameters a `derives Copy` entry's copy-ness flows from. A set larger
+// than the fields need is accepted; the type is then `Copy` only when those arguments are.
+struct Wrapper<T> derives Copy via T { value: T }
+struct Pair<A, B> derives Copy via A + B, Clone { a: A, b: B }
+struct Handle<T> derives Copy via T { id: i64 }
+enum Maybe<T> derives Copy via T { None, Some { value: T } }
+
+fun main() {
+    let h: Handle<i64> := Handle { id = 1 };
+    let first := h;
+    let again := h;
+    let w: Wrapper<i64> := Wrapper { value = 2 };
+    let copy := w.clone();
+    println("ok");
+}

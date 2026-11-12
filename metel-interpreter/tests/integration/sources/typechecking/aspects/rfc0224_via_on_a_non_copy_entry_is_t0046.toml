@@ -1,0 +1,8 @@
+[options]
+error = ["T0046"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-11"]
+
+[expect]
+status = "typecheck_error"
+code = "T0046"
+contains = "accepted only on `derives Copy`"

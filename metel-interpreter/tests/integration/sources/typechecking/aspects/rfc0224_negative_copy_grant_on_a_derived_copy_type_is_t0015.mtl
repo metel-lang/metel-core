@@ -1,0 +1,6 @@
+// RFC-0224 rule 8: a type that derives `Copy` is `Copy` exactly by its flow; no negative grant sits beside it.
+aspect Marker {}
+copy struct Token<T> { id: i64 }
+extend<T: Marker> Token<T>: !Copy;
+
+fun main() {}

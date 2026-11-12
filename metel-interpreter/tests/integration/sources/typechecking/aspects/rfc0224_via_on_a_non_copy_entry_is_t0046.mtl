@@ -1,0 +1,3 @@
+struct Wrapper<T> derives Clone via T { value: T }
+
+fun main() {}
