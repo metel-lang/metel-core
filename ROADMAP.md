@@ -136,7 +136,7 @@ milestone description (`After:`). The tag is its horizon, how near it is.
 31. **Compiler MVP** [later]: Standalone multi-module compilation.
 32. **Standard library redesign** [later]: A usable, separately versioned std API.
 33. **Concurrency** [later]: The concurrency model (RFC-0003) is settled.
-34. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std.
+34. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std. RFC-0151 (tuples as numeric-label rows, #1956) is under review in this stage: adopted, it shrinks the tuple half to confirming the row impls cover tuples (decision #1848).
 35. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
 36. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
 37. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
@@ -176,7 +176,7 @@ Draft RFCs with no tracking issue. They are listed here so they are not lost; ea
   - RFC-0114: Constructor Aspect and Canonical Construction
   - RFC-0128: Exportable overload sets and shadow-versus-extend semantics
 - **Records and surface syntax** (RFC-0183, RFC-0189, RFC-0191, RFC-0221 and RFC-0223 moved to the v0.16.0 stage "Call and record syntax" on 2026-11-07; RFC-0100 moved with them and left the stage exit on 2026-11-11, when it was reopened as a release-level review, #807; the rest stay in this theme)
-  - RFC-0151: Tuples as Numeric-Label Rows
+  - RFC-0151: Tuples as Numeric-Label Rows (moved to the v0.16.0 stage "Copy migration" on 2026-11-12, under review: #1956)
   - RFC-0170: Literal Types and Discriminated Structural Unions
   - RFC-0175: Label Polymorphism
   - RFC-0188: Label syntax
