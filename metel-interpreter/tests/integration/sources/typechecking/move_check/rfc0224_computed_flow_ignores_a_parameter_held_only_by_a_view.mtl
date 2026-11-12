@@ -1,0 +1,11 @@
+// RFC-0224 section 2 rule 1 and 3: an unstated flow is computed exactly. `W<T>` holds `T` only through
+// `View<T>`, whose own flow is empty, so `W<T>` is `Copy` for every `T`; and a stated `via A` is enough for a
+// field whose only other parameter sits in a view.
+copy struct View<T> { r: &T }
+struct W<T> derives Copy { v: View<T> }
+struct Mixed<A, B> derives Copy via A { a: A, v: View<B> }
+
+fun copy_w<T>(w: W<T>) -> (W<T>, W<T>) { (w, w) }
+fun copy_mixed<A: Copy, B>(m: Mixed<A, B>) -> (Mixed<A, B>, Mixed<A, B>) { (m, m) }
+
+fun main() {}

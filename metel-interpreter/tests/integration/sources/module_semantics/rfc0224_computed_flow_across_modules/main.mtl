@@ -1,0 +1,15 @@
+// RFC-0224: a flow computed in this module reads the stored flows of the types it names in another one:
+// `Local<A, B>` is `Copy` when `A` is (through `Wrapper<A>`) and for every `B` (through `View<B>`).
+import lib::Wrapper;
+import lib::View;
+
+struct Local<A, B> derives Copy { w: Wrapper<A>, v: View<B> }
+
+fun ok<A: Copy, B>(l: Local<A, B>) -> (Local<A, B>, Local<A, B>) { (l, l) }
+
+fun bad<A, B>(l: Local<A, B>) {
+    let first := l;
+    let again := l; // ERROR[T0019]
+}
+
+fun main() {}

@@ -1,0 +1,13 @@
+// RFC-0224 section 2 rule 1: `Outer<A, B>` is computed from `Wrapper<A>`'s flow ({A}) and the plain field of
+// type `B`, so it is `Copy` exactly when `A` and `B` are; `A` unbounded makes it move.
+struct Wrapper<T> derives Copy via T { value: T }
+struct Outer<A, B> derives Copy { w: Wrapper<A>, n: B }
+
+fun ok<A: Copy, B: Copy>(o: Outer<A, B>) -> (Outer<A, B>, Outer<A, B>) { (o, o) }
+
+fun bad<A, B: Copy>(o: Outer<A, B>) {
+    let first := o;
+    let again := o; // ERROR[T0019]
+}
+
+fun main() {}
