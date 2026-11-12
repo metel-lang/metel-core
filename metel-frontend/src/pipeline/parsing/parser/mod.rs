@@ -51,7 +51,7 @@ fn parse_inner(source: &str, filename: &str) -> Result<Program, MetelError> {
                         || {
                             legacy_record_brace(source, start).map_or_else(
                                 || e.variant.to_string(),
-                                |hint| hint.to_string(),
+                                ToString::to_string,
                             )
                         },
                         |keyword| {
