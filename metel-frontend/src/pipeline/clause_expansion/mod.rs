@@ -11,7 +11,10 @@
 //! A generic type's impl is generic over the same parameters, and a `derives` impl bounds each parameter a
 //! field holds by value by the derived aspect, so `copy struct W<T>` is `Copy` exactly when `T` is.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
+
+mod flows;
+use flows::{Aspects, Kind, Scope, Table};
 
 use crate::data::ast::{
     AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FunDecl, GenericParam, ImplBlock,
@@ -87,16 +90,26 @@ pub fn expand(graph: &mut ModuleGraph, names: &ResolvedNames) -> Result<(), Mete
             "Clone".to_string(),
         ))
         .copied();
-    let flows = compute_flows(graph, names, &aspects);
+    let flow_aspects = Aspects {
+        implicit: aspects.iter().find(|(_, a)| a.implicit).map(|(id, _)| *id),
+        clone: clone_id,
+    };
+    let module_flows = flows::module_table(graph, names, &flow_aspects);
     let ctx = Ctx {
         names,
         aspects: &aspects,
         clone_id,
-        flows: &flows,
+        flow_aspects,
     };
     for module in &mut graph.modules {
         let path = module.module_path.clone();
-        expand_decls(&mut module.program.decls, &path, &ctx)?;
+        expand_decls(
+            &mut module.program.decls,
+            &path,
+            &ctx,
+            &[&module_flows],
+            true,
+        )?;
     }
     Ok(())
 }
@@ -105,208 +118,35 @@ struct Ctx<'a> {
     names: &'a ResolvedNames,
     aspects: &'a HashMap<SymbolId, Aspect>,
     clone_id: Option<SymbolId>,
-    /// The flow set of every module-level type that derives `Copy` (RFC-0224), stated or computed.
-    flows: &'a CopyFlows,
-}
-
-/// RFC-0224 section 1: the type parameters each module-level `Copy` declaration's copy-ness flows from, by
-/// declaration. A stated `via` set is the interface as written; an unstated one is computed here from the
-/// fields, by substituting the flow of every type a field names (RFC-0224 section 2 rule 1).
-#[derive(Default)]
-struct CopyFlows {
-    by_id: HashMap<SymbolId, FlowEntry>,
-}
-
-struct FlowEntry {
-    /// Every generic parameter of the declaration in order: the position of an argument is its index.
-    generics: Vec<String>,
-    /// The parameters the declaration's `Copy` flows from.
-    set: BTreeSet<String>,
-}
-
-/// What the flow computation reads of a declaration that derives `Copy`.
-struct FlowDecl {
-    module: Vec<String>,
-    /// Every generic parameter in order, and the type-kinded ones among them (a row- or record-kinded
-    /// parameter is rejected elsewhere).
-    generics: Vec<String>,
-    params: Vec<String>,
-    fields: Vec<TypeExpr>,
-    stated: Option<Vec<String>>,
-}
-
-/// Compute the flow set of every module-level declaration that derives `Copy`, across the module graph and
-/// independent of source order. A stated set is taken as written; an unstated one starts empty and grows to
-/// the smallest set that covers what its fields depend on. The iteration is monotone over finitely many
-/// parameters, so it reaches a fixed point, which is also the answer for mutually recursive declarations.
-fn compute_flows(
-    graph: &ModuleGraph,
-    names: &ResolvedNames,
-    aspects: &HashMap<SymbolId, Aspect>,
-) -> CopyFlows {
-    let implicit = aspects.iter().find(|(_, a)| a.implicit).map(|(id, _)| *id);
-    let mut decls: HashMap<SymbolId, FlowDecl> = HashMap::new();
-    for module in &graph.modules {
-        for decl in &module.program.decls {
-            let (name, generics, clauses, fields): (&str, &[GenericParam], _, Vec<TypeExpr>) =
-                match decl {
-                    Decl::Struct(sd) => (
-                        &sd.name,
-                        &sd.generics,
-                        &sd.clauses,
-                        sd.fields.iter().map(|f| f.type_ann.clone()).collect(),
-                    ),
-                    Decl::Enum(ed) => (
-                        &ed.name,
-                        &ed.generics,
-                        &ed.clauses,
-                        ed.variants
-                            .iter()
-                            .flat_map(|v| v.fields.iter().map(|f| f.type_ann.clone()))
-                            .collect(),
-                    ),
-                    _ => continue,
-                };
-            let Some(entry) = clauses.derives.iter().find(|e| {
-                e.from_class_keyword
-                    || (implicit.is_some()
-                        && super::coherence::resolve_id(names, &module.module_path, &e.name)
-                            == implicit)
-            }) else {
-                continue;
-            };
-            let Some(id) = names.symbols.get(&(
-                module.module_path.clone(),
-                Namespace::Type,
-                name.to_string(),
-            )) else {
-                continue;
-            };
-            decls.insert(
-                *id,
-                FlowDecl {
-                    module: module.module_path.clone(),
-                    generics: generics.iter().map(|g| g.name.clone()).collect(),
-                    params: generics
-                        .iter()
-                        .filter(|g| !g.is_record && !g.is_row)
-                        .map(|g| g.name.clone())
-                        .collect(),
-                    fields,
-                    stated: entry
-                        .flow
-                        .as_ref()
-                        .map(|flow| flow.iter().map(|p| p.name.clone()).collect()),
-                },
-            );
-        }
-    }
-    let mut flows = CopyFlows::default();
-    for (id, decl) in &decls {
-        flows.by_id.insert(
-            *id,
-            FlowEntry {
-                generics: decl.generics.clone(),
-                set: decl
-                    .stated
-                    .as_ref()
-                    .map(|s| s.iter().cloned().collect())
-                    .unwrap_or_default(),
-            },
-        );
-    }
-    loop {
-        let mut changed = false;
-        for (id, decl) in &decls {
-            if decl.stated.is_some() {
-                continue;
-            }
-            let computed =
-                dependence_of_fields(&decl.fields, &decl.params, &decl.module, names, &flows);
-            if let Some(entry) = flows.by_id.get_mut(id) {
-                for param in computed {
-                    changed |= entry.set.insert(param);
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    flows
-}
-
-/// The type parameters (of `params`) a set of field types' `Copy` depends on, by the `Copy` rule of each
-/// type form (RFC-0224 section 2 rule 1): a parameter on itself; a nominal application on the arguments at
-/// the positions in its own flow set; a tuple, record or sized array on its components; a reference and the
-/// borrowed view on nothing. A nominal that has no stored flow (it does not derive `Copy`, or is declared
-/// outside the module graph) and any form this does not look through depend on every argument that mentions
-/// a parameter, which is the conservative reading.
-fn dependence_of_fields(
-    fields: &[TypeExpr],
-    params: &[String],
-    module: &[String],
-    names: &ResolvedNames,
-    flows: &CopyFlows,
-) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for ty in fields {
-        collect_dependence(ty, params, module, names, flows, &mut out);
-    }
-    out
-}
-
-fn collect_dependence(
-    ty: &TypeExpr,
-    params: &[String],
-    module: &[String],
-    names: &ResolvedNames,
-    flows: &CopyFlows,
-    out: &mut BTreeSet<String>,
-) {
-    let recurse = |t: &TypeExpr, out: &mut BTreeSet<String>| {
-        collect_dependence(t, params, module, names, flows, out);
-    };
-    match ty {
-        TypeExpr::Named(name, args, _) => {
-            if args.is_empty() && params.iter().any(|p| p == name) {
-                out.insert(name.clone());
-                return;
-            }
-            let flow = super::coherence::resolve_id(names, module, name)
-                .and_then(|id| flows.by_id.get(&id));
-            match flow {
-                Some(entry) => {
-                    for (i, arg) in args.iter().enumerate() {
-                        if entry.generics.get(i).is_some_and(|g| entry.set.contains(g)) {
-                            recurse(arg, out);
-                        }
-                    }
-                }
-                None => {
-                    for arg in args {
-                        recurse(arg, out);
-                    }
-                }
-            }
-        }
-        TypeExpr::Reference(_) | TypeExpr::Array(_) => {}
-        TypeExpr::MutReference(inner) | TypeExpr::SizedArray(inner, _) => recurse(inner, out),
-        TypeExpr::Tuple(items) => items.iter().for_each(|t| recurse(t, out)),
-        TypeExpr::Record(fields) => fields.iter().for_each(|(_, t)| recurse(t, out)),
-        _ => out.extend(params.iter().cloned()),
-    }
+    /// How the clause entries name the two aspects whose derivation has a flow (RFC-0224).
+    flow_aspects: Aspects,
 }
 
 /// Expand a declaration list, and the declaration lists of the function bodies inside it.
-fn expand_decls(decls: &mut Vec<Decl>, module: &[String], ctx: &Ctx<'_>) -> Result<(), MetelError> {
+///
+/// `outer` holds the flow tables of the enclosing scopes, the module's first; a function body adds a table
+/// of its own local type declarations (`top` is the module's own list, which the module table covers).
+fn expand_decls(
+    decls: &mut Vec<Decl>,
+    module: &[String],
+    ctx: &Ctx<'_>,
+    outer: &[&Table],
+    top: bool,
+) -> Result<(), MetelError> {
+    let local;
+    let mut tables: Vec<&Table> = outer.to_vec();
+    if !top {
+        local = flows::local_table(decls, module, outer, ctx.names, &ctx.flow_aspects);
+        tables.push(&local);
+    }
+    let scope = Scope::new(&tables);
     let mut out: Vec<Decl> = Vec::with_capacity(decls.len());
     for mut decl in std::mem::take(decls) {
         match &mut decl {
-            Decl::Fun(fun) => expand_decls(&mut fun.body.stmts, module, ctx)?,
+            Decl::Fun(fun) => expand_decls(&mut fun.body.stmts, module, ctx, &tables, false)?,
             Decl::Impl(block) => {
                 for method in &mut block.methods {
-                    expand_decls(&mut method.body.stmts, module, ctx)?;
+                    expand_decls(&mut method.body.stmts, module, ctx, &tables, false)?;
                 }
             }
             _ => {}
@@ -315,13 +155,16 @@ fn expand_decls(decls: &mut Vec<Decl>, module: &[String], ctx: &Ctx<'_>) -> Resu
             Decl::Struct(sd) => {
                 let fields: Vec<TypeExpr> = sd.fields.iter().map(|f| f.type_ann.clone()).collect();
                 clause_impls(
-                    &sd.name,
-                    &sd.generics,
+                    &Declaration {
+                        name: &sd.name,
+                        generics: &sd.generics,
+                        fields: &fields,
+                        span: &sd.span,
+                    },
                     &mut sd.clauses,
-                    &fields,
-                    &sd.span,
                     module,
                     ctx,
+                    &scope,
                 )?
             }
             Decl::Enum(ed) => {
@@ -331,13 +174,16 @@ fn expand_decls(decls: &mut Vec<Decl>, module: &[String], ctx: &Ctx<'_>) -> Resu
                     .flat_map(|v| v.fields.iter().map(|f| f.type_ann.clone()))
                     .collect();
                 clause_impls(
-                    &ed.name,
-                    &ed.generics,
+                    &Declaration {
+                        name: &ed.name,
+                        generics: &ed.generics,
+                        fields: &fields,
+                        span: &ed.span,
+                    },
                     &mut ed.clauses,
-                    &fields,
-                    &ed.span,
                     module,
                     ctx,
+                    &scope,
                 )?
             }
             _ => Vec::new(),
@@ -404,19 +250,19 @@ fn check_no_negative_copy(
     Ok(())
 }
 
-fn clause_impls(
-    type_name: &str,
-    generics: &[GenericParam],
+/// The declaration whose clauses are expanded.
+struct Declaration<'a> {
+    name: &'a str,
+    generics: &'a [GenericParam],
+    fields: &'a [TypeExpr],
+    span: &'a Span,
+}
+
+/// The `copy` class keyword names the aspect with the `implicit` property.
+fn name_class_keywords(
     clauses: &mut crate::data::ast::DeclClauses,
-    field_types: &[TypeExpr],
-    span: &Span,
-    module: &[String],
     ctx: &Ctx<'_>,
-) -> Result<Vec<ImplBlock>, MetelError> {
-    if clauses.is_empty() {
-        return Ok(Vec::new());
-    }
-    // The `copy` class keyword names the aspect with the `implicit` property.
+) -> Result<(), MetelError> {
     for entry in &mut clauses.derives {
         if entry.from_class_keyword && entry.name.is_empty() {
             let implicit = ctx.aspects.values().find(|a| a.implicit).ok_or_else(|| {
@@ -429,13 +275,16 @@ fn clause_impls(
             entry.name = implicit.name.clone();
         }
     }
-    let args: Vec<TypeExpr> = generics
-        .iter()
-        .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(span.clone())))
-        .collect();
-    let target = TypeExpr::Named(type_name.to_string(), args, NameSpan(span.clone()));
-    // Each entry with the aspect that bounds a generic type's parameters: a `derives` entry is bounded by
-    // itself, a colon-list marker by nothing; a brought super is bounded by the aspect that brought it.
+    Ok(())
+}
+
+/// Each entry with the aspect that bounds a generic type's parameters: a `derives` entry is bounded by itself,
+/// a colon-list marker by nothing; a brought super is bounded by the aspect that brought it.
+fn clause_entries(
+    clauses: &crate::data::ast::DeclClauses,
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> Vec<(ClauseEntry, Option<String>)> {
     let mut entries: Vec<(ClauseEntry, Option<String>)> = Vec::new();
     for entry in &clauses.colon {
         entries.push((entry.clone(), None));
@@ -467,40 +316,80 @@ fn clause_impls(
             }
         }
     }
-    let mut seen = std::collections::HashSet::new();
-    let implicit_id = ctx
-        .aspects
+    entries
+}
+
+/// What a clause entry is for the flow (RFC-0224): the `Copy` entry and the supers it brings carry the flow of
+/// the `Copy` declaration; an original `derives Clone` carries its own computed flow; any other entry has none.
+/// Also whether the entry is a `derives` entry as written (not a brought super), and whether it is the `Copy` one.
+fn entry_origin(
+    entry: &ClauseEntry,
+    bound: Option<&str>,
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> (bool, bool, Option<Kind>) {
+    let original = bound == Some(entry.name.as_str());
+    let resolves = |name: &str, id: Option<SymbolId>| {
+        id.is_some() && super::coherence::resolve_id(ctx.names, module, name) == id
+    };
+    let implicit = ctx.flow_aspects.implicit;
+    let is_copy_entry = resolves(&entry.name, implicit);
+    let from_copy = is_copy_entry || bound.is_some_and(|b| resolves(b, implicit));
+    let origin = if from_copy {
+        Some(Kind::Copy)
+    } else if original && resolves(&entry.name, ctx.clone_id) {
+        Some(Kind::Clone)
+    } else {
+        None
+    };
+    (original, is_copy_entry, origin)
+}
+
+fn clause_impls(
+    decl: &Declaration<'_>,
+    clauses: &mut crate::data::ast::DeclClauses,
+    module: &[String],
+    ctx: &Ctx<'_>,
+    scope: &Scope<'_>,
+) -> Result<Vec<ImplBlock>, MetelError> {
+    if clauses.is_empty() {
+        return Ok(Vec::new());
+    }
+    name_class_keywords(clauses, ctx)?;
+    let args: Vec<TypeExpr> = decl
+        .generics
         .iter()
-        .find(|(_, a)| a.implicit)
-        .map(|(id, _)| *id);
+        .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(decl.span.clone())))
+        .collect();
+    let target = TypeExpr::Named(decl.name.to_string(), args, NameSpan(decl.span.clone()));
+    let entries = clause_entries(clauses, module, ctx);
+    let mut seen = std::collections::HashSet::new();
     let mut impls = Vec::new();
     // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
     for (entry, bound) in entries
         .iter()
         .filter(|(entry, _)| seen.insert(entry.name.clone()))
     {
-        // A `derives` entry is bounded by itself; a brought super is bounded by the aspect that brought it.
-        let original = bound.as_deref() == Some(entry.name.as_str());
-        let is_copy_entry = implicit_id.is_some()
-            && super::coherence::resolve_id(ctx.names, module, &entry.name) == implicit_id;
-        // The `Copy` entry and the supers it brings carry the flow of the `Copy` declaration: stated, or
-        // computed from the fields through the stored flows of the types they name (RFC-0224).
-        let from_copy = is_copy_entry
-            || (implicit_id.is_some()
-                && bound.as_deref().is_some_and(|b| {
-                    super::coherence::resolve_id(ctx.names, module, b) == implicit_id
-                }));
+        let (original, is_copy_entry, origin) = entry_origin(entry, bound.as_deref(), module, ctx);
         if original {
-            check_flow(entry, is_copy_entry, generics, field_types, module, ctx)?;
+            check_flow(
+                entry,
+                is_copy_entry,
+                decl.generics,
+                decl.fields,
+                module,
+                ctx,
+                scope,
+            )?;
         }
-        let flow = entry_flow(entry, from_copy, type_name, module, ctx);
+        let flow = entry_flow(entry, origin, decl.name, module, ctx, scope);
         impls.push(ImplBlock {
             polarity: Polarity::Positive,
             generics: impl_generics(
-                generics,
+                decl.generics,
                 entry,
                 bound.as_deref(),
-                field_types,
+                decl.fields,
                 flow.as_deref(),
             ),
             aspect_name: Some(entry.name.clone()),
@@ -517,29 +406,26 @@ fn clause_impls(
 }
 
 /// The flow an entry's impl is generated with (RFC-0224): the `Copy` entry and the supers it brings carry the
-/// `Copy` declaration's flow, stated with `via` or computed from the fields (`ctx.flows`); any other entry has
-/// none (its parameters are bounded by the per-parameter rule).
+/// `Copy` declaration's flow, stated with `via` or computed from the fields; a `derives Clone` that no `Copy`
+/// brings carries its computed `Clone` flow; any other entry has none (its parameters are bounded by the
+/// per-parameter rule).
 fn entry_flow(
     entry: &ClauseEntry,
-    from_copy: bool,
+    origin: Option<Kind>,
     type_name: &str,
     module: &[String],
     ctx: &Ctx<'_>,
+    scope: &Scope<'_>,
 ) -> Option<Vec<String>> {
-    if !from_copy {
-        return None;
-    }
-    if let Some(stated) = &entry.flow {
+    let kind = origin?;
+    if kind == Kind::Copy
+        && let Some(stated) = &entry.flow
+    {
         return Some(stated.iter().map(|p| p.name.clone()).collect());
     }
-    let id = ctx
-        .names
-        .symbols
-        .get(&(module.to_vec(), Namespace::Type, type_name.to_string()))?;
-    ctx.flows
-        .by_id
-        .get(id)
-        .map(|e| e.set.iter().cloned().collect())
+    scope
+        .own(type_name, module, ctx.names, kind)
+        .map(|e| e.set().iter().cloned().collect())
 }
 
 /// RFC-0224 section 2: the checks on a `derives Copy` entry's flow, stated or computed. A `via` clause is
@@ -555,6 +441,7 @@ fn check_flow(
     field_types: &[TypeExpr],
     module: &[String],
     ctx: &Ctx<'_>,
+    scope: &Scope<'_>,
 ) -> Result<(), MetelError> {
     let invalid =
         |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
@@ -613,7 +500,7 @@ fn check_flow(
             .filter(|g| !g.is_record && !g.is_row)
             .map(|g| g.name.clone())
             .collect();
-        let needs = dependence_of_fields(field_types, &params, module, ctx.names, ctx.flows);
+        let needs = flows::dependence(field_types, &params, module, ctx.names, scope, Kind::Copy);
         for g in generics.iter().filter(|g| !g.is_record && !g.is_row) {
             let needed = needs.contains(&g.name);
             if needed && !flow.iter().any(|p| p.name == g.name) {
@@ -743,3 +630,6 @@ fn impl_generics(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests;
