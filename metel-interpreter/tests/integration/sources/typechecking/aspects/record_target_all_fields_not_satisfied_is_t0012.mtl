@@ -6,10 +6,10 @@ aspect Mark { fun mark(&self) -> i64; }
 
 extend i64: Mark { fun mark(&self) -> i64 { 1 } }
 
-extend<record R> { ..R }: Label where ..R: Mark {
+extend<record R> .{ ..R }: Label where ..R: Mark {
     fun label(&self) -> String { "all marked".to_string() }
 }
 
 fun main() {
-    let _ := { .a = 1, .s = "x".to_string() }.label();
+    let _ := .{ .a = 1, .s = "x".to_string() }.label();
 }

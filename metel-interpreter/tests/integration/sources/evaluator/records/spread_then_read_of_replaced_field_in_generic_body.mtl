@@ -1,7 +1,7 @@
 // RFC-0191: a replaced field is overwritten, so a generic body may read it after the spread.
-fun bump<record R: { .n: i64, .. }>(r: { ..R }) -> { ..R } { { ..r, .n = r.n + 1 } }
+fun bump<record R: .{ .n: i64, .. }>(r: .{ ..R }) -> .{ ..R } { .{ ..r, .n = r.n + 1 } }
 
 fun main() {
-    let b := bump(bump({ .n = 1, .tag = 9 }));
+    let b := bump(bump(.{ .n = 1, .tag = 9 }));
     assert(b.n == 3 && b.tag == 9);
 }

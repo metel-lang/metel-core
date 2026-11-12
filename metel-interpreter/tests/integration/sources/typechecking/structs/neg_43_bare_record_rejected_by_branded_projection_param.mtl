@@ -12,5 +12,5 @@ extend Handle {
 }
 
 fun main() {
-    let _ := Handle::describe({ .fd = 3 });
+    let _ := Handle::describe(.{ .fd = 3 });
 }

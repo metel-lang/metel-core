@@ -1,23 +1,23 @@
-fun take_id<record R, record Rest>(r: { .id: i64, ..R }) -> i64
-where R = { .extra: i64, ..Rest }
+fun take_id<record R, record Rest>(r: .{ .id: i64, ..R }) -> i64
+where R = .{ .extra: i64, ..Rest }
 {
-    let var { .id, ..rest } := r;
+    let var .{ .id, ..rest } := r;
     id = id + 1;
     rest.extra = rest.extra + 1;
     id + rest.extra
 }
 
-fun take_extra(r: { .id: i64, .extra: i64 }) -> i64 {
-    let { .id: _, .extra } := r;
+fun take_extra(r: .{ .id: i64, .extra: i64 }) -> i64 {
+    let .{ .id: _, .extra } := r;
     extra
 }
 
-fun add_auth<record R: !{ .auth }>(r: { ..R }, auth: i64) -> { ..R, .auth: i64 } {
-    { ..r, .auth = auth }
+fun add_auth<record R: !{ .auth }>(r: .{ ..R }, auth: i64) -> .{ ..R, .auth: i64 } {
+    .{ ..r, .auth = auth }
 }
 
-fun copy_row(r: &{ .x: i64, .y: i64 }) -> { .x: i64, .y: i64 } {
-    { ..r }
+fun copy_row(r: &.{ .x: i64, .y: i64 }) -> .{ .x: i64, .y: i64 } {
+    .{ ..r }
 }
 
 record PublicPair {
@@ -27,19 +27,19 @@ record PublicPair {
 
 fun nominal_remainder(pair: PublicPair) -> i64 {
     match (pair) {
-        { .id, ..tail } => id + tail.extra
+        .{ .id, ..tail } => id + tail.extra
     }
 }
 
 fun main() -> i64 {
-    assert(take_id({ .id = 7, .extra = 5 }) == 14);
-    assert(take_extra({ .id = 8, .extra = 9 }) == 9);
-    let r := add_auth({ .id = 7 }, 5);
-    let total := take_id({ .id = 7, .extra = 5 });
-    let anonymous := match ({ .id = total, .extra = r.auth }) {
-        { .id, ..rest } => id + rest.extra
+    assert(take_id(.{ .id = 7, .extra = 5 }) == 14);
+    assert(take_extra(.{ .id = 8, .extra = 9 }) == 9);
+    let r := add_auth(.{ .id = 7 }, 5);
+    let total := take_id(.{ .id = 7, .extra = 5 });
+    let anonymous := match (.{ .id = total, .extra = r.auth }) {
+        .{ .id, ..rest } => id + rest.extra
     };
-    let original := { .x = 4, .y = 6 };
+    let original := .{ .x = 4, .y = 6 };
     let copied := copy_row(&original);
     anonymous + nominal_remainder(PublicPair { id = 2, extra = 3 }) + copied.x + original.y
 }

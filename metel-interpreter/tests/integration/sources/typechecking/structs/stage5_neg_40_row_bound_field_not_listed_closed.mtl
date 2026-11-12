@@ -1,7 +1,7 @@
-fun get_z<record T: { .x: f64 }>(p: T) -> f64 {
+fun get_z<record T: .{ .x: f64 }>(p: T) -> f64 {
     p.z
 }
 
 fun main() {
-    let _ := get_z({ .x = 3.0 });
+    let _ := get_z(.{ .x = 3.0 });
 }

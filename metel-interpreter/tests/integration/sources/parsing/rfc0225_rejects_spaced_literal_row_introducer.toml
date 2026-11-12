@@ -1,0 +1,7 @@
+[options]
+spec = ["spec.types.record-labels.legality-5", "spec.types.record-labels.legality-7"]
+error = ["P0001"]
+
+[expect]
+status = "parse_error"
+code = "P0001"

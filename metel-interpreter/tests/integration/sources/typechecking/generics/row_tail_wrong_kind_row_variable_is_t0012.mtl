@@ -3,6 +3,6 @@
 // marker, same distinction RFC-0118/0120 already draw between a plain `T` and
 // a `record T`.
 
-fun get_x<R>(p: { .x: f64, ..R }) -> f64 { p.x }
+fun get_x<R>(p: .{ .x: f64, ..R }) -> f64 { p.x }
 
 fun main() {}

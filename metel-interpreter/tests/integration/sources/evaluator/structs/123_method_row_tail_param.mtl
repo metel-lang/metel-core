@@ -8,12 +8,12 @@
 struct Handle { fd: i64 }
 
 extend Handle {
-    fun add<record R>(self, t: { .x: i64, ..R }) -> i64 { self.fd + t.x }
-    fun peek<record R>(&self, t: { .x: i64, ..R }) -> i64 { self.fd + t.x }
-    fun bump<record R>(&var self, t: { .x: i64, ..R }) { self.fd = self.fd + t.x; }
-    fun anon(self, t: { .x: i64, .. }) -> i64 { self.fd + t.x }
-    fun both<record R, record Rest>(self, t: { .x: i64, ..R }) -> i64
-    where R = { .z: i64, ..Rest }
+    fun add<record R>(self, t: .{ .x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun peek<record R>(&self, t: .{ .x: i64, ..R }) -> i64 { self.fd + t.x }
+    fun bump<record R>(&var self, t: .{ .x: i64, ..R }) { self.fd = self.fd + t.x; }
+    fun anon(self, t: .{ .x: i64, .. }) -> i64 { self.fd + t.x }
+    fun both<record R, record Rest>(self, t: .{ .x: i64, ..R }) -> i64
+    where R = .{ .z: i64, ..Rest }
     {
         self.fd + t.x + t.z
     }
@@ -22,20 +22,20 @@ extend Handle {
 struct Box<T> { v: T }
 
 extend<T> Box<T> {
-    fun with<record R>(self, t: { .x: i64, ..R }) -> i64 { t.x }
+    fun with<record R>(self, t: .{ .x: i64, ..R }) -> i64 { t.x }
 }
 
 fun main() {
     // `add`, `anon` and `both` take `self` by value, so each call gets its own `Handle`.
-    assert(Handle { fd = 1 }.add({ .x = 2, .y = 3 }) == 3);
+    assert(Handle { fd = 1 }.add(.{ .x = 2, .y = 3 }) == 3);
     var h := Handle { fd = 1 };
-    assert(h.peek({ .x = 2, .y = 3 }) == 3);
-    h.bump({ .x = 10, .z = 1 });
+    assert(h.peek(.{ .x = 2, .y = 3 }) == 3);
+    h.bump(.{ .x = 10, .z = 1 });
     assert(h.fd == 11);
-    assert(Handle { fd = 11 }.anon({ .x = 1, .extra = 9 }) == 12);
-    assert(Handle { fd = 11 }.both({ .x = 1, .z = 2, .w = 3 }) == 14);
+    assert(Handle { fd = 11 }.anon(.{ .x = 1, .extra = 9 }) == 12);
+    assert(Handle { fd = 11 }.both(.{ .x = 1, .z = 2, .w = 3 }) == 14);
 
     let b := Box { v = 1 };
-    assert(b.with({ .x = 5, .y = 6 }) == 5);
+    assert(b.with(.{ .x = 5, .y = 6 }) == 5);
     println("ok");
 }

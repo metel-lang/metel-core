@@ -1,2 +1,2 @@
-pub record Packet<record R> { id: i64, data: { ..R } }
-pub type EmptyPacket := Packet<{}>;
+pub record Packet<record R> { id: i64, data: .{ ..R } }
+pub type EmptyPacket := Packet<.{}>;

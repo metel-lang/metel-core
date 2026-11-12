@@ -1,0 +1,11 @@
+// RFC-0225: positive and mixed row bounds, a whole-row negative bound `!{ ... }`, and a row equation.
+record Packet<record R> { data: .{ ..R } }
+fun positive<record R: .{ .x: i64, .. }>(r: R) -> i64 { r.x }
+fun mixed<record R: .{ .x: i64, !.token, .. }>(r: R) -> i64 { r.x }
+fun whole_row_negative<record R: !{ .token }>(r: R) -> i64 { 1 }
+fun strip<record R, record Rest>(value: Packet<..R>) -> Packet<..Rest>
+where R = .{ .token: String, ..Rest } {
+    let .{ .token: _, ..rest } := value.data;
+    Packet { data = rest }
+}
+fun main() { let _ := positive(.{ .x = 1, .y = 2 }); println("ok"); }

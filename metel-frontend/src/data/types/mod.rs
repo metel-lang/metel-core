@@ -245,12 +245,12 @@ impl std::fmt::Display for Type {
                 write!(f, ")")
             }
             Type::Record(fields) => {
-                write!(f, "{{ ")?;
+                write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{name}: {ty}")?;
+                    write!(f, ".{name}: {ty}")?;
                 }
                 write!(f, " }}")
             }
@@ -296,7 +296,7 @@ impl std::fmt::Display for Type {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{name}: {ty}")?;
+                    write!(f, ".{name}: {ty}")?;
                 }
                 write!(f, " }}")
             }
@@ -323,9 +323,9 @@ fn fmt_open_record(
     fields: &[(String, Type)],
     tail: &Type,
 ) -> std::fmt::Result {
-    write!(f, "{{ ")?;
+    write!(f, ".{{ ")?;
     for (name, ty) in fields {
-        write!(f, "{name}: {ty}, ")?;
+        write!(f, ".{name}: {ty}, ")?;
     }
     write!(f, "..{tail} }}")
 }

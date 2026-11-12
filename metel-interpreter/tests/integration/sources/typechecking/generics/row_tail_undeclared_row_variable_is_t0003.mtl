@@ -3,6 +3,6 @@
 // variable must still name a declared `row` parameter. `get_x` declares no
 // generics at all, so `R` is undefined.
 
-fun get_x(p: { .x: f64, ..R }) -> f64 { p.x }
+fun get_x(p: .{ .x: f64, ..R }) -> f64 { p.x }
 
 fun main() {}

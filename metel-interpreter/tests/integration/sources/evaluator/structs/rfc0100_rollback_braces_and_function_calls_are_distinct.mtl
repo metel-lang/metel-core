@@ -8,6 +8,6 @@ fun main() {
     assert(ticket.value == 3);
     assert(Ticket(input = 1) == 101);
     assert(add(right = 2, left = 1) == 3);
-    let row := { .value = ticket.value };
+    let row := .{ .value = ticket.value };
     assert(row.value == 3);
 }

@@ -2,11 +2,11 @@
 
 aspect Area { fun area(&self) -> i64; }
 
-extend<record R: { .w: i64, .. }> { ..R }: Area {
+extend<record R: .{ .w: i64, .. }> .{ ..R }: Area {
     fun area(&self) -> i64 { self.w }
 }
 
 fun main() {
-    let t := { .h = 3 };
+    let t := .{ .h = 3 };
     let _ := t.area(); // ERROR[T0012]
 }

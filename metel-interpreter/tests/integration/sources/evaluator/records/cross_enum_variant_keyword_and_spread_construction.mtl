@@ -4,7 +4,7 @@ fun area(s: Shape) -> i64 {
     match (s) { Shape::Rect { w, h } => w * h, Shape::Circle { r } => 3 * r * r }
 }
 fun main() {
-    let dims := { .w = 2, .h = 5 };
+    let dims := .{ .w = 2, .h = 5 };
     assert(area(Shape::Rect { w = dims.w, h = dims.h }) == 10);
     assert(area(Shape::Rect { h = 3, w = 4 }) == 12);
 }

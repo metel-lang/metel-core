@@ -1,0 +1,12 @@
+// RFC-0225: anonymous record values, puns, numeric labels, spreads, updates and patterns.
+fun main() {
+    let x := 1;
+    let y := 2;
+    let p := .{ .x, .y };
+    let q := .{ ..p, .x = 5 };
+    let .{ .x, .y } := q;
+    let .{ .x: _, .. } := q;
+    let t := .{ .0 = 1, .1 = 2 };
+    assert(q.x == 5);
+    println("ok");
+}

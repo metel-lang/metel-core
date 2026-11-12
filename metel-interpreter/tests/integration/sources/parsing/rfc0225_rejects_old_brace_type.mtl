@@ -1,0 +1,2 @@
+fun f(p: { .x: i64 }) { }
+fun main() { }

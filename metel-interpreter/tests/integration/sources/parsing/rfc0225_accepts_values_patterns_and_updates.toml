@@ -1,0 +1,3 @@
+[options]
+spec = ["spec.types.record-labels.legality-2"]
+move_check = false

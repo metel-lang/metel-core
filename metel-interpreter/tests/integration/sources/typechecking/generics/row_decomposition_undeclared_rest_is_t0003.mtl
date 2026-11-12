@@ -2,8 +2,8 @@
 // declared `row` parameter, exactly as `R` itself must -- `split` declares
 // only `record R`, so `Rest` is undefined.
 
-fun split<record R>(p: { .token: i64, ..R }) -> i64
-where R = { .extra: i64, ..Rest }
+fun split<record R>(p: .{ .token: i64, ..R }) -> i64
+where R = .{ .extra: i64, ..Rest }
 {
     p.token
 }

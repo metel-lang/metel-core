@@ -2,7 +2,7 @@
 // same-named record declared in the importing module (metel-core#1546: block-local ids are
 // unique across the whole module graph, not restarted per module).
 
-pub fun needs_fd<record T: { .fd: i64, .. }>(value: T) -> i64 {
+pub fun needs_fd<record T: .{ .fd: i64, .. }>(value: T) -> i64 {
     value.fd
 }
 

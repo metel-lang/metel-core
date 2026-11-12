@@ -7,6 +7,6 @@ struct Opaque { v: i64 }
 fun show<T: Display>(x: T) -> String { x.to_string() }
 
 fun main() {
-    let r := { .x = Opaque { v = 1 } };
+    let r := .{ .x = Opaque { v = 1 } };
     let s := show(r);
 }

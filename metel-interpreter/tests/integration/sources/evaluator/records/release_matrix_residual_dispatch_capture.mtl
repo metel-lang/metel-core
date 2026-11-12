@@ -3,10 +3,10 @@ type PairAlias := Pair;
 type Restore := once var || -> PairAlias;
 
 aspect State { fun state(&self) -> i64; }
-extend<record R: { .right: String, .. }> { ..R }: State {
+extend<record R: .{ .right: String, .. }> .{ ..R }: State {
     fun state(&self) -> i64 { 1 }
 }
-extend<record R: !{ .right }> { ..R }: State {
+extend<record R: !{ .right }> .{ ..R }: State {
     fun state(&self) -> i64 { 0 }
 }
 
@@ -28,7 +28,7 @@ fun main() {
         pair
     };
     match (restore()) {
-        { .left, ..rest } => {
+        .{ .left, ..rest } => {
             assert(left == "restored");
             assert(rest.right == "again");
             assert(rest.state() == 1);

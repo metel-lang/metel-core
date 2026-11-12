@@ -8,7 +8,7 @@ record Pt { x: i64, y: i64 }
 fun dup<T: Copy>(v: T) -> T { v }
 
 fun main() {
-    let a := { .x = 1, .y = 2 };
+    let a := .{ .x = 1, .y = 2 };
     let b := a;
     assert(a.x == 1);
     assert(b.y == 2);
@@ -18,7 +18,7 @@ fun main() {
     assert(p.x == 3);
     assert(q.y == 4);
 
-    let nested := { .inner = { .n = 5 }, .k = 6 };
+    let nested := .{ .inner = .{ .n = 5 }, .k = 6 };
     let copy := dup(nested);
     assert(nested.inner.n == 5);
     assert(copy.k == 6);

@@ -143,12 +143,12 @@ fn abstract_signature_retains_row_equations_fieldwise_and_associated_equalities(
         r#"
 aspect Source { type Item; fun take(&self) -> Item; }
 fun extract<T: Source<Item = i64>>(value: &T) -> i64 { value.take() }
-fun strip<record R, record Rest>(value: { ..R }) -> { ..Rest }
-where R = { .token: String, ..Rest } {
-    let { .token: _, ..rest } := value;
+fun strip<record R, record Rest>(value: .{ ..R }) -> .{ ..Rest }
+where R = .{ .token: String, ..Rest } {
+    let .{ .token: _, ..rest } := value;
     rest
 }
-fun clone_row<record R>(value: &{ ..R }) -> { ..R } where ..R: Clone { value.clone() }
+fun clone_row<record R>(value: &.{ ..R }) -> .{ ..R } where ..R: Clone { value.clone() }
 fun main() {}
 "#,
     )
@@ -193,7 +193,7 @@ fn abstract_body_retains_definition_types_and_binding_identities() {
         "abstract_body.mtl",
         r#"
 fun duplicate<T>(value: T) -> (T, T) { let first := value; (first, value) }
-fun forward<record R>(value: { ..R }) -> { ..R } { return value; }
+fun forward<record R>(value: .{ ..R }) -> .{ ..R } { return value; }
 fun selected<T: Clone>(value: &T) -> T { value.clone() }
 fun main() {}
 "#,
@@ -446,8 +446,8 @@ fn abstract_body_retains_open_record_construction_and_spread_position() {
     let typed = typecheck_source(
         "abstract_record_construction.mtl",
         r#"
-fun add_token<record R: !{.token}>(value: { ..R }, token: String) -> { .token: String, ..R } {
-    { ..value, .token = token }
+fun add_token<record R: !{.token}>(value: .{ ..R }, token: String) -> .{ .token: String, ..R } {
+    .{ ..value, .token = token }
 }
 fun main() {}
 "#,
@@ -611,7 +611,7 @@ fn abstract_signature_retains_closed_row_parameter_facts() {
     let typed = typecheck_source(
         "abstract_closed_row.mtl",
         r#"
-fun duplicate<record R: { .count: i64 }>(value: { ..R }) -> i64 {
+fun duplicate<record R: .{ .count: i64 }>(value: .{ ..R }) -> i64 {
     let first := value;
     let second := value;
     7
@@ -728,7 +728,7 @@ fn abstract_body_retains_autodereferenced_assignment_places() {
         "abstract_projected_assignment.mtl",
         r#"
 fun tuple<T>(target: &var (T, i64), replacement: T) { target.0 = replacement; }
-fun record_write<T>(target: &var { .payload: T }, replacement: T) { target.payload = replacement; }
+fun record_write<T>(target: &var .{ .payload: T }, replacement: T) { target.payload = replacement; }
 fun main() {}
 "#,
     )
@@ -941,8 +941,8 @@ fn abstract_body_retains_nominal_structural_and_row_granted_field_selections() {
 struct Box<T> { value: T }
 fun take<T>(box: Box<T>) -> T { box.value }
 fun peek<T: Copy>(box: &Box<T>) -> T { box.value }
-fun known<T>(value: { .token: String, .item: T }) -> String { value.token }
-fun granted<record R: { .token: String, .. }>(value: R) -> String { value.token }
+fun known<T>(value: .{ .token: String, .item: T }) -> String { value.token }
+fun granted<record R: .{ .token: String, .. }>(value: R) -> String { value.token }
 fun main() {}
 "#,
     )

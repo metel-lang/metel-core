@@ -1,5 +1,5 @@
 fun main() {
-    let s := { .a = 1, .name = "n" };
+    let s := .{ .a = 1, .name = "n" };
     let r := &s;
-    let t := { ..r, .a = 2 };
+    let t := .{ ..r, .a = 2 };
 }

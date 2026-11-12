@@ -4,11 +4,11 @@
 // the `if` the arms join: `rec` is narrowed to `{ keep: i64 }` on every path,
 // its surviving field stays readable, and a whole-value use at the narrowed
 // row is accepted (also under --move-check).
-fun keep_of(r: { .keep: i64 }) -> i64 { r.keep }
+fun keep_of(r: .{ .keep: i64 }) -> i64 { r.keep }
 
 fun main() {
     let cond := true;
-    let rec := { .gone = "x".to_string(), .keep = 3 };
+    let rec := .{ .gone = "x".to_string(), .keep = 3 };
     if (cond) {
         let a := rec.gone;
         assert(a == "x");

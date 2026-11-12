@@ -2,6 +2,6 @@
 fun dup<T: Copy>(v: T) -> T { v }
 
 fun main() {
-    let a := { .x = 1, .s = "hi".to_string() };
+    let a := .{ .x = 1, .s = "hi".to_string() };
     let _ := dup(a);
 }

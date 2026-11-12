@@ -1536,11 +1536,12 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        // Must read as `Type`'s Display does (`.{ .x: i64 }`): `row_guards_hold` compares the two.
         TypeExpr::Record(fields) => format!(
-            "{{ {} }}",
+            ".{{ {} }}",
             fields
                 .iter()
-                .map(|(name, ty)| format!("{name}: {}", runtime_type_key(ty)))
+                .map(|(name, ty)| format!(".{name}: {}", runtime_type_key(ty)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),

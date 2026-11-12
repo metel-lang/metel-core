@@ -1,12 +1,12 @@
 // #646: a closed row bound's fields are fully known, but a record pattern without `..`
 // must still name every one of them -- the same completeness rule an anonymous record or
 // named struct pattern already enforces.
-fun get_x<record T: { .x: f64, .y: f64 }>(p: T) -> f64 {
+fun get_x<record T: .{ .x: f64, .y: f64 }>(p: T) -> f64 {
     match (p) {
-        { .x } => x,
+        .{ .x } => x,
     }
 }
 
 fun main() {
-    println(get_x({ .x = 1.0, .y = 2.0 }));
+    println(get_x(.{ .x = 1.0, .y = 2.0 }));
 }

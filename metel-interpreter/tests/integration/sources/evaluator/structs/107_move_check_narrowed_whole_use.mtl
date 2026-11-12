@@ -6,7 +6,7 @@
 
 struct Handle { fd: i64, name: String }
 fun take_fd(h: Handle.{ .fd }) -> i64 { h.fd }
-fun right_of(r: { .right: i64 }) -> i64 { r.right }
+fun right_of(r: .{ .right: i64 }) -> i64 { r.right }
 
 fun main() {
     // Struct: narrowed to Handle.{ fd }, then moved in by value once.
@@ -15,7 +15,7 @@ fun main() {
     assert(take_fd(h) == 3);
 
     // Anonymous record: narrowed to { right: i64 }, then moved in by value once.
-    let r := { .left = "a".to_string(), .right = 9 };
+    let r := .{ .left = "a".to_string(), .right = 9 };
     let rl := r.left;
     assert(right_of(r) == 9);
 

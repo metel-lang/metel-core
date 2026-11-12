@@ -1,0 +1,15 @@
+// RFC-0225: an anonymous record type opens with `.{`; closed, open, empty, tail-only and nested.
+record Shell<record R> { data: .{ ..R } }
+fun closed(p: .{ .x: i64, .y: i64 }) -> .{ .x: i64 } { .{ .x = p.x } }
+fun empty() -> .{} { .{} }
+fun nested() -> .{ .point: .{ .x: i64 } } { .{ .point = .{ .x = 0 } } }
+fun open<record R>(p: .{ .x: i64, ..R }) -> i64 { p.x }
+fun tail_only<record R>(p: .{ ..R }) -> .{ ..R } { p }
+fun main() {
+    let _ := closed(.{ .x = 1, .y = 2 });
+    let _ := empty();
+    let _ := nested();
+    let _ := open(.{ .x = 1, .z = 2 });
+    let _ := tail_only(.{ .a = 1 });
+    println("ok");
+}

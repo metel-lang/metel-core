@@ -1,7 +1,7 @@
 // metel-core#1444: `where ..R: A` constrains the fields of a row that is the row
 // argument of a named record (`Packet<..R>`), not only an open-row parameter's tail.
 aspect Mark { fun mark(&self) -> i64; }
-record Packet<record R> { data: { ..R } }
+record Packet<record R> { data: .{ ..R } }
 
 extend<record R> Packet<..R>: Mark where ..R: Copy {
     fun mark(&self) -> i64 {
@@ -14,18 +14,18 @@ extend<record R> Packet<..R>: Mark where ..R: Copy {
 
 fun count<record R>(p: &Packet<..R>) -> i64 where ..R: Copy { 1 }
 
-fun both<record R>(p: Packet<..R>) -> ({ ..R }, { ..R }) where ..R: Copy {
+fun both<record R>(p: Packet<..R>) -> (.{ ..R }, .{ ..R }) where ..R: Copy {
     let d := p.data;
     (d, d)
 }
 
 fun main() {
-    let p := Packet { data = { .a = 1, .flag = true } };
+    let p := Packet { data = .{ .a = 1, .flag = true } };
     assert(p.mark() == 1);
     assert(count(&p) == 1);
     let pair := both(p);
     assert(pair.0.a + pair.1.a == 2);
-    let empty := Packet { data = {} };
+    let empty := Packet { data = .{} };
     assert(count(&empty) == 1);
     assert(empty.mark() == 1);
 }

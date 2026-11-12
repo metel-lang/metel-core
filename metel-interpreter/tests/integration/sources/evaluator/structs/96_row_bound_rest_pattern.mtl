@@ -3,27 +3,27 @@
 // known here), optional sugar for a closed bound (whose fields are already exhaustively
 // listed by the bound itself).
 
-fun describe<record T: { .x: f64, .. }>(p: T) -> f64 {
+fun describe<record T: .{ .x: f64, .. }>(p: T) -> f64 {
     match (p) {
-        { .x, .. } => x,
+        .{ .x, .. } => x,
     }
 }
 
-fun get_x_closed<record T: { .x: f64 }>(p: T) -> f64 {
+fun get_x_closed<record T: .{ .x: f64 }>(p: T) -> f64 {
     match (p) {
-        { .x, .. } => x,
+        .{ .x, .. } => x,
     }
 }
 
-fun get_x_closed_no_rest<record T: { .x: f64, .y: f64 }>(p: T) -> f64 {
+fun get_x_closed_no_rest<record T: .{ .x: f64, .y: f64 }>(p: T) -> f64 {
     match (p) {
-        { .x, .y } => x + y,
+        .{ .x, .y } => x + y,
     }
 }
 
 fun main() {
-    assert(describe({ .x = 3.0 }) == 3.0);
-    assert(describe({ .x = 3.0, .y = 4.0, .label = "ignored" }) == 3.0);
-    assert(get_x_closed({ .x = 5.0 }) == 5.0);
-    assert(get_x_closed_no_rest({ .x = 1.0, .y = 2.0 }) == 3.0);
+    assert(describe(.{ .x = 3.0 }) == 3.0);
+    assert(describe(.{ .x = 3.0, .y = 4.0, .label = "ignored" }) == 3.0);
+    assert(get_x_closed(.{ .x = 5.0 }) == 5.0);
+    assert(get_x_closed_no_rest(.{ .x = 1.0, .y = 2.0 }) == 3.0);
 }
