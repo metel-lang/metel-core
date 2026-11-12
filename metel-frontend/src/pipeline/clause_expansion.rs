@@ -14,8 +14,8 @@
 use std::collections::HashMap;
 
 use crate::data::ast::{
-    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FunDecl, GenericParam, ImplBlock,
-    NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
+    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FlowParam, FunDecl, GenericParam,
+    ImplBlock, NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::{Namespace, SymbolId};
@@ -152,7 +152,62 @@ fn expand_decls(decls: &mut Vec<Decl>, module: &[String], ctx: &Ctx<'_>) -> Resu
         out.push(decl);
         out.extend(impls.into_iter().map(Decl::Impl));
     }
+    check_no_negative_copy(&out, module, ctx)?;
     *decls = out;
+    Ok(())
+}
+
+/// RFC-0224 rule 8: a type that derives `Copy` is `Copy` exactly by its flow, so a negative grant of `Copy`
+/// for it (`extend<T: Marker> Token<T>: !Copy;`) is an error at the grant. (A `Drop` impl is rejected by
+/// the `Copy: !Drop` exclusion, `T0015`.)
+fn check_no_negative_copy(
+    decls: &[Decl],
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> Result<(), MetelError> {
+    let Some(implicit) = ctx
+        .aspects
+        .iter()
+        .find(|(_, a)| a.implicit)
+        .map(|(id, _)| *id)
+    else {
+        return Ok(());
+    };
+    let is_copy = |block: &ImplBlock| {
+        block.aspect_name.as_deref().is_some_and(|name| {
+            super::coherence::resolve_id(ctx.names, module, name) == Some(implicit)
+        })
+    };
+    let target_name = |block: &ImplBlock| match &block.target_type {
+        TypeExpr::Named(name, ..) => Some(name.clone()),
+        _ => None,
+    };
+    let derived: std::collections::HashSet<String> = decls
+        .iter()
+        .filter_map(|d| match d {
+            Decl::Impl(b) if b.from_clause && b.polarity == Polarity::Positive && is_copy(b) => {
+                target_name(b)
+            }
+            _ => None,
+        })
+        .collect();
+    for decl in decls {
+        if let Decl::Impl(block) = decl
+            && !block.from_clause
+            && block.polarity == Polarity::Negative
+            && is_copy(block)
+            && let Some(name) = target_name(block)
+            && derived.contains(&name)
+        {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0015,
+                format!(
+                    "`{name}` derives `Copy`, so it is `Copy` exactly by its flow: a negative grant `extend {name}: !Copy` is an error (RFC-0224 rule 8)"
+                ),
+                &block.span,
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -210,6 +265,8 @@ fn clause_impls(
                     ClauseEntry {
                         name: sup.clone(),
                         from_class_keyword: false,
+                        // The `Clone` a `Copy` brings has the flow of the `Copy` entry (RFC-0224 section 3).
+                        flow: entry.flow.clone(),
                         span: entry.span.clone(),
                     },
                     Some(entry.name.clone()),
@@ -218,13 +275,33 @@ fn clause_impls(
         }
     }
     let mut seen = std::collections::HashSet::new();
-    Ok(entries
+    let implicit_id = ctx
+        .aspects
         .iter()
-        // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
+        .find(|(_, a)| a.implicit)
+        .map(|(id, _)| *id);
+    let mut impls = Vec::new();
+    // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
+    for (entry, bound) in entries
+        .iter()
         .filter(|(entry, _)| seen.insert(entry.name.clone()))
-        .map(|(entry, bound)| ImplBlock {
+    {
+        // A `derives` entry is bounded by itself; a brought super is bounded by the aspect that brought it.
+        let original = bound.as_deref() == Some(entry.name.as_str());
+        let is_copy_entry = implicit_id.is_some()
+            && super::coherence::resolve_id(ctx.names, module, &entry.name) == implicit_id;
+        if original {
+            check_flow(entry, is_copy_entry, generics, field_types)?;
+        }
+        impls.push(ImplBlock {
             polarity: Polarity::Positive,
-            generics: impl_generics(generics, entry, bound.as_deref(), field_types),
+            generics: impl_generics(
+                generics,
+                entry,
+                bound.as_deref(),
+                field_types,
+                entry.flow.as_deref(),
+            ),
             aspect_name: Some(entry.name.clone()),
             aspect_type_args: Vec::new(),
             target_type: target.clone(),
@@ -233,8 +310,94 @@ fn clause_impls(
             methods: derived_methods(entry, &target, module, ctx),
             from_clause: true,
             span: entry.span.clone(),
-        })
-        .collect())
+        });
+    }
+    Ok(impls)
+}
+
+/// RFC-0224 section 2: the checks on a `derives Copy` entry's flow, stated or computed. A `via` clause is
+/// accepted on `Copy` only (rule: the other markers adopt it in their own RFCs), names only type
+/// parameters of the declaration, and must contain every parameter a field's copy-ness depends on (it
+/// may contain more). A `Copy` declaration with a field that depends on a row- or record-kinded parameter is
+/// rejected (rule 7). Rule 6, a field that depends on an associated type, needs no check yet: a struct or enum
+/// field `T::Item` is rejected as an unknown type before this runs.
+fn check_flow(
+    entry: &ClauseEntry,
+    is_copy_entry: bool,
+    generics: &[GenericParam],
+    field_types: &[TypeExpr],
+) -> Result<(), MetelError> {
+    let invalid =
+        |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
+    if let Some(flow) = &entry.flow {
+        if !is_copy_entry {
+            return Err(invalid(
+                format!(
+                    "a `via` clause is accepted only on `derives Copy` in this release (RFC-0224), not on `{}`",
+                    entry.name
+                ),
+                &entry.span,
+            ));
+        }
+        for param in flow {
+            let declared = generics.iter().find(|g| g.name == param.name);
+            match declared {
+                None => {
+                    return Err(invalid(
+                        format!(
+                            "`via {}` names no type parameter of this declaration",
+                            param.name
+                        ),
+                        &param.span,
+                    ));
+                }
+                Some(g) if g.is_record || g.is_row => {
+                    return Err(invalid(
+                        format!(
+                            "`via {}` names a row- or record-kinded parameter; a flow lists type parameters only (RFC-0224 rule 7)",
+                            param.name
+                        ),
+                        &param.span,
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    if !is_copy_entry {
+        return Ok(());
+    }
+    for g in generics.iter().filter(|g| g.is_record || g.is_row) {
+        if field_types.iter().any(|ty| mentions_owned(ty, &g.name)) {
+            return Err(invalid(
+                format!(
+                    "a `Copy` declaration cannot have a field that depends on the row- or record-kinded parameter `{}` (RFC-0224 rule 7)",
+                    g.name
+                ),
+                &entry.span,
+            ));
+        }
+    }
+    if let Some(flow) = &entry.flow {
+        for g in generics.iter().filter(|g| !g.is_record && !g.is_row) {
+            let needed = field_types.iter().any(|ty| mentions_owned(ty, &g.name));
+            if needed && !flow.iter().any(|p| p.name == g.name) {
+                let stated: Vec<&str> = flow.iter().map(|p| p.name.as_str()).collect();
+                let mut fixed = stated.clone();
+                fixed.push(&g.name);
+                return Err(invalid(
+                    format!(
+                        "a field's `Copy` depends on `{}`, which `via {}` does not cover; write `via {}` (RFC-0224 rule 1)",
+                        g.name,
+                        stated.join(" + "),
+                        fixed.join(" + ")
+                    ),
+                    &entry.span,
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether `ty` holds a `name` by value: not only behind a shared reference, which is `Clone` and
@@ -312,16 +475,23 @@ fn impl_generics(
     entry: &ClauseEntry,
     bound: Option<&str>,
     field_types: &[TypeExpr],
+    flow: Option<&[FlowParam]>,
 ) -> Vec<GenericParam> {
     generics
         .iter()
         .map(|g| {
             let mut param = g.clone();
             param.bounds = Vec::new();
+            // A stated flow (`via A + B`) bounds exactly the parameters it names; without one the compiler
+            // computes the set from the fields.
+            let in_flow = match flow {
+                Some(flow) => flow.iter().any(|p| p.name == g.name),
+                None => field_types.iter().any(|ty| mentions_owned(ty, &g.name)),
+            };
             if let Some(bound) = bound
                 && !g.is_record
                 && !g.is_row
-                && field_types.iter().any(|ty| mentions_owned(ty, &g.name))
+                && in_flow
             {
                 param.bounds.push(Bound {
                     polarity: Polarity::Positive,

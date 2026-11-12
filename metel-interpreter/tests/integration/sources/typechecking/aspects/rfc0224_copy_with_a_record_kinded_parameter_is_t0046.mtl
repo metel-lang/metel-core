@@ -1,0 +1,3 @@
+record Shell<record R> derives Copy { data: .{ ..R } }
+
+fun main() {}

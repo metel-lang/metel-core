@@ -1,0 +1,3 @@
+struct Pair<A, B> derives Copy via A { a: A, b: B }
+
+fun main() {}

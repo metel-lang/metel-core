@@ -1,0 +1,11 @@
+// RFC-0224 rule 9: `Token<T>` is not known `Copy` when `T` is not, so it moves. That is not evidence that
+// `T` is not `Copy`; it is the move a bare unbounded `T` already is.
+aspect Marker;
+struct Token<T> derives Copy via T { value: T }
+
+fun unknown<T: Marker>(value: Token<T>) {
+    let first := value;
+    let again := value; // ERROR[T0019]
+}
+
+fun main() {}

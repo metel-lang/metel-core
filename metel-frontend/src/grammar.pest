@@ -87,7 +87,11 @@ copy_kw        = @{ "copy" ~ !(ASCII_ALPHANUMERIC | "_") }
 linear_kw      = @{ "linear" ~ !(ASCII_ALPHANUMERIC | "_") }
 derives_kw     = @{ "derives" ~ !(ASCII_ALPHANUMERIC | "_") }
 colon_list     = { ":" ~ clause_entry ~ ("," ~ clause_entry)* }
-derives_clause = { derives_kw ~ clause_entry ~ ("," ~ clause_entry)* }
+// RFC-0224: a `Copy` entry may state the type parameters its copy-ness flows from, `derives Copy via A + B`.
+// `via` is contextual like `derives`; `+` joins parameters because `,` separates the entries.
+via_kw         = @{ "via" ~ !(ASCII_ALPHANUMERIC | "_") }
+via_clause     = { via_kw ~ ident ~ ("+" ~ ident)* }
+derives_clause = { derives_kw ~ clause_entry ~ via_clause? ~ ("," ~ clause_entry ~ via_clause?)* }
 // `bang?` so a negative entry parses and is rejected with its own message (the colon list has none).
 clause_entry   = { bang? ~ type_path }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }

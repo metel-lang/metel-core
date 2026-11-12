@@ -123,9 +123,16 @@ impl TypeDefinitionRegistry {
             .iter()
             .map(Option::as_ref)
             .collect::<Option<Vec<_>>>()?;
+        // RFC-0224 prototype: consuming a stored `Copy` rule is class arithmetic over the flow set.
+        let flow = self.copy_aspect_id() == Some(aspect_id);
         let applicability = supported
             .iter()
-            .map(|rule| (rule.polarity, rule.applicability(arguments, facts)))
+            .map(|rule| {
+                (
+                    rule.polarity,
+                    rule.applicability(self, arguments, facts, flow),
+                )
+            })
             .collect::<Vec<_>>();
         select_ownership(&applicability)
     }
@@ -134,8 +141,10 @@ impl TypeDefinitionRegistry {
 impl OwnershipRule {
     fn applicability(
         &self,
+        registry: &TypeDefinitionRegistry,
         arguments: &[AbstractType],
         facts: &[AbstractParameterFacts],
+        flow: bool,
     ) -> Option<bool> {
         if self.conditions.len() != arguments.len() {
             return None;
@@ -146,7 +155,11 @@ impl OwnershipRule {
                 .zip(arguments)
                 .flat_map(|(conditions, argument)| {
                     conditions.iter().map(move |(identity, polarity)| {
-                        parameter_condition(argument, *identity, *polarity, facts)
+                        if flow && *polarity == Polarity::Positive {
+                            flow_condition(registry, argument, *identity, facts)
+                        } else {
+                            parameter_condition(argument, *identity, *polarity, facts)
+                        }
                     })
                 }),
         )
@@ -165,6 +178,42 @@ fn ordinary_where_clause(implementation: &ImplBlock) -> bool {
                         .any(|generic| generic.name == constraint.name)
             })
     })
+}
+
+/// RFC-0224 prototype. One atom `Param: Copy` of a stored flow set, evaluated for the argument at that
+/// position: a parameter is `Copy` when a bound says so and otherwise is not known `Copy` (the value moves;
+/// this is not evidence of `!Copy`), a nested application reduces through its own stored rule, and a concrete
+/// type is asked directly.
+fn flow_condition(
+    registry: &TypeDefinitionRegistry,
+    argument: &AbstractType,
+    identity: SymbolId,
+    facts: &[AbstractParameterFacts],
+) -> Option<bool> {
+    match argument {
+        AbstractType::Parameter(parameter) => {
+            let equal = equal_parameter_facts(facts, *parameter);
+            let forbidden = equal
+                .iter()
+                .any(|fact| has_aspect(&fact.negative, identity));
+            let granted = equal
+                .iter()
+                .any(|fact| has_aspect(&fact.positive, identity));
+            Some(granted && !forbidden)
+        }
+        AbstractType::Named {
+            identity: nominal,
+            arguments,
+            ..
+        } => registry.abstract_nominal_aspect(
+            nominal,
+            arguments,
+            registry.implicit_aspect_name(),
+            facts,
+        ),
+        AbstractType::Concrete(ty) => Some(registry.type_is_copy(&[], ty)),
+        _ => None,
+    }
 }
 
 fn parameter_condition(

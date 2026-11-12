@@ -1,0 +1,8 @@
+// RFC-0224 rule 2: `Handle<T>` holds no `T`, but its stated flow makes it `Copy` only when `T` is.
+struct Handle<T> derives Copy via T { id: i64 }
+
+fun main() {
+    let h: Handle<String> := Handle { id = 1 };
+    let first := h;
+    let again := h; // ERROR[T0019]
+}

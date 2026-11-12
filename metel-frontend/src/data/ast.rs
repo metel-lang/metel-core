@@ -461,6 +461,16 @@ pub struct ClauseEntry {
     pub name: String,
     /// The `copy` class keyword stands for `derives Copy`; its entry is marked so a diagnostic can say so.
     pub from_class_keyword: bool,
+    /// RFC-0224: the type parameters a `derives Copy via A + B` entry states its copy-ness flows from;
+    /// `None` when the entry states no flow (the compiler then computes it).
+    pub flow: Option<Vec<FlowParam>>,
+    pub span: Span,
+}
+
+/// A type parameter named after `via` in a `derives` entry (RFC-0224).
+#[derive(Debug, Clone)]
+pub struct FlowParam {
+    pub name: String,
     pub span: Span,
 }
 

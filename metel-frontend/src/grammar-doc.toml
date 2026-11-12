@@ -247,6 +247,15 @@ mode = "named"
 name = "DerivesClause"
 section = "Declarations"
 [[rule]]
+pest = "via_kw"
+mode = "literal"
+values = ["via"]
+[[rule]]
+pest = "via_clause"
+mode = "named"
+name = "ViaClause"
+section = "Declarations"
+[[rule]]
 pest = "clause_entry"
 mode = "named"
 name = "ClauseEntry"

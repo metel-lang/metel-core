@@ -1,0 +1,10 @@
+// RFC-0206 section 2 rule 3, narrowed by RFC-0224: undecided ownership is reported only where no stored flow
+// exists. A `dyn` value has none, so reusing it in a generic body is a diagnostic, never a guess.
+aspect Marker;
+
+fun reuse<T>(value: dyn Marker, other: T) { // ERROR[T0047]
+    let first := value;
+    let again := value;
+}
+
+fun main() {}

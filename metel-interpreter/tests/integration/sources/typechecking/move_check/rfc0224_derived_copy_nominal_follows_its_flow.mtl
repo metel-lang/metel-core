@@ -1,0 +1,13 @@
+// RFC-0224: a generic body decides whether a derived `Copy` nominal is copied from the bounds in scope:
+// it is copied exactly when every parameter in its flow set is known `Copy`; a nested application reduces
+// through its own flow, and a type whose flow is empty is always `Copy`.
+struct Wrapper<T> derives Copy via T { value: T }
+struct Pair<A, B> derives Copy via A + B { a: A, b: B }
+copy struct View<T> { r: &T }
+
+fun twice<T: Copy>(w: Wrapper<T>) -> (Wrapper<T>, Wrapper<T>) { (w, w) }
+fun nested<T: Copy>(p: Pair<Wrapper<T>, i64>) -> (Pair<Wrapper<T>, i64>, Pair<Wrapper<T>, i64>) { (p, p) }
+fun view<T>(v: View<T>) -> (View<T>, View<T>) { (v, v) }
+fun view_of_wrapper<T>(v: View<Wrapper<T>>) -> (View<Wrapper<T>>, View<Wrapper<T>>) { (v, v) }
+
+fun main() {}
