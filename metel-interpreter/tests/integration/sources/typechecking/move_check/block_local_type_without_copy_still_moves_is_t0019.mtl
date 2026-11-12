@@ -1,0 +1,7 @@
+// metel-core#1908: honouring a block-local `Copy` grant does not make every local type `Copy`.
+fun main() {
+    struct Plain { n: i64 }
+    let a := Plain { n = 1 };
+    let b := a;
+    let c := a; // ERROR[T0019]
+}

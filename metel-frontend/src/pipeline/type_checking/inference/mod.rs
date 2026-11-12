@@ -2083,6 +2083,12 @@ fn infer_block(
             _ => {}
         }
     }
+    // An impl of `Copy` written in this block for one of its own types (metel-core#1908).
+    for decl in &block.stmts {
+        if let Decl::Impl(ib) = decl {
+            ctx.register_local_copy_impl(ib);
+        }
+    }
     hoist_fun_decls(&block.stmts, ctx);
     let mut last_stmt_ty = InferType::unit();
     for stmt in &block.stmts {
