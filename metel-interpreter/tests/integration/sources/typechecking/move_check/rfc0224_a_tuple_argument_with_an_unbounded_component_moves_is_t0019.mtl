@@ -1,0 +1,9 @@
+// RFC-0224 section 2: `Wrapper<(T, i64)>` is `Copy` only when `(T, i64)` is, which needs `T: Copy`.
+struct Wrapper<T> derives Copy via T { value: T }
+
+fun f<T>(w: Wrapper<(T, i64)>) {
+    let first := w;
+    let again := w; // ERROR[T0019]
+}
+
+fun main() {}

@@ -1,0 +1,13 @@
+// RFC-0224: a type's stored flow set is read where it is used, in another module. `ok` is accepted (the nested flow reduces
+// to `T: Copy`); `bad` moves because `T` is not known `Copy`.
+import lib::Wrapper;
+import lib::Pair;
+
+fun ok<T: Copy>(p: Pair<Wrapper<T>, i64>) -> (Pair<Wrapper<T>, i64>, Pair<Wrapper<T>, i64>) { (p, p) }
+
+fun bad<T>(w: Wrapper<T>) {
+    let first := w;
+    let again := w; // ERROR[T0019]
+}
+
+fun main() {}

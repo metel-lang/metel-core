@@ -1,0 +1,9 @@
+// RFC-0224 section 2: a written function type is move-only (RFC-0166), so `Wrapper<|i64| -> i64>` moves.
+struct Wrapper<T> derives Copy via T { value: T }
+
+fun f(w: Wrapper<|i64| -> i64>) {
+    let first := w;
+    let again := w; // ERROR[T0019]
+}
+
+fun main() {}
