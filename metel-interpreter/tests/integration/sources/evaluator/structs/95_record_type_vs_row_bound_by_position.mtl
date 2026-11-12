@@ -2,18 +2,18 @@
 // after `:` in a param/let annotation, and a row bound after `:` in a generic_param or
 // where_constraint -- distinguished by position alone, both in one program.
 
-fun takes_record(p: { .x: i64, .y: i64 }) -> i64 {
+fun takes_record(p: .{ .x: i64, .y: i64 }) -> i64 {
     p.x + p.y
 }
 
-fun takes_row_bound<record T: { .x: i64, .. }>(v: T) -> i64 {
+fun takes_row_bound<record T: .{ .x: i64, .. }>(v: T) -> i64 {
     v.x
 }
 
 fun main() {
-    let r := { .x = 1, .y = 2 };
+    let r := .{ .x = 1, .y = 2 };
     assert(takes_record(r) == 3);
 
-    let wider := { .x = 5, .y = 6, .z = 7 };
+    let wider := .{ .x = 5, .y = 6, .z = 7 };
     assert(takes_row_bound(wider) == 5);
 }

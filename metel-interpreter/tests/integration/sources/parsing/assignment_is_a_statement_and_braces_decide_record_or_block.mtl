@@ -1,7 +1,7 @@
 // RFC-0183 section 1 (tail assignments): an assignment is a statement and needs its `;`. A block whose
 // last item is an assignment ends with `;`, so `{ x = 1; }` is a unit block, while `{ x = 1 }` with no
 // `;` is an anonymous record, in a function body, a match arm and a closure body alike.
-fun record_tail() -> { .x: i64 } { { .x = 1 } }
+fun record_tail() -> .{ .x: i64 } { .{ .x = 1 } }
 
 fun unit_block(n: i64) {
     var total := 0;
@@ -16,8 +16,8 @@ fun main() {
 
     var seen := 0;
     let arm_record := match (3) {
-        3 => { .x = 3 },
-        _ => { .x = 0 },
+        3 => .{ .x = 3 },
+        _ => .{ .x = 0 },
     };
     assert(arm_record.x == 3);
     match (3) {
@@ -37,6 +37,6 @@ fun main() {
     add(2);
     add(3);
     assert(total == 5);
-    let make := |v: i64| { { .x = v } };
+    let make := |v: i64| { .{ .x = v } };
     assert(make(9).x == 9);
 }

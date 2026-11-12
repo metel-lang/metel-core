@@ -3,6 +3,6 @@
 struct Opaque { v: i64 }
 
 fun main() {
-    let p := { .a = 1, .o = Opaque { v = 2 } };
+    let p := .{ .a = 1, .o = Opaque { v = 2 } };
     let _ := p.to_string();
 }

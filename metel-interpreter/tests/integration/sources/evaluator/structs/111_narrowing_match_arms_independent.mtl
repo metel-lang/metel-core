@@ -2,11 +2,11 @@
 // the same non-`Copy` field of an outer binding; a later arm does not see an
 // earlier arm's move. The arms join after the `match`, narrowing `rec` to
 // `{ keep: i64 }`.
-fun keep_of(r: { .keep: i64 }) -> i64 { r.keep }
+fun keep_of(r: .{ .keep: i64 }) -> i64 { r.keep }
 
 fun main() {
     let sel := 2;
-    let rec := { .gone = "y".to_string(), .keep = 7 };
+    let rec := .{ .gone = "y".to_string(), .keep = 7 };
     let tag := match (sel) {
         1 => { let a := rec.gone; 10 },
         2 => { let b := rec.gone; 20 },

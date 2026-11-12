@@ -19,17 +19,17 @@ extend Counter {
 
 pub enum Event { Sample { id: i64, level: i64 }, Idle }
 
-record Frame<record R> { seq: i64, data: { ..R } }
+record Frame<record R> { seq: i64, data: .{ ..R } }
 
-extend<record R: { .tag: i64, !.drop, .. }> Frame<..R> {
+extend<record R: .{ .tag: i64, !.drop, .. }> Frame<..R> {
     fun kind(&self) -> i64 { 1 }
 }
 
-extend<record R: { !.tag, .. }> Frame<..R> {
+extend<record R: .{ !.tag, .. }> Frame<..R> {
     fun kind(&self) -> i64 { 2 }
 }
 
-fun clamp<record R: { .level: i64, !.secret, .. }>(r: R) -> i64 { r.level }
+fun clamp<record R: .{ .level: i64, !.secret, .. }>(r: R) -> i64 { r.level }
 
 fun describe(e: Event) -> i64 {
     match (e) {
@@ -53,8 +53,8 @@ fun main() {
     assert(total == 3);
 
     // dotted labels: a record literal, a pattern, a type
-    let sample := { .id = 7, .level = 4 };
-    let { .id, .level } := sample;
+    let sample := .{ .id = 7, .level = 4 };
+    let .{ .id, .level } := sample;
     assert(id == 7 && level == 4);
 
     // enum struct-variant built and destructured with nominal braces
@@ -62,14 +62,14 @@ fun main() {
     assert(describe(Event::Idle) == 0);
 
     // a record spread replacing a present field and adding an absent one
-    let bumped := { ..sample, .level = sample.level + 1, .note = 1 };
+    let bumped := .{ ..sample, .level = sample.level + 1, .note = 1 };
     assert(bumped.level == 5 && bumped.id == 7 && bumped.note == 1);
 
     // a negative row-bound entry selects the impl; a bound with a negative entry accepts the record
-    let tagged := Frame { seq = 1, data = { .tag = 9 } };
-    let plain := Frame { seq = 2, data = { .count = 3 } };
+    let tagged := Frame { seq = 1, data = .{ .tag = 9 } };
+    let plain := Frame { seq = 2, data = .{ .count = 3 } };
     assert(tagged.kind() == 1 && plain.kind() == 2);
-    assert(clamp({ .level = 8, .extra = 1 }) == 8);
+    assert(clamp(.{ .level = 8, .extra = 1 }) == 8);
 
     // a construction call whose arguments carry side effects evaluates them as written
     var counter := Counter { n = 0 };

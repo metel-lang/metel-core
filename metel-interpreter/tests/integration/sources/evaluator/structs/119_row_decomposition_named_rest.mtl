@@ -7,14 +7,14 @@
 // `row`-kinded generic but carries no further value yet, mirroring sec1's
 // own treatment of a bare row variable.
 
-fun split<record R, record Rest>(p: { .token: i64, ..R }) -> i64
-where R = { .extra: i64, ..Rest }
+fun split<record R, record Rest>(p: .{ .token: i64, ..R }) -> i64
+where R = .{ .extra: i64, ..Rest }
 {
     p.token + p.extra
 }
 
 fun main() {
-    let r := { .token = 1, .extra = 2, .other = 3 };
+    let r := .{ .token = 1, .extra = 2, .other = 3 };
     assert(split(r) == 3);
     println("ok");
 }

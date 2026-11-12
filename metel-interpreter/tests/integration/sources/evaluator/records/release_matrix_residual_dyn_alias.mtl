@@ -1,6 +1,6 @@
 record Item { name: String, token: String }
 aspect Describe { fun describe(&self) -> String; }
-extend<record R: { .name: String, .. }> { ..R }: Describe {
+extend<record R: .{ .name: String, .. }> .{ ..R }: Describe {
     fun describe(&self) -> String { self.name.clone() }
 }
 type View := dyn Describe;
@@ -14,6 +14,6 @@ fun main() {
     assert(display(&object) == "kept");
     let callback: Callback := [object] once || { object.describe() };
     assert(callback() == "kept");
-    let anonymous: View := { .name = "anonymous" };
+    let anonymous: View := .{ .name = "anonymous" };
     assert(display(&anonymous) == "anonymous");
 }

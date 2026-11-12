@@ -1,4 +1,4 @@
-fun sum(point: { .x: i64, .y: i64 }) -> i64 {
+fun sum(point: .{ .x: i64, .y: i64 }) -> i64 {
     point.x + point.y
 }
 
@@ -10,18 +10,18 @@ struct Handle {
 fun main() {
     let x := 1;
     let y := 2;
-    let point := { .y, .x };
-    assert(sum({ .x = point.x, .y = point.y }) == 3);
-    assert(sum({ .x = 1, .y = 2 }) == 3);
+    let point := .{ .y, .x };
+    assert(sum(.{ .x = point.x, .y = point.y }) == 3);
+    assert(sum(.{ .x = 1, .y = 2 }) == 3);
 
     let handle := Handle { fd = 7, tag = 9 };
     let projected := handle.{ .fd };
     assert(projected.fd == 7);
 
-    let matched := match (point) { { .y, .x } => x + y, };
+    let matched := match (point) { .{ .y, .x } => x + y, };
     assert(matched == 3);
 
-    let from_block: { .x: i64, .y: i64 } := ({ .y, .x });
+    let from_block: .{ .x: i64, .y: i64 } := (.{ .y, .x });
     assert(from_block.x == 1);
     assert(from_block.y == 2);
 }

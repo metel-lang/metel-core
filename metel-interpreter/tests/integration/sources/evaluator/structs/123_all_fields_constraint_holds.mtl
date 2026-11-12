@@ -10,25 +10,25 @@ extend f64: Tag { fun tag(self) -> i64 { 2 } }
 
 record Item { id: i64, weight: f64 }
 
-fun id_of<record R>(p: { .id: i64, ..R }) -> i64 where ..R: Tag { p.id }
+fun id_of<record R>(p: .{ .id: i64, ..R }) -> i64 where ..R: Tag { p.id }
 
-fun token_of<record R, record Rest>(p: { ..R }) -> i64
-where R = { .token: i64, ..Rest }, ..Rest: Copy
+fun token_of<record R, record Rest>(p: .{ ..R }) -> i64
+where R = .{ .token: i64, ..Rest }, ..Rest: Copy
 {
     p.token
 }
 
-fun whole<record R, record Rest>(p: { ..R }) -> i64
-where R = { .token: i64, ..Rest }, ..R: Tag
+fun whole<record R, record Rest>(p: .{ ..R }) -> i64
+where R = .{ .token: i64, ..Rest }, ..R: Tag
 {
     p.token
 }
 
 fun main() {
-    assert(id_of({ .id = 7, .w = 1.5, .h = 3 }) == 7);
-    assert(id_of({ .id = 8 }) == 8);
-    assert(token_of({ .token = 4, .a = 1, .b = 2.0 }) == 4);
-    assert(whole({ .token = 5, .ratio = 0.5 }) == 5);
+    assert(id_of(.{ .id = 7, .w = 1.5, .h = 3 }) == 7);
+    assert(id_of(.{ .id = 8 }) == 8);
+    assert(token_of(.{ .token = 4, .a = 1, .b = 2.0 }) == 4);
+    assert(whole(.{ .token = 5, .ratio = 0.5 }) == 5);
     let item := Item { id = 9, weight = 2.0 };
     assert(id_of(item) == 9);
     println("ok");

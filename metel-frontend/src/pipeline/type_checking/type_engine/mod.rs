@@ -184,23 +184,23 @@ impl std::fmt::Display for InferType {
                 write!(f, ")")
             }
             InferType::Record(fields) => {
-                write!(f, "{{ ")?;
+                write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{name}: {ty}")?;
+                    write!(f, ".{name}: {ty}")?;
                 }
                 write!(f, " }}")
             }
-            InferType::RowView(source) => write!(f, "{{ ..{source} }}"),
+            InferType::RowView(source) => write!(f, ".{{ ..{source} }}"),
             InferType::RowExtend { fields, tail } => {
-                write!(f, "{{ ")?;
+                write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{name}: {ty}")?;
+                    write!(f, ".{name}: {ty}")?;
                 }
                 if !fields.is_empty() {
                     write!(f, ", ")?;
@@ -385,10 +385,10 @@ fn render_with_names(
                 .join(", ")
         ),
         InferType::Record(fields) => format!(
-            "{{ {} }}",
+            ".{{ {} }}",
             fields
                 .iter()
-                .map(|(n, t)| format!("{n}: {}", render_with_names(t, known, local)))
+                .map(|(n, t)| format!(".{n}: {}", render_with_names(t, known, local)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -1505,7 +1505,7 @@ fn render_for_user(
     let go = |t: &InferType| render_for_user(t, integer_vars, float_vars, known);
     let fields = |fs: &[(String, InferType)]| {
         fs.iter()
-            .map(|(n, t)| format!("{n}: {}", go(t)))
+            .map(|(n, t)| format!(".{n}: {}", go(t)))
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -1519,11 +1519,11 @@ fn render_for_user(
                 "_".to_string()
             }
         }),
-        InferType::Record(fs) => format!("{{ {} }}", fields(fs)),
+        InferType::Record(fs) => format!(".{{ {} }}", fields(fs)),
         InferType::RowExtend { fields: fs, tail } => match tail.as_ref() {
-            InferType::Var(_) if fs.is_empty() => "{ .. }".to_string(),
-            InferType::Var(_) => format!("{{ {}, .. }}", fields(fs)),
-            other => format!("{{ {}, ..{} }}", fields(fs), go(other)),
+            InferType::Var(_) if fs.is_empty() => ".{ .. }".to_string(),
+            InferType::Var(_) => format!(".{{ {}, .. }}", fields(fs)),
+            other => format!(".{{ {}, ..{} }}", fields(fs), go(other)),
         },
         InferType::Tuple(ts) => format!("({})", ts.iter().map(go).collect::<Vec<_>>().join(", ")),
         InferType::Array(t) => format!("[{}]", go(t)),

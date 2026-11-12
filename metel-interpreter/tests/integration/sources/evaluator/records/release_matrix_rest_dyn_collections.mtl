@@ -1,11 +1,11 @@
 // RP x DY, RP x CO, ER x PM, ER x CO, AR x OW, AR x GA
 aspect Name { fun name(&self) -> String; }
 record User { id: i64, name: String, tags: [String; 2] }
-extend<record R: { .name: String, .. }> { ..R }: Name { fun name(&self) -> String { self.name.clone() } }
+extend<record R: .{ .name: String, .. }> .{ ..R }: Name { fun name(&self) -> String { self.name.clone() } }
 fun first<T: Copy>(xs: [T; 2]) -> T { xs[0] }
 fun main() {
     let u := User { id = 1, name = "ann", tags = ["a", "b"] };
-    let { .id, ..rest } := u;
+    let .{ .id, ..rest } := u;
     let d: &dyn Name := &rest;
     assert(d.name() == "ann");
     assert(id == 1);
@@ -19,6 +19,6 @@ fun main() {
     assert(tags[0] == "m");
     assert(name == "d");
     assert(first([5, 6]) == 5);
-    let { .id: _, .name: _, .tags: _, ..empty } := User { id = 5, name = "e", tags = ["u", "v"] };
-    let _e: {} := empty;
+    let .{ .id: _, .name: _, .tags: _, ..empty } := User { id = 5, name = "e", tags = ["u", "v"] };
+    let _e: .{} := empty;
 }

@@ -1,5 +1,5 @@
-fun f<record R: { .x, !.token, .. }>(r: R) -> i64 { 1 }
+fun f<record R: .{ .x, !.token, .. }>(r: R) -> i64 { 1 }
 
 fun main() {
-    let a := f({ .x = 1, .token = 2 });
+    let a := f(.{ .x = 1, .token = 2 });
 }

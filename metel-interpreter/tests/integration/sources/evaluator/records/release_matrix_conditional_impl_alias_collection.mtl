@@ -1,14 +1,14 @@
 // IM x TA, IM x OW, IM x PM, IM x CO
-record Session<record R> { id: i64, data: { ..R } }
+record Session<record R> { id: i64, data: .{ ..R } }
 type Open<record R> := Session<..R>;
-extend<record R: { .token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
+extend<record R: .{ .token: String, .. }> Session<..R> { fun kind(&self) -> i64 { 1 } }
 extend<record R: !{ .token }> Session<..R> { fun kind(&self) -> i64 { 2 } }
-fun via_alias<record R: { .token: String, .. }>(s: Open<..R>) -> i64 { s.kind() }
+fun via_alias<record R: .{ .token: String, .. }>(s: Open<..R>) -> i64 { s.kind() }
 fun main() {
-    let s := Session { id = 1, data = { .token = "t", .n = 1 } };
+    let s := Session { id = 1, data = .{ .token = "t", .n = 1 } };
     assert(via_alias(s) == 1);
-    let a := Session { id = 2, data = { .token = "x" } };
-    let b := Session { id = 3, data = { .n = 5 } };
+    let a := Session { id = 2, data = .{ .token = "x" } };
+    let b := Session { id = 3, data = .{ .n = 5 } };
     let all := [a.kind(), b.kind()];
     var sum := 0;
     for (k in all) { sum = sum + k; }

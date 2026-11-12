@@ -1,8 +1,8 @@
-fun bad<record R>(r: { ..R }) -> i64 {
-    let { .id: _, ..rest } := r; // ERROR[T0012]
+fun bad<record R>(r: .{ ..R }) -> i64 {
+    let .{ .id: _, ..rest } := r; // ERROR[T0012]
     0
 }
 
 fun main() -> i64 {
-    bad({ .other = 1 })
+    bad(.{ .other = 1 })
 }

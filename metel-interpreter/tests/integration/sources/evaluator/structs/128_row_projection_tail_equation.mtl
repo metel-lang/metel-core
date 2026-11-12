@@ -6,7 +6,7 @@
 struct Handle { pub fd: i64, pub extra: String }
 
 fun use_it<record R, record Rest>(h: Handle.{ .fd, ..R }) -> i64
-where R = { .extra: String, ..Rest } {
+where R = .{ .extra: String, ..Rest } {
     h.fd
 }
 

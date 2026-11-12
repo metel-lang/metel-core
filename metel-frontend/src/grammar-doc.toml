@@ -337,6 +337,14 @@ mode = "named"
 name = "RowBound"
 section = "Parameters"
 [[rule]]
+pest = "row_bound_tail"
+mode = "inline"
+[[rule]]
+pest = "neg_row_bound"
+mode = "named"
+name = "NegativeRowBound"
+section = "Parameters"
+[[rule]]
 pest = "row_field"
 mode = "named"
 name = "RowField"
@@ -838,6 +846,16 @@ section = "Types"
 pest = "row_literal"
 mode = "named"
 name = "RowLiteral"
+section = "Types"
+[[rule]]
+pest = "row_literal_open"
+mode = "named"
+name = "RowLiteralOpen"
+section = "Types"
+[[rule]]
+pest = "row_literal_closed"
+mode = "named"
+name = "RowLiteralClosed"
 section = "Types"
 [[rule]]
 pest = "type_args"

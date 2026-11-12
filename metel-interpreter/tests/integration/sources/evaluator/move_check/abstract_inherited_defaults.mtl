@@ -10,12 +10,12 @@ struct Box<T> { pub value: T }
 struct Other<T> { pub value: T }
 extend<T> Box<T>: Echo {}
 extend<T> Other<T>: Echo {}
-extend<record R> { ..R }: Echo {}
+extend<record R> .{ ..R }: Echo {}
 extend<T: Copy> Box<T>: Repeat<T> {}
 
 fun main() {
     assert(Box { value = 1 }.echo("box") == "box");
     assert(Other { value = "other" }.echo(2) == 2);
-    assert(({ .count = 5 }).echo("record") == "record");
+    assert((.{ .count = 5 }).echo("record") == "record");
     Box { value = 3 }.repeat(4);
 }

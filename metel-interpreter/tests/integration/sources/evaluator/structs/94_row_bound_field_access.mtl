@@ -2,29 +2,29 @@
 // row-bounded generic type parameter — both closed and open bounds, typed and untyped
 // field forms, and writing through a mutable reference.
 
-fun get_x<record T: { .x: f64 }>(p: T) -> f64 {
+fun get_x<record T: .{ .x: f64 }>(p: T) -> f64 {
     p.x
 }
 
-fun squared_magnitude<record T: { .x: f64, .y: f64, .. }>(p: T) -> f64 {
+fun squared_magnitude<record T: .{ .x: f64, .y: f64, .. }>(p: T) -> f64 {
     p.x * p.x + p.y * p.y
 }
 
-fun get_name<record T: { .name, .. }>(p: T) -> i64 {
+fun get_name<record T: .{ .name, .. }>(p: T) -> i64 {
     p.name
 }
 
-fun bump<record T: { .count: i64, .. }>(p: &var T) {
+fun bump<record T: .{ .count: i64, .. }>(p: &var T) {
     p.count += 1;
 }
 
 fun main() {
-    assert(get_x({ .x = 3.0 }) == 3.0);
-    assert(squared_magnitude({ .x = 3.0, .y = 4.0 }) == 25.0);
-    assert(squared_magnitude({ .x = 3.0, .y = 4.0, .extra = "ignored" }) == 25.0);
-    assert(get_name({ .name = 42, .other = "hi" }) == 42);
+    assert(get_x(.{ .x = 3.0 }) == 3.0);
+    assert(squared_magnitude(.{ .x = 3.0, .y = 4.0 }) == 25.0);
+    assert(squared_magnitude(.{ .x = 3.0, .y = 4.0, .extra = "ignored" }) == 25.0);
+    assert(get_name(.{ .name = 42, .other = "hi" }) == 42);
 
-    var r := { .count = 1 };
+    var r := .{ .count = 1 };
     bump(&var r);
     assert(r.count == 2);
 }

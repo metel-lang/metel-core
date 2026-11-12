@@ -160,10 +160,16 @@ generic_param    = { (record_kw | row_kw)? ~ ident ~ (":" ~ bound_list)? }
 // instantiation (`List<i64>`) must never accept `Key = Value`, and bounds need to mix
 // ordinary args and assoc-bindings (`Iterator<Item = i64>`).
 bound_list    = { bound ~ ("+" ~ bound)* }
-bound         = { bang? ~ bound_head }
+// RFC-0225: a whole-row negative bound keeps its own contiguous introducer `!{`; `!.{` is not an
+// alternative spelling (the parser rejects `bang` followed by a `.{` row bound).
+bound         = { neg_row_bound | bang? ~ bound_head }
+neg_row_bound = { "!{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ row_bound_tail)? ~ ","? ~ "}" }
+// The trailing `..` of a row bound is a pair of its own, so the parser reads openness from the tree and never
+// from the bound's source text (which a comment or a nested row type could mimic).
+row_bound_tail = { ".." }
 bang          = { "!" }
 bound_head    = { row_bound | type_path ~ ("<" ~ bound_arg ~ ("," ~ bound_arg)* ~ ","? ~ ">")? }
-row_bound     = { "{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ "..")? ~ ","? ~ "}" }
+row_bound     = { ".{" ~ (row_field ~ ("," ~ row_field)*)? ~ ("," ~ row_bound_tail)? ~ ","? ~ "}" }
 // RFC-0189: an entry may be negative, `!.x` (no such label) or `!.x: T` (no such label of that type).
 row_field     = { bang? ~ label ~ (":" ~ type_expr)? }
 bound_arg     = { assoc_binding | type_expr }
@@ -346,7 +352,7 @@ capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "
 
 struct_literal = { type_path ~ "{" ~ (struct_field_init ~ ("," ~ struct_field_init)* ~ ","?)? ~ "}" }
 struct_field_init = { ident ~ ("=" ~ expr)? }
-record_lit = { "{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
+record_lit = { ".{" ~ (record_initializer ~ ("," ~ record_initializer)* ~ ","?)? ~ "}" }
 record_projection_expr = { type_path ~ ".{" ~ label ~ ("," ~ label)* ~ ","? ~ "}" }
 // RFC-0221: a label of a row is written `.name` (or `.0`), never bare. `$` keeps the dot and the name
 // adjacent. The record-shaped sites (anonymous record literal, pattern, type, row bound and the
@@ -384,7 +390,7 @@ record_rest_binding = { ".." ~ ident }
 record_field_pat = { label ~ (":" ~ "_")? }
 record_field_pat_list = { record_field_pat ~ ("," ~ record_field_pat)* ~ ("," ~ (record_rest_binding | record_rest))? ~ ","? | record_rest_binding | record_rest }
 field_pat_list  = { ident ~ ("," ~ ident)* ~ ("," ~ record_rest)? ~ ","? | record_rest }
-record_pattern  = { "{" ~ record_field_pat_list ~ "}" }
+record_pattern  = { ".{" ~ record_field_pat_list ~ "}" }
 enum_pattern    = { ident ~ "::" ~ ident ~ ("{" ~ field_pat_list ~ "}")?           // qualified: Enum::Variant, optional fields
                   | ident ~ "{" ~ field_pat_list ~ "}" }                           // RFC-0107: bare fieldful variant (Some { value })
 literal_pattern = { float_lit_suffixed | float_lit | int_lit_suffixed | int_lit | string_lit | char_lit | bool_lit }
@@ -429,15 +435,15 @@ dyn_type = { "dyn" ~ named_type }
 
 unit_type  = { "()" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
-record_type = { "{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
+record_type = { ".{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { label ~ ":" ~ type_expr }
 // RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`) is a
 // regular type expression. Function parameters retain a dedicated top-level
 // checking path for row bounds; nested and reusable occurrences use ordinary
 // row-extension inference.
-open_record_type = { "{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
-                    | "{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
-                    | "{" ~ row_tail ~ ","? ~ "}" }
+open_record_type = { ".{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
+                    | ".{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
+                    | ".{" ~ row_tail ~ ","? ~ "}" }
 row_tail          = { ".." ~ ident? }
 record_projection_type = { type_path ~ ".{" ~ (label ~ ("," ~ label)* ~ ","?)? ~ "}" }
 // RFC-0121 installment 2: a struct's own residual-projection tail
@@ -470,7 +476,14 @@ named_type = { type_path ~ ("<" ~ type_args ~ ">")? }
 // (open) or `Req<..{ host: String }>` / `Req<..{}>` (closed). It is tried before
 // `row_tail`, which would otherwise match the bare `..` and leave the `{` unparsed.
 row_arg    = { row_literal | row_tail }
-row_literal = { ".." ~ (open_record_type | record_type) }
+// RFC-0225: the literal-row introducer is the contiguous `..{`, not `..` followed by an anonymous
+// record type; the body is the same field-and-tail shape, so the two arms below mirror `open_record_type`
+// and `record_type` with the dedicated opener.
+row_literal = { row_literal_open | row_literal_closed }
+row_literal_open = { "..{" ~ record_type_field ~ ("," ~ record_type_field)* ~ "," ~ row_tail ~ ","? ~ "}"
+                   | "..{" ~ row_tail ~ "," ~ record_type_field ~ ("," ~ record_type_field)* ~ ","? ~ "}"
+                   | "..{" ~ row_tail ~ ","? ~ "}" }
+row_literal_closed = { "..{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 type_args  = { (row_arg | type_expr) ~ ("," ~ (row_arg | type_expr))* }
 type_list  = { type_expr ~ ("," ~ type_expr)* }
 

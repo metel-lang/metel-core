@@ -5,16 +5,16 @@ struct Handle { fd: i64, name: String }
 
 fun any_handle<record R>(h: Handle.{ ..R }) -> i64 { 1 }
 
-fun fd_of<record R, record Rest>(h: Handle.{ ..R }) -> i64 where R = { .fd: i64, ..Rest } { h.fd }
+fun fd_of<record R, record Rest>(h: Handle.{ ..R }) -> i64 where R = .{ .fd: i64, ..Rest } { h.fd }
 
 fun read_fd<record R>(h: Handle.{ .fd, ..R }) -> i64 { h.fd }
 
-fun anon<record R>(d: { ..R }) -> i64 { 1 }
+fun anon<record R>(d: .{ ..R }) -> i64 { 1 }
 
 fun main() {
     assert(any_handle(Handle { fd = 3, name = "x".to_string() }) == 1);
     assert(fd_of(Handle { fd = 3, name = "x".to_string() }) == 3);
-    assert(anon({ .fd = 3, .name = "x".to_string() }) == 1);
+    assert(anon(.{ .fd = 3, .name = "x".to_string() }) == 1);
 
     // a residual with a Copy remainder also passes a named-field projection
     let h := Handle { fd = 5, name = "y".to_string() };

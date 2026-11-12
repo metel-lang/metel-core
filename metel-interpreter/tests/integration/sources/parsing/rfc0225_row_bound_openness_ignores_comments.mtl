@@ -1,0 +1,7 @@
+// RFC-0225 (adversarial review): whether a row bound is open is read from its tree, not its text. A comment
+// or a nested open row type that contains `..` does not make a closed bound open.
+fun f<record R: .{ .x: i64 /* .. */ }>(r: R) -> i64 { r.x }
+fun main() {
+    let _ := f(.{ .x = 1 });
+    println("ok");
+}

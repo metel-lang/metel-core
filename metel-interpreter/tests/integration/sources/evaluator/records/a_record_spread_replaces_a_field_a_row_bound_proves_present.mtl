@@ -1,22 +1,22 @@
 // RFC-0191 (metel-core#1887): through an abstract row, a label the row bound proves present is replaced
 // (the field keeps its type), and a label the bound proves absent is added.
-fun discount<record R: { .price: i64, .. }>(line: { ..R }) -> { ..R } {
-    { ..line, .price = line.price * 9 / 10 }
+fun discount<record R: .{ .price: i64, .. }>(line: .{ ..R }) -> .{ ..R } {
+    .{ ..line, .price = line.price * 9 / 10 }
 }
 
-fun priced<record R: !{ .price }>(line: { ..R }) -> { ..R, .price: i64 } {
-    { ..line, .price = 100 }
+fun priced<record R: !{ .price }>(line: .{ ..R }) -> .{ ..R, .price: i64 } {
+    .{ ..line, .price = 100 }
 }
 
-fun pass<record R>(line: { ..R }) -> { ..R } {
-    { ..line }
+fun pass<record R>(line: .{ ..R }) -> .{ ..R } {
+    .{ ..line }
 }
 
 fun main() {
-    let cut := discount({ .price = 200, .qty = 2 });
+    let cut := discount(.{ .price = 200, .qty = 2 });
     assert(cut.price == 180 && cut.qty == 2);
-    let quoted := priced({ .qty = 3 });
+    let quoted := priced(.{ .qty = 3 });
     assert(quoted.price == 100 && quoted.qty == 3);
-    let same := pass({ .a = 1 });
+    let same := pass(.{ .a = 1 });
     assert(same.a == 1);
 }

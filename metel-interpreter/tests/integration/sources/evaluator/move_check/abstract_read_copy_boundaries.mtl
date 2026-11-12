@@ -7,7 +7,7 @@ fun copied<T>(unused: T, value: &&i64) -> i64 {
 fun returned<T>(unused: T, value: &i64) -> i64 { *value }
 fun explicit<T>(unused: T, value: &i64) -> i64 { return *value; }
 fun exited<T>(unused: T, value: &i64) -> i64 { loop { break *value; } }
-fun copied_record<T: Copy>(value: &{ .item: T }) -> { .item: T } { *value }
+fun copied_record<T: Copy>(value: &.{ .item: T }) -> .{ .item: T } { *value }
 fun mutable_read<T>(unused: T, value: &var i64) -> i64 {
     let first: i64 := *value;
     let second: i64 := *value;
@@ -21,7 +21,7 @@ fun main() {
     assert(returned((), reference) == 7);
     assert(explicit((), reference) == 7);
     assert(exited((), reference) == 7);
-    let packet := { .item = 9 };
+    let packet := .{ .item = 9 };
     assert(copied_record(&packet).item == 9);
     assert(mutable_read((), &var number) == 14);
 }

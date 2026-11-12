@@ -448,7 +448,7 @@ fun main(param) {
     match (let_value) {
         (tuple_left, tuple_right) => tuple_left,
         Point { sx, sy } => sx,
-        { .record_left, .record_right } => record_left,
+        .{ .record_left, .record_right } => record_left,
         [array_head, ..array_rest] => array_head,
         E::V { ex, ey } => ex,
     };
@@ -470,7 +470,7 @@ fun main( param ) {
  match (let_value) {
   (tuple_left, tuple_right) => tuple_left,
   Point { sx, sy } => sx,
-  { .record_left, .record_right } => record_left,
+  .{ .record_left, .record_right } => record_left,
   [array_head, ..array_rest] => array_head,
   E::V { ex, ey } => ex,
  };

@@ -2,7 +2,7 @@
 
 record Session<record R> {
     id: i64,
-    data: { ..R },
+    data: .{ ..R },
 }
 
 extend<record R: !{ .token }> Session<..R> {

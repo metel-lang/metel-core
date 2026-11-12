@@ -3,7 +3,7 @@
 
 aspect Area { fun area(&self) -> i64; }
 
-extend { ..R }: Area {
+extend .{ ..R }: Area {
     fun area(&self) -> i64 { 1 }
 }
 

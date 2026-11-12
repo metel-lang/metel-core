@@ -1,1 +1,1 @@
-let point := { .x = 1, .x = 2 };
+let point := .{ .x = 1, .x = 2 };

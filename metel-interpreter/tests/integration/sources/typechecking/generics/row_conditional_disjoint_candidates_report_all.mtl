@@ -2,14 +2,14 @@
 
 aspect Label { fun label(self) -> String; }
 
-extend<record R: { .tag: i64, .. }> { ..R }: Label {
+extend<record R: .{ .tag: i64, .. }> .{ ..R }: Label {
     fun label(self) -> String { "integer" }
 }
 
-extend<record R: { .tag: String, .. }> { ..R }: Label {
+extend<record R: .{ .tag: String, .. }> .{ ..R }: Label {
     fun label(self) -> String { "text" }
 }
 
 fun main() {
-    { .tag = true }.label() // ERROR[T0012]
+    .{ .tag = true }.label() // ERROR[T0012]
 }

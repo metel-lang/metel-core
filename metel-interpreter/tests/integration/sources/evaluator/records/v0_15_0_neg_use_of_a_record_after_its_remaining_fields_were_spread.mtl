@@ -4,6 +4,6 @@ record Two { a: String, b: String, n: i64 }
 fun main() {
     let t := Two { a = "a".to_string(), b = "b".to_string(), n = 1 };
     let x := t.a;
-    let r := { ..t };
+    let r := .{ ..t };
     let y := t.b;
 }

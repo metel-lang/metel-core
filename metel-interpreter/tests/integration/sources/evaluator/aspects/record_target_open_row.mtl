@@ -6,11 +6,11 @@
 aspect Describe { fun describe(&self) -> String; }
 aspect Area { fun area(&self) -> i64; }
 
-extend<record R> { ..R }: Describe {
+extend<record R> .{ ..R }: Describe {
     fun describe(&self) -> String { "a record".to_string() }
 }
 
-extend<record R: { .w: i64, .h: i64, .. }> { ..R }: Area {
+extend<record R: .{ .w: i64, .h: i64, .. }> .{ ..R }: Area {
     fun area(&self) -> i64 { self.w * self.h }
 }
 
@@ -19,9 +19,9 @@ record Rect { w: i64, h: i64 }
 fun total<T: Area>(x: &T) -> i64 { x.area() }
 
 fun main() {
-    assert({ .w = 2, .h = 3 }.describe() == "a record");
-    assert({ .w = 2, .h = 3 }.area() == 6);
-    assert({ .w = 2, .h = 3, .label = "x" }.area() == 6);
+    assert(.{ .w = 2, .h = 3 }.describe() == "a record");
+    assert(.{ .w = 2, .h = 3 }.area() == 6);
+    assert(.{ .w = 2, .h = 3, .label = "x" }.area() == 6);
     let r := Rect { w = 4, h = 5 };
     assert(r.area() == 20);
     assert(r.describe() == "a record");

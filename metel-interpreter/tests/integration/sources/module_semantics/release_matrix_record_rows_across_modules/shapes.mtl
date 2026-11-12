@@ -1,14 +1,14 @@
 pub record Frame { public_rows: [i64; 3], label: String }
 pub aspect Weigh { fun weigh(&self) -> i64; }
-extend<record R> { ..R }: Weigh where ..R: Copy { fun weigh(&self) -> i64 { 1 } }
-pub fun strip_label(f: Frame) -> { .public_rows: [i64; 3] } {
-    let { .label: _, ..rest } := f;
+extend<record R> .{ ..R }: Weigh where ..R: Copy { fun weigh(&self) -> i64 { 1 } }
+pub fun strip_label(f: Frame) -> .{ .public_rows: [i64; 3] } {
+    let .{ .label: _, ..rest } := f;
     rest
 }
-pub fun total<record R>(v: { .public_rows: [i64; 3], ..R }) -> i64 where ..R: Copy {
+pub fun total<record R>(v: .{ .public_rows: [i64; 3], ..R }) -> i64 where ..R: Copy {
     v.public_rows[0] + v.public_rows[1] + v.public_rows[2]
 }
-pub fun empty_after<record R, record Rest>(v: { ..R }) -> { ..Rest } where R = { .label: String, ..Rest } {
-    let { .label: _, ..rest } := v;
+pub fun empty_after<record R, record Rest>(v: .{ ..R }) -> .{ ..Rest } where R = .{ .label: String, ..Rest } {
+    let .{ .label: _, ..rest } := v;
     rest
 }

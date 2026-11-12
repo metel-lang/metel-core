@@ -1,0 +1,8 @@
+[options]
+spec = ["spec.types.record-labels.legality-5"]
+error = ["P0001"]
+
+[expect]
+status = "parse_error"
+code = "P0001"
+contains = "written `!{ ... }`"

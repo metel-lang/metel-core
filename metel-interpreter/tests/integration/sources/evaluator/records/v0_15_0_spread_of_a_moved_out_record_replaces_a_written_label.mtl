@@ -6,7 +6,7 @@ record Tok { value: String, id: i64, n: i64 }
 fun main() {
     let b := Tok { value = "y".to_string(), id = 2, n = 3 };
     let a := b.value;
-    let r := { .id = 9, ..b };
+    let r := .{ .id = 9, ..b };
     assert(r.id == 9 && r.n == 3);
     assert(a == "y");
 }
