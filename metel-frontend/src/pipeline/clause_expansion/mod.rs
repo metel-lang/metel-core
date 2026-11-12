@@ -160,6 +160,7 @@ fn expand_decls(
                         generics: &sd.generics,
                         fields: &fields,
                         span: &sd.span,
+                        public: sd.visibility == Visibility::Public,
                     },
                     &mut sd.clauses,
                     module,
@@ -179,6 +180,7 @@ fn expand_decls(
                         generics: &ed.generics,
                         fields: &fields,
                         span: &ed.span,
+                        public: ed.visibility == Visibility::Public,
                     },
                     &mut ed.clauses,
                     module,
@@ -256,6 +258,7 @@ struct Declaration<'a> {
     generics: &'a [GenericParam],
     fields: &'a [TypeExpr],
     span: &'a Span,
+    public: bool,
 }
 
 /// The `copy` class keyword names the aspect with the `implicit` property.
@@ -381,6 +384,9 @@ fn clause_impls(
                 ctx,
                 scope,
             )?;
+            if is_copy_entry && decl.public && entry.flow.is_none() {
+                check_public_flow_stated(decl, entry, module, ctx, scope)?;
+            }
         }
         let flow = entry_flow(entry, origin, decl.name, module, ctx, scope);
         impls.push(ImplBlock {
@@ -426,6 +432,33 @@ fn entry_flow(
     scope
         .own(type_name, module, ctx.names, kind)
         .map(|e| e.set().iter().cloned().collect())
+}
+
+/// RFC-0224 section 2 rule 3: a `pub` generic type that derives `Copy` without `via` has a computed flow, which
+/// is its published interface, so it may omit `via` only when that flow is empty. Otherwise the error shows
+/// the computed set as the fix-it. Non-`pub` and non-generic types are unaffected.
+fn check_public_flow_stated(
+    decl: &Declaration<'_>,
+    entry: &ClauseEntry,
+    module: &[String],
+    ctx: &Ctx<'_>,
+    scope: &Scope<'_>,
+) -> Result<(), MetelError> {
+    let Some(computed) = scope.own(decl.name, module, ctx.names, Kind::Copy) else {
+        return Ok(());
+    };
+    let set: Vec<&str> = computed.set().iter().map(String::as_str).collect();
+    if set.is_empty() {
+        return Ok(());
+    }
+    Err(MetelError::type_error(
+        TypeErrorCode::T0046,
+        format!(
+            "a public generic type must state the flow of its `Copy` when it is not empty; write `derives Copy via {}` (RFC-0224 rule 3)",
+            set.join(" + ")
+        ),
+        &entry.span,
+    ))
 }
 
 /// RFC-0224 section 2: the checks on a `derives Copy` entry's flow, stated or computed. A `via` clause is

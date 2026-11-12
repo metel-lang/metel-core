@@ -1,0 +1,5 @@
+// RFC-0224 rule 3 (metel-core#1820): a `pub` generic type that derives `Copy` without `via` has a computed flow,
+// which would be its published interface, so a non-empty one must be stated.
+pub struct W<T> derives Copy { value: T }
+
+fun main() {}
