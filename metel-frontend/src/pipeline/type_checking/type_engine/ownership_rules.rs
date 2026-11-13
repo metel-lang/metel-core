@@ -98,10 +98,10 @@ impl TypeDefinitionRegistry {
         Some((self.resolve_type_id(module, name)?, bound.polarity))
     }
 
-    /// Why a nominal application is not `Copy` when its stored rule or its absence says so
-    /// (RFC-0224 section 2, metel-core#1959). `None` when the cause is not one of the two the
-    /// stored data can name (an undecided component, a negative or several rules, a rule that is not a
-    /// plain flow): the caller then says nothing rather than guess.
+    /// Why a nominal application is not `Copy` (RFC-0224 section 2, metel-core#1959): the cause the stored
+    /// rule or its absence names, or, when it names none, the checker limitation that stops it
+    /// (an undecided component, a negative or several rules, a rule that is not a plain flow), so a
+    /// message can say so instead of guessing. `None` only for a type with no identity.
     #[must_use]
     pub fn nominal_copy_blame(
         &self,
@@ -112,13 +112,18 @@ impl TypeDefinitionRegistry {
         if self.unconditional_nominal_aspect(identity, self.implicit_aspect_name()) == Some(false) {
             return Some(CopyBlame::NoDeclaration);
         }
-        let target = identity.get()?;
-        let copy = self.copy_aspect_id()?;
-        let [Some(rule)] = self.ownership_rules.get(&(target, copy))?.as_slice() else {
+        let (Some(target), Some(copy)) = (identity.get(), self.copy_aspect_id()) else {
             return None;
         };
+        let [Some(rule)] = self.ownership_rules.get(&(target, copy))?.as_slice() else {
+            return Some(CopyBlame::Limitation(
+                "its `Copy` is given by several or unstored rules",
+            ));
+        };
         if rule.polarity != Polarity::Positive || rule.conditions.len() != arguments.len() {
-            return None;
+            return Some(CopyBlame::Limitation(
+                "its stored `Copy` rule is not a plain flow set",
+            ));
         }
         let mut blamed = None;
         for (position, (conditions, argument)) in rule.conditions.iter().zip(arguments).enumerate()
@@ -134,10 +139,17 @@ impl TypeDefinitionRegistry {
                 Some(false) => {
                     blamed.get_or_insert(position);
                 }
-                None => return None,
+                None => {
+                    return Some(CopyBlame::Limitation(
+                        "an argument of its flow is undecided (a `dyn` value, an open row or a residual)",
+                    ));
+                }
             }
         }
-        blamed.map(CopyBlame::Argument)
+        Some(blamed.map_or(
+            CopyBlame::Limitation("no argument of its flow is found to fail"),
+            CopyBlame::Argument,
+        ))
     }
 
     pub(in crate::pipeline::type_checking) fn abstract_nominal_aspect(
@@ -187,6 +199,8 @@ pub enum CopyBlame {
     NoDeclaration,
     /// The type is `Copy` only when its arguments in the flow are, and the argument at this position is not.
     Argument(usize),
+    /// The checker cannot decide, or does not model the rule: the message says that, not why.
+    Limitation(&'static str),
 }
 
 impl OwnershipRule {

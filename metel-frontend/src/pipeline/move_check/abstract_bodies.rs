@@ -477,6 +477,9 @@ impl Checker<'_> {
                 crate::pipeline::type_checking::type_engine::CopyBlame::NoDeclaration => Some(
                     format!("`{}` does not derive or implement `Copy`", env.render(ty)),
                 ),
+                crate::pipeline::type_checking::type_engine::CopyBlame::Limitation(reason) => {
+                    Some(limitation_message(&env.render(ty), reason))
+                }
                 crate::pipeline::type_checking::type_engine::CopyBlame::Argument(position) => {
                     let argument = arguments.get(position)?;
                     let shown = env.render(argument);
@@ -500,13 +503,16 @@ impl Checker<'_> {
         env: &Environment<'_>,
     ) -> Option<String> {
         let facts = env.equal_parameter_facts(id).ok()?;
+        let name = env.render(&AbstractType::Parameter(id));
         if facts
             .iter()
             .any(|facts| facts.row_kind || facts.open_row_parameter || facts.record_kind)
         {
-            return None;
+            return Some(limitation_message(
+                &format!("`{name}`"),
+                "a row- or record-kinded parameter is `Copy` by its fields, not by a bound",
+            ));
         }
-        let name = env.render(&AbstractType::Parameter(id));
         let copy = self.registry.copy_aspect_id()?;
         let forbidden = facts.iter().any(|facts| {
             facts.negative.iter().any(
@@ -1641,6 +1647,14 @@ fn display_place(place: &Place, name: &str) -> Place {
         .fold(Place::new(name.to_string()), |place, projection| {
             place.with_projection(projection.clone())
         })
+}
+
+/// The tail of a message when the checker, not the program, is why a value moves: it says so, so a
+/// reader and a later debugger do not take it for a statement that the type is not `Copy`.
+fn limitation_message(subject: &str, reason: &str) -> String {
+    format!(
+        "this is a checker limitation, not a finding that {subject} is not `Copy`: {reason} (metel-core#1813)"
+    )
 }
 
 fn abstract_type_bucket(ty: &AbstractType) -> String {

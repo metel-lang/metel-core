@@ -1717,6 +1717,9 @@ impl<'a> Checker<'a> {
                 "`{}` does not derive or implement `Copy`",
                 name.rsplit("::").next().unwrap_or(name)
             )),
+            CopyBlame::Limitation(reason) => Some(format!(
+                "this is a checker limitation, not a finding that `{shown}` is not `Copy`: {reason} (metel-core#1813)"
+            )),
             CopyBlame::Argument(position) => {
                 let argument = arguments.get(position)?;
                 Some(format!(
