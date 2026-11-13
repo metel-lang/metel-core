@@ -1,0 +1,9 @@
+// metel-core#1979: the associated type a local impl binds is what an equality bound is checked against.
+aspect Source { type Item; fun take(&self) -> Item; }
+fun get<S: Source<Item = i64>>(s: &S) -> i64 { s.take() }
+
+fun main() {
+    struct L { n: i64 }
+    extend L: Source { type Item := String; fun take(&self) -> String { "x" } }
+    get(&L { n = 4 });
+}

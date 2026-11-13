@@ -1,0 +1,25 @@
+// metel-core#1979: an impl for a block-local type that names aspect type arguments or binds associated types is
+// recorded: a bound with the same argument is satisfied, an associated-type equality bound is checked against the
+// binding, and a projection in a signature resolves to it.
+aspect Conv<T> { fun conv(&self) -> T; }
+fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
+
+aspect Source { type Item; fun take(&self) -> Item; }
+fun get<S: Source<Item = i64>>(s: &S) -> i64 { s.take() }
+
+aspect Container { type Item: Display; fun get(self) -> Item; }
+fun peek<T: Container>(x: T) -> T::Item { return x.get(); }
+
+fun main() {
+    struct L { n: i64 }
+    extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+    extend L: Source { type Item := i64; fun take(&self) -> i64 { self.n } }
+    struct IntBox { value: i64 }
+    extend IntBox: Container { type Item := i64; fun get(self) -> i64 { return self.value; } }
+
+    let l := L { n = 4 };
+    assert(use_conv(&l) == 4);
+    assert(get(&l) == 4);
+    let v: i64 := peek(IntBox { value = 42 });
+    assert(v == 42);
+}

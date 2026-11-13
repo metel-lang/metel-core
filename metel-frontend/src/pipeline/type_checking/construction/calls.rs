@@ -903,9 +903,17 @@ pub(super) fn check_fun_call_assoc_eq(
             continue;
         };
         for (aspect, assoc, expected_infer) in constraints {
-            let Some(actual_ty) =
-                registry.impl_assoc_type(current_module, &concrete.to_string(), aspect, assoc)
-            else {
+            let identity = match concrete {
+                Type::Named(_, _, identity) => identity.clone(),
+                _ => crate::data::types::NominalId::NONE,
+            };
+            let Some(actual_ty) = registry.impl_assoc_type_for(
+                current_module,
+                &concrete.to_string(),
+                &identity,
+                aspect,
+                assoc,
+            ) else {
                 continue;
             };
             // Substitute the expected type through var_to_type.
@@ -966,9 +974,17 @@ pub(super) fn check_scheme_assoc_eq(
             continue;
         };
         for (aspect, assoc, expected_infer) in constraints {
-            let Some(actual_ty) =
-                registry.impl_assoc_type(current_module, &concrete.to_string(), aspect, assoc)
-            else {
+            let identity = match concrete {
+                Type::Named(_, _, identity) => identity.clone(),
+                _ => crate::data::types::NominalId::NONE,
+            };
+            let Some(actual_ty) = registry.impl_assoc_type_for(
+                current_module,
+                &concrete.to_string(),
+                &identity,
+                aspect,
+                assoc,
+            ) else {
                 continue;
             };
             let expected_subst = match expected_infer {
@@ -1833,9 +1849,15 @@ pub(super) fn instantiate_scheme_for_call(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base))
-            && let Some(concrete_ty) =
-                registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+        if let InferType::Named(base_name, _, base_identity) =
+            subst.apply(&InferType::Var(fresh_base))
+            && let Some(concrete_ty) = registry.impl_assoc_type_for(
+                current_module,
+                &base_name,
+                &base_identity,
+                aspect,
+                assoc,
+            )
             && let Some(fresh_placeholder) = renaming.get(placeholder_tv)
         {
             subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
@@ -2006,10 +2028,15 @@ pub(super) fn instantiate_scheme_with_turbofish(
     // RFC-0082 backfill: bind projection placeholder vars to their concrete associated types.
     for proj in scheme.assoc_projections.iter().flatten() {
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
-        if let Some(Type::Named(base_name, ..)) =
+        if let Some(Type::Named(base_name, _, base_identity)) =
             var_to_concrete.get(&scheme.quantified_vars[*base_pos])
-            && let Some(concrete_ty) =
-                registry.impl_assoc_type(current_module, base_name, aspect, assoc)
+            && let Some(concrete_ty) = registry.impl_assoc_type_for(
+                current_module,
+                base_name,
+                base_identity,
+                aspect,
+                assoc,
+            )
         {
             subst.bind(*placeholder_tv, InferType::Concrete(concrete_ty.clone()));
         }
@@ -2067,9 +2094,15 @@ pub(super) fn instantiate_scheme_with_expected_ret(
         let (base_pos, aspect, assoc, placeholder_tv) = proj;
         let base_orig = scheme.quantified_vars[*base_pos];
         let fresh_base = renaming.get(&base_orig).copied().unwrap_or(base_orig);
-        if let InferType::Named(base_name, ..) = subst.apply(&InferType::Var(fresh_base))
-            && let Some(concrete_ty) =
-                registry.impl_assoc_type(current_module, &base_name, aspect, assoc)
+        if let InferType::Named(base_name, _, base_identity) =
+            subst.apply(&InferType::Var(fresh_base))
+            && let Some(concrete_ty) = registry.impl_assoc_type_for(
+                current_module,
+                &base_name,
+                &base_identity,
+                aspect,
+                assoc,
+            )
             && let Some(fresh_placeholder) = renaming.get(placeholder_tv)
         {
             subst.bind(*fresh_placeholder, InferType::Concrete(concrete_ty.clone()));
