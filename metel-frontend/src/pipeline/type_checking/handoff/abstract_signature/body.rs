@@ -1044,8 +1044,8 @@ impl BodyFreezer<'_, '_> {
             Expr::Call {
                 callee, args, span, ..
             } => {
-                let args = self.positional_call_arguments(callee, args, span)?;
-                AbstractExprKind::Call(self.call(callee, &args, span, &ty)?)
+                let (kind, retained) = self.call_expression(callee, args, span, &ty)?;
+                return self.finish_expression(retained.unwrap_or(ty), kind, expression.span());
             }
             Expr::FieldAccess {
                 object,
@@ -2254,13 +2254,28 @@ impl BodyFreezer<'_, '_> {
             .ok_or_else(|| "overloaded call selection is not retained".to_string())
     }
 
+    /// A call and, when a closure passed through a generic parameter comes back, its type with the contract it
+    /// had (metel-core#2000).
+    fn call_expression(
+        &self,
+        callee: &Expr,
+        args: &[Expr],
+        span: &Span,
+        ty: &AbstractType,
+    ) -> Result<(AbstractExprKind, Option<AbstractType>), String> {
+        let args = self.positional_call_arguments(callee, args, span)?;
+        let (call, supplied) = self.call(callee, &args, span, ty)?;
+        let retained = self.retained_call_result(span, &supplied);
+        Ok((AbstractExprKind::Call(call), retained))
+    }
+
     fn call(
         &self,
         callee: &Expr,
         args: &[Expr],
         span: &Span,
         result: &AbstractType,
-    ) -> Result<AbstractCall, String> {
+    ) -> Result<(AbstractCall, Vec<AbstractType>), String> {
         let contract = self
             .facts
             .definition_call_types()
@@ -2282,11 +2297,14 @@ impl BodyFreezer<'_, '_> {
         if parameters.len() != args.len() {
             return Err("call argument count disagrees with its retained contract".to_string());
         }
+        let mut supplied = Vec::with_capacity(args.len());
         let arguments = args
             .iter()
             .zip(parameters)
             .map(|(arg, parameter)| {
-                let value = Self::coerce_call_argument(self.expression(arg)?, parameter)?;
+                let value = self.expression(arg)?;
+                supplied.push(value.ty.clone());
+                let value = Self::coerce_call_argument(value, parameter)?;
                 let mode = match parameter {
                     AbstractType::Reference(_) => AbstractPassingMode::SharedReference,
                     AbstractType::MutReference(_) => AbstractPassingMode::MutableReference,
@@ -2335,11 +2353,104 @@ impl BodyFreezer<'_, '_> {
         if dereferences > 1 || *callable != signature {
             return Err("call target coercion facts are not fully retained".to_string());
         }
-        Ok(AbstractCall {
-            callee: Box::new(callee),
-            signature,
-            arguments,
-            auto_dereference,
+        Ok((
+            AbstractCall {
+                callee: Box::new(callee),
+                signature,
+                arguments,
+                auto_dereference,
+            },
+            supplied,
+        ))
+    }
+
+    /// The type of a call to a named generic function when an argument holds a closure: the callee's declared
+    /// result with each type variable that a parameter binds replaced by the type of the argument supplied
+    /// there, so a closure that comes back through `T` (or an `Option<T>`, a tuple, an array of it) keeps the
+    /// captures it owns (metel-core#2000). The typechecker's result type writes a closure as a function type,
+    /// which would make the value move-only.
+    ///
+    /// `None` where the result is not tied to the arguments by the signature: a closure the callee creates
+    /// has no variable of a parameter in its type, and keeps the typechecker's move-only type. `None` as well
+    /// for any shape this does not follow, which is always sound (it only moves too much): a variable under a
+    /// function-typed parameter (the callee may return a closure of its own), two arguments of one variable
+    /// that disagree, a result position other than a tuple, array, reference or type argument.
+    fn retained_call_result(
+        &self,
+        span: &Span,
+        arguments: &[AbstractType],
+    ) -> Option<AbstractType> {
+        use crate::pipeline::type_checking::type_engine::InferType;
+        if !arguments.iter().any(holds_closure) {
+            return None;
+        }
+        let InferType::Fun(parameters, result, ..) =
+            self.facts.definition_call_origins().get(span)?
+        else {
+            return None;
+        };
+        if parameters.len() != arguments.len() {
+            return None;
+        }
+        let mut bound = HashMap::new();
+        for (parameter, argument) in parameters.iter().zip(arguments) {
+            bind_call_variables(parameter, argument, &mut bound)?;
+        }
+        // A variable bound to a type with no closure keeps the typechecker's solved type, which also accounts
+        // for any coercion the argument went through.
+        bound.retain(|_, ty| holds_closure(ty));
+        if bound.is_empty() {
+            return None;
+        }
+        self.refine_call_result(result, &bound)
+    }
+
+    fn refine_call_result(
+        &self,
+        template: &crate::pipeline::type_checking::type_engine::InferType,
+        bound: &HashMap<crate::pipeline::type_checking::TypeVar, AbstractType>,
+    ) -> Option<AbstractType> {
+        use crate::pipeline::type_checking::type_engine::{InferType, free_vars};
+        if let InferType::Var(var) = template
+            && let Some(ty) = bound.get(var)
+        {
+            return Some(ty.clone());
+        }
+        if !free_vars(template)
+            .iter()
+            .any(|var| bound.contains_key(var))
+        {
+            return self
+                .types
+                .freeze(&self.facts.substitution().apply(template))
+                .ok();
+        }
+        let items = |items: &[InferType]| -> Option<Vec<AbstractType>> {
+            items
+                .iter()
+                .map(|item| self.refine_call_result(item, bound))
+                .collect()
+        };
+        Some(match template {
+            InferType::Tuple(parts) => AbstractType::Tuple(items(parts)?),
+            InferType::Array(inner) => {
+                AbstractType::Array(Box::new(self.refine_call_result(inner, bound)?))
+            }
+            InferType::SizedArray(inner, length) => {
+                AbstractType::SizedArray(Box::new(self.refine_call_result(inner, bound)?), *length)
+            }
+            InferType::Reference(inner) => {
+                AbstractType::Reference(Box::new(self.refine_call_result(inner, bound)?))
+            }
+            InferType::MutReference(inner) => {
+                AbstractType::MutReference(Box::new(self.refine_call_result(inner, bound)?))
+            }
+            InferType::Named(name, arguments, identity) => AbstractType::Named {
+                name: name.clone(),
+                arguments: items(arguments)?,
+                identity: identity.clone(),
+            },
+            _ => return None,
         })
     }
 
@@ -2421,11 +2532,14 @@ impl BodyFreezer<'_, '_> {
             Self::check_value_type(receiver_base, receiver_parameter)?;
             receiver
         };
+        let mut supplied = Vec::with_capacity(args.len());
         let arguments = args
             .iter()
             .zip(parameters)
             .map(|(arg, parameter)| {
-                let value = Self::coerce_call_argument(self.expression(arg)?, parameter)?;
+                let value = self.expression(arg)?;
+                supplied.push(value.ty.clone());
+                let value = Self::coerce_call_argument(value, parameter)?;
                 let mode = match parameter {
                     AbstractType::Reference(_) => AbstractPassingMode::SharedReference,
                     AbstractType::MutReference(_) => AbstractPassingMode::MutableReference,
@@ -2895,5 +3009,55 @@ fn bind_template(
             bind_template(template, value, params, bound)
         }
         _ => Err(unsupported()),
+    }
+}
+
+/// Bind each type variable of a callee's parameter type to the type of the argument supplied at its position.
+/// Every argument of a variable takes part, not only those that hold a closure: a variable met twice keeps the
+/// conjunction of two closure contracts, and an argument that is not a closure beside one that is leaves the
+/// result unrelated to either. `None` for a shape that is not followed while it mentions a variable.
+fn bind_call_variables(
+    parameter: &crate::pipeline::type_checking::type_engine::InferType,
+    argument: &AbstractType,
+    bound: &mut HashMap<crate::pipeline::type_checking::TypeVar, AbstractType>,
+) -> Option<()> {
+    use crate::pipeline::type_checking::type_engine::{InferType, free_vars};
+    match (parameter, argument) {
+        (InferType::Var(var), argument) => {
+            let merged = match bound.remove(var) {
+                None => argument.clone(),
+                Some(previous) if previous == *argument => previous,
+                Some(previous) => merge_contracts(Some(previous), argument).ok()??,
+            };
+            bound.insert(*var, merged);
+            Some(())
+        }
+        (InferType::Tuple(parameters), AbstractType::Tuple(arguments))
+            if parameters.len() == arguments.len() =>
+        {
+            parameters
+                .iter()
+                .zip(arguments)
+                .try_for_each(|(parameter, argument)| {
+                    bind_call_variables(parameter, argument, bound)
+                })
+        }
+        (InferType::Named(_, parameters, _), AbstractType::Named { arguments, .. })
+            if parameters.len() == arguments.len() =>
+        {
+            parameters
+                .iter()
+                .zip(arguments)
+                .try_for_each(|(parameter, argument)| {
+                    bind_call_variables(parameter, argument, bound)
+                })
+        }
+        (InferType::Array(parameter), AbstractType::Array(argument))
+        | (InferType::SizedArray(parameter, _), AbstractType::SizedArray(argument, _))
+        | (InferType::Reference(parameter), AbstractType::Reference(argument))
+        | (InferType::MutReference(parameter), AbstractType::MutReference(argument)) => {
+            bind_call_variables(parameter, argument, bound)
+        }
+        (parameter, _) => free_vars(parameter).is_empty().then_some(()),
     }
 }

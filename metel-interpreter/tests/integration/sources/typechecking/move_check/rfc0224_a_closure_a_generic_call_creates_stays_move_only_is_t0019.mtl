@@ -1,0 +1,9 @@
+// metel-core#2000: `mk` returns a closure it creates, not the argument, so the result keeps the move-only type.
+fun mk<T>(x: T) -> |i64| -> i64 { [x]|k: i64| -> i64 { k } }
+fun f<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let d := mk(c);
+    let a := d;
+    let b := d;
+}
+fun main() {}

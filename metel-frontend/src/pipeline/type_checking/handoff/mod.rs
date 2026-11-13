@@ -47,6 +47,10 @@ pub(super) struct ResolvedInferenceFacts {
     /// temporary join, not exposed to analyses or stored in the durable artifact.
     definition_expression_types: HashMap<Span, InferType>,
     definition_call_types: HashMap<Span, InferType>,
+    /// Unsolved instantiated contracts of named generic calls, and the substitution that solves them
+    /// (metel-core#2000).
+    definition_call_origins: HashMap<Span, InferType>,
+    substitution: std::sync::Arc<Substitution>,
     definition_paths: HashMap<Span, super::type_engine::DefinitionPathFact>,
     definition_array_lengths: std::collections::HashSet<Span>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
@@ -77,6 +81,8 @@ impl ResolvedInferenceFacts {
             closure_capture_writes: HashMap::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
+            definition_call_origins: HashMap::new(),
+            substitution: std::sync::Arc::new(Substitution::default()),
             definition_paths: HashMap::new(),
             definition_array_lengths: std::collections::HashSet::new(),
             definition_nominal_fields: HashMap::new(),
@@ -197,6 +203,8 @@ impl ResolvedInferenceFacts {
                 .iter()
                 .map(|(span, ty)| (span.clone(), subst.apply(ty)))
                 .collect(),
+            definition_call_origins: ctx.definition_call_origins().clone(),
+            substitution: std::sync::Arc::new(subst.clone()),
             definition_paths: Self::resolve_paths(ctx, subst),
             definition_array_lengths: ctx.definition_array_lengths().clone(),
         })
@@ -296,6 +304,14 @@ impl ResolvedInferenceFacts {
 
     pub(super) fn definition_call_types(&self) -> &HashMap<Span, InferType> {
         &self.definition_call_types
+    }
+
+    pub(super) fn definition_call_origins(&self) -> &HashMap<Span, InferType> {
+        &self.definition_call_origins
+    }
+
+    pub(super) fn substitution(&self) -> &Substitution {
+        &self.substitution
     }
 
     pub(super) fn definition_path(
