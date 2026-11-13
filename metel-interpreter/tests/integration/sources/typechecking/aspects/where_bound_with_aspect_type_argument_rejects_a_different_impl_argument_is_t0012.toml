@@ -1,6 +1,6 @@
 [options]
 error = ["T0012"]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-6"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-8"]
 
 [expect]
 status = "typecheck_error"
