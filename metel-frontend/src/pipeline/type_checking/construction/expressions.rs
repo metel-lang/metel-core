@@ -5,8 +5,8 @@ use super::{
     TypeVar, TypedBreakExpr, TypedExpr, TypedForInStmt, TypedForInit, TypedForStmt, TypedLetDecl,
     TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
     assign_target_to_typed_place, block_result_type, builtin_pattern_method_expr,
-    check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
-    check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
+    check_fun_call_aspect_arguments, check_fun_call_assoc_eq, check_fun_call_bounds,
+    check_fun_call_neg_bounds, check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_binop,
     construct_block, construct_call, construct_enum_literal_ty, construct_match,
     construct_method_args, construct_propagate_error, construct_unaryop,
@@ -527,6 +527,13 @@ pub(super) fn construct_expr(
                                 ctx.identity.binding_spans,
                             )?;
                             check_fun_call_assoc_eq(
+                                name,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_fun_call_aspect_arguments(
                                 name,
                                 &var_map,
                                 span,

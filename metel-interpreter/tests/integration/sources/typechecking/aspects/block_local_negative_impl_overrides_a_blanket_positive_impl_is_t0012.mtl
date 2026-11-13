@@ -1,0 +1,11 @@
+// metel-core#1985: and for a type declared in a block, while another type still satisfies the bound.
+aspect Marker {}
+extend<T> T: Marker;
+fun need<T: Marker>(x: &T) {}
+fun main() {
+    struct K { n: i64 }
+    struct L { n: i64 }
+    extend L: !Marker;
+    need(&K { n = 1 });
+    need(&L { n = 1 });
+}
