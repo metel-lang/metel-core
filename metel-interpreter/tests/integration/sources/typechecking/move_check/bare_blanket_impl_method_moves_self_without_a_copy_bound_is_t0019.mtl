@@ -1,0 +1,7 @@
+// metel-core#1994: a blanket method follows its bound: without `T: Copy` the receiver moves.
+aspect Conv<T> { fun take(self) -> T; }
+extend<T> T: Conv<i64> {
+    fun take(self) -> i64 { let a := self; let b := self; 1 }
+}
+
+fun main() {}
