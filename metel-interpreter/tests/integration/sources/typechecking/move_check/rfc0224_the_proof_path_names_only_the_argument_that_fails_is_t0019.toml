@@ -1,0 +1,9 @@
+[options]
+move_check = true
+error = ["T0019"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-15"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "`Pair<A, B>` is `Copy` only when `B` is, and `B` has no `Copy` bound; add `B: Copy`"

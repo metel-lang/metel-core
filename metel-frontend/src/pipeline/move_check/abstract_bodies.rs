@@ -23,9 +23,41 @@ struct Environment<'a> {
     names: HashMap<String, String>,
     borrowed_captures: HashSet<BindingId>,
     borrowed_array_bindings: HashSet<BindingId>,
+    /// The written names of the definition's type parameters, for messages.
+    parameter_names: HashMap<AbstractParameterId, String>,
 }
 
 impl Environment<'_> {
+    /// `ty` as a message writes it: a parameter by its name, a nominal with its arguments.
+    fn render(&self, ty: &AbstractType) -> String {
+        match ty {
+            AbstractType::Parameter(id) => self
+                .parameter_names
+                .get(id)
+                .cloned()
+                .unwrap_or_else(|| "_".to_string()),
+            AbstractType::Named {
+                name, arguments, ..
+            } => {
+                let head = name.rsplit("::").next().unwrap_or(name);
+                if arguments.is_empty() {
+                    head.to_string()
+                } else {
+                    let shown: Vec<String> = arguments.iter().map(|a| self.render(a)).collect();
+                    format!("{head}<{}>", shown.join(", "))
+                }
+            }
+            AbstractType::Concrete(ty) => ty.to_string(),
+            AbstractType::Reference(inner) => format!("&{}", self.render(inner)),
+            AbstractType::MutReference(inner) => format!("&var {}", self.render(inner)),
+            AbstractType::Tuple(items) => {
+                let shown: Vec<String> = items.iter().map(|a| self.render(a)).collect();
+                format!("({})", shown.join(", "))
+            }
+            _ => "_".to_string(),
+        }
+    }
+
     fn bind(&mut self, binding: &AbstractBinding, state: &mut FlowState) {
         let key = binding_key(binding.identity);
         self.names.insert(key.clone(), binding.name.clone());
@@ -137,6 +169,11 @@ impl Checker<'_> {
                 .collect(),
             borrowed_captures: HashSet::new(),
             borrowed_array_bindings: HashSet::new(),
+            parameter_names: signature
+                .parameters
+                .iter()
+                .filter_map(|parameter| Some((parameter.id, parameter.name.clone()?)))
+                .collect(),
         };
         let mark = self.report.mark();
         // A definition's exits cannot reach a loop surrounding its declaration.
@@ -406,14 +443,81 @@ impl Checker<'_> {
             false
         };
         if !copy || nominal_remainder {
-            state.record_move(
+            let reason = if copy {
+                None
+            } else {
+                self.explain_not_copy(&expr.ty, env)
+            };
+            state.record_move_because(
                 place,
                 expr.span.clone(),
                 cause,
                 abstract_type_bucket(&expr.ty),
+                reason,
             );
         }
         Ok(())
+    }
+
+    /// Why `ty` is not `Copy`, in the words of the four causes of RFC-0224 section 2: no declaration, an
+    /// argument of the flow with no `Copy` bound, an argument that is itself not `Copy`, or a bare
+    /// parameter. `None` when the cause is a checker limitation (undecided) or not one of those, so the
+    /// message never suggests a bound that would not help (metel-core#1959).
+    fn explain_not_copy(&self, ty: &AbstractType, env: &Environment<'_>) -> Option<String> {
+        match ty {
+            AbstractType::Parameter(id) => self.explain_parameter_not_copy(*id, env),
+            AbstractType::Named {
+                arguments,
+                identity,
+                ..
+            } => match self
+                .registry
+                .nominal_copy_blame(identity, arguments, env.facts)?
+            {
+                crate::pipeline::type_checking::type_engine::CopyBlame::NoDeclaration => Some(
+                    format!("`{}` does not derive or implement `Copy`", env.render(ty)),
+                ),
+                crate::pipeline::type_checking::type_engine::CopyBlame::Argument(position) => {
+                    let argument = arguments.get(position)?;
+                    let shown = env.render(argument);
+                    let head = format!("`{}` is `Copy` only when `{shown}` is", env.render(ty));
+                    match argument {
+                        AbstractType::Parameter(id) => Some(format!(
+                            "{head}, and {}",
+                            self.explain_parameter_not_copy(*id, env)?
+                        )),
+                        _ => Some(format!("{head}, and `{shown}` is not `Copy`")),
+                    }
+                }
+            },
+            _ => None,
+        }
+    }
+
+    fn explain_parameter_not_copy(
+        &self,
+        id: AbstractParameterId,
+        env: &Environment<'_>,
+    ) -> Option<String> {
+        let facts = env.equal_parameter_facts(id).ok()?;
+        if facts
+            .iter()
+            .any(|facts| facts.row_kind || facts.open_row_parameter || facts.record_kind)
+        {
+            return None;
+        }
+        let name = env.render(&AbstractType::Parameter(id));
+        let copy = self.registry.copy_aspect_id()?;
+        let forbidden = facts.iter().any(|facts| {
+            facts.negative.iter().any(
+                |bound| matches!(bound, AbstractBound::Aspect(aspect) if aspect.identity == copy),
+            )
+        });
+        Some(if forbidden {
+            format!("`{name}` is bounded `!Copy`")
+        } else {
+            format!("`{name}` has no `Copy` bound; add `{name}: Copy`")
+        })
     }
 
     fn check_abstract_record_pattern(

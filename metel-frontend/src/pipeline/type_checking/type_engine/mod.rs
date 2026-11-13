@@ -36,6 +36,7 @@ impl std::fmt::Display for TypeVar {
 }
 
 mod type_var_space;
+pub use ownership_rules::CopyBlame;
 pub use type_var_space::{CONSTRUCTION, EXPORT, LOCAL, PRELUDE, TypeVarGenerator, TypeVarRange};
 
 // ── Phase 2: Inference Types ──────────────────────────────────────────────────

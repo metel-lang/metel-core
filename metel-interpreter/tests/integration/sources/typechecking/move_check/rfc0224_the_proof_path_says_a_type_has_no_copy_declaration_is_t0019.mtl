@@ -1,0 +1,4 @@
+// RFC-0224 (metel-core#1959): a type with no permission to be `Copy` says so, in a generic body and out of one.
+struct Plain { n: i64 }
+fun bad<T>(p: Plain, x: T) -> (Plain, Plain) { (p, p) }
+fun main() {}

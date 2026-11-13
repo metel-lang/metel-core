@@ -98,6 +98,48 @@ impl TypeDefinitionRegistry {
         Some((self.resolve_type_id(module, name)?, bound.polarity))
     }
 
+    /// Why a nominal application is not `Copy` when its stored rule or its absence says so
+    /// (RFC-0224 section 2, metel-core#1959). `None` when the cause is not one of the two the
+    /// stored data can name (an undecided component, a negative or several rules, a rule that is not a
+    /// plain flow): the caller then says nothing rather than guess.
+    #[must_use]
+    pub fn nominal_copy_blame(
+        &self,
+        identity: &NominalId,
+        arguments: &[AbstractType],
+        facts: &[AbstractParameterFacts],
+    ) -> Option<CopyBlame> {
+        if self.unconditional_nominal_aspect(identity, self.implicit_aspect_name()) == Some(false) {
+            return Some(CopyBlame::NoDeclaration);
+        }
+        let target = identity.get()?;
+        let copy = self.copy_aspect_id()?;
+        let [Some(rule)] = self.ownership_rules.get(&(target, copy))?.as_slice() else {
+            return None;
+        };
+        if rule.polarity != Polarity::Positive || rule.conditions.len() != arguments.len() {
+            return None;
+        }
+        let mut blamed = None;
+        for (position, (conditions, argument)) in rule.conditions.iter().zip(arguments).enumerate()
+        {
+            let in_flow = conditions
+                .iter()
+                .any(|(aspect, polarity)| *aspect == copy && *polarity == Polarity::Positive);
+            if !in_flow {
+                continue;
+            }
+            match flow_condition(self, argument, copy, facts) {
+                Some(true) => {}
+                Some(false) => {
+                    blamed.get_or_insert(position);
+                }
+                None => return None,
+            }
+        }
+        blamed.map(CopyBlame::Argument)
+    }
+
     pub(in crate::pipeline::type_checking) fn abstract_nominal_aspect(
         &self,
         identity: &NominalId,
@@ -136,6 +178,15 @@ impl TypeDefinitionRegistry {
             .collect::<Vec<_>>();
         select_ownership(&applicability)
     }
+}
+
+/// The cause of a nominal application not being `Copy` that its stored data names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyBlame {
+    /// The type does not derive or implement `Copy` at all.
+    NoDeclaration,
+    /// The type is `Copy` only when its arguments in the flow are, and the argument at this position is not.
+    Argument(usize),
 }
 
 impl OwnershipRule {

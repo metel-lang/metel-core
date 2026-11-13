@@ -1,0 +1,5 @@
+// RFC-0224 (metel-core#1959): a derived `Copy` nominal moves in a generic body whose argument has no `Copy` bound; the
+// message says why and names the bound that would help.
+struct Wrapper<T> derives Copy via T { value: T }
+fun bad<T>(w: Wrapper<T>) -> (Wrapper<T>, Wrapper<T>) { (w, w) }
+fun main() {}
