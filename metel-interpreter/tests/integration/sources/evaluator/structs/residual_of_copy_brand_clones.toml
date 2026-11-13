@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.ownership.aspects-on-a-residual.legality-1"]
+spec = ["spec.ownership.aspects-on-a-residual.legality-1", "spec.ownership.aspects-on-a-residual.dynamics-1"]
