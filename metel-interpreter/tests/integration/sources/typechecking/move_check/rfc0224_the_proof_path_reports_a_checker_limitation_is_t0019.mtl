@@ -1,0 +1,4 @@
+// RFC-0224 (metel-core#1959): where the checker, not the program, is why a value moves, the message says so rather than
+// suggesting a bound or saying nothing. A row-kinded parameter is `Copy` by its fields, which a bound cannot grant.
+fun bad<record R>(x: R) -> (R, R) { (x, x) }
+fun main() {}
