@@ -1016,6 +1016,129 @@ fn duplicate_method_error(name: &str, span: &Span, first: &Span, where_: &str) -
     )
 }
 
+/// The impls written in the blocks of `body` (a function or method body, at any depth), collected as the module's
+/// own: coherence applies to every `extend`, not only the top-level ones (metel-core#1993). A type declared in a block
+/// is named by an identity string no other declaration shares, so two blocks that each declare an `L` are two types
+/// and only impls of the same local type, or a module-level impl that covers it, can conflict. The target of an impl
+/// is the type of that name declared in the innermost block that encloses the impl and declares one, so an impl in
+/// a nested block finds a type of an enclosing block, and an inner `L` shadows an outer one (metel-core#1997).
+fn collect_block_local_impls<'a>(
+    body: &'a crate::data::ast::Block,
+    module_path: &'a [String],
+    names: &ResolvedNames,
+    declaring: &HashMap<SymbolId, Vec<String>>,
+    impls: &mut Vec<CollectedImpl<'a>>,
+) {
+    let mut blocks: Vec<&'a crate::data::ast::Block> = Vec::new();
+    crate::data::decl_walk::for_each_block(body, &mut |block| blocks.push(block));
+    let declared = |block: &'a crate::data::ast::Block, name: &str| -> Option<&'a Span> {
+        block.stmts.iter().find_map(|statement| match statement {
+            Decl::Struct(declaration) if declaration.name == name => Some(&declaration.span),
+            Decl::Enum(declaration) if declaration.name == name => Some(&declaration.span),
+            _ => None,
+        })
+    };
+    let encloses = |outer: &Span, inner: &Span| {
+        outer.filename == inner.filename && outer.start <= inner.start && inner.end <= outer.end
+    };
+    for block in &blocks {
+        for statement in &block.stmts {
+            let Decl::Impl(ib) = statement else { continue };
+            let mut local_types: HashMap<String, String> = HashMap::new();
+            if let TypeExpr::Named(name, _, _) = &ib.target_type
+                && let Some((_, span)) = blocks
+                    .iter()
+                    .filter(|candidate| encloses(&candidate.span, &ib.span))
+                    .filter_map(|candidate| {
+                        declared(candidate, name).map(|span| (candidate.span.start, span))
+                    })
+                    .max_by_key(|(start, _)| *start)
+            {
+                local_types.insert(
+                    name.clone(),
+                    format!("{name}#{}:{}", span.filename, span.start),
+                );
+            }
+            impls.extend(collect_impl(
+                ib,
+                module_path,
+                names,
+                declaring,
+                &local_types,
+            ));
+        }
+    }
+}
+
+/// One impl as coherence sees it, or `None` for an inherent impl. `local_types` maps the name of a type declared in
+/// the impl's own block to its identity string.
+fn collect_impl<'a>(
+    ib: &'a ImplBlock,
+    module_path: &'a [String],
+    names: &ResolvedNames,
+    declaring: &HashMap<SymbolId, Vec<String>>,
+    local_types: &HashMap<String, String>,
+) -> Option<CollectedImpl<'a>> {
+    let aspect_name = ib.aspect_name.as_deref()?; // an inherent impl has nothing to check
+    let aspect_id = resolve_id(names, module_path, aspect_name);
+    let local_target = match &ib.target_type {
+        TypeExpr::Named(name, _, _) => local_types.get(name),
+        _ => None,
+    };
+    let mut renamed;
+    let shape: &ImplBlock = match (&ib.target_type, local_target) {
+        (TypeExpr::Named(_, args, span), Some(identity)) => {
+            renamed = ib.clone();
+            renamed.target_type = TypeExpr::Named(identity.clone(), args.clone(), span.clone());
+            &renamed
+        }
+        _ => ib,
+    };
+    let impl_generic_names: Vec<String> = ib.generics.iter().map(|g| g.name.clone()).collect();
+    // A type declared in the module (a block-local one included) is local to it.
+    let target_local = local_target.is_some()
+        || is_local(
+            declaring,
+            outermost_id(names, module_path, &impl_generic_names, &ib.target_type),
+            module_path,
+        );
+    let canonical_args = ib
+        .aspect_type_args
+        .iter()
+        .map(|a| canonicalize(names, module_path, a))
+        .collect();
+    // Use canonicalize_impl_target so TypeParam(i) is produced for
+    // impl-scoped type variables, required for 3.1/3.2 overlap detection.
+    let canonical_target = canonicalize_impl_target(names, module_path, shape);
+    let scoped_bounds = scoped_type_param_bounds(ib);
+    let is_structural_or_generic = !ib.generics.is_empty()
+        || matches!(
+            ib.target_type,
+            TypeExpr::Array(_)
+                | TypeExpr::SizedArray(_, _)
+                | TypeExpr::Tuple(_)
+                | TypeExpr::Fun { .. }
+        );
+    let target_head = match &ib.target_type {
+        TypeExpr::Named(name, _, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
+        _ => String::new(),
+    };
+    Some(CollectedImpl {
+        module: module_path,
+        aspect_name,
+        aspect_id,
+        target_local,
+        canonical_key: (canonical_args, canonical_target),
+        scoped_bounds,
+        polarity: ib.polarity,
+        span: &ib.span,
+        method_names: ib.methods.iter().map(|m| m.name.as_str()).collect(),
+        target_head,
+        is_structural_or_generic,
+        from_clause: ib.from_clause,
+    })
+}
+
 /// Check the orphan rule (T0014) and overlap detection (T0015) for every
 /// concrete `impl Aspect for Type` block in the program. See RFC-0060 / the
 /// "Aspect Implementation Coherence" section of `declarations.md`.
@@ -1030,60 +1153,40 @@ pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
     let declaring = declaring_modules(names);
 
     let mut impls: Vec<CollectedImpl> = Vec::new();
+    let no_local_types = HashMap::new();
     for module in graph.modules() {
+        let module_path = module.module_path.as_slice();
         for decl in &module.program.decls {
-            let Decl::Impl(ib) = decl else { continue };
-            let Some(aspect_name) = ib.aspect_name.as_deref() else {
-                continue; // inherent impl (no aspect) — nothing to check
-            };
-            let aspect_id = resolve_id(names, &module.module_path, aspect_name);
-            let impl_generic_names: Vec<String> =
-                ib.generics.iter().map(|g| g.name.clone()).collect();
-            let target_local = is_local(
-                &declaring,
-                outermost_id(
-                    names,
-                    &module.module_path,
-                    &impl_generic_names,
-                    &ib.target_type,
-                ),
-                &module.module_path,
-            );
-            let canonical_args = ib
-                .aspect_type_args
-                .iter()
-                .map(|a| canonicalize(names, &module.module_path, a))
-                .collect();
-            // Use canonicalize_impl_target so TypeParam(i) is produced for
-            // impl-scoped type variables — required for §3.1/§3.2 overlap detection.
-            let canonical_target = canonicalize_impl_target(names, &module.module_path, ib);
-            let scoped_bounds = scoped_type_param_bounds(ib);
-            let is_structural_or_generic = !ib.generics.is_empty()
-                || matches!(
-                    ib.target_type,
-                    TypeExpr::Array(_)
-                        | TypeExpr::SizedArray(_, _)
-                        | TypeExpr::Tuple(_)
-                        | TypeExpr::Fun { .. }
-                );
-            let target_head = match &ib.target_type {
-                TypeExpr::Named(name, _, _) => name.rsplit("::").next().unwrap_or(name).to_string(),
-                _ => String::new(),
-            };
-            impls.push(CollectedImpl {
-                module: &module.module_path,
-                aspect_name,
-                aspect_id,
-                target_local,
-                canonical_key: (canonical_args, canonical_target),
-                scoped_bounds,
-                polarity: ib.polarity,
-                span: &ib.span,
-                method_names: ib.methods.iter().map(|m| m.name.as_str()).collect(),
-                target_head,
-                is_structural_or_generic,
-                from_clause: ib.from_clause,
-            });
+            match decl {
+                Decl::Impl(ib) => {
+                    impls.extend(collect_impl(
+                        ib,
+                        module_path,
+                        names,
+                        &declaring,
+                        &no_local_types,
+                    ));
+                    for method in &ib.methods {
+                        collect_block_local_impls(
+                            &method.body,
+                            module_path,
+                            names,
+                            &declaring,
+                            &mut impls,
+                        );
+                    }
+                }
+                Decl::Fun(function) => {
+                    collect_block_local_impls(
+                        &function.body,
+                        module_path,
+                        names,
+                        &declaring,
+                        &mut impls,
+                    );
+                }
+                _ => {}
+            }
         }
     }
 

@@ -1,0 +1,4 @@
+// metel-core#1993: the orphan rule applies to a block: a foreign aspect for a foreign type is rejected.
+fun main() {
+    extend i64: Display { fun to_string(&self) -> String { "x" } }
+}

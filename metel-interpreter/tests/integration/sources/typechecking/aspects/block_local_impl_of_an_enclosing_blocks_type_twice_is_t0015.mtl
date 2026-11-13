@@ -1,0 +1,9 @@
+// metel-core#1997: two impls of one type declared in an enclosing block conflict whichever nested block holds them.
+aspect Marker {}
+fun main() {
+    struct L { n: i64 }
+    if (true) {
+        extend L: Marker {}
+    }
+    extend L: Marker {}
+}

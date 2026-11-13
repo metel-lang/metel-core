@@ -1,0 +1,26 @@
+// metel-core#1997: an impl in a nested block names the type of that name declared in the innermost enclosing block, so
+// the `L` of one function is not the `L` of another, and an inner `L` is not the outer one.
+aspect Marker {}
+
+fun a() {
+    struct L { n: i64 }
+    if (true) {
+        extend L: Marker {}
+    }
+}
+fun b() {
+    struct L { n: i64 }
+    if (true) {
+        extend L: Marker {}
+    }
+}
+fun shadowed() {
+    struct L { n: i64 }
+    if (true) {
+        struct L { n: i64 }
+        extend L: Marker {}
+    }
+    extend L: Marker {}
+}
+
+fun main() {}
