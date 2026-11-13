@@ -1,0 +1,71 @@
+// metel-core#1979: a type declared in a generic function's body, with an impl that has methods, is built once at
+// definition time, so the impl is registered and its methods run, and the body is analysed (it was I0006 at run time
+// and I0011 under --move-check). The impl names none of the enclosing generics, so it is the same for every call.
+aspect Show { fun show(&self) -> String; }
+fun render<U: Show>(x: &U) -> String { x.show() }
+
+fun direct<T>(x: T) -> String {
+    struct L { n: i64 }
+    extend L: Show { fun show(&self) -> String { "L" } }
+    L { n = 1 }.show()
+}
+
+fun through_a_bound<T>(x: T, n: i64) -> String {
+    struct L { n: i64 }
+    extend L: Show { fun show(&self) -> String { "L${self.n}" } }
+    let l := L { n = n };
+    render(&l)
+}
+
+fun in_a_closure<T>(x: T) -> String {
+    struct L { n: i64 }
+    extend L: Show { fun show(&self) -> String { "closure" } }
+    let f := |k: i64| -> String { L { n = k }.show() };
+    f(1)
+}
+
+fun two_blocks<T>(x: T, flag: boolean) -> String {
+    if (flag) {
+        struct L { n: i64 }
+        extend L: Show { fun show(&self) -> String { "yes" } }
+        return L { n = 1 }.show();
+    }
+    struct L { n: i64 }
+    extend L: Show { fun show(&self) -> String { "no" } }
+    L { n = 2 }.show()
+}
+
+fun generic_local<T>(x: T) -> String {
+    struct W<U> { v: U }
+    extend<U> W<U>: Show { fun show(&self) -> String { "W" } }
+    let w: W<i64> := W { v = 1 };
+    render(&w)
+}
+
+fun displayed<T>(x: T) -> String {
+    struct L { n: i64 }
+    extend L: Display { fun to_string(&self) -> String { "L${self.n}" } }
+    let l := L { n = 3 };
+    "${l}"
+}
+
+struct Box<T> { v: T }
+extend<T> Box<T> {
+    fun label(&self) -> String {
+        struct L { n: i64 }
+        extend L: Show { fun show(&self) -> String { "method" } }
+        L { n = 1 }.show()
+    }
+}
+
+fun main() {
+    assert(direct(1) == "L");
+    assert(through_a_bound(1, 5) == "L5");
+    assert(through_a_bound("a", 6) == "L6");
+    assert(in_a_closure(1) == "closure");
+    assert(two_blocks(1, true) == "yes");
+    assert(two_blocks(1, false) == "no");
+    assert(generic_local(1) == "W");
+    assert(displayed(1) == "L3");
+    assert(Box { v = 1 }.label() == "method");
+}

@@ -1299,10 +1299,58 @@ pub(super) fn construct_program(
         if let (TypedDecl::Mut(md), Decl::Mut(d)) = (&mut typed, decl) {
             md.def_id = ctx.declared_symbol_at(&d.span);
         }
+        construct_local_items_of_generic_bodies(&typed, &mut ctx);
         out.push(typed);
     }
     out.append(&mut ctx.lifted_local_impls);
     Ok(out)
+}
+
+/// A generic body is only constructed per call, at run time, which discards the impls it lifts. A type
+/// declared in such a body, and its impls, name none of the enclosing generics or bindings, so they are
+/// the same for every call: each block of the body that declares any is constructed once, here, from the
+/// declarations alone, and the typed impls it lifts join the module's (metel-core#1979). The block itself is
+/// not kept. A failure is left to the per-call construction, which reports it against the call.
+fn construct_local_items_of_generic_bodies(typed: &TypedDecl, ctx: &mut ConstructCtx) {
+    let mut bodies: Vec<&Block> = Vec::new();
+    match typed {
+        TypedDecl::Fun(function) => {
+            if let FunBody::Generic(body) = &function.body {
+                bodies.push(body);
+            }
+        }
+        TypedDecl::Impl(implementation) => {
+            for method in &implementation.methods {
+                if let FunBody::Generic(body) = &method.body {
+                    bodies.push(body);
+                }
+            }
+        }
+        _ => {}
+    }
+    let mut blocks: Vec<&Block> = Vec::new();
+    for body in bodies {
+        crate::data::decl_walk::for_each_block(body, &mut |block| blocks.push(block));
+    }
+    for block in blocks {
+        let items: Vec<Decl> = block
+            .stmts
+            .iter()
+            .filter(|statement| {
+                matches!(statement, Decl::Struct(_) | Decl::Enum(_) | Decl::Impl(_))
+            })
+            .cloned()
+            .collect();
+        if !items.iter().any(|item| matches!(item, Decl::Impl(_))) {
+            continue;
+        }
+        let items = Block {
+            stmts: items,
+            tail: None,
+            span: block.span.clone(),
+        };
+        let _ = construct_block(&items, None, ctx);
+    }
 }
 
 mod narrowing;
