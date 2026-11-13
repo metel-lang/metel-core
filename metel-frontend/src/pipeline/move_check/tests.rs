@@ -1966,7 +1966,7 @@ fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial
         r#"
 aspect Marker;
 fun item(k: i64) -> i64 { k }
-fun preparation<T>(value: T) { fun nested<U>(held: U) -> U { held } let pair := [|k: i64| -> i64 { k }, item]; }
+fun preparation<T>(value: T, other: |i64| -> i64) { fun nested<U>(held: U) -> U { held } let pair := [|k: i64| -> i64 { k }, other]; }
 fun ownership<T>(value: T, holder: dyn Marker) {
     let first := value; let second := value; let held := holder;
 }

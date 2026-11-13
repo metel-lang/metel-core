@@ -1,0 +1,8 @@
+// metel-core#2000: after the reassignment the binding may hold the closure that owns a `String`.
+fun f<T: Copy>(x: T, s: String) {
+    var c := [x]|k: i64| -> i64 { k };
+    c = [s]|k: i64| -> i64 { k };
+    let a := c;
+    let b := c;
+}
+fun main() {}

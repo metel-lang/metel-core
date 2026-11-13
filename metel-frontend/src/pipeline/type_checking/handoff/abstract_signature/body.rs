@@ -31,6 +31,11 @@ struct BodyFreezer<'a, 'return_type> {
     return_type: &'return_type AbstractType,
     binding_names: &'a RefCell<HashMap<crate::identity::BindingId, String>>,
     closure_types: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
+    /// The contract of every closure a closure-holding binding is reassigned to, merged (metel-core#2000).
+    reassigned: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
+    /// What the previous attempt observed in `reassigned`: a binding's contract starts as the conjunction of its
+    /// declaration's and these.
+    widened: &'a HashMap<crate::identity::BindingId, AbstractType>,
     loop_results: RefCell<Vec<AbstractType>>,
     registry: &'a TypeDefinitionRegistry,
     /// The defining module's overload table, to identify which overload a call selects.
@@ -67,6 +72,23 @@ pub(in crate::pipeline::type_checking) fn prepare_abstract_body(
     }
 }
 
+/// How many times a body is rebuilt while the contracts of reassigned closures settle: each attempt seeds a
+/// binding with what the last one saw assigned to it, and a value that grows the contract it is assigned to
+/// (a closure capturing the binding it is stored in) does not settle.
+const REASSIGNMENT_ATTEMPTS: usize = 4;
+
+/// What a body is built from.
+#[derive(Clone, Copy)]
+struct BodyInputs<'a> {
+    signature: &'a AbstractSignature,
+    scheme: &'a TypeScheme,
+    declaration: &'a FunDecl,
+    facts: &'a ResolvedInferenceFacts,
+    identity: FrozenIdentity<'a>,
+    registry: &'a TypeDefinitionRegistry,
+    overloads: &'a OverloadTable,
+}
+
 fn freeze_body(
     signature: &AbstractSignature,
     scheme: &TypeScheme,
@@ -76,6 +98,45 @@ fn freeze_body(
     registry: &TypeDefinitionRegistry,
     overloads: &OverloadTable,
 ) -> Result<AbstractBody, String> {
+    let inputs = BodyInputs {
+        signature,
+        scheme,
+        declaration,
+        facts,
+        identity,
+        registry,
+        overloads,
+    };
+    let mut widened = HashMap::new();
+    for _ in 0..REASSIGNMENT_ATTEMPTS {
+        let (body, observed) = freeze_body_with(inputs, &widened)?;
+        if observed == widened {
+            return Ok(body);
+        }
+        widened = observed;
+    }
+    Err("closure reassignment ownership contracts do not settle".to_string())
+}
+
+fn freeze_body_with(
+    inputs: BodyInputs<'_>,
+    widened: &HashMap<crate::identity::BindingId, AbstractType>,
+) -> Result<
+    (
+        AbstractBody,
+        HashMap<crate::identity::BindingId, AbstractType>,
+    ),
+    String,
+> {
+    let BodyInputs {
+        signature,
+        scheme,
+        declaration,
+        facts,
+        identity,
+        registry,
+        overloads,
+    } = inputs;
     let source_order: Vec<_> = declaration
         .generics
         .iter()
@@ -93,6 +154,7 @@ fn freeze_body(
     };
     let binding_names = RefCell::new(HashMap::new());
     let closure_types = RefCell::new(HashMap::new());
+    let reassigned = RefCell::new(HashMap::new());
     let nominal_ownership = RefCell::new(Vec::new());
     let locals = super::LocalParameters::new(signature.binder, signature.parameters.len());
     let freezer = BodyFreezer {
@@ -112,6 +174,8 @@ fn freeze_body(
         return_type: result,
         binding_names: &binding_names,
         closure_types: &closure_types,
+        reassigned: &reassigned,
+        widened,
         loop_results: RefCell::new(Vec::new()),
         registry,
         overloads,
@@ -128,18 +192,21 @@ fn freeze_body(
         .collect::<Result<_, _>>()?;
     let mut block = freezer.block(&declaration.body)?;
     freezer.check_branch_type(&mut block, result)?;
-    Ok(AbstractBody {
-        binder: signature.binder,
-        parameters,
-        binding_names: binding_names.into_inner(),
-        nominal_ownership: nominal_ownership.into_inner(),
-        local_parameters: locals
-            .ids()
-            .into_iter()
-            .map(unconstrained_parameter)
-            .collect(),
-        block,
-    })
+    Ok((
+        AbstractBody {
+            binder: signature.binder,
+            parameters,
+            binding_names: binding_names.into_inner(),
+            nominal_ownership: nominal_ownership.into_inner(),
+            local_parameters: locals
+                .ids()
+                .into_iter()
+                .map(unconstrained_parameter)
+                .collect(),
+            block,
+        },
+        reassigned.into_inner(),
+    ))
 }
 
 impl BodyFreezer<'_, '_> {
@@ -241,7 +308,15 @@ impl BodyFreezer<'_, '_> {
         // A closure, or an aggregate that holds one (metel-core#1960), keeps its contract at every use of the
         // binding: the typechecker's own type for the use writes the closure as a function type.
         if holds_closure(&ty) {
-            self.closure_types.borrow_mut().insert(identity, ty.clone());
+            // A closure the binding is later reassigned to widens what it may own.
+            let contract = match (&ty, self.widened.get(&identity)) {
+                (AbstractType::Closure { .. }, Some(assigned)) => {
+                    merge_contracts(Some(ty.clone()), assigned)?
+                        .ok_or("closure reassignment ownership contracts are not yet retained")?
+                }
+                _ => ty.clone(),
+            };
+            self.closure_types.borrow_mut().insert(identity, contract);
         }
         Ok(AbstractBinding {
             identity,
@@ -1812,12 +1887,25 @@ impl BodyFreezer<'_, '_> {
             selection,
             inputs,
         } = self.assignment_place(target, target_span, &target_type)?;
-        if self.closure_types.borrow().contains_key(&target) {
-            return Err(
-                "closure reassignment ownership contracts are not yet retained".to_string(),
-            );
+        let held = self.closure_types.borrow().get(&target).cloned();
+        let mut value = self.expression(value)?;
+        if let Some(held) = held {
+            // A closure stored in a closure-holding binding: its contract joins the binding's.
+            let supported = projections.is_empty()
+                && matches!(operator, AssignOp::Assign)
+                && matches!(held, AbstractType::Closure { .. });
+            let assigned = closure_contract(&value.ty)
+                .filter(|_| supported)
+                .ok_or("closure reassignment ownership contracts are not yet retained")?;
+            let merged =
+                merge_contracts(self.reassigned.borrow().get(&target).cloned(), &assigned)?;
+            if let Some(merged) = merged {
+                self.reassigned.borrow_mut().insert(target, merged);
+            }
+            value = Self::coerce_callable(value, &target_type).map_err(|_| {
+                "closure reassignment ownership contracts are not yet retained".to_string()
+            })?;
         }
-        let value = self.expression(value)?;
         if value.ty != target_type && value.ty != AbstractType::Never {
             return Err("assignment storage contract is not yet retained".to_string());
         }
@@ -2023,6 +2111,8 @@ impl BodyFreezer<'_, '_> {
             return_type: result,
             binding_names: self.binding_names,
             closure_types: self.closure_types,
+            reassigned: self.reassigned,
+            widened: self.widened,
             loop_results: RefCell::new(Vec::new()),
             registry: self.registry,
             overloads: self.overloads,
@@ -2918,32 +3008,87 @@ fn holds_closure(ty: &AbstractType) -> bool {
     }
 }
 
-/// The contract two closures of one type share: the signature they agree on and every capture either owns.
+/// The contract two closures of one type share: the signature they agree on and every capture either owns. A
+/// function item is a closure that owns nothing: it is `Copy`, and has no capture to own (metel-core#2000).
 fn merge_contracts(
     merged: Option<AbstractType>,
     next: &AbstractType,
 ) -> Result<Option<AbstractType>, String> {
     let unsupported = || "aggregate closure ownership contracts are not yet retained".to_string();
-    match (merged, next) {
-        (None, next @ AbstractType::Closure { .. }) => Ok(Some(next.clone())),
+    let next = closure_contract(next).ok_or_else(unsupported)?;
+    let Some(merged) = merged else {
+        return Ok(Some(next));
+    };
+    let (
+        AbstractType::Closure {
+            signature,
+            mut owned_captures,
+        },
+        AbstractType::Closure {
+            signature: other,
+            owned_captures: more,
+        },
+    ) = (closure_contract(&merged).ok_or_else(unsupported)?, next)
+    else {
+        return Err(unsupported());
+    };
+    if !same_callable(&signature, &other) {
+        return Err(unsupported());
+    }
+    owned_captures.extend(more);
+    Ok(Some(AbstractType::Closure {
+        signature: if matches!(merged, AbstractType::Closure { .. }) {
+            signature
+        } else {
+            other
+        },
+        owned_captures,
+    }))
+}
+
+/// A closure's own contract, or the contract of a function item: its function type owning no capture. `None`
+/// for a function type that is not `Copy`, which a function item always is.
+fn closure_contract(ty: &AbstractType) -> Option<AbstractType> {
+    use crate::data::types::UseMultiplicity;
+    match ty {
+        AbstractType::Closure { .. } => Some(ty.clone()),
+        AbstractType::Function {
+            usage: UseMultiplicity::Copy,
+            ..
+        } => Some(AbstractType::Closure {
+            signature: Box::new(ty.clone()),
+            owned_captures: Vec::new(),
+        }),
+        _ => None,
+    }
+}
+
+/// Two function types that differ at most in their `usage`: the `Copy` of a closure is its captures', of a
+/// function item its own, so the axis is what the contract replaces.
+fn same_callable(a: &AbstractType, b: &AbstractType) -> bool {
+    match (a, b) {
         (
-            Some(AbstractType::Closure {
-                signature,
-                mut owned_captures,
-            }),
-            AbstractType::Closure {
-                signature: other,
-                owned_captures: more,
+            AbstractType::Function {
+                parameters,
+                result,
+                call,
+                mutation,
+                ..
             },
-        ) if *signature == **other => {
-            owned_captures.extend(more.iter().cloned());
-            Ok(Some(AbstractType::Closure {
-                signature,
-                owned_captures,
-            }))
+            AbstractType::Function {
+                parameters: other_parameters,
+                result: other_result,
+                call: other_call,
+                mutation: other_mutation,
+                ..
+            },
+        ) => {
+            parameters == other_parameters
+                && result == other_result
+                && call == other_call
+                && mutation == other_mutation
         }
-        // Not every element is a closure (a function item, a nested aggregate): not retained.
-        _ => Err(unsupported()),
+        _ => a == b,
     }
 }
 
