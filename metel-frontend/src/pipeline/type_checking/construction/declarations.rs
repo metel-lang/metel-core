@@ -344,6 +344,7 @@ pub(super) fn construct_fun_decl(
             assoc_projections: vec![],
             body_projections: vec![],
             assoc_eq_constraints: vec![],
+            aspect_arguments: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],

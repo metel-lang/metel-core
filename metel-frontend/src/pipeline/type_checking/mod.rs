@@ -129,6 +129,8 @@ struct FunGeneralization {
     /// Maps `TypeVar` ID → associated-type equality constraints (RFC-0082 §4,
     /// issue #242), same re-export rationale as `assoc_projections` above.
     assoc_eq: HashMap<TypeVar, Vec<(String, String, InferType)>>,
+    /// The aspect type arguments the function's bounds name, same re-export rationale (metel-core#1988).
+    aspect_arguments: crate::pipeline::type_checking::type_engine::AspectTypeArguments,
     /// Maps `TypeVar` ID → opaque-return metadata (RFC-0037, issue #240):
     /// `(aspect_name, concrete_type)`. Attached to the re-generalized scheme so
     /// the opaque-return identity survives the rebuild into `scheme_env` (which
@@ -266,6 +268,10 @@ fn refresh_scheme_for_export(
         type_var_gen,
     );
     let quantified_vars = scheme.quantified_vars.iter().map(|v| renaming[v]).collect();
+    let mut rename = crate::pipeline::type_checking::type_engine::Substitution::new();
+    for (old, new) in &renaming {
+        rename.bind(*old, InferType::Var(*new));
+    }
     TypeScheme {
         quantified_vars,
         param_names: scheme.param_names.clone(),
@@ -283,7 +289,37 @@ fn refresh_scheme_for_export(
         row_view_consumes: scheme.row_view_consumes.clone(),
         assoc_projections: vec![],
         body_projections: vec![],
-        assoc_eq_constraints: vec![],
+        // Equality constraints (`S: Source<Item = i64>`) name quantified vars in their types, which the renaming
+        // moved; carried so a caller in another module checks them (metel-core#1988).
+        assoc_eq_constraints: scheme
+            .assoc_eq_constraints
+            .iter()
+            .map(|per_var| {
+                per_var
+                    .iter()
+                    .map(|(aspect, assoc, ty)| (aspect.clone(), assoc.clone(), rename.apply(ty)))
+                    .collect()
+            })
+            .collect(),
+        // The aspect arguments a bound names mention quantified vars, which the renaming moved.
+        aspect_arguments: scheme
+            .aspect_arguments
+            .iter()
+            .map(|per_var| {
+                per_var
+                    .iter()
+                    .map(|(aspect, arguments)| {
+                        (
+                            aspect.clone(),
+                            arguments
+                                .iter()
+                                .map(|argument| rename.apply(argument))
+                                .collect(),
+                        )
+                    })
+                    .collect()
+            })
+            .collect(),
         // RFC-0037 opaque-return metadata is positional (index-aligned with
         // `quantified_vars`) and stores fully-concrete `Type` values with no
         // TypeVar references, so the renaming doesn't affect it. Must NOT be
@@ -1821,6 +1857,7 @@ fn build_module_scheme_env(
             .with_record_kinds(&fg.record_kinds)
             .with_assoc_projections(&fg.assoc_projections)
             .with_assoc_eq_constraints(&fg.assoc_eq)
+            .with_aspect_arguments(&fg.aspect_arguments)
             .with_opaque_returns(&fg.opaque_returns)
             .with_open_row_params(&fg.open_row_params);
         scheme.param_names = scheme

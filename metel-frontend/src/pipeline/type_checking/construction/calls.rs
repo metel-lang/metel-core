@@ -235,6 +235,14 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_scheme_aspect_arguments(
+                name,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_fun_call_neg_bounds(name, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_neg_bounds(
                 name,
@@ -332,6 +340,14 @@ pub(super) fn construct_call(
                 ctx.registry,
                 ctx.current_module,
             )?;
+            check_scheme_aspect_arguments(
+                &joined,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_fun_call_neg_bounds(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
             check_scheme_neg_bounds(
                 &joined,
@@ -413,6 +429,14 @@ pub(super) fn construct_call(
                 ctx.current_module,
             )?;
             check_scheme_assoc_eq(
+                resolved,
+                scheme,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
+            check_scheme_aspect_arguments(
                 resolved,
                 scheme,
                 &var_map,
@@ -779,7 +803,7 @@ pub(super) fn try_generic_method_scheme(
         ctx.current_module,
         ctx.identity.binding_spans,
     )?;
-    check_scheme_assoc_eq(
+    check_scheme_equalities(
         method,
         scheme,
         &var_to_type,
@@ -908,6 +932,33 @@ pub(super) fn check_scheme_bounds(
     Ok(())
 }
 
+/// The associated-type equalities and the aspect type arguments a scheme's bounds name.
+fn check_scheme_equalities(
+    fun_name: &str,
+    scheme: &TypeScheme,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    check_scheme_assoc_eq(
+        fun_name,
+        scheme,
+        var_to_type,
+        span,
+        registry,
+        current_module,
+    )?;
+    check_scheme_aspect_arguments(
+        fun_name,
+        scheme,
+        var_to_type,
+        span,
+        registry,
+        current_module,
+    )
+}
+
 /// metel-core#1984: a bound that names an aspect type argument (`X: Conv<i64>`) is satisfied only by an impl
 /// with that argument. The argument is compared when the argument type has unconditional impls of the aspect
 /// recorded with arguments; where it has none (a conditional, blanket or built-in impl) nothing is said.
@@ -922,51 +973,92 @@ pub(super) fn check_fun_call_aspect_arguments(
         return Ok(());
     };
     for ((tv, aspect), expected) in arguments {
-        let Some(concrete) = var_to_type.get(tv) else {
-            continue;
-        };
-        let Some(recorded) =
-            registry.unconditional_aspect_impl_arguments(current_module, concrete, aspect)
-        else {
-            continue;
-        };
-        let mut wanted = Vec::with_capacity(expected.len());
-        for argument in expected {
-            let resolved = match argument {
-                InferType::Var(var) => var_to_type.get(var).cloned(),
-                InferType::Concrete(ty) => Some(ty.clone()),
-                _ => None,
-            };
-            let Some(resolved) = resolved else {
-                wanted.clear();
-                break;
-            };
-            wanted.push(resolved);
-        }
-        if wanted.len() != expected.len() || recorded.iter().all(Vec::is_empty) {
-            continue;
-        }
-        if !recorded.iter().any(|candidate| candidate == &wanted) {
-            let wanted_text: Vec<String> = wanted.iter().map(ToString::to_string).collect();
-            let found: Vec<String> = recorded
-                .iter()
-                .map(|candidate| {
-                    let shown: Vec<String> = candidate.iter().map(ToString::to_string).collect();
-                    format!("{aspect}<{}>", shown.join(", "))
-                })
-                .collect();
-            return Err(MetelError::type_error(
-                TypeErrorCode::T0012,
-                format!(
-                    "`{concrete}` does not implement `{aspect}<{}>` (required by `{fun_name}`); it implements {}",
-                    wanted_text.join(", "),
-                    found.join(", ")
-                ),
+        compare_aspect_arguments(
+            fun_name,
+            (tv, aspect, expected),
+            var_to_type,
+            span,
+            registry,
+            current_module,
+        )?;
+    }
+    Ok(())
+}
+
+/// The same check from the scheme a caller in another module sees (metel-core#1988): the arguments a bound
+/// names travel with the scheme, aligned with its quantified variables, because the by-name table keys
+/// type variables the export renamed.
+pub(super) fn check_scheme_aspect_arguments(
+    fun_name: &str,
+    scheme: &TypeScheme,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    for (tv, bounds) in scheme.quantified_vars.iter().zip(&scheme.aspect_arguments) {
+        for (aspect, expected) in bounds {
+            compare_aspect_arguments(
+                fun_name,
+                (tv, aspect, expected),
+                var_to_type,
                 span,
-            ));
+                registry,
+                current_module,
+            )?;
         }
     }
     Ok(())
+}
+
+fn compare_aspect_arguments(
+    fun_name: &str,
+    (tv, aspect, expected): (&TypeVar, &String, &Vec<InferType>),
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let Some(concrete) = var_to_type.get(tv) else {
+        return Ok(());
+    };
+    let Some(recorded) =
+        registry.unconditional_aspect_impl_arguments(current_module, concrete, aspect)
+    else {
+        return Ok(());
+    };
+    let mut wanted = Vec::with_capacity(expected.len());
+    for argument in expected {
+        let resolved = match argument {
+            InferType::Var(var) => var_to_type.get(var).cloned(),
+            InferType::Concrete(ty) => Some(ty.clone()),
+            _ => None,
+        };
+        let Some(resolved) = resolved else {
+            return Ok(());
+        };
+        wanted.push(resolved);
+    }
+    if recorded.iter().all(Vec::is_empty) || recorded.iter().any(|candidate| candidate == &wanted) {
+        return Ok(());
+    }
+    let wanted_text: Vec<String> = wanted.iter().map(ToString::to_string).collect();
+    let found: Vec<String> = recorded
+        .iter()
+        .map(|candidate| {
+            let shown: Vec<String> = candidate.iter().map(ToString::to_string).collect();
+            format!("{aspect}<{}>", shown.join(", "))
+        })
+        .collect();
+    Err(MetelError::type_error(
+        TypeErrorCode::T0012,
+        format!(
+            "`{concrete}` does not implement `{aspect}<{}>` (required by `{fun_name}`); it implements {}",
+            wanted_text.join(", "),
+            found.join(", ")
+        ),
+        span,
+    ))
 }
 
 /// RFC-0082 §4: enforce associated-type equality constraints from `fun_bounds`.

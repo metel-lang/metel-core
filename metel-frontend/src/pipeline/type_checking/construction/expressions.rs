@@ -6,11 +6,11 @@ use super::{
     TypedMutDecl, TypedReturnExpr, TypedStmt, TypedWhileStmt, UnaryOp,
     assign_target_to_typed_place, block_result_type, builtin_pattern_method_expr,
     check_fun_call_aspect_arguments, check_fun_call_assoc_eq, check_fun_call_bounds,
-    check_fun_call_neg_bounds, check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
-    check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_binop,
-    construct_block, construct_call, construct_enum_literal_ty, construct_match,
-    construct_method_args, construct_propagate_error, construct_unaryop,
-    dispatch_for_resolved_method, find_loop_break_type, infer_type_to_type,
+    check_fun_call_neg_bounds, check_scheme_aspect_arguments, check_scheme_assoc_eq,
+    check_scheme_bounds, check_scheme_neg_bounds, check_type_does_not_satisfy_bound,
+    check_type_satisfies_bounds, construct_binop, construct_block, construct_call,
+    construct_enum_literal_ty, construct_match, construct_method_args, construct_propagate_error,
+    construct_unaryop, dispatch_for_resolved_method, find_loop_break_type, infer_type_to_type,
     instantiate_scheme_for_call, maybe_dyn_coerce, maybe_fn_move_coerce, maybe_singleton_coerce,
     merge_branch_types, peel_type_references, resolve_expected_enum, resolve_generic_method_call,
     resolve_unqualified_variant_expr, resolved_to_type, type_chain_provides_mut_access,
@@ -541,6 +541,14 @@ pub(super) fn construct_expr(
                                 ctx.current_module,
                             )?;
                             check_scheme_assoc_eq(
+                                name,
+                                scheme,
+                                &var_map,
+                                span,
+                                ctx.registry,
+                                ctx.current_module,
+                            )?;
+                            check_scheme_aspect_arguments(
                                 name,
                                 scheme,
                                 &var_map,

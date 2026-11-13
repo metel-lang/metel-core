@@ -1,0 +1,2 @@
+pub aspect Conv<T> { fun conv(&self) -> T; }
+pub fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
