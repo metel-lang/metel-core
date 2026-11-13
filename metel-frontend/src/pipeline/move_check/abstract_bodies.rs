@@ -48,6 +48,7 @@ impl Environment<'_> {
                 }
             }
             AbstractType::Concrete(ty) => ty.to_string(),
+            AbstractType::Closure { .. } => "a closure".to_string(),
             AbstractType::Reference(inner) => format!("&{}", self.render(inner)),
             AbstractType::MutReference(inner) => format!("&var {}", self.render(inner)),
             AbstractType::Tuple(items) => {
@@ -488,6 +489,9 @@ impl Checker<'_> {
                         AbstractType::Parameter(id) => Some(format!(
                             "{head}, and {}",
                             self.explain_parameter_not_copy(*id, env)?
+                        )),
+                        AbstractType::Closure { .. } => Some(format!(
+                            "{head}, and this closure owns a capture that is not `Copy`"
                         )),
                         _ => Some(format!("{head}, and `{shown}` is not `Copy`")),
                     }

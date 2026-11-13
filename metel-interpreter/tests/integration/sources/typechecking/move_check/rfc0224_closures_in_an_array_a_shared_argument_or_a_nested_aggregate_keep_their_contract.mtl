@@ -1,0 +1,36 @@
+// metel-core#1982: a closure keeps its ownership contract in a generic body when it sits in an array (one contract for the
+// elements: the conjunction), when two closures meet in one type argument, and when it is nested inside an aggregate in a
+// struct field. A closure with no owned capture, or whose captures are `Copy` by a bound, is `Copy`, and so is the aggregate.
+struct Pair<T> derives Copy via T { a: T, b: T }
+struct Holder<T> derives Copy via T { items: (T, i64) }
+
+fun in_an_array<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let a := [c, c];
+    let b := a;
+    let d := a;
+}
+
+fun repeated<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let a := [c; 2];
+    let b := a;
+    let d := a;
+}
+
+fun two_closures_one_argument<T: Copy>(x: T) {
+    let c1 := [x]|k: i64| -> i64 { k };
+    let c2 := |k: i64| -> i64 { k };
+    let w := Pair { a = c1, b = c2 };
+    let p := w;
+    let q := w;
+}
+
+fun nested<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let h := Holder { items = (c, 1) };
+    let a := h;
+    let b := h;
+}
+
+fun main() {}

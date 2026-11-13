@@ -1478,20 +1478,21 @@ impl BodyFreezer<'_, '_> {
     /// An aggregate literal that holds a closure: its type, from the typechecker, writes the closure as a
     /// function type, which has lost the captures the closure owns, so whether the aggregate is `Copy` could
     /// not be decided. The closure's own contract (`AbstractType::Closure`, its owned captures) is put back at
-    /// the position that holds it: the tuple item, the record field, or the type argument a struct field of
-    /// bare parameter type carries (metel-core#1960). `None` when no element is a closure. An array of
-    /// closures (its elements share one function type but may own different captures), and a closure in a
-    /// field that is not a bare type parameter, are still not retained.
+    /// the position that holds it: a tuple item, a record field, an array element, or the type argument a struct
+    /// field's declared type carries, however deeply nested (metel-core#1960, #1982). Where several elements
+    /// share one type (the elements of an array, two fields of one parameter's type), the contract is the
+    /// conjunction: the owned captures of each, so the aggregate is `Copy` only when every capture is. `None`
+    /// when no element holds a closure.
     fn retain_aggregate_closures(
         &self,
         ty: &AbstractType,
         kind: &AbstractExprKind,
     ) -> Result<Option<AbstractType>, String> {
-        let is_closure = |value: &AbstractExpr| matches!(value.ty, AbstractType::Closure { .. });
+        let holds = |value: &AbstractExpr| holds_closure(&value.ty);
         let unsupported =
             || "aggregate closure ownership contracts are not yet retained".to_string();
         match kind {
-            AbstractExprKind::Tuple(items) if items.iter().any(is_closure) => {
+            AbstractExprKind::Tuple(items) if items.iter().any(holds) => {
                 let AbstractType::Tuple(types) = ty else {
                     return Err(unsupported());
                 };
@@ -1503,7 +1504,7 @@ impl BodyFreezer<'_, '_> {
                         .iter()
                         .zip(items)
                         .map(|(ty, item)| {
-                            if is_closure(item) {
+                            if holds(item) {
                                 item.ty.clone()
                             } else {
                                 ty.clone()
@@ -1513,7 +1514,7 @@ impl BodyFreezer<'_, '_> {
                 )))
             }
             AbstractExprKind::RecordLiteral { fields, .. }
-                if fields.iter().any(|(_, value)| is_closure(value)) =>
+                if fields.iter().any(|(_, value)| holds(value)) =>
             {
                 let AbstractType::Record(types) = ty else {
                     return Err(unsupported());
@@ -1524,15 +1525,27 @@ impl BodyFreezer<'_, '_> {
                         .map(|(name, ty)| {
                             let replaced = fields
                                 .iter()
-                                .find(|(field, value)| field == name && is_closure(value))
+                                .find(|(field, value)| field == name && holds(value))
                                 .map(|(_, value)| value.ty.clone());
                             (name.clone(), replaced.unwrap_or_else(|| ty.clone()))
                         })
                         .collect(),
                 )))
             }
+            AbstractExprKind::Array(items) if items.iter().any(holds) => {
+                let merged = items
+                    .iter()
+                    .try_fold(None, |merged: Option<AbstractType>, item| {
+                        merge_contracts(merged, &item.ty)
+                    })?
+                    .ok_or_else(unsupported)?;
+                Ok(Some(with_element(ty, merged).ok_or_else(unsupported)?))
+            }
+            AbstractExprKind::RepeatArray { value, .. } if holds(value) => Ok(Some(
+                with_element(ty, value.ty.clone()).ok_or_else(unsupported)?,
+            )),
             AbstractExprKind::StructLiteral { fields }
-                if fields.iter().any(|(_, value)| is_closure(value)) =>
+                if fields.iter().any(|(_, value)| holds(value)) =>
             {
                 let AbstractType::Named {
                     name,
@@ -1551,32 +1564,21 @@ impl BodyFreezer<'_, '_> {
                     .registry
                     .struct_type_params_by_id(id)
                     .ok_or_else(unsupported)?;
-                let mut refined = arguments.clone();
-                let mut placed: Vec<Option<AbstractType>> = vec![None; arguments.len()];
-                for (field, value) in fields.iter().filter(|(_, value)| is_closure(value)) {
+                let mut bound: Vec<Option<AbstractType>> = vec![None; params.len()];
+                for (field, value) in fields.iter().filter(|(_, value)| holds(value)) {
                     let template = templates
                         .iter()
                         .find(|entry| &entry.name == field)
                         .ok_or_else(unsupported)?;
-                    let crate::pipeline::type_checking::type_engine::InferType::Var(var) =
-                        &template.ty
-                    else {
-                        return Err(unsupported());
-                    };
-                    let position = params
-                        .iter()
-                        .position(|param| param == var)
-                        .filter(|position| *position < arguments.len())
-                        .ok_or_else(unsupported)?;
-                    // Two closures meeting in one argument cannot be told apart by it.
-                    if placed[position]
-                        .as_ref()
-                        .is_some_and(|prior| prior != &value.ty)
+                    bind_template(&template.ty, &value.ty, params, &mut bound)?;
+                }
+                let mut refined = arguments.clone();
+                for (position, replacement) in bound.into_iter().enumerate() {
+                    if let (Some(replacement), Some(slot)) =
+                        (replacement, refined.get_mut(position))
                     {
-                        return Err(unsupported());
+                        *slot = replacement;
                     }
-                    placed[position] = Some(value.ty.clone());
-                    refined[position] = value.ty.clone();
                 }
                 Ok(Some(AbstractType::Named {
                     name: name.clone(),
@@ -1584,8 +1586,6 @@ impl BodyFreezer<'_, '_> {
                     identity: identity.clone(),
                 }))
             }
-            AbstractExprKind::Array(items) if items.iter().any(is_closure) => Err(unsupported()),
-            AbstractExprKind::RepeatArray { value, .. } if is_closure(value) => Err(unsupported()),
             _ => Ok(None),
         }
     }
@@ -2797,6 +2797,103 @@ fn holds_closure(ty: &AbstractType) -> bool {
         AbstractType::Tuple(items) => items.iter().any(holds_closure),
         AbstractType::Record(fields) => fields.iter().any(|(_, ty)| holds_closure(ty)),
         AbstractType::Named { arguments, .. } => arguments.iter().any(holds_closure),
+        AbstractType::Array(element) | AbstractType::SizedArray(element, _) => {
+            holds_closure(element)
+        }
         _ => false,
+    }
+}
+
+/// The contract two closures of one type share: the signature they agree on and every capture either owns.
+fn merge_contracts(
+    merged: Option<AbstractType>,
+    next: &AbstractType,
+) -> Result<Option<AbstractType>, String> {
+    let unsupported = || "aggregate closure ownership contracts are not yet retained".to_string();
+    match (merged, next) {
+        (None, next @ AbstractType::Closure { .. }) => Ok(Some(next.clone())),
+        (
+            Some(AbstractType::Closure {
+                signature,
+                mut owned_captures,
+            }),
+            AbstractType::Closure {
+                signature: other,
+                owned_captures: more,
+            },
+        ) if *signature == **other => {
+            owned_captures.extend(more.iter().cloned());
+            Ok(Some(AbstractType::Closure {
+                signature,
+                owned_captures,
+            }))
+        }
+        // Not every element is a closure (a function item, a nested aggregate): not retained.
+        _ => Err(unsupported()),
+    }
+}
+
+/// `ty` (an array type) with its element type replaced.
+fn with_element(ty: &AbstractType, element: AbstractType) -> Option<AbstractType> {
+    match ty {
+        AbstractType::SizedArray(_, length) => {
+            Some(AbstractType::SizedArray(Box::new(element), *length))
+        }
+        AbstractType::Array(_) => Some(AbstractType::Array(Box::new(element))),
+        _ => None,
+    }
+}
+
+/// Walk a struct field's declared type against the type of the value stored in it, and record at each type
+/// parameter's position the closure-holding type found there. Two fields that meet in one parameter keep the
+/// conjunction of their contracts. A shape the walk does not follow, where the value holds a closure, is
+/// not retained.
+fn bind_template(
+    template: &crate::pipeline::type_checking::type_engine::InferType,
+    value: &AbstractType,
+    params: &[crate::pipeline::type_checking::TypeVar],
+    bound: &mut [Option<AbstractType>],
+) -> Result<(), String> {
+    use crate::pipeline::type_checking::type_engine::InferType;
+    let unsupported = || "aggregate closure ownership contracts are not yet retained".to_string();
+    if !holds_closure(value) {
+        return Ok(());
+    }
+    match (template, value) {
+        (InferType::Var(var), value) => {
+            let position = params
+                .iter()
+                .position(|param| param == var)
+                .ok_or_else(unsupported)?;
+            let slot = bound.get_mut(position).ok_or_else(unsupported)?;
+            *slot = match slot.take() {
+                None => Some(value.clone()),
+                Some(previous) if previous == *value => Some(previous),
+                Some(previous) => merge_contracts(Some(previous), value)?,
+            };
+            Ok(())
+        }
+        (InferType::Tuple(templates), AbstractType::Tuple(values))
+            if templates.len() == values.len() =>
+        {
+            templates
+                .iter()
+                .zip(values)
+                .try_for_each(|(template, value)| bind_template(template, value, params, bound))
+        }
+        (InferType::Named(_, templates, _), AbstractType::Named { arguments, .. })
+            if templates.len() == arguments.len() =>
+        {
+            templates
+                .iter()
+                .zip(arguments)
+                .try_for_each(|(template, value)| bind_template(template, value, params, bound))
+        }
+        (InferType::Array(template), AbstractType::Array(value))
+        | (InferType::SizedArray(template, _), AbstractType::SizedArray(value, _))
+        | (InferType::Reference(template), AbstractType::Reference(value)) => {
+            bind_template(template, value, params, bound)
+        }
+        _ => Err(unsupported()),
     }
 }
