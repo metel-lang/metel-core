@@ -1,0 +1,21 @@
+// metel-core#1994: a method of a bare-parameter blanket impl of an aspect with type arguments was not analysed
+// (I0011 under --move-check): the impl's own `Self: Conv<i64>` bound had no argument. It is analysed for a blanket with a
+// bound, for each receiver form, for a method with its own generics, and for a generic impl on a named type.
+aspect Conv<T> { fun conv(&self) -> T; fun bump(&var self) -> T; fun take(self) -> T; }
+extend<T: Copy> T: Conv<i64> {
+    fun conv(&self) -> i64 { 1 }
+    fun bump(&var self) -> i64 { 2 }
+    fun take(self) -> i64 { let a := self; let b := self; 3 }
+}
+
+aspect Pick<T> { fun pick<V>(&self, v: V) -> V; }
+extend<T> T: Pick<i64> { fun pick<V>(&self, v: V) -> V { v } }
+
+struct W<U> { v: U }
+extend<U> W<U>: Conv<String> {
+    fun conv(&self) -> String { "w" }
+    fun bump(&var self) -> String { "b" }
+    fun take(self) -> String { "t" }
+}
+
+fun main() {}

@@ -2409,6 +2409,20 @@ pub(super) fn infer_impl_method(
             ib.where_clause.iter().chain(method.where_clause.iter()),
             &generic_map,
         ));
+        // The impl's own aspect is a bound on `Self` (`struct_bounds` above): its type arguments belong to
+        // that bound, or a method of `extend<T> T: Conv<i64>` has the bound `Self: Conv` with no argument and
+        // its abstract signature is not retained (metel-core#1994).
+        if let Some(aspect) = &ib.aspect_name
+            && !ib.aspect_type_args.is_empty()
+        {
+            aspect_arguments.insert(
+                (self_type_var, aspect.clone()),
+                ib.aspect_type_args
+                    .iter()
+                    .map(|argument| type_expr_to_infer_with_generics(argument, &generic_map))
+                    .collect(),
+            );
+        }
         let saved_aspect_arguments = ctx.enter_aspect_type_arguments(aspect_arguments);
         ctx.record_definition_aspect_arguments(
             method.span.clone(),
