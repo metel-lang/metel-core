@@ -4450,15 +4450,10 @@ impl TypeDefinitionRegistry {
         use super::registry::{
             collect_negative_type_param_bounds, collect_type_param_bounds,
             impl_generics_with_row_aliases, synth_generics_for_impl,
+            type_expr_to_infer_for_registry,
         };
         use crate::data::ast::{Polarity, TypeExpr};
-        if ib.polarity != Polarity::Positive
-            || !ib.aspect_type_args.is_empty()
-            || !ib.assoc_type_defs.is_empty()
-        {
-            return;
-        }
-        let (Some(aspect), TypeExpr::Named(name, _, _)) =
+        let (Some(aspect), TypeExpr::Named(name, target_args, _)) =
             (ib.aspect_name.as_deref(), &ib.target_type)
         else {
             return;
@@ -4470,29 +4465,75 @@ impl TypeDefinitionRegistry {
             .struct_generic_names_by_id(id)
             .cloned()
             .unwrap_or_default();
-        // A generic block-local target with hand-written methods is not recorded: calling such a method
-        // through a bound (`render<T: A>(&w)` with `w: W<i64>`) makes the generic definition's
-        // reconstruction fail (metel-core#1973, residual), so it stays a type error, not an internal one.
         if let Some(aspect_id) = self.resolve_type_id(module, aspect) {
             self.record_nominal_ownership_candidate(module, ib, aspect_id, Some(id));
         }
-        if generic_names.is_empty() {
-            self.register_aspect_impl_by_id(id, aspect, Vec::new());
+        let (pos_bounds, neg_bounds) = if generic_names.is_empty() {
+            (Vec::new(), Vec::new())
+        } else {
+            let synth = synth_generics_for_impl(
+                &generic_names,
+                &impl_generics_with_row_aliases(ib, &generic_names),
+            );
+            (
+                collect_type_param_bounds(&synth, ib.where_clause.as_ref()),
+                collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref()),
+            )
+        };
+        let conditional =
+            pos_bounds.iter().any(|b| !b.is_empty()) || neg_bounds.iter().any(|b| !b.is_empty());
+        let concrete = |types: &[TypeExpr], registry: &Self| -> Vec<Type> {
+            types
+                .iter()
+                .filter_map(|te| {
+                    match type_expr_to_infer_for_registry(te, &HashMap::new(), registry, module) {
+                        InferType::Concrete(t) => Some(t),
+                        InferType::Named(n, ..) => {
+                            Some(Type::Named(n, vec![], crate::data::types::NominalId::NONE))
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        };
+        if ib.polarity == Polarity::Negative {
+            // A negative impl (RFC-0081): conditional on the target's parameters, or for one instantiation.
+            if !ib.generics.is_empty() {
+                self.neg_conditional_impl_bounds
+                    .entry((id, aspect.to_string()))
+                    .or_default()
+                    .push((pos_bounds, neg_bounds));
+                return;
+            }
+            let target_types = concrete(target_args, self);
+            self.neg_impl_env
+                .entry((id, aspect.to_string()))
+                .or_default()
+                .push(target_types);
             return;
         }
-        let synth = synth_generics_for_impl(
-            &generic_names,
-            &impl_generics_with_row_aliases(ib, &generic_names),
-        );
-        let pos_bounds = collect_type_param_bounds(&synth, ib.where_clause.as_ref());
-        let neg_bounds = collect_negative_type_param_bounds(&synth, ib.where_clause.as_ref());
-        if pos_bounds.iter().any(|b| !b.is_empty()) || neg_bounds.iter().any(|b| !b.is_empty()) {
+        let type_args = concrete(&ib.aspect_type_args, self);
+        if conditional {
             self.conditional_impl_bounds
                 .entry((id, aspect.to_string()))
                 .or_default()
                 .push((pos_bounds, neg_bounds));
         } else {
-            self.register_aspect_impl_by_id(id, aspect, Vec::new());
+            self.register_aspect_impl_by_id(id, aspect, type_args);
+        }
+        // Associated types are bound for a target that is not generic, as at module level.
+        if generic_names.is_empty() && !ib.assoc_type_defs.is_empty() {
+            let mut bindings = HashMap::new();
+            for def in &ib.assoc_type_defs {
+                let inferred = super::conversions::type_expr_to_infer_with_self(&def.ty, name);
+                let span = Span::new(0, 0, "");
+                if let Ok(ty) = super::conversions::infer_type_to_type(&inferred, &span) {
+                    bindings.insert(def.name.clone(), ty);
+                }
+            }
+            if !bindings.is_empty() {
+                self.register_impl_assoc_types(module, name, aspect, bindings);
+            }
         }
     }
 
@@ -6494,6 +6535,27 @@ impl TypeDefinitionRegistry {
         self.impl_assoc_types
             .get(&(target_id, aspect.to_string()))?
             .get(assoc_name)
+    }
+
+    /// As [`impl_assoc_type`](Self::impl_assoc_type), for a type that carries its declaration's identity: a
+    /// block-local type has no name the module can resolve, so the identity is asked first (metel-core#1979).
+    #[must_use]
+    pub fn impl_assoc_type_for(
+        &self,
+        current_module: &[String],
+        target: &str,
+        identity: &crate::data::types::NominalId,
+        aspect: &str,
+        assoc_name: &str,
+    ) -> Option<&Type> {
+        identity
+            .get()
+            .and_then(|id| {
+                self.impl_assoc_types
+                    .get(&(id, aspect.to_string()))?
+                    .get(assoc_name)
+            })
+            .or_else(|| self.impl_assoc_type(current_module, target, aspect, assoc_name))
     }
 
     /// Registers `impl aspect for target` with `type_args`. `target` is resolved from
