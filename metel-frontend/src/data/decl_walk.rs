@@ -9,15 +9,43 @@ use crate::data::ast::{AssignTarget, Block, Decl, Expr, ForInit, Stmt};
 /// Call `visit` on every declaration written inside `block`, outermost first: a function's own
 /// declaration before the declarations inside its body.
 pub fn for_each_declaration<'a>(block: &'a Block, visit: &mut impl FnMut(&'a Decl)) {
-    in_block(block, visit);
+    in_block(block, &mut Declarations(visit));
+}
+
+/// Call `visit` on every block written inside `block`, `block` itself first and outer blocks before the
+/// blocks inside them: a function's body, a branch, a loop body, a closure body, a match arm.
+pub fn for_each_block<'a>(block: &'a Block, visit: &mut impl FnMut(&'a Block)) {
+    in_block(block, &mut Blocks(visit));
 }
 
 /// As [`for_each_declaration`], for the declarations inside an expression.
 pub fn for_each_declaration_in_expr<'a>(expr: &'a Expr, visit: &mut impl FnMut(&'a Decl)) {
-    in_expr(expr, visit);
+    in_expr(expr, &mut Declarations(visit));
 }
 
-fn in_block<'a>(block: &'a Block, found: &mut impl FnMut(&'a Decl)) {
+trait Visitor<'a> {
+    fn declaration(&mut self, _declaration: &'a Decl) {}
+    fn block(&mut self, _block: &'a Block) {}
+}
+
+struct Declarations<'f, F>(&'f mut F);
+
+impl<'a, F: FnMut(&'a Decl)> Visitor<'a> for Declarations<'_, F> {
+    fn declaration(&mut self, declaration: &'a Decl) {
+        (self.0)(declaration);
+    }
+}
+
+struct Blocks<'f, F>(&'f mut F);
+
+impl<'a, F: FnMut(&'a Block)> Visitor<'a> for Blocks<'_, F> {
+    fn block(&mut self, block: &'a Block) {
+        (self.0)(block);
+    }
+}
+
+fn in_block<'a>(block: &'a Block, found: &mut impl Visitor<'a>) {
+    found.block(block);
     for declaration in &block.stmts {
         in_declaration(declaration, found);
     }
@@ -26,8 +54,8 @@ fn in_block<'a>(block: &'a Block, found: &mut impl FnMut(&'a Decl)) {
     }
 }
 
-fn in_declaration<'a>(declaration: &'a Decl, found: &mut impl FnMut(&'a Decl)) {
-    found(declaration);
+fn in_declaration<'a>(declaration: &'a Decl, found: &mut impl Visitor<'a>) {
+    found.declaration(declaration);
     match declaration {
         Decl::Fun(function) => in_block(&function.body, found),
         Decl::Let(binding) => in_expr(&binding.value, found),
@@ -40,7 +68,7 @@ fn in_declaration<'a>(declaration: &'a Decl, found: &mut impl FnMut(&'a Decl)) {
     }
 }
 
-fn in_statement<'a>(statement: &'a Stmt, found: &mut impl FnMut(&'a Decl)) {
+fn in_statement<'a>(statement: &'a Stmt, found: &mut impl Visitor<'a>) {
     match statement {
         Stmt::Expr(expression) => in_expr(expression, found),
         Stmt::While(loop_stmt) => {
@@ -71,7 +99,7 @@ fn in_statement<'a>(statement: &'a Stmt, found: &mut impl FnMut(&'a Decl)) {
 
 // Exhaustive on purpose: an expression form added later that holds a block must be handled here, or
 // a nested function inside it would silently go unanalysed.
-fn in_expr<'a>(expression: &'a Expr, found: &mut impl FnMut(&'a Decl)) {
+fn in_expr<'a>(expression: &'a Expr, found: &mut impl Visitor<'a>) {
     match expression {
         Expr::Literal(..)
         | Expr::Ident(..)
@@ -165,7 +193,7 @@ fn in_expr<'a>(expression: &'a Expr, found: &mut impl FnMut(&'a Decl)) {
     }
 }
 
-fn in_target<'a>(target: &'a AssignTarget, found: &mut impl FnMut(&'a Decl)) {
+fn in_target<'a>(target: &'a AssignTarget, found: &mut impl Visitor<'a>) {
     match target {
         AssignTarget::Ident(..) => {}
         AssignTarget::FieldAccess { object, .. }

@@ -7439,6 +7439,28 @@ impl InferContext {
         self.registry.register_method(owner, method_name, fun_ty);
     }
 
+    /// The receiver form of a method written in a block body for a type declared there (metel-core#1979):
+    /// the module-level registration never saw it, and the abstract body of a generic function that calls the
+    /// method needs it to retain the call's dispatch contract. `type_name` is resolved as in
+    /// [`register_method`](Self::register_method).
+    pub fn register_local_method_receiver(
+        &mut self,
+        type_name: &str,
+        method_name: &str,
+        method_span: &crate::data::ast::Span,
+        receiver: crate::data::ast::ReceiverKind,
+    ) {
+        self.registry
+            .register_definition_receiver(method_span.clone(), receiver.clone());
+        if let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, type_name)
+        {
+            self.registry
+                .register_method_receiver(owner, method_name.to_string(), receiver);
+        }
+    }
+
     pub fn register_array_method(&mut self, method_name: String, fun_ty: InferType) {
         self.registry.register_array_method(method_name, fun_ty);
     }

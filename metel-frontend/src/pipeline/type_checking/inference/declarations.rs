@@ -2779,6 +2779,9 @@ pub(super) fn infer_impl_method(
     } else {
         ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     }
+    if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {
+        ctx.register_local_method_receiver(target_name, &method.name, &method.span, receiver);
+    }
     Ok(())
 }
 
