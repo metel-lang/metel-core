@@ -220,6 +220,13 @@ pub(super) fn construct_call(
                 ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(name, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_aspect_arguments(
+                name,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_scheme_assoc_eq(
                 name,
                 scheme,
@@ -310,6 +317,13 @@ pub(super) fn construct_call(
                 ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(&joined, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_aspect_arguments(
+                &joined,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_scheme_assoc_eq(
                 &joined,
                 scheme,
@@ -391,6 +405,13 @@ pub(super) fn construct_call(
                 ctx.identity.binding_spans,
             )?;
             check_fun_call_assoc_eq(resolved, &var_map, span, ctx.registry, ctx.current_module)?;
+            check_fun_call_aspect_arguments(
+                resolved,
+                &var_map,
+                span,
+                ctx.registry,
+                ctx.current_module,
+            )?;
             check_scheme_assoc_eq(
                 resolved,
                 scheme,
@@ -882,6 +903,67 @@ pub(super) fn check_scheme_bounds(
                     check_width_subtyping(concrete, row, span, registry, current_module)?;
                 }
             }
+        }
+    }
+    Ok(())
+}
+
+/// metel-core#1984: a bound that names an aspect type argument (`X: Conv<i64>`) is satisfied only by an impl
+/// with that argument. The argument is compared when the argument type has unconditional impls of the aspect
+/// recorded with arguments; where it has none (a conditional, blanket or built-in impl) nothing is said.
+pub(super) fn check_fun_call_aspect_arguments(
+    fun_name: &str,
+    var_to_type: &HashMap<TypeVar, Type>,
+    span: &Span,
+    registry: &TypeDefinitionRegistry,
+    current_module: &[String],
+) -> Result<(), MetelError> {
+    let Some(arguments) = registry.fun_aspect_arguments_for(fun_name) else {
+        return Ok(());
+    };
+    for ((tv, aspect), expected) in arguments {
+        let Some(concrete) = var_to_type.get(tv) else {
+            continue;
+        };
+        let Some(recorded) =
+            registry.unconditional_aspect_impl_arguments(current_module, concrete, aspect)
+        else {
+            continue;
+        };
+        let mut wanted = Vec::with_capacity(expected.len());
+        for argument in expected {
+            let resolved = match argument {
+                InferType::Var(var) => var_to_type.get(var).cloned(),
+                InferType::Concrete(ty) => Some(ty.clone()),
+                _ => None,
+            };
+            let Some(resolved) = resolved else {
+                wanted.clear();
+                break;
+            };
+            wanted.push(resolved);
+        }
+        if wanted.len() != expected.len() || recorded.iter().all(Vec::is_empty) {
+            continue;
+        }
+        if !recorded.iter().any(|candidate| candidate == &wanted) {
+            let wanted_text: Vec<String> = wanted.iter().map(ToString::to_string).collect();
+            let found: Vec<String> = recorded
+                .iter()
+                .map(|candidate| {
+                    let shown: Vec<String> = candidate.iter().map(ToString::to_string).collect();
+                    format!("{aspect}<{}>", shown.join(", "))
+                })
+                .collect();
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0012,
+                format!(
+                    "`{concrete}` does not implement `{aspect}<{}>` (required by `{fun_name}`); it implements {}",
+                    wanted_text.join(", "),
+                    found.join(", ")
+                ),
+                span,
+            ));
         }
     }
     Ok(())

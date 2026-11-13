@@ -1,0 +1,19 @@
+// metel-core#1984: the impl whose argument matches satisfies the bound, among several impls of the aspect, with the
+// argument written as a type parameter, and when a generic function forwards its own bound.
+aspect Conv<T> { fun conv(&self) -> T; }
+fun needs_i64<X: Conv<i64>>(x: &X) {}
+fun needs_string<X: Conv<String>>(x: &X) {}
+fun needs_any<X: Conv<U>, U>(x: &X) {}
+fun forwards<Y: Conv<i64>>(y: &Y) { needs_i64(y); }
+
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+
+fun main() {
+    let l := L { n = 4 };
+    needs_i64(&l);
+    needs_string(&l);
+    needs_any(&l);
+    forwards(&l);
+}

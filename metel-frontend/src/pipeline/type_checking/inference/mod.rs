@@ -896,6 +896,14 @@ pub(super) fn hoist_fun_decls(decls: &[Decl], ctx: &mut InferContext) {
                     ctx.register_neg_fun_bounds(fun.name.clone(), neg_type_var_bounds.clone());
                 }
                 let assoc_eq_by_var = collect_fun_assoc_eq_constraints(fun, &generic_map);
+                ctx.register_fun_aspect_arguments(
+                    fun.name.clone(),
+                    declarations::collect_aspect_type_arguments(
+                        fun.generics.iter(),
+                        fun.where_clause.iter(),
+                        &generic_map,
+                    ),
+                );
                 if !assoc_eq_by_var.is_empty() {
                     ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var);
                 }

@@ -3272,6 +3272,9 @@ pub struct TypeDefinitionRegistry {
     /// Key: function name. Value: map from each quantified `TypeVar` to the list of
     /// `(aspect, assoc_name, expected_type)` equality constraints.
     fun_assoc_eq_constraints: HashMap<String, AssocEqConstraints>,
+    /// The type arguments a function's bounds name (`X: Conv<i64>`), by type variable and aspect, so a call
+    /// can check the argument against the impl that satisfies the bound (metel-core#1984).
+    fun_aspect_arguments: HashMap<String, AspectTypeArguments>,
     /// Tracks which struct `SymbolId`s were registered in each lexical scope so
     /// they can be removed on scope exit, together with the binding each one
     /// shadowed so it can be put back. The id is captured at registration
@@ -3799,6 +3802,7 @@ impl TypeDefinitionRegistry {
             fun_projection_tail_constraints: HashMap::new(),
             fun_open_row_params: HashMap::new(),
             fun_assoc_eq_constraints: HashMap::new(),
+            fun_aspect_arguments: HashMap::new(),
             struct_scope_stack: Vec::new(),
             local_type_ids: crate::identity::symbols::BlockLocalAllocator::new(),
             method_env: HashMap::new(),
@@ -5294,6 +5298,44 @@ impl TypeDefinitionRegistry {
         true
     }
 
+    /// Whether a negative impl of `aspect` is written for the nominal type `ty` itself, conditional on its
+    /// arguments or for exactly this instantiation (metel-core#1985). A block-local type is found by its
+    /// identity.
+    fn explicitly_negated(
+        &self,
+        current_module: &[String],
+        ty: &InferType,
+        aspect_name: &str,
+        assumptions: &AspectAssumptions,
+    ) -> bool {
+        let InferType::Named(name, inner_args, identity) = ty else {
+            return false;
+        };
+        let Some(target_id) = identity
+            .get()
+            .or_else(|| self.resolve_type_key_broad(current_module, name))
+        else {
+            return false;
+        };
+        if let Some(entries) = self
+            .neg_conditional_impl_bounds
+            .get(&(target_id, aspect_name.to_string()))
+        {
+            for (pos_bounds, neg_bounds) in entries {
+                if self.check_conditional_entry(
+                    current_module,
+                    inner_args,
+                    pos_bounds,
+                    neg_bounds,
+                    assumptions,
+                ) {
+                    return true;
+                }
+            }
+        }
+        self.neg_impl_overrides(target_id, aspect_name, inner_args)
+    }
+
     /// The aspect-satisfaction query, over `InferType` and under a set of
     /// assumptions about abstract type parameters.
     ///
@@ -5366,6 +5408,10 @@ impl TypeDefinitionRegistry {
             }
         }
         if let Some(entries) = self.bare_impl_bounds.get(aspect_name) {
+            // A negative impl for the type itself overrides a blanket positive one (RFC-0060 section 5).
+            if self.explicitly_negated(current_module, ty, aspect_name, assumptions) {
+                return false;
+            }
             for (pos_bounds, neg_bounds) in entries {
                 if self.check_conditional_entry(
                     current_module,
@@ -5908,6 +5954,49 @@ impl TypeDefinitionRegistry {
     #[must_use]
     pub fn fun_assoc_eq_constraints_for(&self, name: &str) -> Option<&AssocEqConstraints> {
         self.fun_assoc_eq_constraints.get(name)
+    }
+
+    /// Record the aspect type arguments a function's bounds name; an entry without arguments is dropped.
+    pub fn register_fun_aspect_arguments(
+        &mut self,
+        name: String,
+        mut arguments: AspectTypeArguments,
+    ) {
+        arguments.retain(|_, args| !args.is_empty());
+        if !arguments.is_empty() {
+            self.fun_aspect_arguments.insert(name, arguments);
+        }
+    }
+
+    #[must_use]
+    pub fn fun_aspect_arguments_for(&self, name: &str) -> Option<&AspectTypeArguments> {
+        self.fun_aspect_arguments.get(name)
+    }
+
+    /// The type-argument lists of the unconditional impls of `aspect` recorded for `ty`, and `None` when
+    /// the type has none recorded or a conditional or negative impl of that aspect makes the list not
+    /// the whole story (the caller then says nothing). A block-local type is found by its identity.
+    #[must_use]
+    pub fn unconditional_aspect_impl_arguments(
+        &self,
+        current_module: &[String],
+        ty: &Type,
+        aspect: &str,
+    ) -> Option<&Vec<Vec<Type>>> {
+        let Type::Named(name, _, identity) = ty else {
+            return None;
+        };
+        let id = identity
+            .get()
+            .or_else(|| self.resolve_type_key(current_module, name))?;
+        let key = (id, aspect.to_string());
+        if self.conditional_impl_bounds.contains_key(&key)
+            || self.neg_conditional_impl_bounds.contains_key(&key)
+            || self.bare_impl_bounds.contains_key(aspect)
+        {
+            return None;
+        }
+        self.impl_aspect_env.get(&key)
     }
 
     /// Register an enum under its declaration `SymbolId`. `name` is kept for the
@@ -8159,6 +8248,10 @@ impl InferContext {
     ) {
         self.registry
             .register_fun_assoc_eq_constraints(name, constraints);
+    }
+
+    pub fn register_fun_aspect_arguments(&mut self, name: String, arguments: AspectTypeArguments) {
+        self.registry.register_fun_aspect_arguments(name, arguments);
     }
 
     #[must_use]

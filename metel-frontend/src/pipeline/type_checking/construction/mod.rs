@@ -1458,8 +1458,8 @@ pub(super) use patterns::{resolve_bare_variant, resolve_struct_pattern};
 
 mod calls;
 use calls::{
-    GenericArgs, check_fun_call_assoc_eq, check_fun_call_bounds, check_fun_call_neg_bounds,
-    check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
+    GenericArgs, check_fun_call_aspect_arguments, check_fun_call_assoc_eq, check_fun_call_bounds,
+    check_fun_call_neg_bounds, check_scheme_assoc_eq, check_scheme_bounds, check_scheme_neg_bounds,
     check_type_does_not_satisfy_bound, check_type_satisfies_bounds, construct_call,
     dispatch_for_resolved_method, instantiate_scheme_for_call, resolve_aspect_id,
     resolve_generic_method_call,

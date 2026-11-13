@@ -1,0 +1,7 @@
+// metel-core#1985: a negative impl for a type removes it from a positive bound even when a blanket positive impl exists.
+aspect Show { fun show(&self) -> String; }
+extend<T> T: Show { fun show(&self) -> String { "blanket" } }
+struct L { n: i64 }
+extend L: !Show;
+fun render<T: Show>(x: &T) -> String { x.show() }
+fun main() { render(&L { n = 1 }); }

@@ -1116,6 +1116,10 @@ pub(super) fn infer_fun_decl(
             Some((source, (fields, tail)))
         })
         .collect();
+    ctx.register_fun_aspect_arguments(
+        fun.name.clone(),
+        collect_aspect_type_arguments(fun.generics.iter(), fun.where_clause.iter(), &generic_map),
+    );
     if !assoc_eq_by_var.is_empty() {
         ctx.register_fun_assoc_eq_constraints(fun.name.clone(), assoc_eq_by_var.clone());
     }
