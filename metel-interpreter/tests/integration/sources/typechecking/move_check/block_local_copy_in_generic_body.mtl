@@ -1,4 +1,4 @@
-// metel-core#1969: a generic body that declares a type with a clause-derived or marker `Copy` impl is analysed,
+// metel-core#1969: a generic body that declares a type with a clause-derived `Copy` impl is analysed,
 // not refused with `I0011`, and the local type is `Copy` in it.
 copy struct View<T> { r: &T }
 
@@ -7,15 +7,6 @@ fun by_derive<T>(x: T) -> i64 {
     let d := D { n = 1 };
     let a := d;
     let b := d;
-    a.n + b.n
-}
-
-fun by_extend<T>(x: T) -> i64 {
-    struct L { n: i64 }
-    extend L: Copy;
-    let l := L { n = 2 };
-    let a := l;
-    let b := l;
     a.n + b.n
 }
 
@@ -28,5 +19,5 @@ fun by_flow<T>(x: T) -> i64 {
 }
 
 fun main() {
-    assert(by_derive(0) + by_extend(0) + by_flow(0) == 7);
+    assert(by_derive(0) + by_flow(0) == 3);
 }

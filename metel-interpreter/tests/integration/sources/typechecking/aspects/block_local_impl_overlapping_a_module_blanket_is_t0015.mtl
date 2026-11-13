@@ -1,0 +1,7 @@
+// metel-core#1993: a module-level bare-parameter blanket covers a block-local type, so a local impl of the same aspect overlaps it.
+aspect Marker {}
+extend<T> T: Marker {}
+fun main() {
+    struct L { n: i64 }
+    extend L: Marker {}
+}

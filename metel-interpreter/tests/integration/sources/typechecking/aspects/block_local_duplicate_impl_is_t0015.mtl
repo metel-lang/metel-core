@@ -1,0 +1,7 @@
+// metel-core#1993: coherence covers an `extend` written in a block: the same impl of a local type twice conflicts.
+aspect Marker {}
+fun main() {
+    struct L { n: i64 }
+    extend L: Marker {}
+    extend L: Marker {}
+}

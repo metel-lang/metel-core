@@ -1,0 +1,8 @@
+// metel-core#1993: the same for a block of a generic function.
+aspect Marker {}
+fun g<T>(x: T) {
+    struct L { n: i64 }
+    extend L: Marker {}
+    extend L: Marker {}
+}
+fun main() {}

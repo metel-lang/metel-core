@@ -1,0 +1,30 @@
+// metel-core#1993: two blocks that each declare `L` are two types; a local negative impl overrides a module blanket;
+// a different aspect argument list does not conflict; a local type may implement a foreign aspect.
+aspect Marker {}
+extend<T> T: Marker {}
+aspect Tag {}
+aspect Conv<T> { fun conv(&self) -> T; }
+
+fun a() {
+    struct L { n: i64 }
+    extend L: Tag {}
+}
+fun b() {
+    struct L { n: i64 }
+    extend L: Tag {}
+}
+fun negated() {
+    struct N { n: i64 }
+    extend N: !Marker;
+}
+fun two_arguments() {
+    struct L { n: i64 }
+    extend L: Conv<i64> { fun conv(&self) -> i64 { 1 } }
+    extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+}
+fun foreign_aspect() {
+    struct L { n: i64 }
+    extend L: Display { fun to_string(&self) -> String { "L" } }
+}
+
+fun main() {}

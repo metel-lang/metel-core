@@ -1,0 +1,7 @@
+// metel-core#1993: an explicit positive and an explicit negative impl for the same concrete type conflict, local or not.
+aspect Marker {}
+fun main() {
+    struct L { n: i64 }
+    extend L: Marker {}
+    extend L: !Marker;
+}
