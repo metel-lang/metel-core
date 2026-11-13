@@ -1,0 +1,12 @@
+// metel-core#2013: the argument owns a `String`, so the closure the method returns moves.
+struct Holder<T> { inner: T }
+extend Holder<T> {
+    fun pass(&self, x: T) -> T { x }
+}
+fun f<T: Copy>(x: T, s: String) {
+    let c := [x]|k: i64| -> i64 { k };
+    let h := Holder { inner = c };
+    let e := h.pass([s]|k: i64| -> i64 { k });
+    let g := e; let i := e;
+}
+fun main() {}

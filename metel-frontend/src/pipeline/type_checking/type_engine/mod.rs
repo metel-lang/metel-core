@@ -7305,6 +7305,11 @@ pub(crate) struct DefinitionMethodFact {
     pub contract: InferType,
     pub receiver: crate::data::ast::ReceiverKind,
     pub origin: crate::data::abstract_body::AbstractMethodOrigin,
+    /// The method's scheme instantiated with fresh variables for the impl's and the method's own type
+    /// parameters, before the receiver's type arguments were pinned: the result is tied to the receiver and the
+    /// arguments only through these variables (metel-core#2013). `None` where the contract has no such fresh
+    /// instance (an aspect method, an array method, a method of a concrete impl).
+    pub unsolved: Option<InferType>,
 }
 
 /// The selected declaration behind a non-lexical value path. Its solved type

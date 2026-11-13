@@ -1,0 +1,12 @@
+// metel-core#2013: `fresh` returns a closure it creates, not the receiver's, so the result keeps the move-only type.
+copy struct Holder<T> { inner: T }
+extend Holder<T> {
+    fun fresh(self) -> |i64| -> i64 { |k: i64| -> i64 { k } }
+}
+fun f<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let h := Holder { inner = c };
+    let e := h.fresh();
+    let g := e; let i := e;
+}
+fun main() {}

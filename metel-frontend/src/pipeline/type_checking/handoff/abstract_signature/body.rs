@@ -1137,10 +1137,9 @@ impl BodyFreezer<'_, '_> {
                 if self.facts.definition_array_length(span) {
                     AbstractExprKind::ArrayLength(Box::new(self.expression(receiver)?))
                 } else {
-                    let args = self.positional_method_arguments(receiver, method, args, span)?;
-                    AbstractExprKind::MethodCall(
-                        self.method_call(receiver, method, &args, span, &ty)?,
-                    )
+                    let (kind, retained) =
+                        self.method_expression(receiver, method, args, span, &ty)?;
+                    return self.finish_expression(retained.unwrap_or(ty), kind, expression.span());
                 }
             }
             Expr::Match(matched) => self.match_expression(matched, &ty)?,
@@ -2470,13 +2469,21 @@ impl BodyFreezer<'_, '_> {
         span: &Span,
         arguments: &[AbstractType],
     ) -> Option<AbstractType> {
+        self.retain_result(self.facts.definition_call_origins().get(span)?, arguments)
+    }
+
+    /// [`Self::retained_call_result`] for a callee's unsolved instantiated contract, whichever call form it
+    /// came from: the first argument of a method call is its receiver (metel-core#2013).
+    fn retain_result(
+        &self,
+        origin: &crate::pipeline::type_checking::type_engine::InferType,
+        arguments: &[AbstractType],
+    ) -> Option<AbstractType> {
         use crate::pipeline::type_checking::type_engine::InferType;
         if !arguments.iter().any(holds_closure) {
             return None;
         }
-        let InferType::Fun(parameters, result, ..) =
-            self.facts.definition_call_origins().get(span)?
-        else {
+        let InferType::Fun(parameters, result, ..) = origin else {
             return None;
         };
         if parameters.len() != arguments.len() {
@@ -2578,6 +2585,27 @@ impl BodyFreezer<'_, '_> {
         })
     }
 
+    /// A method call and, when a closure comes back through the receiver's or an argument's type, its type
+    /// with the contract it had (metel-core#2013).
+    fn method_expression(
+        &self,
+        receiver: &Expr,
+        method: &str,
+        args: &[Expr],
+        span: &Span,
+        ty: &AbstractType,
+    ) -> Result<(AbstractExprKind, Option<AbstractType>), String> {
+        let args = self.positional_method_arguments(receiver, method, args, span)?;
+        let (call, supplied) = self.method_call(receiver, method, &args, span, ty)?;
+        let retained = self
+            .facts
+            .definition_method_facts()
+            .get(span)
+            .and_then(|fact| fact.unsolved.as_ref())
+            .and_then(|origin| self.retain_result(origin, &supplied));
+        Ok((AbstractExprKind::MethodCall(call), retained))
+    }
+
     fn method_call(
         &self,
         receiver: &Expr,
@@ -2585,7 +2613,7 @@ impl BodyFreezer<'_, '_> {
         args: &[Expr],
         span: &Span,
         result: &AbstractType,
-    ) -> Result<AbstractMethodCall, String> {
+    ) -> Result<(AbstractMethodCall, Vec<AbstractType>), String> {
         let fact = self
             .facts
             .definition_method_facts()
@@ -2612,6 +2640,7 @@ impl BodyFreezer<'_, '_> {
         }
         let receiver = self.expression(receiver)?;
         let (receiver_base, _) = peel_references(&receiver.ty);
+        let mut supplied = vec![receiver_base.clone()];
         let receiver = if Self::is_array_view_coercion(receiver_base, receiver_parameter) {
             AbstractExpr {
                 ty: receiver_parameter.clone(),
@@ -2619,10 +2648,11 @@ impl BodyFreezer<'_, '_> {
                 kind: AbstractExprKind::ArrayView(Box::new(receiver)),
             }
         } else {
-            Self::check_value_type(receiver_base, receiver_parameter)?;
+            // A receiver that holds a closure carries the closure's contract where the method's own type
+            // writes a function type: the same value, seen at two levels of detail.
+            Self::check_value_type(&erase_contracts(receiver_base), receiver_parameter)?;
             receiver
         };
-        let mut supplied = Vec::with_capacity(args.len());
         let arguments = args
             .iter()
             .zip(parameters)
@@ -2643,14 +2673,17 @@ impl BodyFreezer<'_, '_> {
             crate::data::ast::ReceiverKind::Ref => AbstractReceiverMode::SharedReference,
             crate::data::ast::ReceiverKind::RefMut => AbstractReceiverMode::MutableReference,
         };
-        Ok(AbstractMethodCall {
-            receiver: Box::new(receiver),
-            receiver_mode,
-            method: method.to_string(),
-            origin: fact.origin.clone(),
-            signature,
-            arguments,
-        })
+        Ok((
+            AbstractMethodCall {
+                receiver: Box::new(receiver),
+                receiver_mode,
+                method: method.to_string(),
+                origin: fact.origin.clone(),
+                signature,
+                arguments,
+            },
+            supplied,
+        ))
     }
 
     fn field_selection(
@@ -3203,6 +3236,52 @@ fn bind_call_variables(
         | (InferType::MutReference(parameter), AbstractType::MutReference(argument)) => {
             bind_call_variables(parameter, argument, bound)
         }
+        // A method's receiver parameter is written `&Self` or `Self` whichever way the value is held.
+        (InferType::Reference(parameter) | InferType::MutReference(parameter), argument)
+            if !matches!(
+                argument,
+                AbstractType::Reference(_) | AbstractType::MutReference(_)
+            ) =>
+        {
+            bind_call_variables(parameter, argument, bound)
+        }
+        (
+            parameter @ (InferType::Named(..) | InferType::Tuple(_) | InferType::Array(_)),
+            AbstractType::Reference(argument) | AbstractType::MutReference(argument),
+        ) => bind_call_variables(parameter, argument, bound),
         (parameter, _) => free_vars(parameter).is_empty().then_some(()),
+    }
+}
+
+/// `ty` with every closure's ownership contract replaced by its function type: the typechecker's view.
+fn erase_contracts(ty: &AbstractType) -> AbstractType {
+    let all = |items: &[AbstractType]| items.iter().map(erase_contracts).collect();
+    match ty {
+        AbstractType::Closure { signature, .. } => erase_contracts(signature),
+        AbstractType::Tuple(items) => AbstractType::Tuple(all(items)),
+        AbstractType::Record(fields) => AbstractType::Record(
+            fields
+                .iter()
+                .map(|(name, ty)| (name.clone(), erase_contracts(ty)))
+                .collect(),
+        ),
+        AbstractType::Array(inner) => AbstractType::Array(Box::new(erase_contracts(inner))),
+        AbstractType::SizedArray(inner, length) => {
+            AbstractType::SizedArray(Box::new(erase_contracts(inner)), *length)
+        }
+        AbstractType::Reference(inner) => AbstractType::Reference(Box::new(erase_contracts(inner))),
+        AbstractType::MutReference(inner) => {
+            AbstractType::MutReference(Box::new(erase_contracts(inner)))
+        }
+        AbstractType::Named {
+            name,
+            arguments,
+            identity,
+        } => AbstractType::Named {
+            name: name.clone(),
+            arguments: all(arguments),
+            identity: identity.clone(),
+        },
+        other => other.clone(),
     }
 }
