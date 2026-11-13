@@ -1,0 +1,9 @@
+// metel-core#2000: the closure passed to `id` owns a `String`, so what comes back moves.
+fun id<T>(x: T) -> T { x }
+fun f(s: String) {
+    let c := [s]|k: i64| -> i64 { k };
+    let d := id(c);
+    let a := d;
+    let b := d;
+}
+fun main() {}

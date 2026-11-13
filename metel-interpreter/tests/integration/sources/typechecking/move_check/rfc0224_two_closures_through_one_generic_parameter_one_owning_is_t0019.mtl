@@ -1,0 +1,10 @@
+// metel-core#2000: `pick` may return either argument, so the result owns what either owns.
+fun pick<T>(a: T, b: T) -> T { a }
+fun f<T: Copy>(x: T, s: String) {
+    let c := [x]|k: i64| -> i64 { k };
+    let o := [s.clone()]|k: i64| -> i64 { k };
+    let d := pick(c, o);
+    let a := d;
+    let b := d;
+}
+fun main() {}

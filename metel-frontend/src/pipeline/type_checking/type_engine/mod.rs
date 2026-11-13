@@ -7493,6 +7493,9 @@ pub struct InferContext {
     /// resolved types and binding identities, never this span-keyed solver table.
     definition_expression_types: HashMap<Span, InferType>,
     definition_call_types: HashMap<Span, InferType>,
+    /// The callee's instantiated contract of a call to a named generic function, with its type variables
+    /// unsolved (metel-core#2000): the result is related to the arguments only through these variables.
+    definition_call_origins: HashMap<Span, InferType>,
     definition_paths: HashMap<Span, DefinitionPathFact>,
     definition_array_lengths: HashSet<Span>,
     definition_nominal_fields: HashMap<Span, crate::identity::FieldId>,
@@ -7632,6 +7635,7 @@ impl InferContext {
             closure_write_frames: Vec::new(),
             definition_expression_types: HashMap::new(),
             definition_call_types: HashMap::new(),
+            definition_call_origins: HashMap::new(),
             definition_paths: HashMap::new(),
             definition_array_lengths: HashSet::new(),
             definition_nominal_fields: HashMap::new(),
@@ -9611,6 +9615,16 @@ impl InferContext {
 
     pub(crate) fn definition_call_types(&self) -> &HashMap<Span, InferType> {
         &self.definition_call_types
+    }
+
+    pub(crate) fn record_definition_call_origin(&mut self, span: Span, ty: InferType) {
+        if self.current_return_type.is_some() {
+            self.definition_call_origins.insert(span, ty);
+        }
+    }
+
+    pub(crate) fn definition_call_origins(&self) -> &HashMap<Span, InferType> {
+        &self.definition_call_origins
     }
 
     pub(crate) fn record_definition_path(&mut self, span: Span, fact: DefinitionPathFact) {

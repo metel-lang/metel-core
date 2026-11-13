@@ -969,6 +969,7 @@ fn infer_expr_inner(
                     ctx,
                 )?;
                 ctx.record_definition_call_type(span.clone(), callee_ty.clone());
+                ctx.record_definition_call_origin(span.clone(), callee_ty.clone());
                 let InferType::Fun(params, ret, ..) = callee_ty else {
                     return Err(MetelError::internal(
                         "function scheme is not a function type",
