@@ -1441,7 +1441,17 @@ impl Walker<'_> {
             // its own, like a nested `fun`, and sees none of the enclosing bindings.
             Decl::Impl(ib) => {
                 for method in &ib.methods {
-                    self.enter(LexicalSeg::NestedFn(method.name.clone()));
+                    // The method is a definition of its own, so it has a binder at its span (the abstract
+                    // body of a generic one is prepared against it). The name cannot be written in source,
+                    // so it binds nothing a body could refer to.
+                    let definition = format!("extend::{}", method.name);
+                    self.bind(
+                        &definition,
+                        &method.span,
+                        DefinitionKind::NestedFn,
+                        LexicalSeg::NestedFn(definition.clone()),
+                    );
+                    self.enter(LexicalSeg::NestedFn(definition));
                     let outer_params = self.declare_signature(
                         &SigTypes::of_method(&ib.generics, method),
                         &method.params,

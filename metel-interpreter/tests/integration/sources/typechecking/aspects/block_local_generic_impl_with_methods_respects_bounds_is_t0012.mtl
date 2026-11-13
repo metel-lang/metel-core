@@ -1,0 +1,10 @@
+// metel-core#1974: a conditional local impl with methods holds only where its bounds do.
+aspect Show { fun show(&self) -> String; }
+fun render<T: Show>(x: &T) -> String { x.show() }
+
+fun main() {
+    struct Box<T> { v: T }
+    extend<T: Show> Box<T>: Show { fun show(&self) -> String { "Box" } }
+    let b := Box { v = 1 };
+    render(&b);
+}

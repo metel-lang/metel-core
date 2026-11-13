@@ -4472,9 +4472,6 @@ impl TypeDefinitionRegistry {
         // A generic block-local target with hand-written methods is not recorded: calling such a method
         // through a bound (`render<T: A>(&w)` with `w: W<i64>`) makes the generic definition's
         // reconstruction fail (metel-core#1973, residual), so it stays a type error, not an internal one.
-        if !generic_names.is_empty() && !ib.from_clause && !ib.methods.is_empty() {
-            return;
-        }
         if let Some(aspect_id) = self.resolve_type_id(module, aspect) {
             self.record_nominal_ownership_candidate(module, ib, aspect_id, Some(id));
         }

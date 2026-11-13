@@ -1893,6 +1893,27 @@ pub(super) fn infer_impl_method(
                 }
             }
         }
+        // An impl that names the target's parameters itself (`extend<T> W<T>: A`) already has them in
+        // `generic_map`, so none was added above; the call site still binds the receiver's type
+        // arguments to the target's parameters by position, so name the impl's variable at each
+        // position (metel-core#1974: a block-local generic target reached through a bound).
+        if struct_tvars_ordered.is_empty()
+            && let crate::data::ast::TypeExpr::Named(_, target_args, _) = &ib.target_type
+            && target_args.len() == names.len()
+        {
+            let mapped: Vec<TypeVar> = target_args
+                .iter()
+                .filter_map(|arg| match arg {
+                    crate::data::ast::TypeExpr::Named(n, inner, _) if inner.is_empty() => {
+                        generic_map.get(n).copied()
+                    }
+                    _ => None,
+                })
+                .collect();
+            if mapped.len() == names.len() {
+                struct_tvars_ordered = mapped;
+            }
+        }
     } else if let Some(name) = array_target_generic_name
         && !generic_map.contains_key(name)
     {

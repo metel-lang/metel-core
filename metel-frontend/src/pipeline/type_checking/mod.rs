@@ -1331,6 +1331,7 @@ pub fn construct_generic_body(
 // arch-implements: ["arch.type-construction.requirement-12"]
 pub fn infer_named_type_args(
     name: &str,
+    declared: Option<crate::identity::symbols::SymbolId>,
     variant: Option<&str>,
     field_types: &HashMap<String, crate::data::types::Type>,
     registry: &TypeDefinitionRegistry,
@@ -1349,12 +1350,15 @@ pub fn infer_named_type_args(
             },
             None => return vec![],
         },
-        None => match registry.type_id_for_decl_name(name).and_then(|id| {
-            Some((
-                registry.struct_type_params_by_id(id)?,
-                registry.struct_fields_by_id(id)?,
-            ))
-        }) {
+        // The value's own declaration when it has one (a block-local struct has no module-level name).
+        None => match declared
+            .or_else(|| registry.type_id_for_decl_name(name))
+            .and_then(|id| {
+                Some((
+                    registry.struct_type_params_by_id(id)?,
+                    registry.struct_fields_by_id(id)?,
+                ))
+            }) {
             Some((tp, f)) => (tp, f),
             _ => return vec![],
         },
