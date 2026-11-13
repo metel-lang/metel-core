@@ -1,0 +1,5 @@
+import lib::Conv;
+import lib::use_conv;
+struct L { n: i64 }
+extend L: Conv<String> { fun conv(&self) -> String { "x" } }
+fun main() { let r := use_conv(&L { n = 4 }); println("${r}"); }

@@ -1,0 +1,5 @@
+import mid::Conv;
+import mid::use_conv;
+struct L { n: i64 }
+extend L: Conv<String> { fun conv(&self) -> String { "x" } }
+fun main() { use_conv(&L { n = 4 }); }

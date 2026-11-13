@@ -1,0 +1,8 @@
+[options]
+error = ["T0012"]
+spec = ["spec.declarations.aspects.declaration-clauses.legality-6"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "associated type equality constraint violated"

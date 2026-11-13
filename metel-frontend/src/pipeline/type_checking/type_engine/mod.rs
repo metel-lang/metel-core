@@ -2122,6 +2122,9 @@ pub struct TypeScheme {
     /// `assoc_eq_constraints[i]` lists `(left_proj, right_proj, type)` constraints
     /// where both sides resolve to the i-th quantified var's projection.
     pub assoc_eq_constraints: Vec<Vec<(String, String, InferType)>>,
+    /// Per-quantified-var aspect type arguments a bound names (`X: Conv<i64>`), index-aligned with
+    /// `quantified_vars`: `(aspect, arguments)` (metel-core#1984, #1988).
+    pub aspect_arguments: Vec<Vec<(String, Vec<InferType>)>>,
     /// Per-quantified-var opaque-return metadata (RFC-0037). Index-aligned with
     /// `quantified_vars`. `Some((aspect_name, concrete_ty))` means the i-th
     /// quantified var is a return-position `impl Aspect` occurrence whose concrete
@@ -2175,6 +2178,7 @@ impl TypeScheme {
             assoc_projections: vec![],
             body_projections: vec![],
             assoc_eq_constraints: vec![],
+            aspect_arguments: vec![],
             opaque_returns: vec![],
             open_row_params: vec![],
             row_remainders: vec![],
@@ -2332,6 +2336,29 @@ impl TypeScheme {
         self
     }
 
+    /// Attach the aspect type arguments each var's bounds name, given a `(TypeVar, aspect)` → arguments map.
+    /// Positional like `with_assoc_eq_constraints`.
+    #[must_use]
+    pub fn with_aspect_arguments(mut self, by_var: &AspectTypeArguments) -> Self {
+        if by_var.values().all(std::vec::Vec::is_empty) {
+            return self;
+        }
+        self.aspect_arguments = self
+            .quantified_vars
+            .iter()
+            .map(|v| {
+                let mut named: Vec<(String, Vec<InferType>)> = by_var
+                    .iter()
+                    .filter(|((var, _), args)| var == v && !args.is_empty())
+                    .map(|((_, aspect), args)| (aspect.clone(), args.clone()))
+                    .collect();
+                named.sort_by(|a, b| a.0.cmp(&b.0));
+                named
+            })
+            .collect();
+        self
+    }
+
     /// Attach per-var opaque-return metadata (RFC-0037), given a `TypeVar` →
     /// `(aspect_name, concrete_type)` map. Mirrors `with_bounds`/`with_neg_bounds`:
     /// robust to quantifier ordering, each quantified var looks up its own entry.
@@ -2391,6 +2418,7 @@ pub fn generalize(ty: InferType, env_free_vars: &HashSet<TypeVar>) -> TypeScheme
         assoc_projections: vec![],
         body_projections: vec![],
         assoc_eq_constraints: vec![],
+        aspect_arguments: vec![],
         opaque_returns: vec![],
         open_row_params: vec![],
         row_remainders: vec![],
@@ -6873,6 +6901,14 @@ impl TypeDefinitionRegistry {
         }
         for (k, v) in &other.fun_assoc_eq_constraints {
             self.fun_assoc_eq_constraints
+                .entry(k.clone())
+                .or_insert_with(|| v.clone());
+        }
+        // The aspect arguments a function's bounds name, so a caller in another module compares them
+        // (metel-core#1988). The keys are type variables, unique across modules, so a function of the same
+        // name elsewhere cannot be confused with this one.
+        for (k, v) in &other.fun_aspect_arguments {
+            self.fun_aspect_arguments
                 .entry(k.clone())
                 .or_insert_with(|| v.clone());
         }

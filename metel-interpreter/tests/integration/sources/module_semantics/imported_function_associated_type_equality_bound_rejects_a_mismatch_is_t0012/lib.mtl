@@ -1,0 +1,2 @@
+pub aspect Source { type Item; fun take(&self) -> Item; }
+pub fun get<S: Source<Item = i64>>(s: &S) -> i64 { s.take() }

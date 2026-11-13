@@ -1,0 +1,5 @@
+import lib::Source;
+import lib::get;
+struct L { n: i64 }
+extend L: Source { type Item := String; fun take(&self) -> String { "x" } }
+fun main() { let r := get(&L { n = 4 }); println("${r}"); }
