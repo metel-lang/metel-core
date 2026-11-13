@@ -228,6 +228,8 @@ fn flow_condition(
         AbstractType::Reference(_) | AbstractType::Array(_) => Some(true),
         AbstractType::MutReference(_) => Some(false),
         AbstractType::Function { usage, .. } => Some(*usage == UseMultiplicity::Copy),
+        // A closure is `Copy` when every capture it owns is (RFC-0134), as the move check decides it.
+        AbstractType::Closure { owned_captures, .. } => all(&mut owned_captures.iter()),
         _ => None,
     }
 }

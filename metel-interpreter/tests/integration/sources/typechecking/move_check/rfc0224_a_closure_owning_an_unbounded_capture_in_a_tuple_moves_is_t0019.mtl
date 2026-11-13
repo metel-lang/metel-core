@@ -1,0 +1,9 @@
+// metel-core#1960: a tuple that holds a closure owning an unbounded capture is not `Copy`.
+fun f<T>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let t := (c, 1);
+    let a := t;
+    let b := t;
+}
+
+fun main() {}
