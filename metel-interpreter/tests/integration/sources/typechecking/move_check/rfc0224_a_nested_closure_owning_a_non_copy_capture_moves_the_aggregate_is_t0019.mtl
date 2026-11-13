@@ -1,0 +1,9 @@
+// metel-core#1982: a closure nested in a tuple in a struct field keeps its contract, so an owned non-Copy capture moves the struct.
+struct Holder<T> derives Copy via T { items: (T, i64) }
+fun f<T>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let h := Holder { items = (c, 1) };
+    let a := h;
+    let b := h;
+}
+fun main() {}

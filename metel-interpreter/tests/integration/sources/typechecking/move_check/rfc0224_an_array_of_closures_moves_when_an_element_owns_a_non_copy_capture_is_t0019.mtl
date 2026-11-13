@@ -1,0 +1,9 @@
+// metel-core#1982: the array is Copy only when every element is; the elements own an unbounded capture (c is used twice, then a).
+fun f<T: Copy, U>(x: T, y: U) {
+    let c := [x]|k: i64| -> i64 { k };
+    let d := [y]|k: i64| -> i64 { k };
+    let a := [c, d];
+    let b := a;
+    let e := a;
+}
+fun main() {}

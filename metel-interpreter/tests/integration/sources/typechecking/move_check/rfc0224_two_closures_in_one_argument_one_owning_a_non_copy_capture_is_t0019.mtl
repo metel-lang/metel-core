@@ -1,0 +1,10 @@
+// metel-core#1982: the argument holds both closures, so it is Copy only when both are; one owns an unbounded capture.
+struct Pair<T> derives Copy via T { a: T, b: T }
+fun f<T>(x: T, y: T) {
+    let c1 := [x]|k: i64| -> i64 { k };
+    let c2 := |k: i64| -> i64 { k };
+    let w := Pair { a = c1, b = c2 };
+    let p := w;
+    let q := w;
+}
+fun main() {}
