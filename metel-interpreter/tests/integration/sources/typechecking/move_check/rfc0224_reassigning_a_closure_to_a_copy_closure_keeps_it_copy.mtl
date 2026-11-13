@@ -1,0 +1,8 @@
+// metel-core#2000: the binding holds either closure, and both have `Copy` captures.
+fun f<T: Copy>(x: T, y: T) {
+    var c := [x]|k: i64| -> i64 { k };
+    c = [y]|k: i64| -> i64 { k + 1 };
+    let a := c;
+    let b := c;
+}
+fun main() {}

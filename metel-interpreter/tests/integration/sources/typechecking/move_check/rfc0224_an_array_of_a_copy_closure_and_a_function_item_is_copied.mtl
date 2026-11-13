@@ -1,0 +1,9 @@
+// metel-core#2000: a function item is a closure that owns nothing, so an array of one and a closure with `Copy` captures is `Copy`.
+fun double(k: i64) -> i64 { k * 2 }
+fun f<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let arr := [c, double];
+    let a := arr;
+    let b := arr;
+}
+fun main() {}

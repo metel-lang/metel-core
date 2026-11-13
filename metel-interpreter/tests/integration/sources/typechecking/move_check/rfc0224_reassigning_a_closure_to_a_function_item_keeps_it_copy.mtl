@@ -1,0 +1,9 @@
+// metel-core#2000: a function item owns nothing.
+fun double(k: i64) -> i64 { k * 2 }
+fun f<T: Copy>(x: T) {
+    var c := [x]|k: i64| -> i64 { k };
+    c = double;
+    let a := c;
+    let b := c;
+}
+fun main() {}

@@ -1,0 +1,10 @@
+// metel-core#2000: the branch may or may not run, so the binding may own the `String`.
+fun f<T: Copy>(x: T, s: String, flag: boolean) {
+    var c := [x]|k: i64| -> i64 { k };
+    if (flag) {
+        c = [s]|k: i64| -> i64 { k };
+    }
+    let a := c;
+    let b := c;
+}
+fun main() {}

@@ -1,0 +1,9 @@
+// metel-core#2000: uses either side of the reassignment see the binding's contract.
+fun f<T: Copy>(x: T, y: T) {
+    var c := [x]|k: i64| -> i64 { k };
+    let a := c;
+    c = [y]|k: i64| -> i64 { k };
+    let b := c;
+    let d := c;
+}
+fun main() {}
