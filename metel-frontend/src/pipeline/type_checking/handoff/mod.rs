@@ -140,6 +140,7 @@ impl ResolvedInferenceFacts {
                             contract: subst.apply(&fact.contract),
                             receiver: fact.receiver.clone(),
                             origin: fact.origin.clone(),
+                            unsolved: fact.unsolved.clone(),
                         },
                     )
                 })

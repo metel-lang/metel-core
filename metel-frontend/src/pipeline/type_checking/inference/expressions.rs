@@ -1623,6 +1623,7 @@ fn infer_expr_inner(
                                 contract: method_ty.clone(),
                                 receiver,
                                 origin: crate::data::abstract_body::AbstractMethodOrigin::Array,
+                                unsolved: None,
                             },
                         );
                     }
@@ -1903,6 +1904,7 @@ fn infer_expr_inner(
                 };
 
                 // Try concrete method_env first; fall back to a generic method scheme.
+                let mut unsolved_method: Option<InferType> = None;
                 let method_ty = if let Some(ty) = concrete_method {
                     ty
                 } else if let Some((_, (scheme, struct_tvars, _))) = generic_method {
@@ -1913,6 +1915,7 @@ fn infer_expr_inner(
                     // as stale shared vars, so two call sites would collide and a
                     // single call could not resolve `U` from its arguments.
                     let (instance, renaming) = ctx.instantiate_with_renaming(&scheme);
+                    unsolved_method = Some(instance.clone());
                     // Pin the struct's (now fresh) type params to the receiver's
                     // concrete type args so `self`/return types line up.
                     let mut pin = Substitution::new();
@@ -2011,6 +2014,7 @@ fn infer_expr_inner(
                             origin: crate::data::abstract_body::AbstractMethodOrigin::Nominal(
                                 owner,
                             ),
+                            unsolved: unsolved_method.clone(),
                         },
                     );
                 }
@@ -2319,6 +2323,7 @@ fn infer_expr_inner(
                                         crate::data::abstract_body::AbstractMethodOrigin::Aspect(
                                             aspect,
                                         ),
+                                    unsolved: None,
                                 },
                             );
                         }
@@ -3402,6 +3407,7 @@ fn infer_record_method_call_with_scheme(
                 contract: method_ty.clone(),
                 receiver,
                 origin: crate::data::abstract_body::AbstractMethodOrigin::Aspect(aspect),
+                unsolved: None,
             },
         );
     }
