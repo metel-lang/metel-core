@@ -1,0 +1,6 @@
+// metel-core#1992: the same when the aspect takes type arguments and the argument lists are equal.
+aspect Conv<T> { fun conv(&self) -> T; }
+extend<T> T: Conv<i64> { fun conv(&self) -> i64 { 1 } }
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { 2 } }
+fun main() {}

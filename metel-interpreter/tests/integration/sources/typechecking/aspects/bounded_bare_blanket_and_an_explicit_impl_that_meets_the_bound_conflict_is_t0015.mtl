@@ -1,0 +1,6 @@
+// metel-core#1992: a bounded blanket covers the explicit target when the target satisfies the bound.
+aspect Marker {}
+extend<T: Copy> T: Marker {}
+copy struct K { n: i64 }
+extend K: Marker {}
+fun main() {}
