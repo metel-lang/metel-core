@@ -1,0 +1,8 @@
+struct Doc { title: String, n: i64 }
+extend Doc: Clone { fun clone(&self) -> Doc { Doc { title = self.title.clone(), n = self.n + 1 } } }
+fun dup<T: Clone>(t: &T) -> T { t.clone() }
+fun main() {
+    let d := Doc { title = "a".to_string(), n = 1 };
+    let r := d.{ .title };
+    let c := dup(&r);
+}

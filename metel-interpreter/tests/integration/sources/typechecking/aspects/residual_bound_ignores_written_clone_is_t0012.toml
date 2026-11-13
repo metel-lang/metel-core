@@ -1,0 +1,8 @@
+[options]
+error = ["T0012"]
+spec = ["spec.ownership.aspects-on-a-residual.legality-2", "spec.ownership.aspects-on-a-residual.legality-7"]
+
+[expect]
+status = "typecheck_error"
+code = "T0012"
+contains = "does not apply to a residual"

@@ -1630,6 +1630,46 @@ fn infer_expr_inner(
                 return Err(MetelError::internal("array method type is not a function"));
             }
 
+            // RFC-0211: a residual of a nominal brand has no method through an impl of the whole type. A call of an
+            // aspect's method on it is judged as the bound is: the `Clone` that a granting brand's `Copy` provides
+            // is the residual itself, and any other is `T0012` with the cause named (rules 1 to 3 and 7).
+            if let InferType::Residual { brand, .. } = &peeled_recv
+                && !ctx
+                    .registry()
+                    .brand_is_record(ctx.current_module_path(), brand)
+                && let Some(aspect) =
+                    ctx.registry()
+                        .aspect_providing_method(ctx.current_module_path(), brand, method)
+            {
+                if ctx.registry().infer_type_satisfies_aspect(
+                    ctx.current_module_path(),
+                    &peeled_recv,
+                    &aspect,
+                    &crate::pipeline::type_checking::type_engine::AspectAssumptions::new(),
+                ) && method == "clone"
+                    && arg_tys.is_empty()
+                {
+                    return Ok(peeled_recv.clone());
+                }
+                let note = ctx.registry().residual_unsatisfied_note(
+                    ctx.current_module_path(),
+                    brand,
+                    &aspect,
+                );
+                let note = if note.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n       note: {note}")
+                };
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0012,
+                    format!(
+                        "`{peeled_recv}` does not implement `{aspect}`, so `{method}` is not available on it{note}"
+                    ),
+                    span,
+                ));
+            }
+
             // A record receiver (`{ w = 2, h = 3 }.area()`) dispatches through the
             // impls whose target is a record type and whose row condition it satisfies.
             if matches!(&peeled_recv, InferType::Record(_))
