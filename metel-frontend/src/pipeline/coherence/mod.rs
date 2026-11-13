@@ -229,6 +229,13 @@ fn canonicalize_impl_target(
     };
 
     match &ib.target_type {
+        // A bare-parameter blanket (`extend<T> T: Aspect`): the target is the impl's own parameter, which any
+        // type instantiates, so it overlaps every explicit impl of the aspect its bounds admit (metel-core#1992).
+        TypeExpr::Named(target_name, args, _)
+            if args.is_empty() && impl_param_names.contains(target_name.as_str()) =>
+        {
+            CanonicalType::TypeParam(0)
+        }
         TypeExpr::Named(target_name, args, _) if !args.is_empty() => {
             // Top-level args: map each to TypeParam(i) if it's an impl param,
             // else canonicalize normally.
@@ -324,6 +331,12 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
     // type param at `ib.generics` position 0 may appear at a different target
     // position (e.g. `impl<T, U> ... for Pair<U, T>`).
     let (arg_count, name_to_target_pos): (usize, HashMap<&str, usize>) = match &ib.target_type {
+        // A bare-parameter target (`extend<T: B> T: A`): the parameter is the whole target, position 0.
+        TypeExpr::Named(name, args, _)
+            if args.is_empty() && impl_param_names.contains(name.as_str()) =>
+        {
+            (1, HashMap::from([(name.as_str(), 0)]))
+        }
         TypeExpr::Named(_, args, _) => {
             let map = args
                 .iter()
@@ -810,6 +823,27 @@ fn concrete_satisfies_bounds(
 fn impls_actually_overlap(impls: &[CollectedImpl], a: &CollectedImpl, b: &CollectedImpl) -> bool {
     if provably_disjoint(&a.scoped_bounds, &b.scoped_bounds) {
         return false;
+    }
+    // A bare-parameter blanket against an explicit impl: the explicit target must satisfy the blanket's bounds
+    // for the pair to overlap (`extend<T: Copy> T: A` does not cover a type that is not `Copy`).
+    for (blanket, explicit) in [(a, b), (b, a)] {
+        if matches!(blanket.canonical_key.1, CanonicalType::TypeParam(_))
+            && !matches!(explicit.canonical_key.1, CanonicalType::TypeParam(_))
+        {
+            let pos = blanket
+                .scoped_bounds
+                .0
+                .first()
+                .map_or(&[] as &[GenericBound], |v| v);
+            let neg = blanket
+                .scoped_bounds
+                .1
+                .first()
+                .map_or(&[] as &[GenericBound], |v| v);
+            if !concrete_satisfies_bounds(impls, &explicit.canonical_key.1, pos, neg) {
+                return false;
+            }
+        }
     }
     let (CanonicalType::Resolved(_, a_args) | CanonicalType::Unresolved(_, a_args)) =
         &a.canonical_key.1

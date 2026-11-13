@@ -1,0 +1,6 @@
+// metel-core#1992: a bare-parameter blanket covers every type, so an explicit impl of the same aspect overlaps it.
+aspect Marker {}
+extend<T> T: Marker {}
+struct L { n: i64 }
+extend L: Marker {}
+fun main() {}

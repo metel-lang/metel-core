@@ -1,0 +1,13 @@
+// metel-core#1992: a bare-parameter blanket overlaps an explicit impl only where it covers the target: a bound the
+// target does not meet, or a different aspect argument list, leave the pair disjoint.
+aspect Marker {}
+extend<T: Copy> T: Marker {}
+struct Plain { n: i64 }
+extend Plain: Marker {}
+
+aspect Tag<T> {}
+extend<T> T: Tag<i64> {}
+struct K { n: i64 }
+extend K: Tag<String> {}
+
+fun main() {}
