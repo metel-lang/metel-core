@@ -238,7 +238,9 @@ impl BodyFreezer<'_, '_> {
             .borrow_mut()
             .entry(identity)
             .or_insert_with(|| name.to_string());
-        if matches!(ty, AbstractType::Closure { .. }) {
+        // A closure, or an aggregate that holds one (metel-core#1960), keeps its contract at every use of the
+        // binding: the typechecker's own type for the use writes the closure as a function type.
+        if holds_closure(&ty) {
             self.closure_types.borrow_mut().insert(identity, ty.clone());
         }
         Ok(AbstractBinding {
@@ -1076,7 +1078,7 @@ impl BodyFreezer<'_, '_> {
             | Expr::Continue(_) => self.control_flow(expression, &ty)?,
             _ => self.operator(expression, &ty)?,
         };
-        Self::finish_expression(ty, kind, expression.span())
+        self.finish_expression(ty, kind, expression.span())
     }
 
     /// The call's arguments in declaration order: a keyword call is bound exactly as inference and
@@ -1441,6 +1443,7 @@ impl BodyFreezer<'_, '_> {
     }
 
     fn finish_expression(
+        &self,
         mut ty: AbstractType,
         kind: AbstractExprKind,
         span: &Span,
@@ -1463,27 +1466,129 @@ impl BodyFreezer<'_, '_> {
                     .collect(),
             };
         }
-        let aggregates = match &kind {
-            AbstractExprKind::Tuple(items) | AbstractExprKind::Array(items) => items
-                .iter()
-                .any(|value| matches!(value.ty, AbstractType::Closure { .. })),
-            AbstractExprKind::StructLiteral { fields }
-            | AbstractExprKind::RecordLiteral { fields, .. } => fields
-                .iter()
-                .any(|(_, value)| matches!(value.ty, AbstractType::Closure { .. })),
-            AbstractExprKind::RepeatArray { value, .. } => {
-                matches!(value.ty, AbstractType::Closure { .. })
-            }
-            _ => false,
-        };
-        if aggregates {
-            return Err("aggregate closure ownership contracts are not yet retained".to_string());
+        if let Some(refined) = self.retain_aggregate_closures(&ty, &kind)? {
+            ty = refined;
         }
         Ok(AbstractExpr {
             ty,
             kind,
             span: span.clone(),
         })
+    }
+
+    /// An aggregate literal that holds a closure: its type, from the typechecker, writes the closure as a
+    /// function type, which has lost the captures the closure owns, so whether the aggregate is `Copy` could
+    /// not be decided. The closure's own contract (`AbstractType::Closure`, its owned captures) is put back at
+    /// the position that holds it: the tuple item, the record field, or the type argument a struct field of
+    /// bare parameter type carries (metel-core#1960). `None` when no element is a closure. An array of
+    /// closures (its elements share one function type but may own different captures), and a closure in a
+    /// field that is not a bare type parameter, are still not retained.
+    fn retain_aggregate_closures(
+        &self,
+        ty: &AbstractType,
+        kind: &AbstractExprKind,
+    ) -> Result<Option<AbstractType>, String> {
+        let is_closure = |value: &AbstractExpr| matches!(value.ty, AbstractType::Closure { .. });
+        let unsupported =
+            || "aggregate closure ownership contracts are not yet retained".to_string();
+        match kind {
+            AbstractExprKind::Tuple(items) if items.iter().any(is_closure) => {
+                let AbstractType::Tuple(types) = ty else {
+                    return Err(unsupported());
+                };
+                if types.len() != items.len() {
+                    return Err(unsupported());
+                }
+                Ok(Some(AbstractType::Tuple(
+                    types
+                        .iter()
+                        .zip(items)
+                        .map(|(ty, item)| {
+                            if is_closure(item) {
+                                item.ty.clone()
+                            } else {
+                                ty.clone()
+                            }
+                        })
+                        .collect(),
+                )))
+            }
+            AbstractExprKind::RecordLiteral { fields, .. }
+                if fields.iter().any(|(_, value)| is_closure(value)) =>
+            {
+                let AbstractType::Record(types) = ty else {
+                    return Err(unsupported());
+                };
+                Ok(Some(AbstractType::Record(
+                    types
+                        .iter()
+                        .map(|(name, ty)| {
+                            let replaced = fields
+                                .iter()
+                                .find(|(field, value)| field == name && is_closure(value))
+                                .map(|(_, value)| value.ty.clone());
+                            (name.clone(), replaced.unwrap_or_else(|| ty.clone()))
+                        })
+                        .collect(),
+                )))
+            }
+            AbstractExprKind::StructLiteral { fields }
+                if fields.iter().any(|(_, value)| is_closure(value)) =>
+            {
+                let AbstractType::Named {
+                    name,
+                    arguments,
+                    identity,
+                } = ty
+                else {
+                    return Err(unsupported());
+                };
+                let id = identity.get().ok_or_else(unsupported)?;
+                let templates = self
+                    .registry
+                    .struct_fields_by_id(id)
+                    .ok_or_else(unsupported)?;
+                let params = self
+                    .registry
+                    .struct_type_params_by_id(id)
+                    .ok_or_else(unsupported)?;
+                let mut refined = arguments.clone();
+                let mut placed: Vec<Option<AbstractType>> = vec![None; arguments.len()];
+                for (field, value) in fields.iter().filter(|(_, value)| is_closure(value)) {
+                    let template = templates
+                        .iter()
+                        .find(|entry| &entry.name == field)
+                        .ok_or_else(unsupported)?;
+                    let crate::pipeline::type_checking::type_engine::InferType::Var(var) =
+                        &template.ty
+                    else {
+                        return Err(unsupported());
+                    };
+                    let position = params
+                        .iter()
+                        .position(|param| param == var)
+                        .filter(|position| *position < arguments.len())
+                        .ok_or_else(unsupported)?;
+                    // Two closures meeting in one argument cannot be told apart by it.
+                    if placed[position]
+                        .as_ref()
+                        .is_some_and(|prior| prior != &value.ty)
+                    {
+                        return Err(unsupported());
+                    }
+                    placed[position] = Some(value.ty.clone());
+                    refined[position] = value.ty.clone();
+                }
+                Ok(Some(AbstractType::Named {
+                    name: name.clone(),
+                    arguments: refined,
+                    identity: identity.clone(),
+                }))
+            }
+            AbstractExprKind::Array(items) if items.iter().any(is_closure) => Err(unsupported()),
+            AbstractExprKind::RepeatArray { value, .. } if is_closure(value) => Err(unsupported()),
+            _ => Ok(None),
+        }
     }
 
     fn items(&self, items: &[Expr]) -> Result<Vec<AbstractExpr>, String> {
@@ -2683,5 +2788,16 @@ fn assignment_target_span(target: &AssignTarget) -> &Span {
         | AssignTarget::Index { span, .. }
         | AssignTarget::FieldAccess { span, .. }
         | AssignTarget::TupleAccess { span, .. } => span,
+    }
+}
+
+/// Whether `ty` is a closure, or holds one in a tuple item, a record field or a type argument.
+fn holds_closure(ty: &AbstractType) -> bool {
+    match ty {
+        AbstractType::Closure { .. } => true,
+        AbstractType::Tuple(items) => items.iter().any(holds_closure),
+        AbstractType::Record(fields) => fields.iter().any(|(_, ty)| holds_closure(ty)),
+        AbstractType::Named { arguments, .. } => arguments.iter().any(holds_closure),
+        _ => false,
     }
 }

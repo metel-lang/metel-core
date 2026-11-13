@@ -1,0 +1,11 @@
+// metel-core#1960: the closure owns `x: T` with no `Copy` bound, so it is not `Copy` and neither is the wrapper.
+struct Wrapper<T> derives Copy via T { value: T }
+
+fun f<T>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let w := Wrapper { value = c };
+    let a := w;
+    let b := w;
+}
+
+fun main() {}

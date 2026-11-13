@@ -1,0 +1,27 @@
+// metel-core#1960: a closure inside a flow argument or a tuple keeps its ownership contract, so a generic body that
+// holds it is analysed (it was I0011). A closure with no owned capture, or one whose captures are `Copy` by a bound,
+// is `Copy`, and so is the aggregate that holds it.
+struct Wrapper<T> derives Copy via T { value: T }
+
+fun by_struct<T: Copy>(x: T) {
+    let c := |k: i64| -> i64 { k };
+    let w := Wrapper { value = c };
+    let a := w;
+    let b := w;
+}
+
+fun by_capture<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let w := Wrapper { value = c };
+    let a := w;
+    let b := w;
+}
+
+fun by_tuple<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let t := (c, 1);
+    let a := t;
+    let b := t;
+}
+
+fun main() {}
