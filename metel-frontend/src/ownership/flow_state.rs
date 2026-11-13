@@ -32,6 +32,8 @@ pub(crate) struct MoveRecord {
     pub(crate) moved_span: Span,
     pub(crate) cause: MoveCause,
     pub(crate) moved_type: String,
+    /// Why the moved value is not `Copy`, when the analysis can say (RFC-0224, metel-core#1959).
+    pub(crate) reason: Option<String>,
     /// Whether this move reached the current state around a loop's back edge.
     /// A loop-carried move is usually its own use -- the same expression, one
     /// iteration later -- so a diagnostic has to say which iteration it means.
@@ -176,6 +178,18 @@ impl FlowState {
         cause: MoveCause,
         moved_type: String,
     ) {
+        self.record_move_because(place, moved_span, cause, moved_type, None);
+    }
+
+    /// As [`Self::record_move`], with the reason the value is not `Copy`.
+    pub(crate) fn record_move_because(
+        &mut self,
+        place: Place,
+        moved_span: Span,
+        cause: MoveCause,
+        moved_type: String,
+        reason: Option<String>,
+    ) {
         let root = place.root().to_string();
         let records = self.moved.entry(root).or_default();
         if place.projections().is_empty() {
@@ -189,6 +203,7 @@ impl FlowState {
             moved_span,
             cause,
             moved_type,
+            reason,
             from_previous_iteration: false,
         });
     }

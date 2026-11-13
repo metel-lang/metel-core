@@ -26,6 +26,8 @@ pub struct MoveViolation {
     /// violations would disappear if a given type became `Copy`. Notably
     /// `T[]`, whose ownership is RFC-0124's open question.
     pub moved_type: String,
+    /// Why the moved value is not `Copy`, when the analysis can say (RFC-0224, metel-core#1959).
+    pub reason: Option<String>,
     /// Whether the move happened on an earlier iteration of an enclosing loop.
     /// When it did, `use_span` and `moved_span` are often the same site, and the
     /// message has to say so or it reads as pointing at itself.
@@ -1684,7 +1686,44 @@ impl<'a> Checker<'a> {
         if self.is_copy(current_module, ty) {
             return;
         }
-        state.record_move(place.clone(), use_span.clone(), cause, type_bucket(ty));
+        state.record_move_because(
+            place.clone(),
+            use_span.clone(),
+            cause,
+            type_bucket(ty),
+            self.explain_concrete_not_copy(ty),
+        );
+    }
+
+    /// Why a concrete nominal type is not `Copy` (RFC-0224 section 2, metel-core#1959): it does not
+    /// derive `Copy`, or it is `Copy` only when the arguments of its flow are and one is not.
+    fn explain_concrete_not_copy(&self, ty: &Type) -> Option<String> {
+        use crate::data::abstract_body::AbstractType;
+        use crate::pipeline::type_checking::type_engine::CopyBlame;
+        let Type::Named(name, arguments, identity) = ty else {
+            return None;
+        };
+        let abstract_arguments: Vec<AbstractType> = arguments
+            .iter()
+            .cloned()
+            .map(AbstractType::Concrete)
+            .collect();
+        let shown = ty.to_string();
+        match self
+            .registry
+            .nominal_copy_blame(identity, &abstract_arguments, &[])?
+        {
+            CopyBlame::NoDeclaration => Some(format!(
+                "`{}` does not derive or implement `Copy`",
+                name.rsplit("::").next().unwrap_or(name)
+            )),
+            CopyBlame::Argument(position) => {
+                let argument = arguments.get(position)?;
+                Some(format!(
+                    "`{shown}` is `Copy` only when `{argument}` is, and `{argument}` is not `Copy`"
+                ))
+            }
+        }
     }
 
     fn record_descendant_use_if_moved(
@@ -1701,6 +1740,7 @@ impl<'a> Checker<'a> {
                 kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
+                reason: record.reason.clone(),
                 moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
                 moved_span: Some(record.moved_span.clone()),
@@ -1735,6 +1775,7 @@ impl<'a> Checker<'a> {
                 kind: Self::violation_kind(place, record),
                 moved_by_value_receiver: record.cause == MoveCause::ByValueReceiver,
                 moved_type: record.moved_type.clone(),
+                reason: record.reason.clone(),
                 moved_in_previous_iteration: record.from_previous_iteration,
                 use_span: use_span.clone(),
                 moved_span: Some(record.moved_span.clone()),
@@ -1908,6 +1949,7 @@ impl<'a> Checker<'a> {
             kind,
             moved_by_value_receiver: false,
             moved_type,
+            reason: None,
             moved_in_previous_iteration: false,
             use_span,
             moved_span: None,
@@ -2466,10 +2508,14 @@ impl FreeRootCollector {
 fn violation_message(violation: &MoveViolation) -> String {
     match violation.kind {
         MoveViolationKind::UseAfterMove => format!(
-            "use of moved value `{}`: `{}` was {}",
+            "use of moved value `{}`: `{}` was {}{}",
             violation.binding,
             format_place(&violation.moved_place),
-            moved_at_clause(violation)
+            moved_at_clause(violation),
+            violation
+                .reason
+                .as_ref()
+                .map_or_else(String::new, |reason| format!("; {reason}"))
         ),
         MoveViolationKind::PartialMoveUsedAsWhole => format!(
             "use of partially moved value `{}`: field or element `{}` was {}",

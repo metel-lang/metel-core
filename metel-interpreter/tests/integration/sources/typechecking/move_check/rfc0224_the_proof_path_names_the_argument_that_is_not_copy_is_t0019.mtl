@@ -1,0 +1,4 @@
+// RFC-0224 (metel-core#1959): a concrete argument that is not `Copy` is named, and no bound is suggested.
+struct Wrapper<T> derives Copy via T { value: T }
+fun bad(w: Wrapper<String>) -> (Wrapper<String>, Wrapper<String>) { (w, w) }
+fun main() {}

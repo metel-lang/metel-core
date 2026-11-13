@@ -1,0 +1,4 @@
+// RFC-0224 (metel-core#1959): an argument that is declared `!Copy` is reported as such, not given a fix-it.
+struct Wrapper<T> derives Copy via T { value: T }
+fun bad<T: !Copy>(w: Wrapper<T>) -> (Wrapper<T>, Wrapper<T>) { (w, w) }
+fun main() {}

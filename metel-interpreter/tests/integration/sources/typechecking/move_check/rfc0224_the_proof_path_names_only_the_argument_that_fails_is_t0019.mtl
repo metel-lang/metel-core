@@ -1,0 +1,4 @@
+// RFC-0224 (metel-core#1959): of a two-parameter flow, only the argument without a bound is named.
+struct Pair<A, B> derives Copy via A + B { a: A, b: B }
+fun bad<A: Copy, B>(p: Pair<A, B>) -> (Pair<A, B>, Pair<A, B>) { (p, p) }
+fun main() {}
