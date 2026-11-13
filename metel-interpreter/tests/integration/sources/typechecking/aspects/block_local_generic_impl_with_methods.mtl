@@ -1,0 +1,20 @@
+// metel-core#1974: an impl with methods for a block-local *generic* type is recorded: a bound is satisfied, a
+// method is reached through the bound with the receiver's type arguments, and a conditional impl calls a method of
+// its parameter.
+aspect Show { fun show(&self) -> String; }
+fun render<T: Show>(x: &T) -> String { x.show() }
+
+fun main() {
+    struct L { n: i64 }
+    extend L: Show { fun show(&self) -> String { "L${self.n}" } }
+    struct W<T> { v: T }
+    extend<T> W<T>: Show { fun show(&self) -> String { "W" } }
+    struct Box<T> { v: T }
+    extend<T: Show> Box<T>: Show { fun show(&self) -> String { "Box(" + self.v.show() + ")" } }
+
+    let w: W<i64> := W { v = 1 };
+    assert(render(&w) == "W");
+    assert(w.show() == "W");
+    let b := Box { v = L { n = 7 } };
+    assert(render(&b) == "Box(L7)");
+}

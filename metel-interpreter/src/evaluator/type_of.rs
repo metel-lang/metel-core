@@ -64,7 +64,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args = infer_named_type_args(name, None, &field_types, registry, span);
+            let args = infer_named_type_args(name, *type_id, None, &field_types, registry, span);
             // metel-core#1129: carry the value's own resolved declaration
             // identity, when it has one, instead of only the bare name --
             // this is what lets a bound check on this type find the *actual*
@@ -80,7 +80,8 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         } => {
             let field_types: HashMap<String, Type> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
-            let args = infer_named_type_args(name, Some(variant), &field_types, registry, span);
+            let args =
+                infer_named_type_args(name, *type_id, Some(variant), &field_types, registry, span);
             Type::Named(name.clone(), args, NominalId(*type_id))
         }
         Value::Callable(callable) => match callable {
