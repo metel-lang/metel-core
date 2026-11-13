@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.ownership.aspects-on-a-residual.legality-1"]

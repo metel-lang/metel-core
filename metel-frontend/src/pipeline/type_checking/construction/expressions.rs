@@ -1242,6 +1242,26 @@ pub(super) fn construct_expr(
                 });
             }
 
+            // The `Clone` a `Copy` brand provides for its residual (RFC-0211 rule 1): the residual is `Copy`,
+            // so the clone is the copy the runtime performs. Inference has already rejected any other case.
+            if method == "clone"
+                && args.is_empty()
+                && let residual @ Type::Residual { brand, .. } =
+                    peel_type_references(typed_receiver.ty())
+                && !ctx.registry.brand_is_record(ctx.current_module, brand)
+            {
+                let ty = residual.clone();
+                return Ok(TypedExpr::MethodCall {
+                    receiver: Box::new(typed_receiver),
+                    method: method.clone(),
+                    args: Vec::new(),
+                    ty,
+                    impl_site: None,
+                    dispatch: MethodDispatch::Dynamic,
+                    span: span.clone(),
+                });
+            }
+
             // A record receiver dispatches through the impls whose target is a record
             // type (RFC-0121 §3): each candidate's receiver var carries the impl's row
             // condition, so `resolve_generic_method_call` keeps the ones this record

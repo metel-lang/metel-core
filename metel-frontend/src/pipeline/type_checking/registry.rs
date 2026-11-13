@@ -841,6 +841,20 @@ fn register_program_decls(
 
             if ib.polarity == Polarity::Positive {
                 if let Some(aspect_name) = &ib.aspect_name {
+                    if let Some(target_name) = nominal_target_name.as_ref() {
+                        registry.register_impl_origin(
+                            current_module_path,
+                            target_name,
+                            aspect_name,
+                            if ib.from_clause {
+                                crate::pipeline::type_checking::type_engine::ImplOrigin::Derived
+                            } else {
+                                crate::pipeline::type_checking::type_engine::ImplOrigin::Written(
+                                    ib.span.clone(),
+                                )
+                            },
+                        );
+                    }
                     let type_args: Vec<crate::data::types::Type> = ib
                         .aspect_type_args
                         .iter()

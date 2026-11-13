@@ -1,0 +1,7 @@
+copy struct Point { x: i64, y: i64 }
+fun main() {
+    let p := Point { x = 1, y = 2 };
+    let a := p.{ .x };
+    let c := a;
+    let d := a;
+}

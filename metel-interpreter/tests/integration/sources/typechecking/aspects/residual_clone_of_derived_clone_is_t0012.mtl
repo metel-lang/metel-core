@@ -1,0 +1,6 @@
+struct Doc derives Clone { title: String, n: i64 }
+fun main() {
+    let d := Doc { title = "a".to_string(), n = 1 };
+    let r := d.{ .title };
+    let c := r.clone();
+}

@@ -1787,6 +1787,28 @@ pub(super) fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
+        // RFC-0211: a residual satisfies a bound only by the rules of its own section; a bound it fails is `T0012`
+        // with the cause named.
+        Type::Residual { brand, .. } => {
+            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
+                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
+                    let note = registry.residual_unsatisfied_note(current_module, brand, aspect);
+                    let note = if note.is_empty() {
+                        String::new()
+                    } else {
+                        format!("\n       note: {note}")
+                    };
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0012,
+                        format!(
+                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`){note}"
+                        ),
+                        span,
+                    ));
+                }
+            }
+            return Ok(());
+        }
         Type::Record(_) | Type::OpenRecord { .. } | Type::SymbolicRow { .. } => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {

@@ -1,0 +1,7 @@
+struct H { fd: i64, name: String }
+fun main() {
+    let h := H { fd = 1, name = "x".to_string() };
+    let r := h.{ .fd };
+    let a := r;
+    let b := r;
+}
