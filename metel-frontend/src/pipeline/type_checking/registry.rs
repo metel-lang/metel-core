@@ -827,6 +827,7 @@ fn register_program_decls(
                         type_var_gen,
                         registry,
                     );
+                    register_aspect_method_variants(ib, target_name, current_module_path, registry);
                     if ib.polarity == Polarity::Positive {
                         register_default_aspect_methods(
                             ib,
@@ -1886,6 +1887,65 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
         TypeExpr::RowArgLiteral(inner) => {
             TypeExpr::RowArgLiteral(Box::new(substitute_structural_self(inner, replacement)))
         }
+    }
+}
+
+/// Keep the methods of an impl that applies an aspect to type arguments (`extend L: Conv<i64>`) beside the one
+/// `(owner, name)` entry the method table holds, so two impls of one aspect for different arguments can be told
+/// apart (metel-core#1987).
+fn register_aspect_method_variants(
+    ib: &crate::data::ast::ImplBlock,
+    target_name: &str,
+    current_module_path: &[String],
+    registry: &mut TypeDefinitionRegistry,
+) {
+    let Some(aspect) = &ib.aspect_name else {
+        return;
+    };
+    if ib.polarity != Polarity::Positive || ib.aspect_type_args.is_empty() {
+        return;
+    }
+    let Some(owner) = registry.resolve_type_id(current_module_path, target_name) else {
+        return;
+    };
+    let arguments: Option<Vec<crate::data::types::Type>> = ib
+        .aspect_type_args
+        .iter()
+        .map(|te| {
+            match type_expr_to_infer_for_registry(
+                te,
+                &HashMap::new(),
+                registry,
+                current_module_path,
+            ) {
+                InferType::Concrete(ty) => Some(ty),
+                InferType::Named(name, args, id) if args.is_empty() => {
+                    Some(crate::data::types::Type::Named(name, vec![], id))
+                }
+                _ => None,
+            }
+        })
+        .collect();
+    let Some(arguments) = arguments else {
+        return;
+    };
+    for method in &ib.methods {
+        let Some(ty) = registry
+            .method_type_by_id(owner, &method.name)
+            .and_then(|ty| super::conversions::infer_type_to_type(ty, &method.span).ok())
+        else {
+            continue;
+        };
+        registry.register_aspect_method_variant(
+            owner,
+            method.name.clone(),
+            super::type_engine::AspectMethodVariant {
+                aspect: aspect.clone(),
+                arguments: arguments.clone(),
+                ty,
+                span: method.span.clone(),
+            },
+        );
     }
 }
 

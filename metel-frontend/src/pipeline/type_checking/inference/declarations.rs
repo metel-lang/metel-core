@@ -2242,6 +2242,23 @@ pub(super) fn infer_impl_method(
             type_expr_to_infer_with_assoc_ctx(te, &generic_map, Some(target_name), &assoc_ctx)
         })
     };
+
+    // The aspect's type arguments, as the impl applies it (metel-core#1987).
+    let variant_arguments: Option<Vec<crate::data::types::Type>> =
+        if ib.polarity == crate::data::ast::Polarity::Positive && !ib.aspect_type_args.is_empty() {
+            ib.aspect_type_args
+                .iter()
+                .map(|argument| match te_to_infer(argument, ctx) {
+                    Ok(InferType::Concrete(ty)) => Some(ty),
+                    Ok(InferType::Named(name, args, id)) if args.is_empty() => {
+                        Some(crate::data::types::Type::Named(name, vec![], id))
+                    }
+                    _ => None,
+                })
+                .collect()
+        } else {
+            None
+        };
     // #740 part B: swap the assoc-projection log in *before* resolving the
     // signature (params and return type), the same fix and for the same reason
     // as `infer_fun_decl`'s own swap above -- a `T::AssocType` return-type
@@ -2802,6 +2819,15 @@ pub(super) fn infer_impl_method(
     } else if array_target_generic_name.is_some() {
         ctx.register_array_method(method.name.clone(), resolved_fun_ty);
     } else {
+        if let (Some(aspect), Some(arguments)) = (&ib.aspect_name, variant_arguments) {
+            ctx.register_aspect_method_variant_of(
+                target_name,
+                method,
+                aspect,
+                arguments,
+                &resolved_fun_ty,
+            );
+        }
         ctx.register_method(target_name, method.name.clone(), resolved_fun_ty);
     }
     if let Some(receiver) = method.params.first().and_then(|p| p.receiver.clone()) {

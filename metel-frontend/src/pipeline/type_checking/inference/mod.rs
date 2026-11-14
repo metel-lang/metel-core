@@ -2111,7 +2111,7 @@ fn infer_block(
     Ok(ty)
 }
 
-mod expressions;
+pub(in crate::pipeline::type_checking) mod expressions;
 use expressions::{infer_expr, infer_stmt};
 
 mod patterns;

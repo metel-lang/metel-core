@@ -1,0 +1,10 @@
+// metel-core#1987: the same for a type declared in a block (#1979 records its impls with their aspect arguments).
+aspect Conv<T> { fun conv(&self) -> T; }
+fun use_i<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
+fun main() {
+    struct M { n: i64 }
+    extend M: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+    extend M: Conv<String> { fun conv(&self) -> String { "m" } }
+    let m := M { n = 7 };
+    assert(use_i(&m) == 7);
+}

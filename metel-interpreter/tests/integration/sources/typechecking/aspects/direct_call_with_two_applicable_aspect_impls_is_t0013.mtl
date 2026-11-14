@@ -1,0 +1,6 @@
+// metel-core#1987: a direct call that two impls of one aspect for different arguments could answer names no arguments to choose by.
+aspect Conv<T> { fun conv(&self) -> T; }
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+fun main() { let l := L { n = 4 }; let c := l.conv(); }

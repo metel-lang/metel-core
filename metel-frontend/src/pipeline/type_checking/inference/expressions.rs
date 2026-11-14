@@ -1871,6 +1871,23 @@ fn infer_expr_inner(
                         })
                         .flatten()
                 });
+                // Two impls of one aspect for different type arguments both provide this method, and a call
+                // written on the value says no more than the method's name (metel-core#1987): a call through a
+                // bound names the arguments, a direct call does not.
+                if let Some(owner) = receiver_owner.or_else(|| {
+                    ctx.registry()
+                        .resolve_type_id(ctx.current_module_path(), &struct_name)
+                }) {
+                    let competing = ctx.registry().competing_aspect_methods(owner, method);
+                    if !competing.is_empty() {
+                        return Err(ambiguous_aspect_method(
+                            &struct_name,
+                            method,
+                            competing,
+                            span,
+                        ));
+                    }
+                }
                 let concrete_method = receiver_owner
                     .map_or_else(
                         || ctx.get_method_type(&struct_name, method),
@@ -3612,4 +3629,34 @@ fn keyword_callee_is_defined(callee: &Expr, ctx: &mut InferContext) -> bool {
         }
         _ => true,
     }
+}
+
+/// The error for a method call that more than one impl of one aspect, for different type arguments, could
+/// answer (metel-core#1987).
+pub(crate) fn ambiguous_aspect_method(
+    type_name: &str,
+    method: &str,
+    candidates: &[crate::pipeline::type_checking::type_engine::AspectMethodVariant],
+    span: &crate::data::ast::Span,
+) -> MetelError {
+    let mut impls: Vec<String> = candidates
+        .iter()
+        .map(|candidate| {
+            let arguments: Vec<String> = candidate
+                .arguments
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            format!("`{}<{}>`", candidate.aspect, arguments.join(", "))
+        })
+        .collect();
+    impls.dedup();
+    MetelError::type_error(
+        TypeErrorCode::T0013,
+        format!(
+            "ambiguous method call: `{type_name}` implements {} and each provides `{method}`; call it through a bound that names the type arguments",
+            impls.join(" and ")
+        ),
+        span,
+    )
 }

@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-17", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.dynamics-3"]
