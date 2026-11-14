@@ -174,19 +174,11 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, "| -> {ret}")
             }
+            // RFC-0151: a one-element tuple is written `(A,)`.
             InferType::Tuple(ts) => {
-                write!(f, "(")?;
-                for (i, t) in ts.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{t}")?;
-                }
-                // RFC-0151: a one-element tuple is written `(A,)`; `(A)` would read as grouping.
-                if ts.len() == 1 {
-                    write!(f, ",")?;
-                }
-                write!(f, ")")
+                let items: Vec<String> = ts.iter().map(ToString::to_string).collect();
+                let tail = if ts.len() == 1 { "," } else { "" };
+                write!(f, "({}{tail})", items.join(", "))
             }
             // The empty closed row is the unit type and prints as `()` (RFC-0231).
             InferType::Record(fields) if fields.is_empty() => write!(f, "()"),
