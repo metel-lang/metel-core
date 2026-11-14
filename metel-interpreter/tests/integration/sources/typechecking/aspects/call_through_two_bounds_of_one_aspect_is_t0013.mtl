@@ -1,0 +1,7 @@
+// metel-core#1987: a parameter bound twice by one aspect, each providing the method, names no type arguments to choose between them.
+aspect Conv<T> { fun conv(&self) -> T; }
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+fun both<Z: Conv<i64> + Conv<String>>(z: &Z) -> i64 { let n: i64 := z.conv(); n }
+fun main() { assert(both(&L { n = 4 }) == 4); }
