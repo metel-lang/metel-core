@@ -1788,8 +1788,16 @@ impl Walker<'_> {
                 fields,
                 field_spans,
                 rest_binding,
+                nested,
                 ..
             } => {
+                for (i, (_, sub_pattern)) in nested.iter().enumerate() {
+                    self.path.push(LexicalSeg::PatternElem(
+                        u32::try_from(i).unwrap_or(u32::MAX),
+                    ));
+                    self.bind_pattern(sub_pattern);
+                    self.path.pop();
+                }
                 for (i, f) in fields.iter().enumerate() {
                     let span = field_spans
                         .get(i)

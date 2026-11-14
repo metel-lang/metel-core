@@ -1,0 +1,5 @@
+// RFC-0151 (metel-core#2035): a declaration binds, so a literal sub-pattern, which can fail to match, is rejected.
+fun main() {
+    let t := .{ .0 = 1, .1 = 2 };
+    let .{ .0: 1, .1: x } := t;
+}

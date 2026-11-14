@@ -1368,9 +1368,10 @@ impl<'a> Checker<'a> {
             TypedPattern::Record {
                 fields,
                 ignored_fields,
+                nested,
                 ..
-            } => self.apply_record_field_moves(
-                (fields, ignored_fields),
+            } => self.apply_record_pattern_moves(
+                (fields, ignored_fields, nested),
                 place,
                 root_ty,
                 use_span,
@@ -1458,6 +1459,41 @@ impl<'a> Checker<'a> {
         state.bind(rest);
     }
 
+    /// The moves of a record pattern without a remainder binding: each bound or discarded field is consumed, and
+    /// a sub-pattern (RFC-0151) moves the parts of its field it binds.
+    fn apply_record_pattern_moves(
+        &mut self,
+        entries: RecordPatternEntries<'_>,
+        place: &Place,
+        root_ty: &Type,
+        use_span: &Span,
+        current_module: &[String],
+        state: &mut FlowState,
+    ) {
+        let (fields, ignored_fields, nested) = entries;
+        self.apply_record_field_moves(
+            (fields, ignored_fields),
+            place,
+            root_ty,
+            use_span,
+            current_module,
+            state,
+        );
+        for (label, sub_pattern) in nested {
+            let child = place
+                .clone()
+                .with_projection(Projection::field(label.clone()));
+            self.apply_pattern_place_move(
+                sub_pattern,
+                &child,
+                root_ty,
+                use_span,
+                current_module,
+                state,
+            );
+        }
+    }
+
     fn apply_record_field_moves(
         &mut self,
         record_fields: (&[(String, Option<crate::identity::LocalId>)], &[String]),
@@ -1507,11 +1543,15 @@ impl<'a> Checker<'a> {
             }
             TypedPattern::Record {
                 fields,
+                nested,
                 rest_binding,
                 ..
             } => {
                 for (field, _local) in fields {
                     state.bind(field);
+                }
+                for (_, sub_pattern) in nested {
+                    Self::observe_pattern_bindings(sub_pattern, state);
                 }
                 if let Some((rest, _)) = rest_binding {
                     state.bind(rest);
@@ -2257,11 +2297,19 @@ impl FreeRootCollector {
                 self.expr(value);
                 if let TypedPattern::Record {
                     fields,
+                    nested,
                     rest_binding,
                     ..
                 } = pattern
                 {
                     for (name, _) in fields {
+                        self.bind(name);
+                    }
+                    let mut sub_names = HashSet::new();
+                    for (_, sub_pattern) in nested {
+                        bind_pattern_names(sub_pattern, &mut sub_names);
+                    }
+                    for name in &sub_names {
                         self.bind(name);
                     }
                     if let Some((name, _)) = rest_binding {
@@ -2587,6 +2635,12 @@ fn format_span(span: &Span) -> String {
     format!("{}:{}:{}", span.filename, span.line, span.col)
 }
 
+type RecordPatternEntries<'a> = (
+    &'a [(String, Option<crate::identity::LocalId>)],
+    &'a [String],
+    &'a [(String, TypedPattern)],
+);
+
 fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
     match pattern {
         TypedPattern::Binding(name, _, _) => {
@@ -2604,11 +2658,15 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
         }
         TypedPattern::Record {
             fields,
+            nested,
             rest_binding,
             ..
         } => {
             for (field, _local) in fields {
                 into.insert(field.clone());
+            }
+            for (_, sub_pattern) in nested {
+                bind_pattern_names(sub_pattern, into);
             }
             if let Some((rest, _)) = rest_binding {
                 into.insert(rest.clone());

@@ -792,6 +792,9 @@ pub enum TypedPattern {
         fields: Vec<(String, Option<LocalId>)>,
         /// Present labels discarded with `field: _`, with no local identity.
         ignored_fields: Vec<String>,
+        /// RFC-0151: `.label: pattern` entries whose pattern is not a plain name or `_`; the field `.label` is
+        /// matched against the sub-pattern and is not itself bound.
+        nested: Vec<(String, TypedPattern)>,
         /// The name and lexical identity of the owned anonymous remainder binding.
         rest_binding: Option<(String, Option<LocalId>)>,
         rest: bool,

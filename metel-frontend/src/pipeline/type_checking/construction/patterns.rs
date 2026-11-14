@@ -265,17 +265,18 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
             }
         }
         Pattern::Record {
-            fields: _,
+            fields,
             labels,
             field_spans,
             ignored_fields,
+            nested,
             rest,
             rest_binding,
             span,
         } => lower_record_pattern(
-            labels,
-            field_spans,
+            (fields, labels, field_spans),
             ignored_fields,
+            nested,
             *rest,
             rest_binding.as_ref(),
             span,
@@ -296,28 +297,35 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
 }
 
 fn lower_record_pattern(
-    labels: &[String],
-    field_spans: &[Span],
+    entries: (&[String], &[String], &[Span]),
     ignored_fields: &[String],
+    nested: &[(String, Pattern)],
     rest: bool,
     rest_binding: Option<&(String, Span)>,
     span: &Span,
     ctx: &ConstructCtx,
 ) -> TypedPattern {
+    let (binders, labels, field_spans) = entries;
+    // An entry whose binder is generated (`nested_binder`) is a sub-pattern, not a binding.
+    let sub_pattern_of = |binder: &String| nested.iter().find(|(name, _)| name == binder);
+    let mut bound = Vec::new();
+    let mut lowered_nested = Vec::new();
+    for (index, label) in labels.iter().enumerate() {
+        if let Some((_, sub)) = binders.get(index).and_then(sub_pattern_of) {
+            lowered_nested.push((label.clone(), lower_typed_pattern(sub, ctx)));
+        } else {
+            bound.push((
+                label.clone(),
+                field_spans
+                    .get(index)
+                    .and_then(|field_span| ctx.local_binding_at(field_span)),
+            ));
+        }
+    }
     TypedPattern::Record {
-        fields: labels
-            .iter()
-            .enumerate()
-            .map(|(index, label)| {
-                (
-                    label.clone(),
-                    field_spans
-                        .get(index)
-                        .and_then(|field_span| ctx.local_binding_at(field_span)),
-                )
-            })
-            .collect(),
+        fields: bound,
         ignored_fields: ignored_fields.to_vec(),
+        nested: lowered_nested,
         rest_binding: rest_binding
             .map(|(name, rest_span)| (name.clone(), ctx.local_binding_at(rest_span))),
         rest,
@@ -501,8 +509,11 @@ pub(super) fn is_catch_all_pattern(pattern: &TypedPattern) -> bool {
         // which fields it names.
         TypedPattern::Wildcard(_)
         | TypedPattern::Binding(_, _, _)
-        | TypedPattern::Record { .. }
         | TypedPattern::Struct { .. } => true,
+        // A record pattern is irrefutable when each sub-pattern of its `.label: pattern` entries is (RFC-0151).
+        TypedPattern::Record { nested, .. } => {
+            nested.iter().all(|(_, sub)| is_catch_all_pattern(sub))
+        }
         // A tuple pattern is irrefutable when every element is also irrefutable.
         TypedPattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
@@ -693,6 +704,7 @@ fn bind_record_pattern_fields(
         labels,
         field_spans,
         ignored_fields,
+        nested,
         rest_binding,
         span,
         ..
@@ -710,7 +722,10 @@ fn bind_record_pattern_fields(
             .find(|(name, _)| name == label)
             .map(|(_, ty)| ty.clone())
             .ok_or_else(|| MetelError::internal(format!("missing record field `{label}`")))?;
-        if mutable {
+        if let Some((_, sub_pattern)) = nested.iter().find(|(binder, _)| binder == field) {
+            // RFC-0151: the sub-pattern is matched against the field; the generated binder is not a name.
+            construct_pattern_bindings(sub_pattern, &field_ty, mutable, ctx)?;
+        } else if mutable {
             ctx.bind_mut(field, &field_span, field_ty);
         } else {
             ctx.bind(field, &field_span, field_ty);

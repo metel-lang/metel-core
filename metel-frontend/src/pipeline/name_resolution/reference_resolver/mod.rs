@@ -482,10 +482,14 @@ fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
         Pattern::Record {
             fields,
             rest_binding,
+            nested,
             ..
         } => {
             for f in fields {
                 bind(f);
+            }
+            for (_, sub_pattern) in nested {
+                bind_pattern(sub_pattern, bind);
             }
             if let Some((name, _)) = rest_binding {
                 bind(name);

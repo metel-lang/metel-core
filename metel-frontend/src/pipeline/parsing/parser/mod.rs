@@ -2100,10 +2100,14 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
             span,
             field_spans,
             rest_binding,
+            nested,
             ..
         } => {
             for fs in field_spans.iter_mut() {
                 shift_span(fs, base_start, base_line, base_col);
+            }
+            for (_, sub) in nested.iter_mut() {
+                shift_pattern_span(sub, base_start, base_line, base_col);
             }
             if let Some((_, rest_span)) = rest_binding {
                 shift_span(rest_span, base_start, base_line, base_col);
@@ -2998,6 +3002,7 @@ type ParsedRecordFieldPatList = (
     Vec<String>,
     Vec<Span>,
     Vec<String>,
+    Vec<(String, Pattern)>,
     bool,
     Option<(String, Span)>,
 );
@@ -3005,11 +3010,12 @@ type ParsedRecordFieldPatList = (
 fn parse_record_field_pat_list(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
-) -> ParsedRecordFieldPatList {
+) -> Result<ParsedRecordFieldPatList, MetelError> {
     let mut fields = vec![];
     let mut labels = vec![];
     let mut field_spans = vec![];
     let mut ignored_fields = vec![];
+    let mut nested = vec![];
     let mut rest = false;
     let mut rest_binding = None;
     for child in pair.into_inner() {
@@ -3026,11 +3032,20 @@ fn parse_record_field_pat_list(
                     Some(target) if target.as_rule() == Rule::record_field_discard => {
                         ignored_fields.push(field.as_str().to_string());
                     }
-                    // `.label: name`: the field is bound to `name`.
-                    Some(binder) => {
-                        field_spans.push(Span::of(&binder, filename));
-                        fields.push(binder.as_str().to_string());
-                        labels.push(field.as_str().to_string());
+                    // `.label: name` binds the field to `name`; any other pattern is matched against the field.
+                    Some(target) => {
+                        let sub = parse_pattern(target, filename)?;
+                        if let Pattern::Binding(name, name_span) = sub {
+                            field_spans.push(name_span);
+                            fields.push(name);
+                            labels.push(field.as_str().to_string());
+                        } else {
+                            let binder = crate::data::ast::nested_binder(field.as_str());
+                            field_spans.push(sub.span().clone());
+                            fields.push(binder.clone());
+                            labels.push(field.as_str().to_string());
+                            nested.push((binder, sub));
+                        }
                     }
                     // `.label`: the pun binds the label's own name.
                     None => {
@@ -3052,14 +3067,15 @@ fn parse_record_field_pat_list(
             _ => {}
         }
     }
-    (
+    Ok((
         fields,
         labels,
         field_spans,
         ignored_fields,
+        nested,
         rest,
         rest_binding,
-    )
+    ))
 }
 
 #[allow(clippy::too_many_lines)]
@@ -3083,6 +3099,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             labels: vec![],
             field_spans: vec![],
             ignored_fields: vec![],
+            nested: vec![],
             rest: false,
             rest_binding: None,
             span: Span::of(&pair, filename),
@@ -3111,8 +3128,15 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .ok_or_else(|| {
                     MetelError::internal("record_pattern: missing record_field_pat_list")
                 })?;
-            let (mut fields, mut labels, mut field_spans, mut ignored_fields, rest, rest_binding) =
-                parse_record_field_pat_list(field_list, filename);
+            let (
+                mut fields,
+                mut labels,
+                mut field_spans,
+                mut ignored_fields,
+                nested,
+                rest,
+                rest_binding,
+            ) = parse_record_field_pat_list(field_list, filename)?;
             sort_record_pattern_fields(
                 &mut fields,
                 &mut labels,
@@ -3144,6 +3168,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 labels,
                 field_spans,
                 ignored_fields,
+                nested,
                 rest,
                 rest_binding,
                 span,

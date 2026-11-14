@@ -1,0 +1,6 @@
+[options]
+error = ["T0001"]
+spec = ["spec.expressions.record-rest-patterns.legality-3"]
+
+[expect]
+status = "typecheck_error"

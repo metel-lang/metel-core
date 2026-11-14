@@ -1,0 +1,2 @@
+[options]
+spec = ["spec.expressions.record-rest-patterns.legality-3"]
