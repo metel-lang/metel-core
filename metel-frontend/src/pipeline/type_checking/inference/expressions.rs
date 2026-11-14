@@ -2187,6 +2187,27 @@ fn infer_expr_inner(
             {
                 let self_generic_map: HashMap<String, TypeVar> =
                     std::iter::once(("Self".to_string(), *tv)).collect();
+                // Two bounds of one aspect (`Z: Conv<i64> + Conv<String>`) that both provide the method: the
+                // call names no type arguments to choose between them (metel-core#1987).
+                let providing: Vec<&str> = aspect_names
+                    .iter()
+                    .filter_map(GenericBound::aspect_name)
+                    .filter(|aspect| {
+                        ctx.get_aspect_method_defs(aspect)
+                            .is_some_and(|methods| methods.iter().any(|m| m.name == *method))
+                    })
+                    .collect();
+                if let Some(repeated) = providing.iter().enumerate().find_map(|(index, aspect)| {
+                    providing[..index].contains(aspect).then_some(*aspect)
+                }) {
+                    return Err(MetelError::type_error(
+                        TypeErrorCode::T0013,
+                        format!(
+                            "ambiguous method call: this type parameter has more than one bound of `{repeated}`, and each provides `{method}`; the call names no type arguments to choose between them"
+                        ),
+                        span,
+                    ));
+                }
                 for aspect_name in aspect_names.iter().filter_map(GenericBound::aspect_name) {
                     if let Some(methods) = ctx.get_aspect_method_defs(aspect_name).cloned()
                         && let Some(method_def) = methods.iter().find(|m| m.name == *method)
