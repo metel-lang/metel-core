@@ -53,7 +53,11 @@ impl Environment<'_> {
             AbstractType::MutReference(inner) => format!("&var {}", self.render(inner)),
             AbstractType::Tuple(items) => {
                 let shown: Vec<String> = items.iter().map(|a| self.render(a)).collect();
-                format!("({})", shown.join(", "))
+                format!(
+                    "({}{})",
+                    shown.join(", "),
+                    if shown.len() == 1 { "," } else { "" }
+                )
             }
             _ => "_".to_string(),
         }
@@ -1792,7 +1796,11 @@ fn describe(ty: &AbstractType) -> String {
         AbstractType::Named {
             name, arguments, ..
         } => format!("{name}<{}>", list(arguments)),
-        AbstractType::Tuple(items) => format!("({})", list(items)),
+        AbstractType::Tuple(items) => format!(
+            "({}{})",
+            list(items),
+            if items.len() == 1 { "," } else { "" }
+        ),
         AbstractType::Array(inner) => format!("[{}]", describe(inner)),
         AbstractType::SizedArray(inner, n) => format!("[{}; {n}]", describe(inner)),
         AbstractType::Reference(inner) => format!("&{}", describe(inner)),

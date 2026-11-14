@@ -325,7 +325,9 @@ return_kw     = @{ "return" ~ !(ASCII_ALPHANUMERIC | "_") }
 break_kw      = @{ "break" ~ !(ASCII_ALPHANUMERIC | "_") }
 continue_kw   = @{ "continue" ~ !(ASCII_ALPHANUMERIC | "_") }
 
-tuple_or_paren = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" | "(" ~ expr ~ ")" }
+// RFC-0151: `(a,)` is the one-element tuple; `(a)` stays grouping.
+one_comma = { "," }
+tuple_or_paren = { "(" ~ expr ~ ("," ~ expr)+ ~ ")" | "(" ~ expr ~ one_comma ~ ")" | "(" ~ expr ~ ")" }
 repeat_array   = { "[" ~ expr ~ ";" ~ decimal_int ~ "]" }
 array_lit      = { "[" ~ (expr ~ ("," ~ expr)* ~ ","?)? ~ "]" }
 
@@ -382,7 +384,7 @@ pattern = {
   | bind_pattern
 }
 
-tuple_pattern   = { "(" ~ pattern ~ ("," ~ pattern)* ~ ")" }
+tuple_pattern   = { "(" ~ pattern ~ ("," ~ pattern)+ ~ ")" | "(" ~ pattern ~ one_comma ~ ")" | "(" ~ pattern ~ ")" }
 array_pattern   = { "[" ~ array_pat_body ~ "]" }
 array_pat_body  = { (pattern ~ ("," ~ pattern)* ~ ("," ~ rest_pat)? | rest_pat)? }
 rest_pat        = { ".." ~ ident }
@@ -440,7 +442,7 @@ extends_type = { "extends" ~ named_type }
 dyn_type = { "dyn" ~ named_type }
 
 unit_type  = { "()" }
-tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" }
+tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" | "(" ~ type_expr ~ one_comma ~ ")" }
 record_type = { ".{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { label ~ ":" ~ type_expr }
 // RFC-0121: an open-row-tailed record type (`{ x: f64, ..R }` / `{ .. }`) is a

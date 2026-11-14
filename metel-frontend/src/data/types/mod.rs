@@ -284,6 +284,10 @@ impl std::fmt::Display for Type {
                     }
                     write!(f, "{t}")?;
                 }
+                // RFC-0151: a one-element tuple is written `(A,)`; `(A)` would read as grouping.
+                if ts.len() == 1 {
+                    write!(f, ",")?;
+                }
                 write!(f, ")")
             }
             // The empty closed row is the unit type (RFC-0231): one type, written `()`.

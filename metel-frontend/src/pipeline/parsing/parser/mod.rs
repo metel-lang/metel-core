@@ -2151,12 +2151,16 @@ fn parse_tuple_or_paren(
     filename: &str,
 ) -> Result<Expr, MetelError> {
     let span = Span::of(&pair, filename);
+    let one_element_tuple = pair
+        .clone()
+        .into_inner()
+        .any(|p| p.as_rule() == Rule::one_comma);
     let elems: Vec<Expr> = pair
         .into_inner()
         .filter(|p| p.as_rule() == Rule::expr)
         .map(|p| parse_expr(p, filename))
         .collect::<Result<_, _>>()?;
-    if elems.len() == 1 {
+    if elems.len() == 1 && !one_element_tuple {
         Ok(elems.into_iter().next().unwrap())
     } else {
         Ok(Expr::Tuple(elems, span))
@@ -3075,11 +3079,18 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
         }
         Rule::tuple_pattern => {
             let span = Span::of(&pair, filename);
-            let pats = pair
+            let one_element_tuple = pair
+                .clone()
+                .into_inner()
+                .any(|p| p.as_rule() == Rule::one_comma);
+            let mut pats: Vec<Pattern> = pair
                 .into_inner()
                 .filter(|p| p.as_rule() == Rule::pattern)
                 .map(|p| parse_pattern(p, filename))
                 .collect::<Result<_, _>>()?;
+            if pats.len() == 1 && !one_element_tuple {
+                return Ok(pats.remove(0));
+            }
             Ok(Pattern::Tuple(pats, span))
         }
         Rule::record_pattern => {

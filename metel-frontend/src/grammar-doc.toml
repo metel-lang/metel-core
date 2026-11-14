@@ -599,6 +599,11 @@ mode = "named"
 name = "TupleOrParen"
 section = "Expressions"
 [[rule]]
+pest = "one_comma"
+mode = "named"
+name = "OneElementTupleComma"
+section = "Expressions"
+[[rule]]
 pest = "repeat_array"
 mode = "named"
 name = "RepeatArray"

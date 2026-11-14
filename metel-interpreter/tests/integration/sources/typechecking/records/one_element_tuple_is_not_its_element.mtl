@@ -1,0 +1,4 @@
+// RFC-0151 (metel-core#2023): `(i64,)` is a tuple of one element, not `i64`; the diagnostic writes it with the comma.
+fun main() {
+    let t: (i64,) := 1;
+}

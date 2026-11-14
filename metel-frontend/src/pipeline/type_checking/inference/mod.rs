@@ -712,7 +712,11 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
         }
         InferType::Tuple(items) => {
             let rendered: Vec<String> = items.iter().map(|i| display_type(i, params)).collect();
-            format!("({})", rendered.join(", "))
+            format!(
+                "({}{})",
+                rendered.join(", "),
+                if rendered.len() == 1 { "," } else { "" }
+            )
         }
         InferType::Array(item) => format!("[{}]", display_type(item, params)),
         InferType::SizedArray(item, size) => format!("[{}; {size}]", display_type(item, params)),
