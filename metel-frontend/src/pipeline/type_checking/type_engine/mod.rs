@@ -123,7 +123,7 @@ impl InferType {
     }
     #[must_use]
     pub fn unit() -> Self {
-        InferType::Concrete(Type::Unit)
+        InferType::Record(Vec::new())
     }
     #[must_use]
     pub fn never() -> Self {
@@ -184,6 +184,8 @@ impl std::fmt::Display for InferType {
                 }
                 write!(f, ")")
             }
+            // The empty closed row is the unit type and prints as `()` (RFC-0231).
+            InferType::Record(fields) if fields.is_empty() => write!(f, "()"),
             InferType::Record(fields) => {
                 write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
@@ -385,6 +387,7 @@ fn render_with_names(
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
+        InferType::Record(fields) if fields.is_empty() => "()".to_string(),
         InferType::Record(fields) => format!(
             ".{{ {} }}",
             fields
@@ -1588,6 +1591,11 @@ fn record_diff_message(
     known: &HashMap<TypeVar, String>,
 ) -> Option<String> {
     let ((l_fields, l_open), (r_fields, r_open)) = (record_shape(lhs)?, record_shape(rhs)?);
+    // The empty closed row is the unit type (RFC-0231): a mismatch with it is a mismatch with `()`, which the
+    // generic message states (and the omitted-return advice recognises), not a record diff.
+    if (l_fields.is_empty() && !l_open) || (r_fields.is_empty() && !r_open) {
+        return None;
+    }
     let show = |t: &InferType| render_for_user(t, integer_vars, float_vars, known);
     // Fields both sides have, whose types cannot be made equal: (label, lhs type, rhs type).
     let mismatched: Vec<(&str, &InferType, &InferType)> = l_fields
@@ -2875,7 +2883,7 @@ impl fmt::Display for GenericBound {
                     }
                     Ok(())
                 }
-                TypeExpr::Unit => f.write_str("unit"),
+                TypeExpr::Record(fields) if fields.is_empty() => f.write_str("()"),
                 TypeExpr::Tuple(items) => {
                     f.write_str("(")?;
                     for (index, item) in items.iter().enumerate() {
@@ -5828,9 +5836,6 @@ impl TypeDefinitionRegistry {
                     Type::U64 => "u64",
                     Type::F32 => "f32",
                     Type::F64 => "f64",
-                    // The unit type has nothing to copy, so it is `Copy` (and so `Clone`), as the empty
-                    // tuple is (RFC-0206 section 2; metel-core#1784).
-                    Type::Unit => return is_copy || aspect_name == "Clone",
                     _ => return false,
                 };
                 let Some(target_id) = self.resolve_type_key_broad(current_module, name) else {

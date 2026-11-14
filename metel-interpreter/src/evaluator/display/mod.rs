@@ -35,7 +35,6 @@ pub(super) fn format_value(val: &Value) -> String {
         Value::Char(c) => format!("'{c}'"),
         Value::Boolean(b) => b.to_string(),
         Value::Str(s) => format!("{s:?}"),
-        Value::Unit => "()".to_string(),
         Value::I8(n) => n.to_string(),
         Value::I16(n) => n.to_string(),
         Value::I32(n) => n.to_string(),
@@ -61,15 +60,20 @@ pub(super) fn format_value(val: &Value) -> String {
                 .join(", ");
             format!("[{inner}]")
         }
+        // The empty row is the unit value, and prints as `()` (RFC-0231).
+        Value::Record {
+            fields,
+            type_id: None,
+        } if fields.is_empty() => "()".to_string(),
         Value::Record { fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
             pairs.sort_by_key(|(k, _)| k.as_str());
             let inner = pairs
                 .iter()
-                .map(|(k, v)| format!("{k}: {}", format_value(v)))
+                .map(|(k, v)| format!(".{k}: {}", format_value(v)))
                 .collect::<Vec<_>>()
                 .join(", ");
-            format!("{{ {inner} }}")
+            format!(".{{ {inner} }}")
         }
         Value::Struct { name, fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
@@ -101,11 +105,11 @@ pub(super) fn format_value(val: &Value) -> String {
         } if name == "Result" => match variant.as_str() {
             "Ok" => format!(
                 "Ok({})",
-                format_value(fields.get("value").unwrap_or(&Value::Unit))
+                format_value(fields.get("value").unwrap_or(&Value::unit()))
             ),
             _ => format!(
                 "Err({})",
-                format_value(fields.get("error").unwrap_or(&Value::Unit))
+                format_value(fields.get("error").unwrap_or(&Value::unit()))
             ),
         },
         Value::Enum {

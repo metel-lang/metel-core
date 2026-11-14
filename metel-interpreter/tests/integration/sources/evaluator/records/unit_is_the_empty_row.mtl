@@ -1,0 +1,20 @@
+// RFC-0231: `()` is the empty closed row `.{}`: one type, one value, printed `()`.
+fun nothing() { }
+fun unit() -> () { () }
+fun empty() -> .{} { .{} }
+
+fun main() {
+    let a: () := empty();
+    let b: .{} := unit();
+    let c: () := nothing();
+    let d: .{} := nothing();
+    assert("${a}" == "()");
+    assert("${.{}}" == "()");
+    assert("${()}" == "()");
+    assert("${b}" == "()");
+    println(.{});
+    println(());
+    assert("${.{ .x = 1 }}" == ".{ .x: 1 }");
+    let r: Result<(), String> := Result::Ok { value = .{} };
+    match (r) { Result::Ok { value } => assert("${value}" == "()"), Result::Err { error } => println(error) }
+}

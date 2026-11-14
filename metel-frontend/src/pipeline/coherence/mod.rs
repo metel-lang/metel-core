@@ -102,7 +102,6 @@ fn declaring_modules(names: &ResolvedNames) -> HashMap<SymbolId, Vec<String>> {
 enum CanonicalType {
     Resolved(SymbolId, Vec<CanonicalType>),
     Unresolved(String, Vec<CanonicalType>),
-    Unit,
     Tuple(Vec<CanonicalType>),
     Record(Vec<(String, CanonicalType)>),
     /// `{ x: T, ..R }` as an impl target (RFC-0121 §3): the named fields; the tail is
@@ -138,7 +137,6 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
                 None => CanonicalType::Unresolved(name.clone(), cargs),
             }
         }
-        TypeExpr::Unit => CanonicalType::Unit,
         TypeExpr::Tuple(items) => CanonicalType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => CanonicalType::Record(
             fields
@@ -670,7 +668,6 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
     match (a, b) {
         (CanonicalType::TypeParam(_), _)
         | (_, CanonicalType::TypeParam(_))
-        | (CanonicalType::Unit, CanonicalType::Unit)
         | (CanonicalType::Opaque, CanonicalType::Opaque)
         // two row-tailed record targets are both open: whether their row bounds rule
         // the pair out is `provably_disjoint`'s question
@@ -769,7 +766,7 @@ fn contains_type_param(ct: &CanonicalType) -> bool {
             params.iter().any(contains_type_param)
                 || ret.as_deref().is_some_and(contains_type_param)
         }
-        CanonicalType::Unit | CanonicalType::Opaque => false,
+        CanonicalType::Opaque => false,
     }
 }
 

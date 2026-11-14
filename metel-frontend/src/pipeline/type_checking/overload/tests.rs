@@ -147,8 +147,8 @@ fn core_overload_ids_are_their_declaration_order_and_the_same_every_time() {
 #[test]
 fn select_requires_exact_match() {
     let entries = vec![
-        entry(0, vec![Type::I32], Type::Unit),
-        entry(1, vec![Type::I64], Type::Unit),
+        entry(0, vec![Type::I32], Type::unit()),
+        entry(1, vec![Type::I64], Type::unit()),
     ];
     // Exact match picks the right candidate.
     assert_eq!(

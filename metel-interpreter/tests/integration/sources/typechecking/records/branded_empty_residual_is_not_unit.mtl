@@ -1,0 +1,8 @@
+// RFC-0231: only an anonymous empty residual is `()`; the brand of `Token.{}` is part of its type.
+struct Token { value: String }
+fun take(x: ()) {}
+fun main() {
+    let t := Token { value = "x" };
+    let v := t.value;
+    take(t);
+}

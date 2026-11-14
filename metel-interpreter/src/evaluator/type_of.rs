@@ -29,7 +29,6 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::Char(_) => Type::Char,
         Value::Boolean(_) => Type::Boolean,
         Value::Str(_) => Type::Str,
-        Value::Unit => Type::Unit,
         Value::I8(_) => Type::I8,
         Value::I16(_) => Type::I16,
         Value::I32(_) => Type::I32,
@@ -88,8 +87,8 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
             super::RuntimeCallable::Closure(rc) => rc
                 .fun_type
                 .clone()
-                .unwrap_or_else(|| default_fun_type(vec![], Type::Unit)),
-            super::RuntimeCallable::Intrinsic { .. } => default_fun_type(vec![], Type::Unit),
+                .unwrap_or_else(|| default_fun_type(vec![], Type::unit())),
+            super::RuntimeCallable::Intrinsic { .. } => default_fun_type(vec![], Type::unit()),
         },
         Value::Reference(rc) => Type::Reference(Box::new(go(&rc.borrow()))),
         Value::MutReference(rc) => Type::MutReference(Box::new(go(&rc.borrow()))),
@@ -107,9 +106,9 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                     (super::PathSegment::Field(f), Type::Record(fields)) => fields
                         .into_iter()
                         .find(|(name, _)| name == f)
-                        .map_or(Type::Unit, |(_, ty)| ty),
+                        .map_or(Type::unit(), |(_, ty)| ty),
                     (super::PathSegment::TupleIndex(_) | super::PathSegment::ArrayIndex(_), t) => t,
-                    _ => Type::Unit,
+                    _ => Type::unit(),
                 };
             }
             if matches!(value, Value::FieldReference { .. }) {

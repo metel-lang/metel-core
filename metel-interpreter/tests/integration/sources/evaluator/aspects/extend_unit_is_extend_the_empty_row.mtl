@@ -1,0 +1,10 @@
+// RFC-0231: `extend (): A` is `extend .{}: A`; the method is found on either spelling of the value.
+aspect Named { fun name(&self) -> String; }
+extend (): Named { fun name(&self) -> String { "unit" } }
+
+fun main() {
+    let u := ();
+    let e := .{};
+    assert(u.name() == "unit");
+    assert(e.name() == "unit");
+}

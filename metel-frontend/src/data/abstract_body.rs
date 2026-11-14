@@ -54,6 +54,14 @@ pub enum AbstractType {
     },
 }
 
+impl AbstractType {
+    /// The unit type: the empty closed row (RFC-0231).
+    #[must_use]
+    pub fn unit() -> Self {
+        AbstractType::Record(Vec::new())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AbstractParameter {
     pub id: AbstractParameterId,

@@ -1061,8 +1061,7 @@ fn type_expr_contains_row_arg(ty: &crate::data::ast::TypeExpr) -> bool {
         }
         TypeExpr::Projection { base, .. } => type_expr_contains_row_arg(base),
         TypeExpr::RowArg(_) | TypeExpr::RowArgLiteral(_) => true,
-        TypeExpr::Unit
-        | TypeExpr::Record(_)
+        TypeExpr::Record(_)
         | TypeExpr::OpenRecord(..)
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. } => false,
@@ -1788,7 +1787,6 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .collect(),
             span.clone(),
         ),
-        TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(
             items
                 .iter()

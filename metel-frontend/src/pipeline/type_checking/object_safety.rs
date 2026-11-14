@@ -173,7 +173,7 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
         // generic, never `Self` or an associated type -- unlike
         // `OpenRecord`/`OpenRecordProjection` below, it *can* appear in an
         // aspect method's own parameter/return type.
-        TypeExpr::RecordProjection { .. } | TypeExpr::Unit | TypeExpr::RowArg(_) => None,
+        TypeExpr::RecordProjection { .. } | TypeExpr::RowArg(_) => None,
         TypeExpr::OpenRecord(fields, _) => fields
             .iter()
             .find_map(|(_, ty)| type_expr_violation(ty, assoc_type_names)),

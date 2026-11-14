@@ -92,7 +92,7 @@ fn render_type(t: &TypeExpr) -> String {
                 args.iter().map(render_type).collect::<Vec<_>>().join(", ")
             )
         }
-        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
         TypeExpr::Tuple(items) => {
             format!(
                 "({})",
@@ -157,7 +157,8 @@ fn render_sig(f: &RealFn, include_names: bool) -> String {
     // self, T)`, no arrow, and `print<T>(x: T) -> ()` -> `<T>(v: T)`, also
     // no arrow) -- normalized identically here.
     match &f.return_type {
-        Some(TypeExpr::Unit) | None => {}
+        Some(TypeExpr::Record(fields)) if fields.is_empty() => {}
+        None => {}
         Some(rt) => {
             out.push_str(" -> ");
             out.push_str(&render_type(rt));

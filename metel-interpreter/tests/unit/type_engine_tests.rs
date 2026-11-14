@@ -87,7 +87,7 @@ mod phase_2_infer_types {
         assert_eq!(InferType::float(), InferType::Concrete(Type::F64));
         assert_eq!(InferType::bool(), InferType::Concrete(Type::Boolean));
         assert_eq!(InferType::str(), InferType::Concrete(Type::Str));
-        assert_eq!(InferType::unit(), InferType::Concrete(Type::Unit));
+        assert_eq!(InferType::unit(), InferType::Record(Vec::new()));
     }
 
     #[test]

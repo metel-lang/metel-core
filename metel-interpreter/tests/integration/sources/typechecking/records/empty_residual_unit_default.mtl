@@ -1,6 +1,7 @@
+// RFC-0231: the same without move checking.
 fun take(x: ()) {}
 fun main() {
     let r := .{ .value = "owned" };
     let value := r.value;
-    take(r); // ERROR[T0001]
+    take(r);
 }

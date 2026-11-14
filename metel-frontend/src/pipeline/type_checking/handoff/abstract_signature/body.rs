@@ -386,10 +386,7 @@ impl BodyFreezer<'_, '_> {
                 Stmt::While(loop_stmt) => {
                     return Ok(AbstractStatement::While {
                         condition: self.expression(&loop_stmt.condition)?,
-                        body: self.loop_block(
-                            &loop_stmt.body,
-                            AbstractType::Concrete(crate::data::types::Type::Unit),
-                        )?,
+                        body: self.loop_block(&loop_stmt.body, AbstractType::unit())?,
                         span: loop_stmt.span.clone(),
                     });
                 }
@@ -456,10 +453,7 @@ impl BodyFreezer<'_, '_> {
                 .as_ref()
                 .map(|expr| self.expression(expr).map(Box::new))
                 .transpose()?,
-            body: self.loop_block(
-                &loop_stmt.body,
-                AbstractType::Concrete(crate::data::types::Type::Unit),
-            )?,
+            body: self.loop_block(&loop_stmt.body, AbstractType::unit())?,
             span: loop_stmt.span.clone(),
         })
     }
@@ -494,10 +488,7 @@ impl BodyFreezer<'_, '_> {
             binding,
             iterable,
             mode,
-            body: self.loop_block(
-                &loop_stmt.body,
-                AbstractType::Concrete(crate::data::types::Type::Unit),
-            )?,
+            body: self.loop_block(&loop_stmt.body, AbstractType::unit())?,
             span: loop_stmt.span.clone(),
         })
     }
@@ -2227,7 +2218,7 @@ impl BodyFreezer<'_, '_> {
                 if let Some(source) = value.take() {
                     value = Some(Box::new(self.coerce_boundary(*source, result, &exit.span)?));
                 }
-                let unit = AbstractType::Concrete(crate::data::types::Type::Unit);
+                let unit = AbstractType::unit();
                 Self::check_value_type(value.as_ref().map_or(&unit, |value| &value.ty), result)?;
                 Ok(AbstractExprKind::Break(value))
             }

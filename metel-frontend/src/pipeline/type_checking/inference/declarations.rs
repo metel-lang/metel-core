@@ -583,10 +583,9 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
         // here -- unlike `OpenRecord`/`OpenRecordProjection`, it *can*
         // appear in a return-type annotation, parsed before
         // `projections::check` gets a chance to reject it.
-        TypeExpr::Unit
-        | TypeExpr::Projection { .. }
-        | TypeExpr::RecordProjection { .. }
-        | TypeExpr::RowArg(_) => false,
+        TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } | TypeExpr::RowArg(_) => {
+            false
+        }
         TypeExpr::OpenRecord(fields, _) => fields
             .iter()
             .any(|(_, ty)| type_expr_contains_impl_aspect(ty)),
@@ -677,9 +676,6 @@ pub(super) fn rewrite_impl_aspect_returns(
             bound: Box::new(rewrite_impl_aspect_returns(bound, counter, replacements)),
             span: span.clone(),
         },
-        TypeExpr::Unit | TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } => {
-            te.clone()
-        }
         TypeExpr::OpenRecord(fields, tail) => TypeExpr::OpenRecord(
             fields
                 .iter()
@@ -700,8 +696,10 @@ pub(super) fn rewrite_impl_aspect_returns(
         // `Session<..R>` -- unlike `OpenRecord`/`OpenRecordProjection`, this
         // *can* appear in a return-type annotation. A row splice has no
         // `ImplAspect` nested inside it to rewrite, so it passes through
-        // unchanged, like `RecordProjection`/`Unit` above.
-        TypeExpr::RowArg(_) => te.clone(),
+        // unchanged, like `RecordProjection` above.
+        TypeExpr::Projection { .. } | TypeExpr::RecordProjection { .. } | TypeExpr::RowArg(_) => {
+            te.clone()
+        }
         // RFC-0180: the payload is an ordinary record type; rewrite inside it.
         TypeExpr::RowArgLiteral(inner) => TypeExpr::RowArgLiteral(Box::new(
             rewrite_impl_aspect_returns(inner, counter, replacements),
@@ -2964,7 +2962,6 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
                 .collect(),
             span.clone(),
         ),
-        TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(
             items
                 .iter()

@@ -57,7 +57,6 @@ pub enum Type {
     Boolean,
     Str,
     Char,
-    Unit,
     /// The bottom type `!`. Produced by expressions that never return (infinite
     /// loops with no reachable `break`, `return`, `panic!`). Coerces to any type.
     Never,
@@ -169,6 +168,18 @@ pub fn default_fun_type(params: Vec<Type>, ret: Type) -> Type {
 }
 
 impl Type {
+    /// The unit type `()`: the empty closed row `.{}` (RFC-0231).
+    #[must_use]
+    pub fn unit() -> Self {
+        Type::Record(Vec::new())
+    }
+
+    /// Whether this is the unit type, the empty closed row.
+    #[must_use]
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Type::Record(fields) if fields.is_empty())
+    }
+
     #[must_use]
     pub fn with_row_tail(fields: Vec<(String, Type)>, tail: Option<Box<Type>>) -> Self {
         match tail {
@@ -224,7 +235,6 @@ impl std::fmt::Display for Type {
             Type::Boolean => write!(f, "boolean"),
             Type::Str => write!(f, "String"),
             Type::Char => write!(f, "Char"),
-            Type::Unit => write!(f, "()"),
             Type::Never => write!(f, "!"),
             Type::I8 => write!(f, "i8"),
             Type::I16 => write!(f, "i16"),
@@ -244,6 +254,8 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
+            // The empty closed row is the unit type (RFC-0231): one type, written `()`.
+            Type::Record(fields) if fields.is_empty() => write!(f, "()"),
             Type::Record(fields) => {
                 write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {

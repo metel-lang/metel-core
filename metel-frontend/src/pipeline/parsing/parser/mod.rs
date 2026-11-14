@@ -3390,7 +3390,8 @@ fn parse_type_expr(
             }
             parse_type_expr(inner, filename)
         }
-        Rule::unit_type => Ok(TypeExpr::Unit),
+        // `()` is the empty closed row (RFC-0231), so it parses to the type `.{}` writes.
+        Rule::unit_type => Ok(TypeExpr::Record(Vec::new())),
         // RFC-0078: `!` lowers to the same AST shape the `Never` identifier
         // spelling already produces, reusing all existing `Never` machinery.
         Rule::never_type => Ok(TypeExpr::Named(

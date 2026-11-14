@@ -62,7 +62,7 @@ pub(super) fn find_break_in_stmt(stmt: &TypedStmt) -> Option<Type> {
 
 pub(super) fn find_break_in_expr(expr: &TypedExpr) -> Option<Type> {
     match expr {
-        TypedExpr::Break(b) => Some(b.value.as_ref().map_or(Type::Unit, |v| v.ty().clone())),
+        TypedExpr::Break(b) => Some(b.value.as_ref().map_or(Type::unit(), |v| v.ty().clone())),
         TypedExpr::If {
             then_branch,
             else_branch,
@@ -341,9 +341,9 @@ pub(super) fn block_result_type(block: &TypedBlock) -> Type {
     match block.stmts.last() {
         Some(TypedDecl::Stmt(stmt)) => match &**stmt {
             TypedStmt::Expr(e) if *e.ty() == Type::Never => Type::Never,
-            _ => Type::Unit,
+            _ => Type::unit(),
         },
-        _ => Type::Unit,
+        _ => Type::unit(),
     }
 }
 

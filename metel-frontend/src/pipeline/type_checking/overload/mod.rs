@@ -215,7 +215,7 @@ fn build_table_from_decls(
                 Some(te) => {
                     infer_type_to_type(&type_expr_to_infer_for_overload(te, assoc_ctx), &f.span)?
                 }
-                None => Type::Unit,
+                None => Type::unit(),
             };
             if entries.iter().any(|e| e.params == params) {
                 return Err(MetelError::type_error(

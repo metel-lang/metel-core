@@ -341,7 +341,7 @@ fn render_type_key(te: &TypeExpr, params: &[&str]) -> String {
                 format!("{name}<{}>", list(args))
             }
         }
-        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
         TypeExpr::Tuple(items) => format!("({})", list(items)),
         TypeExpr::Record(fs) => format!("{{{}}}", fields(fs)),
         TypeExpr::OpenRecord(fs, tail) => {
