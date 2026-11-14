@@ -1,6 +1,5 @@
 [options]
 error = ["T0001"]
-spec = ["spec.declarations.variables.record-pattern-bindings.legality-2"]
 
 [expect]
 status = "typecheck_error"
