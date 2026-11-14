@@ -1,0 +1,7 @@
+// RFC-0151 (metel-core#2035): a move through a sub-pattern is a move of that field, so reusing the value afterwards is
+// rejected inside a generic body too.
+fun f<T>(t: .{ .0: (T, i64) }) {
+    let .{ .0: (a, _) } := t;
+    let u := t;
+}
+fun main() {}

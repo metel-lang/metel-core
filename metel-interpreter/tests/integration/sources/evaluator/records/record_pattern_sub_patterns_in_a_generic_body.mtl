@@ -1,0 +1,19 @@
+// RFC-0151 (metel-core#2035): record sub-patterns in a generic body are retained for move analysis: a literal
+// sub-pattern makes an arm refutable, and a nested tuple or record pattern binds from the field's own place.
+fun second<T: Copy>(t: .{ .0: i64, .1: (T, T) }) -> T {
+    match (t) {
+        .{ .0: 0, .1: (_, b) } => b,
+        .{ .0: _, .1: (a, _) } => a,
+    }
+}
+
+fun first_of<T: Copy>(t: .{ .0: i64, .1: .{ .x: T, .y: T } }) -> T {
+    let .{ .0: _, .1: .{ .x: x, .y: _ } } := t;
+    x
+}
+
+fun main() {
+    assert(second(.{ .0 = 0, .1 = (1, 2) }) == 2);
+    assert(second(.{ .0 = 5, .1 = (1, 2) }) == 1);
+    assert(first_of(.{ .0 = 5, .1 = .{ .x = 8, .y = 9 } }) == 8);
+}

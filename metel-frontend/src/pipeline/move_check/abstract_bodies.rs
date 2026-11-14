@@ -559,6 +559,19 @@ impl Checker<'_> {
         {
             env.bind(binding, state);
         }
+        // RFC-0151: each sub-pattern consumes and binds from the place of its own field.
+        for (field, sub_pattern) in &pattern.nested {
+            let field = AbstractExpr {
+                ty: field.ty.clone(),
+                kind: AbstractExprKind::FieldAccess {
+                    object: Box::new(value.clone()),
+                    selection: field.selection.clone(),
+                    auto_dereferences: 0,
+                },
+                span: value.span.clone(),
+            };
+            self.apply_abstract_match_pattern(sub_pattern, &field, env, state)?;
+        }
         Ok(())
     }
 

@@ -269,7 +269,24 @@ pub enum AbstractIterationMode {
 pub struct AbstractRecordPattern {
     pub bindings: Vec<AbstractRecordPatternField>,
     pub discarded: Vec<AbstractRecordPatternField>,
+    /// RFC-0151: `.label: pattern` entries; the field carries the label's place and no binding, and the
+    /// sub-pattern is matched against that place.
+    pub nested: Vec<(AbstractRecordPatternField, AbstractMatchPattern)>,
     pub remainder: Option<AbstractBinding>,
+}
+
+impl AbstractMatchPattern {
+    /// Whether the pattern matches every value of its type.
+    #[must_use]
+    pub fn is_irrefutable(&self) -> bool {
+        match self {
+            Self::Wildcard | Self::Binding(_) => true,
+            Self::Literal(_) | Self::Variant { .. } => false,
+            Self::Tuple(items) => items.iter().all(Self::is_irrefutable),
+            Self::Array { elements, .. } => elements.iter().all(Self::is_irrefutable),
+            Self::Record(pattern) => pattern.nested.iter().all(|(_, sub)| sub.is_irrefutable()),
+        }
+    }
 }
 
 /// A record-pattern field retains the declaration-sensitive selection that
