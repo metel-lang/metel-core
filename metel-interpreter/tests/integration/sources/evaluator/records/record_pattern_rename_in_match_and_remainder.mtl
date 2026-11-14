@@ -1,0 +1,11 @@
+// RFC-0151: the rename works in a `match` arm and beside a remainder, which excludes the renamed label.
+fun main() {
+    let p := .{ .x = 3, .y = 4 };
+    match (p) {
+        .{ .x: px, .y: py } => assert(px + py == 7),
+    }
+    let .{ .x: first, ..others } := .{ .x = 10, .y = 20, .z = 30 };
+    assert(first == 10);
+    assert(others.y == 20);
+    assert(others.z == 30);
+}

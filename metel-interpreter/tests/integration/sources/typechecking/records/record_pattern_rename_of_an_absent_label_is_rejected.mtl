@@ -1,0 +1,5 @@
+// RFC-0151: the label a rename reads must be in the row.
+fun main() {
+    let r := .{ .x = 1 };
+    let .{ .y: v } := r;
+}

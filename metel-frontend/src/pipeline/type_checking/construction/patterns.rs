@@ -265,14 +265,15 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
             }
         }
         Pattern::Record {
-            fields,
+            fields: _,
+            labels,
             field_spans,
             ignored_fields,
             rest,
             rest_binding,
             span,
         } => lower_record_pattern(
-            fields,
+            labels,
             field_spans,
             ignored_fields,
             *rest,
@@ -295,7 +296,7 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
 }
 
 fn lower_record_pattern(
-    fields: &[String],
+    labels: &[String],
     field_spans: &[Span],
     ignored_fields: &[String],
     rest: bool,
@@ -304,12 +305,12 @@ fn lower_record_pattern(
     ctx: &ConstructCtx,
 ) -> TypedPattern {
     TypedPattern::Record {
-        fields: fields
+        fields: labels
             .iter()
             .enumerate()
-            .map(|(index, field)| {
+            .map(|(index, label)| {
                 (
-                    field.clone(),
+                    label.clone(),
                     field_spans
                         .get(index)
                         .and_then(|field_span| ctx.local_binding_at(field_span)),
@@ -689,6 +690,7 @@ fn bind_record_pattern_fields(
 ) -> Result<(), MetelError> {
     let Pattern::Record {
         fields,
+        labels,
         field_spans,
         ignored_fields,
         rest_binding,
@@ -699,13 +701,15 @@ fn bind_record_pattern_fields(
         return Ok(());
     };
     let record_fields = record_pattern_fields(scrutinee_ty, span, ctx)?;
-    for (index, field) in fields.iter().enumerate() {
+    // Each entry reads the row label `label` and binds `field` (the same name for a pun, `.label: name`
+    // otherwise, RFC-0151).
+    for (index, (label, field)) in labels.iter().zip(fields).enumerate() {
         let field_span = field_binding_span(field_spans, index);
         let field_ty = record_fields
             .iter()
-            .find(|(name, _)| name == field)
+            .find(|(name, _)| name == label)
             .map(|(_, ty)| ty.clone())
-            .ok_or_else(|| MetelError::internal(format!("missing record field `{field}`")))?;
+            .ok_or_else(|| MetelError::internal(format!("missing record field `{label}`")))?;
         if mutable {
             ctx.bind_mut(field, &field_span, field_ty);
         } else {
@@ -722,7 +726,7 @@ fn bind_record_pattern_fields(
     if let Some((rest_name, rest_span)) = rest_binding.as_ref() {
         let remaining = record_fields
             .iter()
-            .filter(|(name, _)| !fields.contains(name) && !ignored_fields.contains(name))
+            .filter(|(name, _)| !labels.contains(name) && !ignored_fields.contains(name))
             .cloned()
             .collect();
         let rest_ty =

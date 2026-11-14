@@ -1,0 +1,9 @@
+// RFC-0151: a rename reads a label the row bound grants, in a generic body.
+fun head<record R: .{ .0: i64, .. }>(r: R) -> i64 {
+    let .{ .0: first, .. } := r;
+    first
+}
+
+fun main() {
+    assert(head(.{ .0 = 9, .name = "n" }) == 9);
+}

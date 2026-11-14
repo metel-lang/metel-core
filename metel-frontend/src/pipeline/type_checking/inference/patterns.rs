@@ -270,6 +270,7 @@ pub(super) fn infer_pattern(
         }
         Pattern::Record {
             fields,
+            labels,
             ignored_fields,
             field_spans: _,
             rest,
@@ -289,7 +290,7 @@ pub(super) fn infer_pattern(
                 ));
             }
             let mut named_fields: Vec<String> =
-                fields.iter().chain(ignored_fields).cloned().collect();
+                labels.iter().chain(ignored_fields).cloned().collect();
             // Record rows are canonicalized by label; preserve that invariant when
             // bound and discarded pattern fields are stored in separate lists.
             named_fields.sort_by(|a, b| crate::data::types::label_cmp(a, b));
@@ -355,7 +356,7 @@ pub(super) fn infer_pattern(
 
             if let Some((rest_name, _)) = rest_binding {
                 let facts = collect_remainder_facts(&peeled, pat_span, ctx)?;
-                for field_name in fields {
+                for (field_name, binder) in labels.iter().zip(fields) {
                     let field_ty = facts
                         .fields
                         .iter()
@@ -368,7 +369,7 @@ pub(super) fn infer_pattern(
                                 pat_span,
                             )
                         })?;
-                    ctx.bind_mono(field_name, field_ty, mutable);
+                    ctx.bind_mono(binder, field_ty, mutable);
                 }
                 if let Some(rest_ty) = remainder_ty {
                     ctx.bind_mono(rest_name, rest_ty, mutable);
@@ -417,9 +418,9 @@ pub(super) fn infer_pattern(
                         ));
                     }
                 }
-                for field_name in fields {
+                for (field_name, binder) in labels.iter().zip(fields) {
                     match resolve_row_bound_field(ctx, *tv, field_name, pat_span) {
-                        Some(Ok(field_ty)) => ctx.bind_mono(field_name, field_ty, mutable),
+                        Some(Ok(field_ty)) => ctx.bind_mono(binder, field_ty, mutable),
                         Some(Err(error)) => return Err(error),
                         None => unreachable!("row bound already confirmed present above"),
                     }
@@ -461,7 +462,7 @@ pub(super) fn infer_pattern(
                         pat_span,
                     ));
                 }
-                for field_name in fields {
+                for (field_name, binder) in labels.iter().zip(fields) {
                     let Some((_, field_ty)) =
                         record_fields.iter().find(|(name, _)| name == field_name)
                     else {
@@ -471,7 +472,7 @@ pub(super) fn infer_pattern(
                             pat_span,
                         ));
                     };
-                    ctx.bind_mono(field_name, field_ty.clone(), mutable);
+                    ctx.bind_mono(binder, field_ty.clone(), mutable);
                 }
                 for field_name in ignored_fields {
                     if !record_fields.iter().any(|(name, _)| name == field_name) {
@@ -493,8 +494,8 @@ pub(super) fn infer_pattern(
                     pat_span.clone(),
                 );
                 for (name, ty) in field_vars {
-                    if fields.contains(&name) {
-                        ctx.bind_mono(&name, ty, mutable);
+                    if let Some(position) = labels.iter().position(|label| *label == name) {
+                        ctx.bind_mono(&fields[position], ty, mutable);
                     }
                 }
             }

@@ -1014,7 +1014,11 @@ pub enum Pattern {
     /// A bare, unnamed record pattern (`{ x, y }`) — always structural,
     /// matching `Type::Record`, never a named struct.
     Record {
+        /// The names the pattern binds. For a pun (`.x`) the name is the label; for `.label: name` (RFC-0151) it is
+        /// `name`, the label being in `labels`.
         fields: Vec<String>,
+        /// The row label each entry of `fields` reads, parallel to it: equal to the bound name for a pun.
+        labels: Vec<String>,
         /// See `EnumVariant::field_spans`.
         field_spans: Vec<Span>,
         /// Labels explicitly discarded with `field: _`; they are required to

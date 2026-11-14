@@ -500,6 +500,7 @@ impl BodyFreezer<'_, '_> {
     ) -> Result<AbstractRecordPattern, String> {
         let Pattern::Record {
             fields,
+            labels,
             field_spans,
             ignored_fields,
             rest_binding,
@@ -509,7 +510,7 @@ impl BodyFreezer<'_, '_> {
         else {
             return Err("non-record pattern operations are not yet retained".to_string());
         };
-        let required: Vec<_> = fields
+        let required: Vec<_> = labels
             .iter()
             .chain(ignored_fields)
             .map(String::as_str)
@@ -541,15 +542,17 @@ impl BodyFreezer<'_, '_> {
                 .map(|(_, ty)| ty.clone())
                 .ok_or_else(|| "record pattern field type is not retained".to_string())
         };
-        let bindings = fields
+        // Each entry reads the row label `name` and binds `binder` (the same for a pun, RFC-0151).
+        let bindings = labels
             .iter()
+            .zip(fields)
             .zip(field_spans)
-            .map(|(name, span)| {
+            .map(|((name, binder), span)| {
                 Ok::<_, String>(AbstractRecordPatternField {
                     name: name.clone(),
                     ty: field_type(name)?,
                     selection: self.record_pattern_field_selection(ty, name)?,
-                    binding: Some(self.binding(name, span, field_type(name)?)?),
+                    binding: Some(self.binding(binder, span, field_type(name)?)?),
                 })
             })
             .collect::<Result<_, _>>()?;
@@ -569,7 +572,7 @@ impl BodyFreezer<'_, '_> {
             .map(|(name, span)| {
                 let fields: Vec<_> = source_fields
                     .iter()
-                    .filter(|(label, _)| !fields.contains(label) && !ignored_fields.contains(label))
+                    .filter(|(label, _)| !labels.contains(label) && !ignored_fields.contains(label))
                     .cloned()
                     .collect();
                 let ty = if let Some(tail) = tail
