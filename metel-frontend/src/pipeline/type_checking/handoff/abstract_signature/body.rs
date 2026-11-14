@@ -511,9 +511,7 @@ impl BodyFreezer<'_, '_> {
         else {
             return Err("non-record pattern operations are not yet retained".to_string());
         };
-        if !nested.is_empty() {
-            return Err("record sub-patterns are not yet retained".to_string());
-        }
+
         let required: Vec<_> = labels
             .iter()
             .chain(ignored_fields)
@@ -547,10 +545,12 @@ impl BodyFreezer<'_, '_> {
                 .ok_or_else(|| "record pattern field type is not retained".to_string())
         };
         // Each entry reads the row label `name` and binds `binder` (the same for a pun, RFC-0151).
+        let is_nested = |binder: &String| nested.iter().any(|(generated, _)| generated == binder);
         let bindings = labels
             .iter()
             .zip(fields)
             .zip(field_spans)
+            .filter(|((_, binder), _)| !is_nested(binder))
             .map(|((name, binder), span)| {
                 Ok::<_, String>(AbstractRecordPatternField {
                     name: name.clone(),
@@ -562,15 +562,13 @@ impl BodyFreezer<'_, '_> {
             .collect::<Result<_, _>>()?;
         let discarded = ignored_fields
             .iter()
-            .map(|name| {
-                Ok(AbstractRecordPatternField {
-                    name: name.clone(),
-                    ty: field_type(name)?,
-                    selection: self.record_pattern_field_selection(ty, name)?,
-                    binding: None,
-                })
-            })
+            .map(|name| self.discarded_record_pattern_field(ty, name, field_type(name)?))
             .collect::<Result<_, String>>()?;
+        let nested =
+            self.nested_record_pattern_entries((labels, fields, nested), ty, &field_type)?;
+        if rest_binding.is_some() && !nested.is_empty() {
+            return Err("a remainder beside record sub-patterns is not yet retained".to_string());
+        }
         let remainder = rest_binding
             .as_ref()
             .map(|(name, span)| {
@@ -597,7 +595,68 @@ impl BodyFreezer<'_, '_> {
         Ok(AbstractRecordPattern {
             bindings,
             discarded,
+            nested,
             remainder,
+        })
+    }
+
+    /// The `.label: pattern` entries of a record pattern, each paired with its retained sub-pattern (RFC-0151).
+    fn nested_record_pattern_entries(
+        &self,
+        entries: (&[String], &[String], &[(String, Pattern)]),
+        ty: &AbstractType,
+        field_type: &dyn Fn(&str) -> Result<AbstractType, String>,
+    ) -> Result<
+        Vec<(
+            AbstractRecordPatternField,
+            crate::data::abstract_body::AbstractMatchPattern,
+        )>,
+        String,
+    > {
+        let (labels, fields, nested) = entries;
+        labels
+            .iter()
+            .zip(fields)
+            .filter_map(|(label, binder)| {
+                nested
+                    .iter()
+                    .find(|(generated, _)| generated == binder)
+                    .map(|(_, sub_pattern)| (label, sub_pattern))
+            })
+            .map(|(label, sub_pattern)| {
+                let field_ty = field_type(label)?;
+                let entry = AbstractRecordPatternField {
+                    name: label.clone(),
+                    ty: field_ty.clone(),
+                    selection: self.record_pattern_field_selection(ty, label)?,
+                    binding: None,
+                };
+                Ok::<_, String>((entry, self.tuple_pattern(sub_pattern, &field_ty)?))
+            })
+            .collect()
+    }
+
+    fn record_match_pattern(
+        &self,
+        pattern: &Pattern,
+        ty: &AbstractType,
+    ) -> Result<crate::data::abstract_body::AbstractMatchPattern, String> {
+        Ok(crate::data::abstract_body::AbstractMatchPattern::Record(
+            self.record_pattern(pattern, ty)?,
+        ))
+    }
+
+    fn discarded_record_pattern_field(
+        &self,
+        ty: &AbstractType,
+        name: &str,
+        field_ty: AbstractType,
+    ) -> Result<AbstractRecordPatternField, String> {
+        Ok(AbstractRecordPatternField {
+            name: name.to_string(),
+            ty: field_ty,
+            selection: self.record_pattern_field_selection(ty, name)?,
+            binding: None,
         })
     }
 
@@ -658,6 +717,7 @@ impl BodyFreezer<'_, '_> {
         Ok(AbstractRecordPattern {
             bindings,
             discarded: Vec::new(),
+            nested: Vec::new(),
             remainder: None,
         })
     }
@@ -691,6 +751,10 @@ impl BodyFreezer<'_, '_> {
                         .collect::<Result<_, _>>()?,
                 ))
             }
+            Pattern::Record { .. } => Ok(AbstractMatchPattern::Record(
+                self.record_pattern(pattern, ty)?,
+            )),
+            Pattern::Array { .. } => self.array_pattern(pattern, ty),
             _ => Err("nested non-tuple match pattern facts are not retained".to_string()),
         }
     }
@@ -1335,8 +1399,9 @@ impl BodyFreezer<'_, '_> {
                     self.array_pattern(&arm.pattern, &scrutinee.ty)?
                 }
                 DefinitionMatchPatternKind::Record => {
-                    catch_all = true;
-                    AbstractMatchPattern::Record(self.record_pattern(&arm.pattern, &scrutinee.ty)?)
+                    let pattern = self.record_match_pattern(&arm.pattern, &scrutinee.ty)?;
+                    catch_all = pattern.is_irrefutable();
+                    pattern
                 }
                 DefinitionMatchPatternKind::Struct(identity) => {
                     catch_all = true;
