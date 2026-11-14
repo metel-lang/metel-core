@@ -182,6 +182,10 @@ impl std::fmt::Display for InferType {
                     }
                     write!(f, "{t}")?;
                 }
+                // RFC-0151: a one-element tuple is written `(A,)`; `(A)` would read as grouping.
+                if ts.len() == 1 {
+                    write!(f, ",")?;
+                }
                 write!(f, ")")
             }
             // The empty closed row is the unit type and prints as `()` (RFC-0231).
@@ -381,11 +385,12 @@ fn render_with_names(
             render_with_names(ret, known, local)
         ),
         InferType::Tuple(ts) => format!(
-            "({})",
+            "({}{})",
             ts.iter()
                 .map(|t| render_with_names(t, known, local))
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join(", "),
+            if ts.len() == 1 { "," } else { "" }
         ),
         InferType::Record(fields) if fields.is_empty() => "()".to_string(),
         InferType::Record(fields) => format!(
@@ -1529,7 +1534,11 @@ fn render_for_user(
             InferType::Var(_) => format!(".{{ {}, .. }}", fields(fs)),
             other => format!(".{{ {}, ..{} }}", fields(fs), go(other)),
         },
-        InferType::Tuple(ts) => format!("({})", ts.iter().map(go).collect::<Vec<_>>().join(", ")),
+        InferType::Tuple(ts) => format!(
+            "({}{})",
+            ts.iter().map(go).collect::<Vec<_>>().join(", "),
+            if ts.len() == 1 { "," } else { "" }
+        ),
         InferType::Array(t) => format!("[{}]", go(t)),
         InferType::SizedArray(t, n) => format!("[{}; {n}]", go(t)),
         InferType::Reference(t) => format!("&{}", go(t)),

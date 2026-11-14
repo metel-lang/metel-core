@@ -1,0 +1,9 @@
+// RFC-0151 (metel-core#2023): `(a,)` is the one-element tuple in an expression, a type and a pattern; `(a)` is grouping.
+fun first(t: (i64,)) -> i64 { t.0 }
+fun main() {
+    let t := (1,);
+    let g := (2);
+    let (a,) := t;
+    assert(a + g + first(t) == 4);
+    match (t) { (z,) => assert(z == 1) }
+}

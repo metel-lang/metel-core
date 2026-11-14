@@ -1,0 +1,6 @@
+[options]
+error = ["T0001"]
+spec = ["spec.types.tuples.legality-5"]
+
+[expect]
+status = "typecheck_error"

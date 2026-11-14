@@ -342,7 +342,11 @@ fn render_type_key(te: &TypeExpr, params: &[&str]) -> String {
             }
         }
         TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
-        TypeExpr::Tuple(items) => format!("({})", list(items)),
+        TypeExpr::Tuple(items) => format!(
+            "({}{})",
+            list(items),
+            if items.len() == 1 { "," } else { "" }
+        ),
         TypeExpr::Record(fs) => format!("{{{}}}", fields(fs)),
         TypeExpr::OpenRecord(fs, tail) => {
             let tail = tail.var.as_deref().map_or_else(
