@@ -1,0 +1,7 @@
+// RFC-0151 (metel-core#2035): an arm whose record pattern has a literal sub-pattern does not cover the type by itself.
+fun main() {
+    let t := .{ .0 = 1, .1 = 2 };
+    match (t) {
+        .{ .0: 1, .1: x } => println(x),
+    }
+}

@@ -272,6 +272,7 @@ pub(super) fn infer_pattern(
             fields,
             labels,
             ignored_fields,
+            nested,
             field_spans: _,
             rest,
             rest_binding,
@@ -498,6 +499,13 @@ pub(super) fn infer_pattern(
                         ctx.bind_mono(&fields[position], ty, mutable);
                     }
                 }
+            }
+            // RFC-0151: a sub-pattern matches the value its generated binder holds.
+            for (binder, sub_pattern) in nested {
+                let field_ty = ctx.lookup_local_type(binder).ok_or_else(|| {
+                    MetelError::internal("record sub-pattern binder was not bound")
+                })?;
+                infer_pattern(sub_pattern, &field_ty, mutable, ctx)?;
             }
         }
         Pattern::Array {

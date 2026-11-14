@@ -1,4 +1,4 @@
-use super::patterns::{construct_pattern_bindings, lower_typed_pattern};
+use super::patterns::{construct_pattern_bindings, is_catch_all_pattern, lower_typed_pattern};
 use super::{
     AspectMethod, AssocResolveCtx, ConstructCtx, Decl, Expr, FunBody, FunDecl, ImplBlock,
     InferType, MetelError, Substitution, Type, TypeErrorCode, TypeExpr, TypeScheme,
@@ -226,8 +226,18 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
             let value = construct_expr(&decl.value, None, ctx)?;
             ctx.note_consumed(&value);
             construct_pattern_bindings(&decl.pattern, value.ty(), decl.mutable, ctx)?;
+            let pattern = lower_typed_pattern(&decl.pattern, ctx);
+            // RFC-0151: a declaration binds, so its pattern must match every value of the type.
+            if !is_catch_all_pattern(&pattern) {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0008,
+                    "refutable pattern in a declaration: a literal or variant sub-pattern can fail to match; \
+                     use `match` instead",
+                    &decl.span,
+                ));
+            }
             Ok(TypedDecl::LetPattern {
-                pattern: lower_typed_pattern(&decl.pattern, ctx),
+                pattern,
                 mutable: decl.mutable,
                 value,
                 span: decl.span.clone(),

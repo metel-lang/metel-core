@@ -9000,6 +9000,15 @@ impl InferContext {
             .insert(name, (ty, is_mutable));
     }
 
+    /// The type a name was most recently bound to in the innermost monomorphic scope that holds it.
+    pub(crate) fn lookup_local_type(&self, name: &str) -> Option<InferType> {
+        self.mono_env
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name))
+            .map(|(ty, _)| ty.clone())
+    }
+
     /// RFC-0137 slice 2 (metel-core#858): the flow-sensitive moved-field tracker
     /// for the body being inferred. Driven by `typechecker/inference/narrowing.rs`.
     pub(crate) fn flow_mut(&mut self) -> &mut crate::ownership::flow_state::FlowState {

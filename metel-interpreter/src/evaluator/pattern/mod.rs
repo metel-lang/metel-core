@@ -165,6 +165,7 @@ pub(super) fn match_pattern(
         TypedPattern::Record {
             fields,
             ignored_fields,
+            nested,
             rest,
             rest_binding,
             ..
@@ -180,7 +181,7 @@ pub(super) fn match_pattern(
             else {
                 return false;
             };
-            if !rest && record_fields.len() != fields.len() + ignored_fields.len() {
+            if !rest && record_fields.len() != fields.len() + ignored_fields.len() + nested.len() {
                 return false;
             }
             if ignored_fields
@@ -197,12 +198,19 @@ pub(super) fn match_pattern(
                     None => return false,
                 }
             }
+            for (field_name, sub_pattern) in nested {
+                match record_fields.get(field_name) {
+                    Some(v) if match_pattern(sub_pattern, v, out) => {}
+                    _ => return false,
+                }
+            }
             if let Some((name, local)) = rest_binding {
                 let remainder = record_fields
                     .iter()
                     .filter(|(name, _)| {
                         !fields.iter().any(|(field, _)| field == *name)
                             && !ignored_fields.contains(name)
+                            && !nested.iter().any(|(field, _)| field == *name)
                     })
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();

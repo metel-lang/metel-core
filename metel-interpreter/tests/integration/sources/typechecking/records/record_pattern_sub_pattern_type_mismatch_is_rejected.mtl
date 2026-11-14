@@ -1,0 +1,8 @@
+// RFC-0151 (metel-core#2035): a sub-pattern is checked against the field's type.
+fun main() {
+    let t := .{ .0 = 1, .1 = 2 };
+    match (t) {
+        .{ .0: "one", .1: _ } => (),
+        _ => (),
+    }
+}

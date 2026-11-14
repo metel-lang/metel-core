@@ -1,0 +1,39 @@
+// RFC-0151 (metel-core#2035): the pattern after `.label:` may be any pattern, not only a name or `_`: a literal, a
+// tuple, a record, an enum variant or an array pattern, matched against that field.
+enum Shape { Dot, Disc { radius: i64 } }
+
+fun classify(t: .{ .0: i64, .1: (i64, String) }) -> i64 {
+    match (t) {
+        .{ .0: 0, .1: _ } => 100,
+        .{ .0: 1, .1: (n, "x") } => n,
+        .{ .0: k, .1: (n, _) } => k + n,
+    }
+}
+
+fun main() {
+    assert(classify(.{ .0 = 0, .1 = (5, "a") }) == 100);
+    assert(classify(.{ .0 = 1, .1 = (5, "x") }) == 5);
+    assert(classify(.{ .0 = 2, .1 = (5, "x") }) == 7);
+
+    let nested := .{ .a = .{ .b = 7, .c = true }, .d = [1, 2, 3] };
+    let .{ .a: .{ .b: seven, .c: _ }, .d: [first, ..rest] } := nested;
+    assert(seven == 7);
+    assert(first == 1);
+    assert(rest.len() == 2);
+
+    let s := .{ .shape = Shape::Disc { radius = 4 }, .tag = 9 };
+    match (s) {
+        .{ .shape: Shape::Dot, .tag: _ } => assert(false),
+        .{ .shape: Shape::Disc { radius }, .tag } => { assert(radius == 4); assert(tag == 9); },
+        _ => assert(false),
+    }
+
+    // A sub-pattern combines with a rest pattern; the entry's field is not part of the remainder.
+    let .{ .0: (p, q), ..remainder } := .{ .0 = (1, 2), .1 = 3 };
+    assert(p + q == 3);
+    assert(remainder.1 == 3);
+
+    // A tuple pattern with a nested element is the record pattern it desugars to.
+    let ((a, b), c) := ((1, 2), 3);
+    assert(a + b + c == 6);
+}

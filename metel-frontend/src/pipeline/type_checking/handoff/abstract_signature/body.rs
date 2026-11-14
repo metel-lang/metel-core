@@ -503,6 +503,7 @@ impl BodyFreezer<'_, '_> {
             labels,
             field_spans,
             ignored_fields,
+            nested,
             rest_binding,
             span,
             rest: _,
@@ -510,6 +511,9 @@ impl BodyFreezer<'_, '_> {
         else {
             return Err("non-record pattern operations are not yet retained".to_string());
         };
+        if !nested.is_empty() {
+            return Err("record sub-patterns are not yet retained".to_string());
+        }
         let required: Vec<_> = labels
             .iter()
             .chain(ignored_fields)

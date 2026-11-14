@@ -1024,6 +1024,11 @@ pub enum Pattern {
         /// Labels explicitly discarded with `field: _`; they are required to
         /// exist and count as named fields, but introduce no local binding.
         ignored_fields: Vec<String>,
+        /// RFC-0151: entries `.label: pattern` whose pattern is not a plain name or `_` (a literal, an enum, tuple,
+        /// record or array pattern). Each such entry is also an ordinary entry of `fields`/`labels` whose binder is a
+        /// compiler-generated name (see `nested_binder`); this list pairs that binder with the sub-pattern matched
+        /// against the bound field.
+        nested: Vec<(String, Pattern)>,
         rest: bool,
         /// A named, owned remainder binding (`..name`); bare `..` leaves this empty.
         rest_binding: Option<(String, Span)>,
@@ -1290,3 +1295,26 @@ pub enum Literal {
 }
 
 // ── String unescaping ─────────────────────────────────────────────────────────
+
+/// The generated name that binds the field `.label` of a record pattern entry `.label: sub-pattern` (RFC-0151),
+/// whose sub-pattern is then matched against the bound value. It cannot be written in source.
+#[must_use]
+pub fn nested_binder(label: &str) -> String {
+    format!("<field {label}>")
+}
+
+impl Pattern {
+    #[must_use]
+    pub fn span(&self) -> &Span {
+        match self {
+            Pattern::Wildcard(s)
+            | Pattern::Binding(_, s)
+            | Pattern::Literal(_, s)
+            | Pattern::Tuple(_, s)
+            | Pattern::EnumVariant { span: s, .. }
+            | Pattern::Struct { span: s, .. }
+            | Pattern::Record { span: s, .. }
+            | Pattern::Array { span: s, .. } => s,
+        }
+    }
+}
