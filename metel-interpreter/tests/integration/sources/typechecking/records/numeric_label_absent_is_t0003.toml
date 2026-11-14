@@ -1,0 +1,7 @@
+[options]
+error = ["T0003"]
+spec = ["spec.types.tuples.legality-6"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"

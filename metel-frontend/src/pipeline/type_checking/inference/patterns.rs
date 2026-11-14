@@ -292,7 +292,7 @@ pub(super) fn infer_pattern(
                 fields.iter().chain(ignored_fields).cloned().collect();
             // Record rows are canonicalized by label; preserve that invariant when
             // bound and discarded pattern fields are stored in separate lists.
-            named_fields.sort();
+            named_fields.sort_by(|a, b| crate::data::types::label_cmp(a, b));
             // A remainder binding needs a decomposition, but field presence is a
             // separate requirement: diagnose an unproven selected field first.
             // Otherwise an unconstrained row reports only that its remainder is

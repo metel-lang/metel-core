@@ -638,7 +638,8 @@ fn infer_expr_inner(
             for (name, expr) in fields {
                 inferred_fields.push((name.clone(), infer_expr(expr, ctx, fun_generalizations)?));
             }
-            inferred_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            inferred_fields
+                .sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             if let Some((spread_expr, _, spread_span)) = spread {
                 let raw_spread_ty = infer_expr(spread_expr, ctx, fun_generalizations)?;
                 let solved_spread_ty = ctx.solve()?.apply(&raw_spread_ty);
@@ -693,7 +694,9 @@ fn infer_expr_inner(
                 match spread_ty {
                     InferType::Record(mut spread_fields) => {
                         spread_fields.extend(additions);
-                        spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                        spread_fields.sort_by(|(left, _), (right, _)| {
+                            crate::data::types::label_cmp(left, right)
+                        });
                         Ok(InferType::Record(spread_fields))
                     }
                     InferType::RowExtend {
@@ -701,7 +704,9 @@ fn infer_expr_inner(
                         tail,
                     } => {
                         spread_fields.extend(additions);
-                        spread_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                        spread_fields.sort_by(|(left, _), (right, _)| {
+                            crate::data::types::label_cmp(left, right)
+                        });
                         Ok(InferType::RowExtend {
                             fields: spread_fields,
                             tail,
@@ -1285,184 +1290,7 @@ fn infer_expr_inner(
         } => {
             let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
             let obj_ty = ctx.solve()?.apply(&obj_ty);
-            let obj_ty = ctx
-                .registry()
-                .resolve_row_views(ctx.current_module_path(), &obj_ty);
-            let peeled = peel_all_references(&obj_ty);
-            // RFC-0137 (metel-core#857): a Residual resolves field access exactly like
-            // Record does -- directly from its own field list, no struct-registry lookup
-            // needed (it already carries each projected field's resolved type).
-            if let InferType::Record(fields) | InferType::Residual { fields, .. } = &peeled {
-                // RFC-0032 / RFC-0109 §8: a residual keeps its brand, so the field's own
-                // visibility on the struct still applies wherever the value came from.
-                if let InferType::Residual { brand, .. } = &peeled
-                    && fields.iter().any(|(name, _)| name == field)
-                    && let Ok((entry, declaring_module, visibility, _)) =
-                        super::resolve_struct_field_by_identity(ctx, None, brand, field, span)
-                {
-                    check_field_visibility(
-                        &entry,
-                        brand,
-                        ctx.current_module_path(),
-                        declaring_module.as_ref(),
-                        visibility.as_ref(),
-                        span,
-                        "access",
-                    )?;
-                }
-                return fields
-                    .iter()
-                    .find(|(name, _)| name == field)
-                    .map(|(_, ty)| ty.clone())
-                    .ok_or_else(|| {
-                        if let InferType::Residual { brand, .. } = &peeled {
-                            let base = match object.as_ref() {
-                                Expr::Ident(name, _) => Some(name.as_str()),
-                                _ => None,
-                            };
-                            return residual_field_error(ctx, brand, base, field, "used", span);
-                        }
-                        MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!("no field `{field}` on {peeled}"),
-                            span,
-                        )
-                    });
-            }
-            // RFC-0121 remainder (#1306, #1310): a row extension preserves its
-            // explicitly declared fields while its tail supplies every other
-            // field. Construction has already solved the tail for a concrete
-            // value; in an abstract body, a row-bound tail is handled by the
-            // ordinary variable path below.
-            if let InferType::RowExtend { fields, tail } = &peeled {
-                if let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) {
-                    return Ok(ty.clone());
-                }
-                match tail.as_ref() {
-                    InferType::Record(tail_fields)
-                    | InferType::Residual {
-                        fields: tail_fields,
-                        ..
-                    } => {
-                        return tail_fields
-                            .iter()
-                            .find(|(name, _)| name == field)
-                            .map(|(_, ty)| ty.clone())
-                            .ok_or_else(|| {
-                                MetelError::type_error(
-                                    TypeErrorCode::T0003,
-                                    format!("no field `{field}` on {peeled}"),
-                                    span,
-                                )
-                            });
-                    }
-                    InferType::Var(tv)
-                        if let Some(result) = resolve_row_bound_field(ctx, *tv, field, span) =>
-                    {
-                        return result;
-                    }
-                    InferType::Var(tv) if let Some(param) = ctx.declared_type_param_name(*tv) => {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0035,
-                            format!(
-                                "field `{field}` is not granted by the declared bounds of type \
-                                 parameter `{param}`"
-                            ),
-                            span,
-                        ));
-                    }
-                    _ => {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!("no field `{field}` on {peeled}"),
-                            span,
-                        ));
-                    }
-                }
-            }
-            // Abstract, row-bounded generic type parameter (`<record T: { x: f64, .. }>`):
-            // resolve `field` against the row bound the same way MethodCall's slow path
-            // (below) resolves a method against an aspect bound, instead of falling
-            // through to the nominal-struct path, which can't name a struct for a bare
-            // TypeVar and would otherwise mislead with "add a type annotation" — no
-            // annotation fixes a missing row-bound field.
-            let bound_receiver = match &peeled {
-                InferType::RowView(source) => source.as_ref(),
-                other => other,
-            };
-            if let InferType::Var(tv) = bound_receiver
-                && let Some(result) = resolve_row_bound_field(ctx, *tv, field, span)
-            {
-                return result;
-            }
-            if let InferType::Var(tv) = bound_receiver
-                && let Some(param) = ctx.declared_type_param_name(*tv)
-            {
-                // RFC-0173 D2: only a row bound grants a field of a declared parameter.
-                return Err(MetelError::type_error(
-                    TypeErrorCode::T0035,
-                    format!(
-                        "field `{field}` is not granted by the declared bounds of type \
-                         parameter `{param}`"
-                    ),
-                    span,
-                ));
-            }
-            let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer struct type for field access; add a type annotation",
-                    span,
-                )
-            })?;
-            let type_args = match &obj_ty {
-                InferType::Named(_, args, ..) => args.clone(),
-                InferType::Reference(inner) | InferType::MutReference(inner) => {
-                    match inner.as_ref() {
-                        InferType::Named(_, args, ..) => args.clone(),
-                        _ => vec![],
-                    }
-                }
-                _ => vec![],
-            };
-            // metel-core#1222: the value's own type already carries the
-            // declaration's identity (populated when its annotation was
-            // resolved from the declaring module, e.g. a function's return
-            // type) -- prefer it over a bare-name lookup, which conflates
-            // same-named structs declared in different modules.
-            let nominal_struct_id = match &peeled {
-                InferType::Named(_, _, id) => id.get(),
-                _ => None,
-            };
-            let (field_entry, declaring_module, visibility, resolved_type_params) =
-                super::resolve_struct_field_by_identity(
-                    ctx,
-                    nominal_struct_id,
-                    &struct_name,
-                    field,
-                    span,
-                )?;
-            check_field_visibility(
-                &field_entry,
-                &struct_name,
-                ctx.current_module_path(),
-                declaring_module.as_ref(),
-                visibility.as_ref(),
-                span,
-                "access",
-            )?;
-            let raw_ty = field_entry.ty.clone();
-            ctx.record_definition_nominal_field(span.clone(), field_entry.id);
-            // For generic structs, substitute declared type params with the resolved args.
-            if let Some(type_params) = resolved_type_params {
-                let mut remap = Substitution::new();
-                for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
-                    remap.bind(tp, arg.clone());
-                }
-                Ok(remap.apply(&raw_ty))
-            } else {
-                Ok(raw_ty)
-            }
+            infer_field_access(object, &obj_ty, field, span, ctx)
         }
         Expr::MethodCall {
             receiver,
@@ -2708,11 +2536,9 @@ fn infer_expr_inner(
                         span,
                     )
                 }),
-                _ => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer tuple type for index access; add a type annotation",
-                    span,
-                )),
+                // A record, residual or row-bounded parameter with an integer label (RFC-0151): `r.0` is field
+                // access on the label `.0`.
+                _ => infer_field_access(object, &obj_ty, &index.to_string(), span, ctx),
             }
         }
         Expr::Loop { body, span } => {
@@ -3680,4 +3506,206 @@ pub(crate) fn ambiguous_aspect_method(
         ),
         span,
     )
+}
+
+/// The type of the field `field` of a value of type `obj_ty` (the type of `object`): a record or residual, a row
+/// extension, a row-bounded type parameter, or a nominal struct. `field` is a label, so it is an integer label's
+/// digits for `r.0` on a record (RFC-0151).
+fn infer_field_access(
+    object: &Expr,
+    obj_ty: &InferType,
+    field: &String,
+    span: &crate::data::ast::Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let obj_ty = obj_ty.clone();
+    let obj_ty = ctx
+        .registry()
+        .resolve_row_views(ctx.current_module_path(), &obj_ty);
+    let peeled = peel_all_references(&obj_ty);
+    // RFC-0137 (metel-core#857): a Residual resolves field access exactly like
+    // Record does -- directly from its own field list, no struct-registry lookup
+    // needed (it already carries each projected field's resolved type).
+    if let InferType::Record(fields) | InferType::Residual { fields, .. } = &peeled {
+        // RFC-0032 / RFC-0109 §8: a residual keeps its brand, so the field's own
+        // visibility on the struct still applies wherever the value came from.
+        if let InferType::Residual { brand, .. } = &peeled
+            && fields.iter().any(|(name, _)| name == field)
+            && let Ok((entry, declaring_module, visibility, _)) =
+                super::resolve_struct_field_by_identity(ctx, None, brand, field, span)
+        {
+            check_field_visibility(
+                &entry,
+                brand,
+                ctx.current_module_path(),
+                declaring_module.as_ref(),
+                visibility.as_ref(),
+                span,
+                "access",
+            )?;
+        }
+        return fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                if let InferType::Residual { brand, .. } = &peeled {
+                    let base = match object {
+                        Expr::Ident(name, _) => Some(name.as_str()),
+                        _ => None,
+                    };
+                    return residual_field_error(ctx, brand, base, field, "used", span);
+                }
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on {peeled}"),
+                    span,
+                )
+            });
+    }
+    // RFC-0121 remainder (#1306, #1310): a row extension preserves its
+    // explicitly declared fields while its tail supplies every other
+    // field. Construction has already solved the tail for a concrete
+    // value; in an abstract body, a row-bound tail is handled by the
+    // ordinary variable path below.
+    if let Some(result) = infer_row_extend_field(ctx, &peeled, field, span) {
+        return result;
+    }
+    // Abstract, row-bounded generic type parameter (`<record T: { x: f64, .. }>`):
+    // resolve `field` against the row bound the same way MethodCall's slow path
+    // (below) resolves a method against an aspect bound, instead of falling
+    // through to the nominal-struct path, which can't name a struct for a bare
+    // TypeVar and would otherwise mislead with "add a type annotation" — no
+    // annotation fixes a missing row-bound field.
+    let bound_receiver = match &peeled {
+        InferType::RowView(source) => source.as_ref(),
+        other => other,
+    };
+    if let InferType::Var(tv) = bound_receiver
+        && let Some(result) = resolve_row_bound_field(ctx, *tv, field, span)
+    {
+        return result;
+    }
+    if let InferType::Var(tv) = bound_receiver
+        && let Some(param) = ctx.declared_type_param_name(*tv)
+    {
+        // RFC-0173 D2: only a row bound grants a field of a declared parameter.
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0035,
+            format!(
+                "field `{field}` is not granted by the declared bounds of type \
+                 parameter `{param}`"
+            ),
+            span,
+        ));
+    }
+    infer_struct_field_access(ctx, &obj_ty, &peeled, field, span)
+}
+
+/// The type of the field `field` of a nominal struct value of type `obj_ty` (`peeled` is it without references).
+fn infer_struct_field_access(
+    ctx: &mut InferContext,
+    obj_ty: &InferType,
+    peeled: &InferType,
+    field: &str,
+    span: &crate::data::ast::Span,
+) -> Result<InferType, MetelError> {
+    let struct_name = named_type_name(obj_ty).ok_or_else(|| {
+        MetelError::type_error(
+            TypeErrorCode::T0002,
+            "cannot infer struct type for field access; add a type annotation",
+            span,
+        )
+    })?;
+    let type_args = match obj_ty {
+        InferType::Named(_, args, ..) => args.clone(),
+        InferType::Reference(inner) | InferType::MutReference(inner) => match inner.as_ref() {
+            InferType::Named(_, args, ..) => args.clone(),
+            _ => vec![],
+        },
+        _ => vec![],
+    };
+    // metel-core#1222: the value's own type already carries the
+    // declaration's identity (populated when its annotation was
+    // resolved from the declaring module, e.g. a function's return
+    // type) -- prefer it over a bare-name lookup, which conflates
+    // same-named structs declared in different modules.
+    let nominal_struct_id = match peeled {
+        InferType::Named(_, _, id) => id.get(),
+        _ => None,
+    };
+    let (field_entry, declaring_module, visibility, resolved_type_params) =
+        super::resolve_struct_field_by_identity(ctx, nominal_struct_id, &struct_name, field, span)?;
+    check_field_visibility(
+        &field_entry,
+        &struct_name,
+        ctx.current_module_path(),
+        declaring_module.as_ref(),
+        visibility.as_ref(),
+        span,
+        "access",
+    )?;
+    let raw_ty = field_entry.ty.clone();
+    ctx.record_definition_nominal_field(span.clone(), field_entry.id);
+    // For generic structs, substitute declared type params with the resolved args.
+    if let Some(type_params) = resolved_type_params {
+        let mut remap = Substitution::new();
+        for (&tp, arg) in type_params.iter().zip(type_args.iter()) {
+            remap.bind(tp, arg.clone());
+        }
+        Ok(remap.apply(&raw_ty))
+    } else {
+        Ok(raw_ty)
+    }
+}
+
+/// A field of a row extension (RFC-0121 remainder, #1306, #1310): its declared fields, then the tail's. `None` when
+/// `peeled` is not a row extension.
+fn infer_row_extend_field(
+    ctx: &mut InferContext,
+    peeled: &InferType,
+    field: &str,
+    span: &crate::data::ast::Span,
+) -> Option<Result<InferType, MetelError>> {
+    let InferType::RowExtend { fields, tail } = peeled else {
+        return None;
+    };
+    if let Some((_, ty)) = fields.iter().find(|(name, _)| name == field) {
+        return Some(Ok(ty.clone()));
+    }
+    Some(match tail.as_ref() {
+        InferType::Record(tail_fields)
+        | InferType::Residual {
+            fields: tail_fields,
+            ..
+        } => tail_fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| {
+                MetelError::type_error(
+                    TypeErrorCode::T0003,
+                    format!("no field `{field}` on {peeled}"),
+                    span,
+                )
+            }),
+        InferType::Var(tv) if let Some(result) = resolve_row_bound_field(ctx, *tv, field, span) => {
+            result
+        }
+        InferType::Var(tv) if let Some(param) = ctx.declared_type_param_name(*tv) => {
+            Err(MetelError::type_error(
+                TypeErrorCode::T0035,
+                format!(
+                    "field `{field}` is not granted by the declared bounds of type \
+                     parameter `{param}`"
+                ),
+                span,
+            ))
+        }
+        _ => Err(MetelError::type_error(
+            TypeErrorCode::T0003,
+            format!("no field `{field}` on {peeled}"),
+            span,
+        )),
+    })
 }

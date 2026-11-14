@@ -2790,7 +2790,7 @@ pub fn row_bound_failures(
     }
     known
         .fields
-        .sort_by(|left, right| left.label.cmp(&right.label));
+        .sort_by(|left, right| crate::data::types::label_cmp(&left.label, &right.label));
     row_bound_entailment_failures(&known, required)
 }
 
@@ -5211,7 +5211,7 @@ impl TypeDefinitionRegistry {
             InferType::RowExtend { fields, tail } => {
                 let mut fields = fields.clone();
                 fields.extend(self.row_condition_fields(current_module, tail)?);
-                fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+                fields.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
                 Some(fields)
             }
             InferType::Named(name, args, nominal) => {
@@ -5237,7 +5237,7 @@ impl TypeDefinitionRegistry {
                     .iter()
                     .map(|f| (f.name.clone(), subst.apply(&f.ty)))
                     .collect();
-                fields.sort_by(|a, b| a.0.cmp(&b.0));
+                fields.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
                 Some(fields)
             }
             _ => None,

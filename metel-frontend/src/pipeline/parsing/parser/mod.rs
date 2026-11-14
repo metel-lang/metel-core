@@ -3071,7 +3071,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             let (mut fields, mut field_spans, mut ignored_fields, rest, rest_binding) =
                 parse_record_field_pat_list(field_list, filename);
             sort_record_pattern_fields(&mut fields, &mut field_spans, filename, &span)?;
-            ignored_fields.sort();
+            ignored_fields.sort_by(|a, b| crate::data::types::label_cmp(a, b));
             if let Some(duplicate) = ignored_fields
                 .windows(2)
                 .find(|pair| pair[0] == pair[1])
@@ -3670,7 +3670,7 @@ fn sort_type_record_fields(
     filename: &str,
     span: &Span,
 ) -> Result<(), MetelError> {
-    fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+    fields.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
     for pair in fields.windows(2) {
         if pair[0].0 == pair[1].0 {
             return Err(record_duplicate_label_error(
@@ -3690,7 +3690,7 @@ fn sort_record_labels(
     span: &Span,
     context: &str,
 ) -> Result<(), MetelError> {
-    fields.sort();
+    fields.sort_by(|a, b| crate::data::types::label_cmp(a, b));
     for pair in fields.windows(2) {
         if pair[0] == pair[1] {
             return Err(record_duplicate_label_error(
@@ -3710,7 +3710,7 @@ fn sort_record_pattern_fields(
     span: &Span,
 ) -> Result<(), MetelError> {
     let mut paired: Vec<(String, Span)> = fields.drain(..).zip(field_spans.drain(..)).collect();
-    paired.sort_by(|a, b| a.0.cmp(&b.0));
+    paired.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
     for w in paired.windows(2) {
         if w[0].0 == w[1].0 {
             return Err(record_duplicate_label_error(
@@ -4090,7 +4090,7 @@ fn parse_row_bound(
         }
     }
     // A stable sort keeps the written order of the repeated negative entries of one label.
-    fields.sort_by(|a, b| a.label.cmp(&b.label));
+    fields.sort_by(|a, b| crate::data::types::label_cmp(&a.label, &b.label));
     for pair in fields.windows(2) {
         if pair[0].label == pair[1].label && !pair[0].negated && !pair[1].negated {
             return Err(record_duplicate_label_error(

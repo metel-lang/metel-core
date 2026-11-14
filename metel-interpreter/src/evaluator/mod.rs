@@ -3653,7 +3653,7 @@ fn eval_method_call_expr(
                 )
             })
             .collect();
-        row.sort_by(|a, b| a.0.cmp(&b.0));
+        row.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
         let receiver = ReceiverTypeArgs {
             names: vec![],
             tys: vec![crate::data::types::Type::Record(row)],

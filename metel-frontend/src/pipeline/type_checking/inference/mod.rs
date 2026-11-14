@@ -3033,7 +3033,20 @@ fn infer_field_assign_type(
     if !is_through_mut_ptr && let Some((name, span)) = root_binding_for_write(object) {
         let _ = ctx.lookup_for_write(name, span)?;
     }
-    let peeled = peel_all_references(&obj_ty);
+    field_assign_type_for(object, &obj_ty, field, is_through_mut_ptr, target_span, ctx)
+}
+
+/// The type a write to `field` of a value of type `obj_ty` has (the write-access checks are the caller's). `field` is
+/// a label, an integer label's digits for `r.0 = v` on a record (RFC-0151).
+fn field_assign_type_for(
+    object: &Expr,
+    obj_ty: &InferType,
+    field: &str,
+    is_through_mut_ptr: bool,
+    target_span: &Span,
+    ctx: &mut InferContext,
+) -> Result<InferType, MetelError> {
+    let peeled = peel_all_references(obj_ty);
     if let InferType::Record(fields) = &peeled {
         // A direct write can restore an anonymous record's removed label; the
         // binding's original row supplies its type, not the narrowed read row.
@@ -3093,7 +3106,7 @@ fn infer_field_assign_type(
             target_span,
         ));
     }
-    let struct_name = named_type_name(&obj_ty).ok_or_else(|| {
+    let struct_name = named_type_name(obj_ty).ok_or_else(|| {
         MetelError::type_error(
             TypeErrorCode::T0002,
             "cannot infer struct type for field assignment; add a type annotation",
@@ -3213,6 +3226,17 @@ fn infer_tuple_assign_type(
                 target_span,
             )
         }),
+        // A record or row with an integer label (RFC-0151): `r.0 = v` writes the field `.0`.
+        InferType::Record(_) | InferType::Residual { .. } | InferType::RowExtend { .. } => {
+            field_assign_type_for(
+                object,
+                &obj_ty,
+                &index.to_string(),
+                is_through_mut_ptr,
+                target_span,
+                ctx,
+            )
+        }
         _ => Err(MetelError::type_error(
             TypeErrorCode::T0002,
             "cannot infer tuple type for assignment; add a type annotation",

@@ -1105,7 +1105,7 @@ impl BodyFreezer<'_, '_> {
             Expr::UnaryOp(UnaryOp::Deref, value, _) => {
                 AbstractExprKind::Dereference(Box::new(self.expression(value)?))
             }
-            Expr::TupleAccess { object, index, .. } => self.tuple_field(object, *index, &ty)?,
+            Expr::TupleAccess { .. } => self.tuple_selection(expression, &ty)?,
             Expr::Index { object, index, .. } => self.index(object, index, &ty)?,
             Expr::Call {
                 callee, args, span, ..
@@ -2227,16 +2227,30 @@ impl BodyFreezer<'_, '_> {
         }
     }
 
-    fn tuple_field(
+    fn tuple_selection(
         &self,
-        object: &Expr,
-        index: usize,
+        expression: &Expr,
         ty: &AbstractType,
     ) -> Result<AbstractExprKind, String> {
+        let Expr::TupleAccess {
+            object,
+            index,
+            span,
+        } = expression
+        else {
+            return Err("tuple selection is not a tuple access".to_string());
+        };
+        let index = *index;
         let object = self.expression(object)?;
         let (base, auto_dereferences) = peel_references(&object.ty);
         let AbstractType::Tuple(fields) = base else {
-            return Err("tuple selection has no retained tuple shape".to_string());
+            // A record, residual or row with an integer label (RFC-0151): `r.0` is field access on `.0`.
+            let selection = self.field_selection(base, &index.to_string(), span, ty)?;
+            return Ok(AbstractExprKind::FieldAccess {
+                object: Box::new(object),
+                selection,
+                auto_dereferences,
+            });
         };
         let field = fields
             .get(index)

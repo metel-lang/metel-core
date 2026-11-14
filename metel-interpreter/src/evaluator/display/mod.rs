@@ -67,7 +67,7 @@ pub(super) fn format_value(val: &Value) -> String {
         } if fields.is_empty() => "()".to_string(),
         Value::Record { fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
-            pairs.sort_by_key(|(k, _)| k.as_str());
+            pairs.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             let inner = pairs
                 .iter()
                 .map(|(k, v)| format!(".{k}: {}", format_value(v)))
@@ -77,7 +77,7 @@ pub(super) fn format_value(val: &Value) -> String {
         }
         Value::Struct { name, fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
-            pairs.sort_by_key(|(k, _)| k.as_str());
+            pairs.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             let inner = pairs
                 .iter()
                 .map(|(k, v)| format!("{}: {}", k, format_value(v)))
@@ -122,7 +122,7 @@ pub(super) fn format_value(val: &Value) -> String {
                 format!("{name}::{variant}")
             } else {
                 let mut pairs: Vec<_> = fields.iter().collect();
-                pairs.sort_by_key(|(k, _)| k.as_str());
+                pairs.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
                 let inner = pairs
                     .iter()
                     .map(|(k, v)| format!("{}: {}", k, format_value(v)))

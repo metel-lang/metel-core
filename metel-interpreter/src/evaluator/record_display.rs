@@ -81,7 +81,7 @@ fn fields_string<'a>(
     runtime: &RuntimeRegistry,
 ) -> Result<String, MetelError> {
     let mut pairs: Vec<_> = fields.collect();
-    pairs.sort_by_key(|(label, _)| label.as_str());
+    pairs.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
     // An anonymous record prints as the source form that writes it, `.{ .x: 1 }`; a nominal one keeps the bare
     // names its declaration uses, `Pt { x: 1 }` (RFC-0221).
     let dot = if name.is_none() { "." } else { "" };

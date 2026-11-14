@@ -1,0 +1,5 @@
+// RFC-0151 step 0: an integer label the row does not have is an unknown field, as an identifier label is.
+fun main() {
+    let r := .{ .0 = 1, .name = "x" };
+    let v := r.1;
+}

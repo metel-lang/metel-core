@@ -2096,7 +2096,7 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
                 .map(|(name, ty)| infer_to_type(ty).map(|ty| (name.clone(), ty)))
                 .collect::<Option<Vec<_>>>()?;
             fields.append(&mut tail_fields);
-            fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            fields.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             Some(Type::with_row_tail(fields, open_tail))
         }
         InferType::Array(inner) => infer_to_type(inner).map(|inner| Type::Array(Box::new(inner))),
