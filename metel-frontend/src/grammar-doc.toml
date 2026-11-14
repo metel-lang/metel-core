@@ -725,6 +725,11 @@ mode = "named"
 name = "RecordRestBinding"
 section = "Patterns"
 [[rule]]
+pest = "record_field_discard"
+mode = "named"
+name = "RecordFieldDiscard"
+section = "Patterns"
+[[rule]]
 pest = "record_field_pat"
 mode = "named"
 name = "RecordFieldPattern"
