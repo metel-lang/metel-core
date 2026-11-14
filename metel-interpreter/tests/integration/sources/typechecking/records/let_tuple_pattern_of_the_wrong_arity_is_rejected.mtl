@@ -1,0 +1,4 @@
+// RFC-0151 (metel-core#2022): a tuple pattern in `let` must match the tuple's arity.
+fun main() {
+    let (a, b, c) := (1, 2);
+}

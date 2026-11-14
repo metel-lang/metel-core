@@ -223,7 +223,7 @@ pub(super) fn infer_pattern(
             ctx.add_constraint(scrutinee_ty.clone(), lit_ty, span.clone());
         }
         Pattern::Binding(name, _) => {
-            ctx.bind_mono(name, scrutinee_ty.clone(), false);
+            ctx.bind_mono(name, scrutinee_ty.clone(), mutable);
         }
         Pattern::Tuple(pats, _) => {
             let elem_vars: Vec<InferType> = pats.iter().map(|_| ctx.fresh_var()).collect();
@@ -233,7 +233,7 @@ pub(super) fn infer_pattern(
                 span.clone(),
             );
             for (pat, elem_ty) in pats.iter().zip(elem_vars.iter()) {
-                infer_pattern(pat, elem_ty, false, ctx)?;
+                infer_pattern(pat, elem_ty, mutable, ctx)?;
             }
         }
         Pattern::EnumVariant {

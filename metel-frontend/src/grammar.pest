@@ -207,7 +207,7 @@ block      = { "{" ~ block_item* ~ expr? ~ "}" }
 // `;` was consumed and `}` follows, pest backtracks and `expr_stmt` takes over.
 block_item      = { block_expr_stmt | let_pattern_decl | decl }
 block_expr_stmt = { (if_expr | match_expr | loop_expr) ~ ";"? ~ !"}" }
-let_pattern_decl = { ("let" ~ mut_kw | "let" | mut_kw) ~ record_pattern ~ ":=" ~ expr ~ ";" }
+let_pattern_decl = { ("let" ~ mut_kw | "let" | mut_kw) ~ (record_pattern | tuple_pattern) ~ ":=" ~ expr ~ ";" }
 // RFC-0183: assignment is a statement, so it is written only where a statement is: a block
 // statement ending in `;`, a match-arm body, a `for` header's init and update clauses. It is not
 // an operand, an argument, an initializer, a condition, a closure body or a block's tail.

@@ -629,7 +629,7 @@ pub(super) fn construct_pattern_bindings(
                 _ => return Err(MetelError::internal("tuple pattern on non-tuple")),
             };
             for (pat, elem_ty) in pats.iter().zip(elems.iter()) {
-                construct_pattern_bindings(pat, elem_ty, false, ctx)?;
+                construct_pattern_bindings(pat, elem_ty, mutable, ctx)?;
             }
         }
         Pattern::EnumVariant {
