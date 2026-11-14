@@ -2987,7 +2987,10 @@ fn parse_field_pat_list(
     (fields, field_spans, rest)
 }
 
+/// The names a record pattern binds, the row label each reads, their spans, the discarded labels, whether it
+/// has a `..`, and a named remainder (RFC-0151: `.label: name` binds `name`).
 type ParsedRecordFieldPatList = (
+    Vec<String>,
     Vec<String>,
     Vec<Span>,
     Vec<String>,
@@ -3000,6 +3003,7 @@ fn parse_record_field_pat_list(
     filename: &str,
 ) -> ParsedRecordFieldPatList {
     let mut fields = vec![];
+    let mut labels = vec![];
     let mut field_spans = vec![];
     let mut ignored_fields = vec![];
     let mut rest = false;
@@ -3007,18 +3011,29 @@ fn parse_record_field_pat_list(
     for child in pair.into_inner() {
         match child.as_rule() {
             Rule::record_field_pat => {
-                let ignored = child.as_str().contains(':');
+                let mut parts = child.into_inner();
                 let field = unlabel(
-                    child
-                        .into_inner()
+                    parts
                         .next()
                         .expect("record_field_pat always contains a label"),
                 );
-                if ignored {
-                    ignored_fields.push(field.as_str().to_string());
-                } else {
-                    field_spans.push(Span::of(&field, filename));
-                    fields.push(field.as_str().to_string());
+                match parts.next() {
+                    // `.label: _`: the field must be present and is discarded.
+                    Some(target) if target.as_rule() == Rule::record_field_discard => {
+                        ignored_fields.push(field.as_str().to_string());
+                    }
+                    // `.label: name`: the field is bound to `name`.
+                    Some(binder) => {
+                        field_spans.push(Span::of(&binder, filename));
+                        fields.push(binder.as_str().to_string());
+                        labels.push(field.as_str().to_string());
+                    }
+                    // `.label`: the pun binds the label's own name.
+                    None => {
+                        field_spans.push(Span::of(&field, filename));
+                        fields.push(field.as_str().to_string());
+                        labels.push(field.as_str().to_string());
+                    }
                 }
             }
             Rule::record_rest => rest = true,
@@ -3033,7 +3048,14 @@ fn parse_record_field_pat_list(
             _ => {}
         }
     }
-    (fields, field_spans, ignored_fields, rest, rest_binding)
+    (
+        fields,
+        labels,
+        field_spans,
+        ignored_fields,
+        rest,
+        rest_binding,
+    )
 }
 
 #[allow(clippy::too_many_lines)]
@@ -3068,9 +3090,15 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .ok_or_else(|| {
                     MetelError::internal("record_pattern: missing record_field_pat_list")
                 })?;
-            let (mut fields, mut field_spans, mut ignored_fields, rest, rest_binding) =
+            let (mut fields, mut labels, mut field_spans, mut ignored_fields, rest, rest_binding) =
                 parse_record_field_pat_list(field_list, filename);
-            sort_record_pattern_fields(&mut fields, &mut field_spans, filename, &span)?;
+            sort_record_pattern_fields(
+                &mut fields,
+                &mut labels,
+                &mut field_spans,
+                filename,
+                &span,
+            )?;
             ignored_fields.sort_by(|a, b| crate::data::types::label_cmp(a, b));
             if let Some(duplicate) = ignored_fields
                 .windows(2)
@@ -3079,7 +3107,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .or_else(|| {
                     ignored_fields
                         .iter()
-                        .find(|label| fields.contains(label))
+                        .find(|label| labels.contains(label))
                         .map(String::as_str)
                 })
             {
@@ -3092,6 +3120,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             }
             Ok(Pattern::Record {
                 fields,
+                labels,
                 field_spans,
                 ignored_fields,
                 rest,
@@ -3705,13 +3734,19 @@ fn sort_record_labels(
 /// through the sort (metel-core#1052).
 fn sort_record_pattern_fields(
     fields: &mut Vec<String>,
+    labels: &mut Vec<String>,
     field_spans: &mut Vec<Span>,
     filename: &str,
     span: &Span,
 ) -> Result<(), MetelError> {
-    let mut paired: Vec<(String, Span)> = fields.drain(..).zip(field_spans.drain(..)).collect();
-    paired.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
-    for w in paired.windows(2) {
+    let mut entries: Vec<(String, String, Span)> = labels
+        .drain(..)
+        .zip(fields.drain(..))
+        .zip(field_spans.drain(..))
+        .map(|((label, binder), binder_span)| (label, binder, binder_span))
+        .collect();
+    entries.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
+    for w in entries.windows(2) {
         if w[0].0 == w[1].0 {
             return Err(record_duplicate_label_error(
                 &w[0].0,
@@ -3721,9 +3756,10 @@ fn sort_record_pattern_fields(
             ));
         }
     }
-    for (name, sp) in paired {
-        fields.push(name);
-        field_spans.push(sp);
+    for (label, binder, binder_span) in entries {
+        labels.push(label);
+        fields.push(binder);
+        field_spans.push(binder_span);
     }
     Ok(())
 }

@@ -1,0 +1,13 @@
+// RFC-0151 (metel-core#2030): `.label: name` binds the field `.label` to `name`; `.label` alone binds the label's own
+// name and `.label: _` discards the field.
+fun main() {
+    let .{ .0: a, .1: b } := .{ .0 = 1, .1 = "x" };
+    assert(a == 1);
+    assert(b == "x");
+    let p := .{ .x = 3, .y = 4 };
+    let .{ .x: horizontal, .y: _ } := p;
+    assert(horizontal == 3);
+    let .{ .x, .y: vertical } := p;
+    assert(x == 3);
+    assert(vertical == 4);
+}
