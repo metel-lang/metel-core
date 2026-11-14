@@ -96,6 +96,13 @@ pub(super) fn build_concrete_method_env(
 
 /// Scope-aware context for Pass 2. Mirrors `InferContext`'s scope management but
 /// holds concrete `Type` values; no constraint emission.
+/// A bound of the generic function being reconstructed, after substituting its type parameters.
+struct AspectWitness {
+    receiver: crate::data::types::Type,
+    aspect: String,
+    arguments: Vec<crate::data::types::Type>,
+}
+
 struct ConstructCtx<'a> {
     subst: &'a Substitution,
     /// The schemes keyed by the declaration they belong to: what a reference's resolved binding
@@ -140,6 +147,10 @@ struct ConstructCtx<'a> {
     /// Generic type param name → fresh `TypeVar`; populated during construction-at-call-time
     /// so type annotations like `T[]` in a generic body resolve to concrete types.
     generic_params: HashMap<crate::identity::TypeParamId, TypeVar>,
+    /// The aspects, with their type arguments, that the bounds of the generic function being reconstructed say
+    /// its concrete types implement (`X: Conv<i64>` with `X := L`: `L` implements `Conv<i64>`). A method call
+    /// on such a type that two impls of one aspect could answer follows them (metel-core#1987).
+    aspect_witnesses: Vec<AspectWitness>,
     /// Free-function overload table for the current module (METEL-180). Used to
     /// identify overloaded declarations and resolve overloaded call sites to
     /// the selected definition's `SymbolId`.
@@ -236,6 +247,7 @@ impl<'a> ConstructCtx<'a> {
             current_break_ty: None,
             loop_depth: 0,
             generic_params: HashMap::new(),
+            aspect_witnesses: Vec::new(),
             overloads,
             current_module,
             resolved_facts,
@@ -1072,6 +1084,44 @@ fn construct_method_args(
     }
 }
 
+/// The bounds of a generic function that name aspect type arguments (`X: Conv<i64>`), as concrete types for one
+/// call: the type each type parameter stands for, the aspect, and the arguments (metel-core#1987).
+fn aspect_witnesses(
+    scheme: &TypeScheme,
+    renaming: &HashMap<TypeVar, TypeVar>,
+    subst: &Substitution,
+    span: &crate::data::ast::Span,
+) -> Vec<AspectWitness> {
+    use super::conversions::infer_type_to_type;
+    let mut rename = Substitution::new();
+    for (original, fresh) in renaming {
+        rename.bind(*original, InferType::Var(*fresh));
+    }
+    let mut witnesses = Vec::new();
+    for (variable, named) in scheme.quantified_vars.iter().zip(&scheme.aspect_arguments) {
+        let Some(fresh) = renaming.get(variable) else {
+            continue;
+        };
+        let Ok(receiver) = infer_type_to_type(&subst.apply(&InferType::Var(*fresh)), span) else {
+            continue;
+        };
+        for (aspect, arguments) in named {
+            let arguments: Result<Vec<_>, _> = arguments
+                .iter()
+                .map(|argument| infer_type_to_type(&subst.apply(&rename.apply(argument)), span))
+                .collect();
+            if let Ok(arguments) = arguments {
+                witnesses.push(AspectWitness {
+                    receiver: receiver.clone(),
+                    aspect: aspect.clone(),
+                    arguments,
+                });
+            }
+        }
+    }
+    witnesses
+}
+
 // limit: ["LIMIT-EVALUATION-001"]
 pub(super) fn construct_generic_body(
     scheme: &TypeScheme,
@@ -1218,6 +1268,8 @@ pub(super) fn construct_generic_body(
         }
         ctx.generic_params = gp;
     }
+
+    ctx.aspect_witnesses = aspect_witnesses(scheme, &renaming, &subst, span);
 
     ctx.push_scope();
     let saved_flow = ctx.flow_enter_body();

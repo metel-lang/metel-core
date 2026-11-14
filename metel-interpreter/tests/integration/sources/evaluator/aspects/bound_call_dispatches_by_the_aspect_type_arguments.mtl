@@ -1,0 +1,8 @@
+// metel-core#1987: a call through a bound runs the impl for the type arguments the bound names, whichever other impl of the aspect the type also has.
+aspect Conv<T> { fun conv(&self) -> T; }
+fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
+fun use_str<X: Conv<String>>(x: &X) -> String { x.conv() }
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+fun main() { assert(use_conv(&L { n = 4 }) == 4); assert(use_str(&L { n = 4 }) == "s"); }

@@ -1,0 +1,16 @@
+// metel-core#1987: the bound's arguments are followed through a forwarded bound and through an argument that is itself a type parameter.
+aspect Conv<T> { fun conv(&self) -> T; }
+struct L { n: i64 }
+extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
+extend L: Conv<String> { fun conv(&self) -> String { "s" } }
+fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
+fun forward<Y: Conv<i64>>(y: &Y) -> i64 { use_conv(y) }
+fun generic_arg<T, X: Conv<T>>(x: &X) -> T { x.conv() }
+fun main() {
+    let l := L { n = 4 };
+    assert(forward(&l) == 4);
+    let s: String := generic_arg(&l);
+    assert(s == "s");
+    let n: i64 := generic_arg(&l);
+    assert(n == 4);
+}

@@ -3168,6 +3168,18 @@ struct ScopedType {
     shadowed_local: Option<SymbolId>,
 }
 
+/// One impl's method of a non-generic target whose aspect is applied to type arguments (`extend L: Conv<i64>`), kept
+/// beside the single `(owner, name)` entry `method_env` holds so two impls of one aspect for different arguments
+/// can be told apart (metel-core#1987).
+#[derive(Debug, Clone)]
+pub struct AspectMethodVariant {
+    pub aspect: String,
+    pub arguments: Vec<Type>,
+    pub ty: Type,
+    /// The declaration of the method: the runtime selects the impl by it.
+    pub span: Span,
+}
+
 #[derive(Debug, Clone)]
 pub struct TypeDefinitionRegistry {
     /// struct `SymbolId` → fields with declaration spans.
@@ -3247,6 +3259,8 @@ pub struct TypeDefinitionRegistry {
     /// (metel-core#1322): lets a call that picked a variant say *which* impl's method it
     /// chose, so dispatch can follow the type checker's decision.
     method_variant_spans: HashMap<SymbolId, HashMap<String, Vec<Span>>>,
+    /// Methods of impls that apply an aspect to type arguments, per `(owner, method)` (metel-core#1987).
+    aspect_method_variants: HashMap<SymbolId, HashMap<String, Vec<AspectMethodVariant>>>,
     /// Method schemes for structural array targets (`impl<T> Aspect for T[]`). The
     /// pinned vars correspond to the receiver array's element type positions.
     array_method_scheme_env: HashMap<String, (TypeScheme, Vec<TypeVar>)>,
@@ -3825,6 +3839,7 @@ impl TypeDefinitionRegistry {
             method_scheme_env: HashMap::new(),
             method_scheme_variants: HashMap::new(),
             method_variant_spans: HashMap::new(),
+            aspect_method_variants: HashMap::new(),
             array_method_scheme_env: HashMap::new(),
             array_method_scheme_variants: HashMap::new(),
             generic_method_schemes_by_span: HashMap::new(),
@@ -4365,6 +4380,49 @@ impl TypeDefinitionRegistry {
             .entry(method_name)
             .or_default()
             .push((scheme, struct_tvars, aspect_name));
+    }
+
+    pub fn register_aspect_method_variant(
+        &mut self,
+        owner: SymbolId,
+        method_name: String,
+        variant: AspectMethodVariant,
+    ) {
+        let variants = self
+            .aspect_method_variants
+            .entry(owner)
+            .or_default()
+            .entry(method_name)
+            .or_default();
+        // The module-level pass and the inference of the impl's body both record a module impl's methods.
+        if !variants
+            .iter()
+            .any(|existing| existing.span == variant.span)
+        {
+            variants.push(variant);
+        }
+    }
+
+    /// The impls of one aspect, for different type arguments, that provide `method_name` on `owner`; empty
+    /// unless there are at least two, which is when a call by name no longer says which one it means.
+    #[must_use]
+    pub fn competing_aspect_methods(
+        &self,
+        owner: SymbolId,
+        method_name: &str,
+    ) -> &[AspectMethodVariant] {
+        let variants = self
+            .aspect_method_variants
+            .get(&owner)
+            .and_then(|methods| methods.get(method_name))
+            .map_or(&[][..], Vec::as_slice);
+        let competing = variants.iter().enumerate().any(|(index, variant)| {
+            variants
+                .iter()
+                .skip(index + 1)
+                .any(|other| other.aspect == variant.aspect && other.arguments != variant.arguments)
+        });
+        if competing { variants } else { &[] }
     }
 
     pub fn register_array_method_scheme(
@@ -7014,6 +7072,15 @@ impl TypeDefinitionRegistry {
                     .extend(spans.iter().cloned());
             }
         }
+        for (k, v) in &other.aspect_method_variants {
+            let entry = self.aspect_method_variants.entry(*k).or_default();
+            for (method_name, variants) in v {
+                entry
+                    .entry(method_name.clone())
+                    .or_default()
+                    .extend(variants.iter().cloned());
+            }
+        }
         for (method_name, scheme) in &other.array_method_scheme_env {
             self.array_method_scheme_env
                 .entry(method_name.clone())
@@ -7798,6 +7865,39 @@ impl InferContext {
     /// tables are actually keyed by (metel-core#1124). A no-op if `type_name`
     /// isn't resolvable at all -- shouldn't happen for a legitimate `extend`
     /// whose target type-checked.
+    /// Record a method of an impl that applies an aspect to type arguments (metel-core#1987), for an impl written
+    /// where the module-level pass did not see it (a block body).
+    pub fn register_aspect_method_variant_of(
+        &mut self,
+        type_name: &str,
+        method: &crate::data::ast::FunDecl,
+        aspect: &str,
+        arguments: Vec<crate::data::types::Type>,
+        fun_ty: &InferType,
+    ) {
+        let Some(owner) = self
+            .registry
+            .resolve_type_id(&self.current_module_path, type_name)
+        else {
+            return;
+        };
+        let Ok(ty) =
+            crate::pipeline::type_checking::conversions::infer_type_to_type(fun_ty, &method.span)
+        else {
+            return;
+        };
+        self.registry.register_aspect_method_variant(
+            owner,
+            method.name.clone(),
+            AspectMethodVariant {
+                aspect: aspect.to_string(),
+                arguments,
+                ty,
+                span: method.span.clone(),
+            },
+        );
+    }
+
     pub fn register_method(&mut self, type_name: &str, method_name: String, fun_ty: InferType) {
         let Some(owner) = self
             .registry

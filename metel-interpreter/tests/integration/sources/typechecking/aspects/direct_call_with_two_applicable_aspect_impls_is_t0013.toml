@@ -1,0 +1,8 @@
+[options]
+error = ["T0013"]
+spec = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-18"]
+
+[expect]
+status = "typecheck_error"
+code = "T0013"
+contains = "implements `Conv<i64>` and `Conv<String>`"

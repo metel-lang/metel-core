@@ -1523,7 +1523,18 @@ pub(super) fn construct_expr(
                 Vec<TypedExpr>,
                 MethodDispatch,
                 Option<Span>,
-            ) = if let Some(ty) = ctx
+            ) = if let Some(chosen) = chosen_aspect_method(
+                ctx,
+                &struct_name,
+                struct_id,
+                method,
+                typed_receiver.ty(),
+                span,
+            )? {
+                let typed_args = construct_method_args(&chosen.ty, args, ctx)?;
+                let dispatch = dispatch_for_resolved_method(ctx, Some(&chosen.aspect));
+                (chosen.ty, typed_args, dispatch, Some(chosen.span))
+            } else if let Some(ty) = ctx
                 .concrete_method_with_id(&struct_name, struct_id, method.as_str())
                 .cloned()
             {
@@ -2574,4 +2585,44 @@ fn keyword_callee_is_defined(callee: &Expr, ctx: &ConstructCtx) -> bool {
         }
         _ => true,
     }
+}
+
+/// The impl of an aspect that a method call answers when two impls of one aspect, for different type arguments,
+/// both provide it: the one a bound of the generic function being reconstructed names for the receiver's type
+/// (metel-core#1987). `None` when no such pair exists. A call no bound speaks for is ambiguous.
+fn chosen_aspect_method(
+    ctx: &ConstructCtx,
+    struct_name: &str,
+    struct_id: Option<crate::identity::SymbolId>,
+    method: &str,
+    receiver: &Type,
+    span: &Span,
+) -> Result<Option<crate::pipeline::type_checking::type_engine::AspectMethodVariant>, MetelError> {
+    let Some(owner) = struct_id.or_else(|| ctx.written_type_id(struct_name)) else {
+        return Ok(None);
+    };
+    let competing = ctx.registry.competing_aspect_methods(owner, method);
+    if competing.is_empty() {
+        return Ok(None);
+    }
+    let receiver = peel_type_references(receiver);
+    competing
+        .iter()
+        .find(|variant| {
+            ctx.aspect_witnesses.iter().any(|witness| {
+                &witness.receiver == receiver
+                    && witness.aspect == variant.aspect
+                    && witness.arguments == variant.arguments
+            })
+        })
+        .cloned()
+        .map(Some)
+        .ok_or_else(|| {
+            super::super::inference::expressions::ambiguous_aspect_method(
+                struct_name,
+                method,
+                competing,
+                span,
+            )
+        })
 }
