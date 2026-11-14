@@ -49,6 +49,26 @@ impl From<Option<crate::identity::symbols::SymbolId>> for NominalId {
     }
 }
 
+/// The canonical order of two row labels (RFC-0151): integer labels first, in numeric order (`.2` before `.10`),
+/// then identifier labels in lexicographic order. Every place that keeps a row's fields in label order uses it, so
+/// two rows with the same labels compare equal field by field.
+#[must_use]
+pub fn label_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+    fn integer(label: &str) -> Option<u64> {
+        if !label.is_empty() && label.bytes().all(|byte| byte.is_ascii_digit()) {
+            label.parse().ok()
+        } else {
+            None
+        }
+    }
+    match (integer(left), integer(right)) {
+        (Some(a), Some(b)) => a.cmp(&b).then_with(|| left.cmp(right)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => left.cmp(right),
+    }
+}
+
 /// Resolved types — produced by the type checker, consumed by the evaluator.
 /// No type variables exist here; runtime generics have been monomorphised.
 /// Ownership reconstruction may retain resolved symbolic row witnesses.
@@ -172,6 +192,18 @@ impl Type {
     #[must_use]
     pub fn unit() -> Self {
         Type::Record(Vec::new())
+    }
+
+    /// Whether this is a **`Tuple`** row (RFC-0151 section 5a): a closed row whose labels are exactly the integers
+    /// `0 .. N-1`. Decided by inspecting the labels; the empty row is one. A row with a gap, an identifier label, or
+    /// an open tail is not.
+    #[must_use]
+    pub fn is_tuple_row(&self) -> bool {
+        matches!(self, Type::Record(fields)
+            if fields
+                .iter()
+                .enumerate()
+                .all(|(position, (label, _))| *label == position.to_string()))
     }
 
     /// Whether this is the unit type, the empty closed row.
@@ -344,3 +376,44 @@ fn fmt_open_record(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod tuple_row_tests {
+    use super::{Type, label_cmp};
+    use std::cmp::Ordering;
+
+    fn row(labels: &[&str]) -> Type {
+        let mut fields: Vec<(String, Type)> = labels
+            .iter()
+            .map(|l| ((*l).to_string(), Type::I64))
+            .collect();
+        fields.sort_by(|a, b| label_cmp(&a.0, &b.0));
+        Type::Record(fields)
+    }
+
+    #[test]
+    fn integer_labels_come_first_in_numeric_order() {
+        assert_eq!(label_cmp("2", "10"), Ordering::Less);
+        assert_eq!(label_cmp("10", "x"), Ordering::Less);
+        assert_eq!(label_cmp("x", "10"), Ordering::Greater);
+        assert_eq!(label_cmp("a", "b"), Ordering::Less);
+        let ordered = row(&["x", "10", "2", "0", "1"]);
+        let Type::Record(fields) = ordered else {
+            panic!()
+        };
+        let labels: Vec<&str> = fields.iter().map(|(l, _)| l.as_str()).collect();
+        assert_eq!(labels, ["0", "1", "2", "10", "x"]);
+    }
+
+    #[test]
+    fn a_tuple_row_has_exactly_the_labels_zero_to_n_minus_one() {
+        assert!(row(&[]).is_tuple_row());
+        assert!(row(&["0"]).is_tuple_row());
+        assert!(row(&["0", "1", "2"]).is_tuple_row());
+        assert!(row(&["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]).is_tuple_row());
+        assert!(!row(&["0", "2"]).is_tuple_row());
+        assert!(!row(&["1"]).is_tuple_row());
+        assert!(!row(&["0", "x"]).is_tuple_row());
+        assert!(!Type::I64.is_tuple_row());
+    }
+}

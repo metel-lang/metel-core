@@ -725,7 +725,8 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
                 }
             };
             resolved_fields.append(&mut tail_fields);
-            resolved_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            resolved_fields
+                .sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             Ok(Type::with_row_tail(resolved_fields, open_tail))
         }
         InferType::Array(t) => Ok(Type::Array(Box::new(infer_type_to_type(t, span)?))),

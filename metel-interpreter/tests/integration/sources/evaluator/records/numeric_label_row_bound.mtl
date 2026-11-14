@@ -1,0 +1,7 @@
+// RFC-0151 step 0: a row bound can name an integer label and a generic body reads it.
+fun first<record R: .{ .0: i64, .. }>(r: R) -> i64 { r.0 }
+
+fun main() {
+    assert(first(.{ .0 = 7, .name = "x" }) == 7);
+    assert(first(.{ .0 = 1, .1 = 2 }) == 1);
+}

@@ -135,7 +135,7 @@ fn clone_method(
                     )
                 })
                 .collect();
-            row.sort_by(|a, b| a.0.cmp(&b.0));
+            row.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
             runtime.get_record_aspect_method(
                 None,
                 "clone",

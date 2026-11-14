@@ -1331,7 +1331,7 @@ fn structural_fields_for_row_check(
                         .map(|ty| (f.name.clone(), ty))
                 })
                 .collect();
-            fields.sort_by(|a, b| a.0.cmp(&b.0));
+            fields.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
             Some(fields)
         }
         _ => None,
@@ -2170,7 +2170,7 @@ fn backfill_row_remainders_pass(
             .into_iter()
             .filter(|(label, _)| !removed.contains(label))
             .collect();
-        remaining.sort_by(|a, b| a.0.cmp(&b.0));
+        remaining.sort_by(|a, b| crate::data::types::label_cmp(&a.0, &b.0));
         let derived = type_to_infer(&Type::with_row_tail(
             remaining,
             r_ty.row_tail().cloned().map(Box::new),

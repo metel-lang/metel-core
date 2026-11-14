@@ -719,7 +719,8 @@ pub(super) fn construct_expr(
                     None => result_fields.push((name.clone(), expr.ty().clone())),
                 }
             }
-            result_fields.sort_by(|(left, _), (right, _)| left.cmp(right));
+            result_fields
+                .sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
             let open_tail = typed_spread
                 .as_ref()
                 .and_then(|(spread, _)| spread.ty().row_tail())
@@ -2360,6 +2361,30 @@ pub(super) fn construct_expr(
                         span,
                     )
                 })?,
+                // A record, residual or row with an integer label (RFC-0151): `r.0` is field access on `.0`.
+                Type::Record(fields)
+                | Type::OpenRecord { fields, .. }
+                | Type::Residual { fields, .. } => {
+                    let field = index.to_string();
+                    let field_ty = fields
+                        .iter()
+                        .find(|(name, _)| *name == field)
+                        .map(|(_, ty)| ty.clone())
+                        .ok_or_else(|| {
+                            MetelError::type_error(
+                                TypeErrorCode::T0003,
+                                format!("no field `{field}` on {}", typed_obj.ty()),
+                                span,
+                            )
+                        })?;
+                    return Ok(TypedExpr::FieldAccess {
+                        object: Box::new(typed_obj),
+                        field,
+                        field_id: None,
+                        ty: field_ty,
+                        span: span.clone(),
+                    });
+                }
                 _ => {
                     return Err(MetelError::type_error(
                         TypeErrorCode::T0002,

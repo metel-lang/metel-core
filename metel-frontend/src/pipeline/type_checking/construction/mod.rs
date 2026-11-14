@@ -2520,6 +2520,14 @@ fn assign_target_to_typed_place(
                         span: span.clone(),
                     })
                 }
+                // A record, residual or row with an integer label (RFC-0151): the place is the field `.N`.
+                Type::Record(_) | Type::OpenRecord { .. } | Type::Residual { .. } => {
+                    Ok(TypedPlace::Field {
+                        object: Box::new(typed_object),
+                        field: index.to_string(),
+                        span: span.clone(),
+                    })
+                }
                 _ => Err(MetelError::type_error(
                     TypeErrorCode::T0002,
                     "cannot infer tuple type for assignment; add a type annotation",
@@ -2608,6 +2616,14 @@ fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedP
                     Ok(TypedPlace::Tuple {
                         object: Box::new(typed_object),
                         index: *index,
+                        span: span.clone(),
+                    })
+                }
+                // A record, residual or row with an integer label (RFC-0151): the place is the field `.N`.
+                Type::Record(_) | Type::OpenRecord { .. } | Type::Residual { .. } => {
+                    Ok(TypedPlace::Field {
+                        object: Box::new(typed_object),
+                        field: index.to_string(),
                         span: span.clone(),
                     })
                 }
