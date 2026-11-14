@@ -705,6 +705,11 @@ mode = "named"
 name = "TuplePattern"
 section = "Patterns"
 [[rule]]
+pest = "unit_pattern"
+mode = "named"
+name = "UnitPattern"
+section = "Patterns"
+[[rule]]
 pest = "array_pattern"
 mode = "named"
 name = "ArrayPattern"

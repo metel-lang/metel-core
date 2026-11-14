@@ -1,0 +1,9 @@
+// RFC-0151 (metel-core#2023): `()` is the empty tuple, so `()` is its pattern in a declaration and in a match arm.
+fun main() {
+    let () := ();
+    let (p,) := (5,);
+    assert(p == 5);
+    match (()) {
+        () => assert(true),
+    }
+}

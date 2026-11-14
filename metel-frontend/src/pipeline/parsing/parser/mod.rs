@@ -3077,6 +3077,16 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
                 .ok_or_else(|| MetelError::internal("pattern: missing inner rule"))?;
             parse_pattern(inner, filename)
         }
+        // RFC-0151: `()` is the pattern of the empty row.
+        Rule::unit_pattern => Ok(Pattern::Record {
+            fields: vec![],
+            labels: vec![],
+            field_spans: vec![],
+            ignored_fields: vec![],
+            rest: false,
+            rest_binding: None,
+            span: Span::of(&pair, filename),
+        }),
         Rule::tuple_pattern => {
             let span = Span::of(&pair, filename);
             let one_element_tuple = pair
