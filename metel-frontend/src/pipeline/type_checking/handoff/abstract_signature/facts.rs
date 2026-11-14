@@ -504,7 +504,7 @@ mod tests {
             index: 0,
         };
         let span = Span::new(1, 1, "associated_fact.mtl");
-        let scheme = TypeScheme::mono(InferType::Concrete(Type::Unit));
+        let scheme = TypeScheme::mono(InferType::unit());
         let registry = TypeDefinitionRegistry::new();
         let freezer = FactFreezer {
             types: SignatureFreezer {

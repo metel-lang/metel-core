@@ -36,7 +36,7 @@ pub(super) fn match_pattern(
             (Literal::Char(a), Value::Char(b)) => a == b,
             (Literal::Boolean(a), Value::Boolean(b)) => a == b,
             (Literal::Str(a), Value::Str(b)) => a == b,
-            (Literal::Unit, Value::Unit) => true,
+            (Literal::Unit, value) if value.is_unit() => true,
             (Literal::SizedInt { value: a, kind }, v) => {
                 use crate::data::ast::IntKind;
                 match kind {

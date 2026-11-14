@@ -5,7 +5,7 @@ fun clone_rest() {
     let .{ .id, ..rest } := it;
     assert(id == 1);
     let c := rest.clone();
-    assert("${c}" == "{ name: n, tags: [a, b] }");
+    assert("${c}" == ".{ .name: n, .tags: [a, b] }");
     assert(c.name == rest.name);
 }
 
@@ -13,8 +13,8 @@ fun clone_empty() {
     let t := Token { value = "x" };
     let .{ .value: _, ..rest } := t;
     let c := rest.clone();
-    assert("${c}" == "{}");
-    assert("${rest}" == "{}");
+    assert("${c}" == "()");
+    assert("${rest}" == "()");
 }
 
 fun main() {

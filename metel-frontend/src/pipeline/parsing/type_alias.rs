@@ -1274,8 +1274,7 @@ fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
         // substitution. This runs during type-alias resolution (parsing),
         // well before `projections::check` gets a chance to reject a
         // `RowArg` -- a leaf, not `unreachable!()`.
-        TypeExpr::Unit
-        | TypeExpr::RecordProjection { .. }
+        TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
         | TypeExpr::RowArg(_) => {
             vec![]

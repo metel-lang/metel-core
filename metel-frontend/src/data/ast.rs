@@ -1164,7 +1164,6 @@ impl TypeExpr {
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
     Named(String, Vec<TypeExpr>, NameSpan),
-    Unit,
     Tuple(Vec<TypeExpr>),
     Record(Vec<(String, TypeExpr)>),
     /// RFC-0121: `{ x: f64, ..R }` or `{ ..R }` -- a record type with an open

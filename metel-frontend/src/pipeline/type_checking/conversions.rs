@@ -169,8 +169,7 @@ pub(crate) fn find_anonymous_open_record_tail(te: &TypeExpr) -> Option<&crate::d
                     .and_then(find_anonymous_open_record_tail)
             }),
         TypeExpr::Projection { base, .. } => find_anonymous_open_record_tail(base),
-        TypeExpr::Unit
-        | TypeExpr::RecordProjection { .. }
+        TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
         | TypeExpr::RowArg(_) => None,
     }
@@ -325,7 +324,6 @@ fn type_expr_to_infer_in_context(
                 }
             }
         }
-        TypeExpr::Unit => InferType::unit(),
         TypeExpr::Tuple(ts) => InferType::Tuple(
             ts.iter()
                 .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx))

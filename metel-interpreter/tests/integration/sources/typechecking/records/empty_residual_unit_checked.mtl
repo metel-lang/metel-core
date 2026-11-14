@@ -1,6 +1,7 @@
+// RFC-0231: an anonymous empty residual is `()`, so it passes where a `()` is expected.
 fun take(x: ()) {}
 fun main() {
     let r := .{ .value = "owned" };
     let value := r.value;
-    take(r); // ERROR[T0001]
+    take(r);
 }

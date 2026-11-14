@@ -316,7 +316,10 @@ pub(super) fn call_function(
             call_runtime_callable(callable, args, static_arg_tys, expected_ret, span, runtime)
         }
 
-        Value::Unit => Err(MetelError::internal_with_code(
+        Value::Record {
+            fields,
+            type_id: None,
+        } if fields.is_empty() => Err(MetelError::internal_with_code(
             InternalErrorCode::I0007,
             "call: target is Unit, not a function",
         )),

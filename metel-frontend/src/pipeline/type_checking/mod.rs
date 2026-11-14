@@ -1265,7 +1265,6 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::Fun { .. } => "a function type",
         TypeExpr::SizedArray(_, _) => "a fixed-size array type",
         TypeExpr::Reference(_) | TypeExpr::MutReference(_) => "a reference type",
-        TypeExpr::Unit => "the unit type",
         TypeExpr::Projection { .. } => "an associated-type projection",
         TypeExpr::ImplAspect { .. } => "an `extends Aspect` type",
         // RFC-0116's row projection (`Handle.{ fd }`) — a residual, not a fresh
@@ -1419,7 +1418,7 @@ pub fn infer_named_type_args(
         .iter()
         .map(|&tv| {
             let resolved = subst.apply(&InferType::Var(tv));
-            infer_type_to_type(&resolved, span).unwrap_or(crate::data::types::Type::Unit)
+            infer_type_to_type(&resolved, span).unwrap_or(crate::data::types::Type::unit())
         })
         .collect()
 }

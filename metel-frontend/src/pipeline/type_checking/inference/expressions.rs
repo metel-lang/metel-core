@@ -2416,7 +2416,7 @@ fn infer_expr_inner(
                     // judges it; the unit type and a tuple are judged here.
                     || (matches!(
                         peeled_recv_for_bounds,
-                        InferType::Concrete(crate::data::types::Type::Unit) | InferType::Tuple(_)
+                        InferType::Tuple(_)
                     ) && ctx.registry().infer_type_satisfies_aspect(
                         ctx.current_module_path(),
                         &peeled_recv_for_bounds,

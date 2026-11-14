@@ -86,7 +86,6 @@ pub enum Value {
     Char(char),
     Boolean(bool),
     Str(String),
-    Unit,
     // ── Compound types ────────────────────────────────────────────────────────
     Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
@@ -163,6 +162,24 @@ pub enum Value {
         aspect_name: String,
         type_args: Vec<crate::data::types::Type>,
     },
+}
+
+impl Value {
+    /// The unit value `()`: the empty anonymous record (RFC-0231).
+    #[must_use]
+    pub fn unit() -> Value {
+        Value::Record {
+            fields: HashMap::new(),
+            type_id: None,
+        }
+    }
+
+    /// Whether this is the unit value: an empty record that carries no nominal identity. An empty
+    /// *branded* residual keeps its `type_id` and is not the unit value.
+    #[must_use]
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Value::Record { fields, type_id: None } if fields.is_empty())
+    }
 }
 
 /// The body of a closure — either a fully type-checked block (monomorphic) or the
@@ -1527,7 +1544,7 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        TypeExpr::Unit => "()".to_string(),
+        TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
         TypeExpr::Tuple(items) => format!(
             "({})",
             items
@@ -2901,7 +2918,7 @@ fn build_and_set_nested_fun(
 fn hoist_nested_funs(decls: &[TypedDecl], env: &mut Environment) -> Result<(), MetelError> {
     for decl in decls {
         if let TypedDecl::Fun(f) = decl {
-            env.define_binding(f.local_id, Value::Unit);
+            env.define_binding(f.local_id, Value::unit());
             if let Some(id) = f.local_id {
                 env.register_local_fun(id);
             }
@@ -2956,7 +2973,7 @@ pub fn eval_block(
     }
     let result = match &block.tail {
         Some(tail) => eval_expr(tail, env, runtime),
-        None => Ok(Signal::Value(Value::Unit)),
+        None => Ok(Signal::Value(Value::unit())),
     };
     env.pop_scope();
     result
@@ -2972,7 +2989,7 @@ fn eval_decl(
         TypedDecl::Let(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
                 env.define_binding(d.local_id, val);
-                Ok(Signal::Value(Value::Unit))
+                Ok(Signal::Value(Value::unit()))
             }
             other => Ok(other),
         },
@@ -2993,14 +3010,14 @@ fn eval_decl(
                 for (_, local_id, binding) in bindings {
                     env.define_binding(local_id, binding);
                 }
-                Ok(Signal::Value(Value::Unit))
+                Ok(Signal::Value(Value::unit()))
             }
             other => Ok(other),
         },
         TypedDecl::Mut(d) => match eval_expr(&d.value, env, runtime)? {
             Signal::Value(val) => {
                 env.define_binding(d.local_id, val);
-                Ok(Signal::Value(Value::Unit))
+                Ok(Signal::Value(Value::unit()))
             }
             other => Ok(other),
         },
@@ -3011,12 +3028,12 @@ fn eval_decl(
             // preceding it in this block is actually in scope, so a call from
             // here on captures the fully lexically-correct environment.
             build_and_set_nested_fun(f, env)?;
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
         TypedDecl::Stmt(s) => eval_stmt(s, env, runtime),
         // Type-level declarations have no runtime representation.
         TypedDecl::Struct(_) | TypedDecl::Enum(_) | TypedDecl::Impl(_) | TypedDecl::Aspect(_) => {
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
     }
 }
@@ -3036,7 +3053,7 @@ pub fn eval_stmt(
             // Must propagate non-Value signals (Break/Continue/Return) that arise from
             // control-flow expressions used in statement position, e.g. `if (x) { break; }`.
             match eval_expr(e, env, runtime)? {
-                Signal::Value(_) => Ok(Signal::Value(Value::Unit)),
+                Signal::Value(_) => Ok(Signal::Value(Value::unit())),
                 other => Ok(other),
             }
         }
@@ -3058,7 +3075,7 @@ pub fn eval_stmt(
                     Signal::Return(v) => return Ok(Signal::Return(v)),
                 }
             }
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
 
         TypedStmt::For(f) => {
@@ -3091,7 +3108,7 @@ pub fn eval_stmt(
                 if let Some(cond) = &f.condition {
                     match eval_expr(cond, env, runtime)? {
                         Signal::Value(Value::Boolean(false)) => {
-                            break Ok(Signal::Value(Value::Unit));
+                            break Ok(Signal::Value(Value::unit()));
                         }
                         Signal::Value(Value::Boolean(true)) => {}
                         Signal::Value(_) => {
@@ -3104,7 +3121,7 @@ pub fn eval_stmt(
                 }
                 match eval_block(&f.body, env, runtime)? {
                     Signal::Value(_) | Signal::Continue => {}
-                    Signal::Break(_) => break Ok(Signal::Value(Value::Unit)),
+                    Signal::Break(_) => break Ok(Signal::Value(Value::unit())),
                     Signal::Return(v) => break Ok(Signal::Return(v)),
                 }
                 if let Some(step) = &f.step {
@@ -3158,7 +3175,7 @@ fn eval_for_in(
                 ControlFlow::Break(sig) => return Ok(sig),
             }
         }
-        return Ok(Signal::Value(Value::Unit));
+        return Ok(Signal::Value(Value::unit()));
     }
 
     // User-defined Iterable: dispatch through the receiver type's `next` (by id).
@@ -3204,7 +3221,7 @@ fn eval_for_in(
                 if variant == "None" {
                     None
                 } else {
-                    Some(fields.remove("value").unwrap_or(Value::Unit))
+                    Some(fields.remove("value").unwrap_or(Value::unit()))
                 }
             }
             _ => {
@@ -3221,7 +3238,7 @@ fn eval_for_in(
             },
         }
     }
-    Ok(Signal::Value(Value::Unit))
+    Ok(Signal::Value(Value::unit()))
 }
 
 /// Run one iteration of a `for`-`in` loop: bind the loop variable — by its
@@ -3241,7 +3258,7 @@ fn run_for_in_iteration(
     env.pop_scope();
     Ok(match sig {
         Signal::Value(_) | Signal::Continue => ControlFlow::Continue(()),
-        Signal::Break(_) => ControlFlow::Break(Signal::Value(Value::Unit)),
+        Signal::Break(_) => ControlFlow::Break(Signal::Value(Value::unit())),
         Signal::Return(v) => ControlFlow::Break(Signal::Return(v)),
     })
 }
@@ -3316,7 +3333,7 @@ fn eval_assign_expr(
                     ));
                 }
             }
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
 
         TypedPlace::Deref {
@@ -3353,7 +3370,7 @@ fn eval_assign_expr(
                     ));
                 }
             }
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
 
         TypedPlace::Index {
@@ -3395,7 +3412,7 @@ fn eval_assign_expr(
                         lvalue::apply_assign_op(op, cur, rhs, span)?
                     };
                     rc.borrow_mut()[i] = new_val;
-                    Ok(Signal::Value(Value::Unit))
+                    Ok(Signal::Value(Value::unit()))
                 }
                 _ => Err(MetelError::internal(
                     "index assign: receiver is not an Array (typechecker should have caught this)",
@@ -3421,7 +3438,7 @@ fn eval_assign_expr(
                 lvalue::apply_assign_op(op, cur, rhs, span)?
             };
             write_path(&mut rc.borrow_mut(), &path, new_val, tspan)?;
-            Ok(Signal::Value(Value::Unit))
+            Ok(Signal::Value(Value::unit()))
         }
     }
 }
@@ -3833,11 +3850,11 @@ fn eval_call_expr(
     };
     // metel-core#712: a Unit here can be a deferred nested fun's placeholder, called
     // before its declaration line runs. Build it now instead of failing.
-    let func_val = if matches!(func_val, Value::Unit) {
+    let func_val = if func_val.is_unit() {
         if let TypedExpr::Ident(_, Some(crate::identity::BindingId::Local(id)), ..) = callee {
             if let Some(f) = env.take_pending_fun(*id) {
                 build_and_set_nested_fun(&f, env)?;
-                env.get_local(*id).unwrap_or(Value::Unit)
+                env.get_local(*id).unwrap_or(Value::unit())
             } else {
                 func_val
             }
@@ -3922,7 +3939,7 @@ pub fn eval_expr(
                 Literal::Char(c) => Value::Char(*c),
                 Literal::Boolean(b) => Value::Boolean(*b),
                 Literal::Str(s) => Value::Str(s.clone()),
-                Literal::Unit => Value::Unit,
+                Literal::Unit => Value::unit(),
             };
             Ok(Signal::Value(val))
         }
@@ -4446,7 +4463,7 @@ pub fn eval_expr(
                 Signal::Value(Value::Boolean(true)) => eval_block(then_branch, env, runtime),
                 Signal::Value(Value::Boolean(false)) => match else_branch {
                     Some(branch) => eval_block(branch, env, runtime),
-                    None => Ok(Signal::Value(Value::Unit)),
+                    None => Ok(Signal::Value(Value::unit())),
                 },
                 Signal::Value(_) => Err(MetelError::internal(
                     "if: expected boolean condition (typechecker should have caught this)",
@@ -4600,7 +4617,7 @@ pub fn eval_expr(
                     ControlFlow::Continue(value) => value,
                     ControlFlow::Break(signal) => return Ok(signal),
                 },
-                None => Value::Unit,
+                None => Value::unit(),
             };
             Ok(Signal::Return(val))
         }
@@ -4610,7 +4627,7 @@ pub fn eval_expr(
                     ControlFlow::Continue(value) => value,
                     ControlFlow::Break(signal) => return Ok(signal),
                 },
-                None => Value::Unit,
+                None => Value::unit(),
             };
             Ok(Signal::Break(val))
         }
@@ -4939,7 +4956,7 @@ mod frame_tests {
             object: Box::new(TypedExpr::Ident(
                 "pair".to_string(),
                 Some(BindingId::Local(id)),
-                Type::Unit,
+                Type::unit(),
                 sp.clone(),
             )),
             field: "value".to_string(),
@@ -5039,7 +5056,7 @@ mod architecture_evidence_tests {
     fn set_local_deep_clones_arrays() {
         let mut env = Environment::new();
         let id = LocalId(2);
-        env.define_binding(Some(id), Value::Unit);
+        env.define_binding(Some(id), Value::unit());
         let source = array(&[1, 2, 3]);
         assert!(env.set_local(id, Value::Array(Rc::clone(&source))));
         source.borrow_mut()[0] = Value::I64(99);

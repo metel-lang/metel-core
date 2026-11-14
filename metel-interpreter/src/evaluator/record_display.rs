@@ -36,6 +36,10 @@ fn display_string(
     runtime: &RuntimeRegistry,
 ) -> Result<String, MetelError> {
     let value = deref_value(value, span)?.unwrap_or_else(|| value.clone());
+    // The empty row is the unit value and prints as `()` (RFC-0231).
+    if value.is_unit() {
+        return Ok("()".to_string());
+    }
     if let Some(text) = value_to_display_string(&value) {
         return Ok(text);
     }
@@ -78,20 +82,23 @@ fn fields_string<'a>(
 ) -> Result<String, MetelError> {
     let mut pairs: Vec<_> = fields.collect();
     pairs.sort_by_key(|(label, _)| label.as_str());
+    // An anonymous record prints as the source form that writes it, `.{ .x: 1 }`; a nominal one keeps the bare
+    // names its declaration uses, `Pt { x: 1 }` (RFC-0221).
+    let dot = if name.is_none() { "." } else { "" };
     let inner = pairs
         .into_iter()
         .map(|(label, field)| {
             Ok(format!(
-                "{label}: {}",
+                "{dot}{label}: {}",
                 display_string(field, span, runtime)?
             ))
         })
         .collect::<Result<Vec<_>, MetelError>>()?
         .join(", ");
     let body = if inner.is_empty() {
-        "{}".to_string()
+        format!("{dot}{{}}")
     } else {
-        format!("{{ {inner} }}")
+        format!("{dot}{{ {inner} }}")
     };
     Ok(match name {
         Some(name) => format!("{name} {body}"),

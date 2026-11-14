@@ -1278,7 +1278,7 @@ pub(super) fn construct_generic_body(
     }
     for (param, param_it) in params.iter().zip(param_infertypes.iter()) {
         let concrete_ty = infer_type_to_type(&subst.apply(param_it), span)
-            .unwrap_or(crate::data::types::Type::Unit);
+            .unwrap_or(crate::data::types::Type::unit());
         ctx.bind(&param.name, &param.span, concrete_ty);
     }
     let saved_return = ctx.push_return_type(ret_ty.clone());
@@ -1593,7 +1593,7 @@ fn construct_literal_type(
         Literal::Char(_) => Ok(Type::Char),
         Literal::Boolean(_) => Ok(Type::Boolean),
         Literal::Str(_) => Ok(Type::Str),
-        Literal::Unit => Ok(Type::Unit),
+        Literal::Unit => Ok(Type::unit()),
     }
 }
 
@@ -1712,7 +1712,6 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::Boolean => named("boolean"),
         Type::Char => named("Char"),
         Type::Str => named("String"),
-        Type::Unit => TypeExpr::Unit,
         Type::Never => named("!"),
         Type::I8 => named("i8"),
         Type::I16 => named("i16"),

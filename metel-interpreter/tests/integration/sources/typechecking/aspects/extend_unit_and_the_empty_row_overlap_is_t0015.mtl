@@ -1,0 +1,5 @@
+// RFC-0231: `extend (): A` and `extend .{}: A` are one target, so both is a conflict.
+aspect Named { fun name(&self) -> String; }
+extend (): Named { fun name(&self) -> String { "unit" } }
+extend .{}: Named { fun name(&self) -> String { "empty" } }
+fun main() {}

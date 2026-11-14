@@ -131,7 +131,6 @@ fn rename_type(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
             rename_tail(tail, replacements);
         }
         TypeExpr::RowArg(tail) => rename_tail(tail, replacements),
-        TypeExpr::Unit => {}
     }
 }
 

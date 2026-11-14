@@ -545,7 +545,7 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
         } => ps.iter().any(go) || ret.as_deref().is_some_and(go),
         TypeExpr::Projection { base, .. } => go(base),
         TypeExpr::DynAspect { bound, .. } => go(bound),
-        TypeExpr::Unit | TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
+        TypeExpr::ImplAspect { .. } | TypeExpr::RecordProjection { .. } => false,
         // RFC-0121: an open record's fixed fields and row tail both participate
         // in generic-parameter mention analysis.
         TypeExpr::OpenRecord(fields, tail) => {
@@ -1703,7 +1703,6 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             args.iter().map(go).collect(),
             crate::data::types::NominalId::NONE,
         ),
-        TypeExpr::Unit => InferType::unit(),
         TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => InferType::Record(
             fields

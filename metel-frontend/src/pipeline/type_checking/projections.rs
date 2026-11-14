@@ -720,7 +720,6 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            TypeExpr::Unit => Ok(()),
             // RFC-0121 installment 2: `Handle.{ fd, ..R }` needs its own
             // brand checked exactly like a closed `RecordProjection`'s; the
             // tail's row-variable name is checked against the enclosing
@@ -1387,7 +1386,7 @@ impl Cx<'_> {
                 return_type.as_deref().map_or(Ok(()), go)
             }
             TypeExpr::ImplAspect { bound, .. } | TypeExpr::DynAspect { bound, .. } => go(bound),
-            TypeExpr::Unit | TypeExpr::RowArg(_) => Ok(()),
+            TypeExpr::RowArg(_) => Ok(()),
         }
     }
 

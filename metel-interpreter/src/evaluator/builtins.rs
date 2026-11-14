@@ -64,7 +64,7 @@ fn native_print(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value,
         )
     })?;
     print!("{s}");
-    Ok(Value::Unit)
+    Ok(Value::unit())
 }
 
 fn native_println(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
@@ -78,7 +78,7 @@ fn native_println(args: &[Value], _span: &crate::data::ast::Span) -> Result<Valu
         )
     })?;
     println!("{s}");
-    Ok(Value::Unit)
+    Ok(Value::unit())
 }
 
 fn native_dbg(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, MetelError> {
@@ -93,7 +93,7 @@ fn native_dbg(args: &[Value], _span: &crate::data::ast::Span) -> Result<Value, M
 
 fn native_assert(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     match args.first() {
-        Some(Value::Boolean(true)) => Ok(Value::Unit),
+        Some(Value::Boolean(true)) => Ok(Value::unit()),
         Some(Value::Boolean(false)) => Err(MetelError::panic(
             RuntimeErrorCode::R0012,
             "assertion failed",
@@ -105,7 +105,7 @@ fn native_assert(args: &[Value], span: &crate::data::ast::Span) -> Result<Value,
 
 fn native_assert_msg(args: &[Value], span: &crate::data::ast::Span) -> Result<Value, MetelError> {
     match (args.first(), args.get(1)) {
-        (Some(Value::Boolean(true)), _) => Ok(Value::Unit),
+        (Some(Value::Boolean(true)), _) => Ok(Value::unit()),
         (Some(Value::Boolean(false)), Some(Value::Str(msg))) => Err(MetelError::panic(
             RuntimeErrorCode::R0012,
             msg.clone(),
@@ -578,7 +578,7 @@ fn native_list_push(args: &[Value], _span: &crate::data::ast::Span) -> Result<Va
     match args.get(1) {
         Some(val) => {
             inner.borrow_mut().push(val.clone());
-            Ok(Value::Unit)
+            Ok(Value::unit())
         }
         None => Err(MetelError::internal("List::push: expected (List, T)")),
     }
@@ -721,7 +721,7 @@ fn native_fs_write_string(
     let path = str_at(args, 0, "std::fs::write_string")?;
     let contents = str_at(args, 1, "std::fs::write_string")?;
     Ok(io_result(
-        std::fs::write(&path, contents).map(|()| Value::Unit),
+        std::fs::write(&path, contents).map(|()| Value::unit()),
     ))
 }
 
@@ -737,7 +737,7 @@ fn native_fs_append_string(
         .create(true)
         .open(&path)
         .and_then(|mut f| f.write_all(contents.as_bytes()))
-        .map(|()| Value::Unit);
+        .map(|()| Value::unit());
     Ok(io_result(appended))
 }
 
@@ -766,7 +766,9 @@ fn native_fs_create_dir(
     _span: &crate::data::ast::Span,
 ) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::create_dir")?;
-    Ok(io_result(std::fs::create_dir(&path).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::create_dir(&path).map(|()| Value::unit()),
+    ))
 }
 
 fn native_fs_create_dir_all(
@@ -775,7 +777,7 @@ fn native_fs_create_dir_all(
 ) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::create_dir_all")?;
     Ok(io_result(
-        std::fs::create_dir_all(&path).map(|()| Value::Unit),
+        std::fs::create_dir_all(&path).map(|()| Value::unit()),
     ))
 }
 
@@ -784,7 +786,9 @@ fn native_fs_remove_file(
     _span: &crate::data::ast::Span,
 ) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::remove_file")?;
-    Ok(io_result(std::fs::remove_file(&path).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::remove_file(&path).map(|()| Value::unit()),
+    ))
 }
 
 fn native_fs_remove_dir(
@@ -792,7 +796,9 @@ fn native_fs_remove_dir(
     _span: &crate::data::ast::Span,
 ) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::remove_dir")?;
-    Ok(io_result(std::fs::remove_dir(&path).map(|()| Value::Unit)))
+    Ok(io_result(
+        std::fs::remove_dir(&path).map(|()| Value::unit()),
+    ))
 }
 
 fn native_fs_remove_dir_all(
@@ -801,7 +807,7 @@ fn native_fs_remove_dir_all(
 ) -> Result<Value, MetelError> {
     let path = str_at(args, 0, "std::fs::remove_dir_all")?;
     Ok(io_result(
-        std::fs::remove_dir_all(&path).map(|()| Value::Unit),
+        std::fs::remove_dir_all(&path).map(|()| Value::unit()),
     ))
 }
 

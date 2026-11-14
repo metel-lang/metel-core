@@ -157,7 +157,7 @@ pub(super) fn provided_clone(
     runtime: &RuntimeRegistry,
 ) -> Result<Option<Value>, MetelError> {
     match value {
-        Value::Unit | Value::Callable(_) => Ok(Some(value.clone())),
+        Value::Callable(_) => Ok(Some(value.clone())),
         Value::Tuple(items) => {
             let mut cloned = Vec::with_capacity(items.len());
             for item in items {

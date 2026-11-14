@@ -945,7 +945,7 @@ pub(super) fn construct_expr(
                     ]);
                     (Some(typed_else), ty)
                 }
-                None => (None, Type::Unit),
+                None => (None, Type::unit()),
             };
             ctx.flow = joined_flow;
             Ok(TypedExpr::If {
@@ -994,7 +994,7 @@ pub(super) fn construct_expr(
                 target: typed_place,
                 op: op.clone(),
                 value: Box::new(typed_value),
-                ty: Type::Unit,
+                ty: Type::unit(),
                 span: span.clone(),
             })
         }
@@ -1406,7 +1406,7 @@ pub(super) fn construct_expr(
                         let infer_ty = type_expr_to_infer_in_scope(rt, generic_scope);
                         resolved_to_type(&infer_ty, &local_subst, span)?
                     }
-                    None => Type::Unit,
+                    None => Type::unit(),
                 };
 
                 return Ok(TypedExpr::MethodCall {
@@ -1471,7 +1471,7 @@ pub(super) fn construct_expr(
             // 2): the unit type, a tuple of `Clone` parts, a `Copy` closure. The runtime performs the copy.
             if method == "clone"
                 && args.is_empty()
-                && let provided @ (Type::Unit | Type::Tuple(_) | Type::Fun(..)) =
+                && let provided @ (Type::Tuple(_) | Type::Fun(..)) =
                     peel_type_references(typed_receiver.ty())
             {
                 if !ctx
@@ -2250,7 +2250,7 @@ pub(super) fn construct_expr(
                     .as_ref()
                     .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span))
                     .transpose()?
-                    .unwrap_or(Type::Unit)
+                    .unwrap_or(Type::unit())
             };
             let use_multiplicity = if captures.iter().all(|capture| match capture {
                 crate::data::ast::CaptureSpec::SharedRef { .. }

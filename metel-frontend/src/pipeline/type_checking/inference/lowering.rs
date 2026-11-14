@@ -186,8 +186,7 @@ fn lower_impl_aspect_param_type(
         )),
         TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
-        | TypeExpr::RowArg(_)
-        | TypeExpr::Unit => type_expr.clone(),
+        | TypeExpr::RowArg(_) => type_expr.clone(),
     }
 }
 
@@ -961,7 +960,6 @@ fn lower_projections_in_type(
         TypeExpr::Named(name, args, span) => {
             TypeExpr::Named(name.clone(), args.iter().map(go).collect(), span.clone())
         }
-        TypeExpr::Unit => TypeExpr::Unit,
         TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
@@ -1134,7 +1132,6 @@ fn substitute_type_params(
         TypeExpr::ImplAspect { .. }
         | TypeExpr::RecordProjection { .. }
         | TypeExpr::OpenRecordProjection { .. }
-        | TypeExpr::RowArg(_)
-        | TypeExpr::Unit => ty.clone(),
+        | TypeExpr::RowArg(_) => ty.clone(),
     }
 }
