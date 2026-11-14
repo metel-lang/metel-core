@@ -1,1 +1,2 @@
 [options]
+spec = ["spec.types.anonymous-records.dynamics-3"]
