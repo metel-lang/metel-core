@@ -1,0 +1,7 @@
+// RFC-0219 rules 2, 4: a function whose result is `copy |T| -> U` returns only a function value proved copyable, by
+// `return` and as the block's tail value alike; a bare function value does not pass through.
+fun by_return() -> copy |i64| -> i64 {
+    let name := "x";
+    return [name] |x: i64| -> i64 { x }; // ERROR[T0001]
+}
+fun main() {}

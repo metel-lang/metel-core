@@ -1,0 +1,6 @@
+// RFC-0219 rules 2, 4: a field typed `copy |T| -> U` takes only a copyable function value.
+struct Holder { f: copy |i64| -> i64 }
+fun main() {
+    let name := "x";
+    let h := Holder { f = [name] |x: i64| -> i64 { x } }; // ERROR[T0001]
+}

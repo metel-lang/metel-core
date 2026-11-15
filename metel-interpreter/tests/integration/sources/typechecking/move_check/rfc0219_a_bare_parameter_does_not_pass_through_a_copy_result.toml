@@ -1,0 +1,7 @@
+[options]
+error = ["T0001"]
+spec = ["spec.functions.first-class-functions.legality-7"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"

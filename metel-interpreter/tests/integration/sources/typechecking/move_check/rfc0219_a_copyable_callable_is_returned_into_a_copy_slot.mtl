@@ -1,0 +1,19 @@
+// RFC-0219 rules 3, 4: a copyable function value is returned into a `copy` result, and the result is copied freely.
+fun make() -> copy |i64| -> i64 {
+    let k := 1;
+    return [k] |x: i64| -> i64 { x + k };
+}
+fun id(f: copy |i64| -> i64) -> copy |i64| -> i64 { f }
+struct Holder { f: copy |i64| -> i64 }
+
+fun main() {
+    let f := make();
+    let a := f;
+    let b := f;
+    assert(a(1) + b(2) + id(f)(3) == 9);
+    let h := Holder { f = make() };
+    let g := h.f;
+    assert(g(5) == 6);
+    let items: [copy |i64| -> i64] := [make(), make()];
+    assert(items[0](1) == 2);
+}
