@@ -516,6 +516,21 @@ pub(super) fn construct_call(
         typed_args
     };
 
+    // RFC-0219: a `copy |T| -> U` parameter takes only a function value proved copyable. `unify` accepts the
+    // other direction, so the first-order requirement is checked here, where the parameter and the argument are
+    // known.
+    if let Type::Fun(params, ..) = fun_ty_for_hints {
+        for (arg, param) in typed_args.iter().zip(params.iter()) {
+            if let (
+                Type::Fun(.., crate::data::types::UseMultiplicity::Copy, _),
+                Type::Fun(.., crate::data::types::UseMultiplicity::Move, _),
+            ) = (param, arg.ty())
+            {
+                return Err(super::copy_requirement_error(param, arg.ty(), arg.span()));
+            }
+        }
+    }
+
     // #775: turbofish pins each quantified var directly from the explicit
     // `::<T>` types, bypassing the unification against actual argument types
     // that an inferred call gets for free inside instantiate_scheme_for_call.
@@ -2015,6 +2030,16 @@ pub(super) fn instantiate_scheme_for_call(
                 span,
             )
         })?;
+        // RFC-0219: `unify` accepts a move-only function where a `copy` one is expected (the orientation of a
+        // scheme check is not fixed there), so the first-order requirement is checked here, where the
+        // expected parameter and the actual argument are known.
+        if let (
+            InferType::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _),
+            InferType::Fun(_, _, _, crate::data::types::UseMultiplicity::Move, _),
+        ) = (&applied, &arg_infer)
+        {
+            return Err(super::copy_requirement_error(&applied, &arg_infer, span));
+        }
         subst = subst.compose(&s);
     }
 

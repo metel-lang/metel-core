@@ -654,6 +654,7 @@ pub(super) fn rewrite_impl_aspect_returns(
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params
                 .iter()
@@ -664,6 +665,7 @@ pub(super) fn rewrite_impl_aspect_returns(
                 .map(|r| Box::new(rewrite_impl_aspect_returns(r, counter, replacements))),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         TypeExpr::DynAspect { bound, span } => TypeExpr::DynAspect {
             bound: Box::new(rewrite_impl_aspect_returns(bound, counter, replacements)),
@@ -2975,6 +2977,7 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params
                 .iter()
@@ -2985,6 +2988,7 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
                 .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         TypeExpr::ImplAspect {
             bound,

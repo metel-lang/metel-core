@@ -1742,12 +1742,13 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::SizedArray(item, n) => TypeExpr::SizedArray(Box::new(type_to_type_expr(item)), *n),
         Type::Reference(item) => TypeExpr::Reference(Box::new(type_to_type_expr(item))),
         Type::MutReference(item) => TypeExpr::MutReference(Box::new(type_to_type_expr(item))),
-        Type::Fun(params, ret, call_multiplicity, _use_multiplicity, call_mutation) => {
+        Type::Fun(params, ret, call_multiplicity, use_multiplicity, call_mutation) => {
             TypeExpr::Fun {
                 params: params.iter().map(type_to_type_expr).collect(),
                 return_type: Some(Box::new(type_to_type_expr(ret))),
                 call_multiplicity: *call_multiplicity,
                 call_mutation: *call_mutation,
+                use_multiplicity: *use_multiplicity,
             }
         }
         Type::Named(name, args, ..) => TypeExpr::Named(
@@ -2478,14 +2479,42 @@ fn maybe_dyn_coerce(
 /// `unify` already accepted the first-order `Copy → Move` direction and rejected
 /// every genuine mismatch, so this never masks an error. `expected` not being a
 /// function type, or `actual` already carrying it, is the no-op path.
-fn maybe_fn_move_coerce(expected: &Type, actual: TypedExpr) -> TypedExpr {
+fn maybe_fn_move_coerce(
+    expected: &Type,
+    actual: TypedExpr,
+    span: &Span,
+) -> Result<TypedExpr, MetelError> {
     if !matches!(expected, Type::Fun(..)) || actual.ty() == expected {
-        return actual;
+        return Ok(actual);
+    }
+    // RFC-0219: a `copy` slot takes only a function value proved copyable.
+    if let (
+        Type::Fun(.., crate::data::types::UseMultiplicity::Copy, _),
+        Type::Fun(.., crate::data::types::UseMultiplicity::Move, _),
+    ) = (expected, actual.ty())
+    {
+        return Err(copy_requirement_error(expected, actual.ty(), span));
     }
     if matches!(actual.ty(), Type::Fun(..)) {
-        return actual.with_ty(expected.clone());
+        return Ok(actual.with_ty(expected.clone()));
     }
-    actual
+    Ok(actual)
+}
+
+/// RFC-0219: the error for a function value that is not copyable where a `copy` function type is required.
+pub(super) fn copy_requirement_error(
+    expected: impl std::fmt::Display,
+    actual: impl std::fmt::Display,
+    span: &Span,
+) -> MetelError {
+    MetelError::type_error(
+        TypeErrorCode::T0001,
+        format!(
+            "expected `{expected}`, got `{actual}`: a function value is copyable only if it is a named function \
+             or a closure whose captures are all `Copy` (a `[&var x]` capture is not)"
+        ),
+        span,
+    )
 }
 
 // ── Typed place construction ──────────────────────────────────────────────────

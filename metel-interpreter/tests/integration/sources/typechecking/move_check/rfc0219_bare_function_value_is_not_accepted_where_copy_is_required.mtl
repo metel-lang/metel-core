@@ -1,0 +1,4 @@
+// RFC-0219 rule 4: a bare (move-only) function value is not accepted where `copy` is required.
+fun fanout(f: copy |i64| -> i64) -> i64 { f(1) }
+fun accept(f: |i64| -> i64) -> i64 { fanout(f) } // ERROR[T0001]
+fun main() {}

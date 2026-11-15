@@ -1,0 +1,10 @@
+// RFC-0219 rule 7: each copy of a `copy var` function owns an independent copy of its captured state.
+fun two_counters(make: copy var || -> i64) -> i64 {
+    var a := make;
+    var b := make;
+    a() + a() + b()
+}
+fun main() {
+    var n := 0;
+    assert(two_counters([n] var || -> i64 { let r := n; n += 1; r }) == 1);
+}

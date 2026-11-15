@@ -1,0 +1,6 @@
+// RFC-0219 rule 2: a closure that owns a capture that is not `Copy` is not copyable, so a `copy` slot rejects it.
+fun fanout(f: copy |i64| -> i64) -> i64 { f(1) }
+fun main() {
+    let name := "x";
+    fanout([name] |x: i64| -> i64 { x }); // ERROR[T0001]
+}

@@ -294,7 +294,11 @@ impl std::fmt::Display for Type {
             Type::SizedArray(t, n) => write!(f, "[{t}; {n}]"),
             Type::Reference(t) => write!(f, "&{t}"),
             Type::MutReference(t) => write!(f, "&var {t}"),
-            Type::Fun(params, ret, call_mult, _use_mult, call_mutation) => {
+            Type::Fun(params, ret, call_mult, use_mult, call_mutation) => {
+                // RFC-0219: a copyable function type is written `copy |T| -> U`.
+                if *use_mult == UseMultiplicity::Copy {
+                    write!(f, "copy ")?;
+                }
                 if *call_mult == CallMultiplicity::Once {
                     write!(f, "once ")?;
                 }

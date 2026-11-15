@@ -1806,6 +1806,7 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params
                 .iter()
@@ -1816,6 +1817,7 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .map(|ret_ty| Box::new(substitute_structural_self(ret_ty.as_ref(), replacement))),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         TypeExpr::ImplAspect {
             bound,

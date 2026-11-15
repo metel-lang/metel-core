@@ -362,6 +362,7 @@ fn type_expr_to_infer_in_context(
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => InferType::Fun(
             ps.iter()
                 .map(|p| type_expr_to_infer_in_context(p, generics, self_ty_name, assoc_ctx))
@@ -370,7 +371,7 @@ fn type_expr_to_infer_in_context(
                 type_expr_to_infer_in_context(r, generics, self_ty_name, assoc_ctx)
             })),
             *call_multiplicity,
-            crate::data::types::UseMultiplicity::Move,
+            *use_multiplicity,
             *call_mutation,
         ),
         TypeExpr::ImplAspect { bound, .. } => {

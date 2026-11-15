@@ -1,0 +1,17 @@
+// RFC-0219 rules 1, 3, 4: `copy |T| -> U` is a written function type whose values may be copied; a named function and
+// a closure whose captures are all `Copy` flow in, and a copy flows into a bare slot.
+fun fanout(f: copy |i64| -> i64) -> i64 {
+    let g := f;
+    let h := f;
+    g(1) + h(2)
+}
+fun keep(f: |i64| -> i64) -> i64 { f(1) }
+fun relay(f: copy |i64| -> i64) -> i64 { keep(f) + f(2) }
+fun double(x: i64) -> i64 { x * 2 }
+
+fun main() {
+    let k := 3;
+    assert(fanout([k] |x: i64| -> i64 { x + k }) == 9);
+    assert(fanout(double) == 6);
+    assert(relay(double) == 6);
+}
