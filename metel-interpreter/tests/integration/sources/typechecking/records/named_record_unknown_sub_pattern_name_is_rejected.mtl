@@ -1,0 +1,6 @@
+// RFC-0151 (metel-core#2054): a name that is neither the field's struct nor one of its variants stays unresolved.
+record Pair { first: i64, second: i64 }
+fun main() {
+    let p := Pair { first = 1, second = 2 };
+    let .{ .first: Missing { n }, .second: _ } := p; // ERROR[T0003]
+}

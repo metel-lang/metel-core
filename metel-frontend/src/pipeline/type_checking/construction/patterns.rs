@@ -757,13 +757,17 @@ impl PatternTypes<Type> for ConstructPatternTypes<'_, '_> {
     }
 
     fn field(&self, ty: &Type, label: &str) -> Option<Type> {
-        match ty {
-            Type::Record(fields) | Type::OpenRecord { fields, .. } => fields
-                .iter()
-                .find(|(name, _)| name == label)
-                .map(|(_, ty)| ty.clone()),
-            _ => None,
-        }
+        // A named record's declared fields, with its type arguments substituted (metel-core#2054), as the
+        // record pattern itself reads them.
+        let fields = match ty {
+            Type::Record(fields) | Type::OpenRecord { fields, .. } => fields.clone(),
+            Type::Named(..) => record_pattern_fields(ty, &Span::new(0, 0, ""), self.0).ok()?,
+            _ => return None,
+        };
+        fields
+            .into_iter()
+            .find(|(name, _)| name == label)
+            .map(|(_, ty)| ty)
     }
 
     fn element(&self, ty: &Type) -> Option<Type> {

@@ -1070,6 +1070,28 @@ pub(super) fn builtin_pattern_method_type(
 /// `PatternTypes` over the inference types of Pass 1 (RFC-0151, metel-core#2053).
 pub(super) struct InferPatternTypes<'a>(pub &'a InferContext);
 
+impl InferPatternTypes<'_> {
+    fn named_record_field(
+        &self,
+        ty: &InferType,
+        args: Vec<InferType>,
+        label: &str,
+    ) -> Option<InferType> {
+        let id = super::scrutinee_nominal_id(ty)?;
+        let fields = self.0.registry().struct_fields_by_id(id)?;
+        let mut remap = super::super::type_engine::Substitution::new();
+        if let Some(params) = self.0.registry().raw_struct_type_params().get(&id) {
+            for (&param, arg) in params.iter().zip(args) {
+                remap.bind(param, arg);
+            }
+        }
+        fields
+            .iter()
+            .find(|field| field.name == label)
+            .map(|field| remap.apply(&field.ty))
+    }
+}
+
 impl super::super::construction::PatternTypes<InferType> for InferPatternTypes<'_> {
     fn kind(&self, ty: &InferType) -> super::super::construction::NominalPatternKind {
         use super::super::construction::NominalPatternKind;
@@ -1104,6 +1126,15 @@ impl super::super::construction::PatternTypes<InferType> for InferPatternTypes<'
                 .iter()
                 .find(|(name, _)| name == label)
                 .map(|(_, ty)| InferType::Concrete(ty.clone())),
+            // A named record's declared fields, with its type arguments substituted (metel-core#2054).
+            InferType::Named(_, args, _) => self.named_record_field(ty, args.clone(), label),
+            InferType::Concrete(Type::Named(_, args, _)) => self.named_record_field(
+                ty,
+                args.iter()
+                    .map(super::super::type_engine::type_to_infer)
+                    .collect(),
+                label,
+            ),
             _ => None,
         }
     }
