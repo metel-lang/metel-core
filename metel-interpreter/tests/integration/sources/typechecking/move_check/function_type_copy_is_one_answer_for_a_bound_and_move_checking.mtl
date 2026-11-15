@@ -1,0 +1,20 @@
+// metel-core#739: a named function and a closure that owns nothing are `Copy` and `Clone` by a bound and under move
+// checking alike: both ask one predicate.
+fun needs_copy<T: Copy>(x: T) -> T { x }
+fun needs_clone<T: Clone>(x: T) -> T { x.clone() }
+fun inc(x: i64) -> i64 { x + 1 }
+
+fun main() {
+    let f := needs_copy(inc);
+    let g := needs_clone(inc);
+    let a := f;
+    let b := f;
+    assert(a(1) + b(1) + g(1) == 6);
+    let k := 3;
+    let c := [k]|x: i64| -> i64 { x + k };
+    let d := needs_copy(c);
+    let e := needs_clone(c);
+    let p := d;
+    let q := d;
+    assert(p(1) + q(1) + e(1) == 12);
+}
