@@ -1501,12 +1501,15 @@ mod expressions;
 use expressions::{construct_expr, construct_stmt};
 
 mod patterns;
+pub(super) use patterns::{
+    NominalPatternKind, PatternTypes, resolve_bare_variant, resolve_nested_patterns,
+    resolve_struct_pattern,
+};
 use patterns::{
     block_result_type, builtin_pattern_method_expr, construct_enum_literal_ty, construct_match,
     enum_variant_type_param_remap, find_loop_break_type, fun_body_diverges, is_variant_uninhabited,
     merge_branch_types,
 };
-pub(super) use patterns::{resolve_bare_variant, resolve_struct_pattern};
 
 mod calls;
 use calls::{

@@ -1,0 +1,9 @@
+// RFC-0151 (metel-core#2053): a struct pattern after `.label:` keeps its fact in a generic body.
+struct Tag { n: i64 }
+fun f<T: Copy>(t: .{ .0: Tag, .1: T }) -> i64 {
+    let .{ .0: Tag { n }, .1: _ } := t;
+    n
+}
+fun main() {
+    assert(f(.{ .0 = Tag { n = 4 }, .1 = 1 }) == 4);
+}

@@ -62,6 +62,11 @@ pub(super) fn infer_match(
         } else {
             arm.pattern.clone()
         };
+        let pattern = super::super::construction::resolve_nested_patterns(
+            &pattern,
+            &scrutinee_ty,
+            &InferPatternTypes(ctx),
+        );
         *ctx.flow_mut() = entry_flow.clone();
         ctx.push_scope();
         infer_pattern(&pattern, &scrutinee_ty, false, ctx)?;
@@ -169,7 +174,7 @@ fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mu
 
 /// RFC-0151 (metel-core#2041): an enum-variant or struct pattern nested in a record or array pattern keeps its own
 /// fact, keyed by its span, so a generic body can retain it. Its bindings are already bound in `ctx`.
-fn retain_nested_match_patterns(pattern: &Pattern, ctx: &mut InferContext) {
+pub(super) fn retain_nested_match_patterns(pattern: &Pattern, ctx: &mut InferContext) {
     let sub_patterns: Vec<&Pattern> = match pattern {
         Pattern::Record { nested, .. } => nested.iter().map(|(_, sub)| sub).collect(),
         Pattern::Array { elems, .. } => elems.iter().collect(),
@@ -1060,4 +1065,53 @@ pub(super) fn builtin_pattern_method_type(
     }
 
     None
+}
+
+/// `PatternTypes` over the inference types of Pass 1 (RFC-0151, metel-core#2053).
+pub(super) struct InferPatternTypes<'a>(pub &'a InferContext);
+
+impl super::super::construction::PatternTypes<InferType> for InferPatternTypes<'_> {
+    fn kind(&self, ty: &InferType) -> super::super::construction::NominalPatternKind {
+        use super::super::construction::NominalPatternKind;
+        let (InferType::Named(name, ..) | InferType::Concrete(Type::Named(name, ..))) = ty else {
+            return NominalPatternKind::Other;
+        };
+        let by_id = super::scrutinee_nominal_id(ty)
+            .filter(|id| self.0.registry().declared_type_name(*id) == Some(name.as_str()))
+            .and_then(|id| self.0.registry().enum_info_by_id(id));
+        if let Some(info) = by_id.or_else(|| self.0.get_enum(name)) {
+            NominalPatternKind::Enum(
+                name.clone(),
+                info.variants
+                    .iter()
+                    .map(|v| (v.name.clone(), v.fields.is_empty()))
+                    .collect(),
+            )
+        } else if self.0.get_struct_fields(name).is_some() {
+            NominalPatternKind::Struct(name.clone())
+        } else {
+            NominalPatternKind::Other
+        }
+    }
+
+    fn field(&self, ty: &InferType, label: &str) -> Option<InferType> {
+        match ty {
+            InferType::Record(fields) | InferType::RowExtend { fields, .. } => fields
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, ty)| ty.clone()),
+            InferType::Concrete(Type::Record(fields)) => fields
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, ty)| InferType::Concrete(ty.clone())),
+            _ => None,
+        }
+    }
+
+    fn element(&self, ty: &InferType) -> Option<InferType> {
+        match ty {
+            InferType::Array(item) | InferType::SizedArray(item, _) => Some(item.as_ref().clone()),
+            _ => None,
+        }
+    }
 }

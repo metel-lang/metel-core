@@ -1,0 +1,18 @@
+// RFC-0151 (metel-core#2053): a struct or bare enum-variant pattern after `.label:` (or inside an array pattern) is
+// resolved against the type of the field it matches, as the top of a `match` resolves its arm.
+struct Tag { n: i64 }
+enum Shape { Dot, Disc { radius: i64 } }
+fun main() {
+    let .{ .0: Tag { n }, .1: _ } := .{ .0 = Tag { n = 5 }, .1 = 2 };
+    assert(n == 5);
+    let s := .{ .tag = Tag { n = 7 }, .shape = Shape::Disc { radius = 3 } };
+    match (s) {
+        .{ .tag: Tag { n }, .shape: Disc { radius } } => assert(radius == 3 && n == 7),
+        .{ .tag: _, .shape: Dot } => assert(false),
+    }
+    let a := [Tag { n = 1 }, Tag { n = 2 }];
+    match (a) {
+        [Tag { n }, ..more] => assert(n == 1),
+        _ => assert(false),
+    }
+}
