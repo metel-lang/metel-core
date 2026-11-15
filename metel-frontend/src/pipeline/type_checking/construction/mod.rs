@@ -2393,6 +2393,16 @@ fn maybe_dyn_coerce(
     span: &Span,
     ctx: &ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
+    // RFC-0219: every site that coerces a value to its expected type (a binding, a return, a block or branch
+    // tail, an array element, a call argument) requires a copyable function value where `copy |T| -> U` is
+    // expected: `unify` accepts the other direction, so the requirement is checked here.
+    if let (
+        Type::Fun(.., crate::data::types::UseMultiplicity::Copy, _),
+        Type::Fun(.., crate::data::types::UseMultiplicity::Move, _),
+    ) = (expected, actual.ty())
+    {
+        return Err(copy_requirement_error(expected, actual.ty(), span));
+    }
     // `&dyn Aspect`/`&var dyn Aspect`: no runtime wrapping is needed here --
     // an ordinary reference to the concrete value, dispatched by its own
     // erased static type (RFC-0008 §1) -- a binding's/param's later uses

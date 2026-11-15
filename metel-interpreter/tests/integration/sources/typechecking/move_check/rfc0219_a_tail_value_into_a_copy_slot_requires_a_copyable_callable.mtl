@@ -1,0 +1,6 @@
+// RFC-0219 rules 2, 4: the tail value of a function whose result is `copy |T| -> U` must be copyable.
+fun by_tail() -> copy |i64| -> i64 {
+    let name := "x";
+    [name] |x: i64| -> i64 { x } // ERROR[T0001]
+}
+fun main() {}

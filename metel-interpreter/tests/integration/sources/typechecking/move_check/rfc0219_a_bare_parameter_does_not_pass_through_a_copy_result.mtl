@@ -1,0 +1,3 @@
+// RFC-0219 rule 4: a bare (move-only) function value is not returned where `copy` is required.
+fun relay(f: |i64| -> i64) -> copy |i64| -> i64 { f } // ERROR[T0001]
+fun main() {}
