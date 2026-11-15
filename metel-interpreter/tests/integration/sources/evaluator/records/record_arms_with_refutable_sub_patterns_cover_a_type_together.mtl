@@ -1,0 +1,20 @@
+// RFC-0151 (metel-core#2040): arms whose record patterns hold refutable sub-patterns cover a type together, field by
+// field, as arms of an enum do; no catch-all arm is needed.
+enum Shape { Dot, Disc { radius: i64 } }
+fun main() {
+    let s := .{ .shape = Shape::Disc { radius = 4 }, .tag = 9 };
+    match (s) {
+        .{ .shape: Shape::Dot, .tag: _ } => assert(false),
+        .{ .shape: Shape::Disc { radius }, .tag } => {
+            assert(radius == 4);
+            assert(tag == 9);
+        },
+    }
+    let t := (true, false);
+    let n := match (t) {
+        (true, true) => 1,
+        (true, false) => 2,
+        (false, _) => 3,
+    };
+    assert(n == 2);
+}

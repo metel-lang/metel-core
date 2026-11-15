@@ -1,0 +1,8 @@
+// RFC-0151 (metel-core#2040): integers are infinite, so literal sub-patterns never cover a type without a wildcard.
+fun main() {
+    let t := (1, 2);
+    match (t) { // ERROR[T0008]
+        (0, y) => y,
+        (x, 0) => x,
+    };
+}

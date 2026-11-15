@@ -1,0 +1,12 @@
+// RFC-0151 (metel-core#2041): a payload bound through a variant sub-pattern is moved out of the field, so reusing the
+// whole value afterwards is rejected in a generic body as well.
+enum Msg { Text { body: String }, Quit }
+fun f<T>(t: .{ .msg: Msg, .n: i64 }, unused: T) -> String {
+    let r := match (t) {
+        .{ .msg: Msg::Text { body }, .n: _ } => body,
+        _ => "none",
+    };
+    let again := t; // ERROR[T0019]
+    r
+}
+fun main() {}

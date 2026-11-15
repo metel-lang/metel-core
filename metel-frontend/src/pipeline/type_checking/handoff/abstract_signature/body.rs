@@ -575,9 +575,6 @@ impl BodyFreezer<'_, '_> {
             .collect::<Result<_, String>>()?;
         let nested =
             self.nested_record_pattern_entries((labels, fields, nested), ty, &field_type)?;
-        if rest_binding.is_some() && !nested.is_empty() {
-            return Err("a remainder beside record sub-patterns is not yet retained".to_string());
-        }
         let remainder = rest_binding
             .as_ref()
             .map(|(name, span)| {
@@ -749,7 +746,48 @@ impl BodyFreezer<'_, '_> {
                 self.record_pattern(pattern, ty)?,
             )),
             Pattern::Array { .. } => self.array_pattern(pattern, ty),
-            _ => Err("nested non-tuple match pattern facts are not retained".to_string()),
+            // RFC-0151 (metel-core#2041): a nested enum variant or struct pattern keeps the fact inference recorded
+            // for its own span.
+            Pattern::EnumVariant { span, .. } | Pattern::Struct { span, .. } => {
+                self.nested_variant_or_struct_pattern(pattern, span, ty)
+            }
+        }
+    }
+
+    fn nested_variant_or_struct_pattern(
+        &self,
+        _pattern: &Pattern,
+        span: &Span,
+        ty: &AbstractType,
+    ) -> Result<crate::data::abstract_body::AbstractMatchPattern, String> {
+        use crate::data::abstract_body::AbstractMatchPattern;
+        use crate::pipeline::type_checking::type_engine::DefinitionMatchPatternKind;
+        let fact = self
+            .facts
+            .definition_match_pattern(span)
+            .ok_or("a nested variant or struct pattern fact is not retained")?;
+        match &fact.kind {
+            DefinitionMatchPatternKind::Variant(identity) => Ok(AbstractMatchPattern::Variant {
+                identity: *identity,
+                bindings: fact
+                    .bindings
+                    .iter()
+                    .map(|(id, name, binding_span, field_ty)| {
+                        let field_ty = self
+                            .types
+                            .freeze(field_ty)
+                            .map_err(|error| error.to_string())?;
+                        Ok((
+                            id.ok_or("match field identity is absent")?,
+                            self.binding(name, binding_span, field_ty)?,
+                        ))
+                    })
+                    .collect::<Result<_, String>>()?,
+            }),
+            DefinitionMatchPatternKind::Struct(identity) => Ok(AbstractMatchPattern::Record(
+                self.struct_pattern(fact, ty, *identity)?,
+            )),
+            _ => Err("a nested variant or struct pattern fact is not retained".to_string()),
         }
     }
 

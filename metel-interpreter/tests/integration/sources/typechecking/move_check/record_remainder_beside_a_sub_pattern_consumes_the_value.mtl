@@ -1,0 +1,7 @@
+// RFC-0151 (metel-core#2042): the remainder takes the whole value, so reusing it after the destructuring is rejected.
+fun f<T>(t: .{ .0: (T, i64), .1: i64 }) -> i64 {
+    let .{ .0: (a, _), ..rest } := t;
+    let again := t; // ERROR[T0019]
+    0
+}
+fun main() {}

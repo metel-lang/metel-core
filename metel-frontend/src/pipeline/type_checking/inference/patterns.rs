@@ -164,6 +164,25 @@ fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mu
         }
     }
     ctx.record_definition_match_pattern(span.clone(), fact);
+    retain_nested_match_patterns(pattern, ctx);
+}
+
+/// RFC-0151 (metel-core#2041): an enum-variant or struct pattern nested in a record or array pattern keeps its own
+/// fact, keyed by its span, so a generic body can retain it. Its bindings are already bound in `ctx`.
+fn retain_nested_match_patterns(pattern: &Pattern, ctx: &mut InferContext) {
+    let sub_patterns: Vec<&Pattern> = match pattern {
+        Pattern::Record { nested, .. } => nested.iter().map(|(_, sub)| sub).collect(),
+        Pattern::Array { elems, .. } => elems.iter().collect(),
+        _ => return,
+    };
+    for sub in sub_patterns {
+        if matches!(sub, Pattern::EnumVariant { .. } | Pattern::Struct { .. }) {
+            // The type argument is read only for a plain binding, which a nested variant or struct is not.
+            retain_match_pattern(sub, &InferType::unit(), sub.span(), ctx);
+        } else {
+            retain_nested_match_patterns(sub, ctx);
+        }
+    }
 }
 
 fn retain_struct_match_pattern(

@@ -551,6 +551,14 @@ impl Checker<'_> {
         {
             env.bind(binding, state);
         }
+        // RFC-0151 (metel-core#2042): beside a remainder the whole place is already consumed, so a sub-pattern only
+        // binds; it must not consume a field of a place that has just been moved.
+        if pattern.remainder.is_some() {
+            for (_, sub_pattern) in &pattern.nested {
+                Self::bind_pattern_bindings(sub_pattern, env, state);
+            }
+            return Ok(());
+        }
         // RFC-0151: each sub-pattern consumes and binds from the place of its own field.
         for (field, sub_pattern) in &pattern.nested {
             let field = AbstractExpr {
@@ -1207,6 +1215,47 @@ impl Checker<'_> {
             env.bind(binding, state);
         }
         Ok(())
+    }
+
+    /// Bind every name a pattern introduces, consuming nothing.
+    fn bind_pattern_bindings(
+        pattern: &AbstractMatchPattern,
+        env: &mut Environment<'_>,
+        state: &mut FlowState,
+    ) {
+        match pattern {
+            AbstractMatchPattern::Binding(binding) => env.bind(binding, state),
+            AbstractMatchPattern::Array {
+                elements,
+                remainder,
+            } => {
+                for element in elements {
+                    Self::bind_pattern_bindings(element, env, state);
+                }
+                if let Some(binding) = remainder {
+                    env.bind(binding, state);
+                }
+            }
+            AbstractMatchPattern::Record(record) => {
+                for binding in record
+                    .bindings
+                    .iter()
+                    .filter_map(|field| field.binding.as_ref())
+                    .chain(record.remainder.iter())
+                {
+                    env.bind(binding, state);
+                }
+                for (_, sub_pattern) in &record.nested {
+                    Self::bind_pattern_bindings(sub_pattern, env, state);
+                }
+            }
+            AbstractMatchPattern::Variant { bindings, .. } => {
+                for (_, binding) in bindings {
+                    env.bind(binding, state);
+                }
+            }
+            AbstractMatchPattern::Wildcard | AbstractMatchPattern::Literal(_) => {}
+        }
     }
 
     fn bind_abstract_pattern_values(

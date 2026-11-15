@@ -3472,6 +3472,14 @@ fn parse_type_expr(
             vec![],
             Span::of(&pair, filename).into(),
         )),
+        // RFC-0151: `(T)` groups; it is `T`.
+        Rule::grouped_type => {
+            let inner = pair
+                .into_inner()
+                .find(|p| p.as_rule() == Rule::type_expr)
+                .ok_or_else(|| MetelError::internal("grouped_type: expected a type"))?;
+            parse_type_expr(inner, filename)
+        }
         Rule::tuple_type => {
             let elems = pair
                 .into_inner()
