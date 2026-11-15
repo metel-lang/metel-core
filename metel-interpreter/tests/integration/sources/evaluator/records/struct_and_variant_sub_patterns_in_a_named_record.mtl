@@ -1,0 +1,16 @@
+// RFC-0151 (metel-core#2054): a struct or bare-variant pattern after `.label:` over a named record is resolved against
+// the field's declared type, in a declaration and in a `match` arm.
+struct Tag { n: i64 }
+enum Shape { Dot, Disc { radius: i64 } }
+record Pair { first: Tag, second: i64 }
+record Scene { shape: Shape, count: i64 }
+fun main() {
+    let p := Pair { first = Tag { n = 1 }, second = 2 };
+    let .{ .first: Tag { n }, .second: _ } := p;
+    assert(n == 1);
+    let sc := Scene { shape = Shape::Disc { radius = 6 }, count = 2 };
+    match (sc) {
+        .{ .shape: Disc { radius }, .count: _ } => assert(radius == 6),
+        .{ .shape: Dot, .count: _ } => assert(false),
+    }
+}
