@@ -1,0 +1,6 @@
+// metel-core#739, RFC-0166: a written function type is move-only, so a `T: Copy` bound rejects it.
+fun needs_copy<T: Copy>(x: T) -> T { x }
+fun main() {
+    let f: |i64| -> i64 := |x: i64| -> i64 { x };
+    needs_copy(f); // ERROR[T0012]
+}

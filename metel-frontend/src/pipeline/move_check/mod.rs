@@ -1825,10 +1825,7 @@ impl<'a> Checker<'a> {
     }
 
     fn is_copy(&self, current_module: &[String], ty: &Type) -> bool {
-        matches!(
-            peel_type_references(ty),
-            Type::Fun(_, _, _, crate::data::types::UseMultiplicity::Copy, _)
-        ) || self.registry.type_is_copy(current_module, ty)
+        self.registry.type_is_copy(current_module, ty)
     }
 
     fn is_drop(&self, current_module: &[String], ty: &Type) -> bool {

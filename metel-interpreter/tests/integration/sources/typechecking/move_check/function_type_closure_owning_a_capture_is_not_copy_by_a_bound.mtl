@@ -1,0 +1,7 @@
+// metel-core#739: a closure that owns a non-`Copy` capture is not `Copy`, so a `T: Copy` bound rejects it.
+fun needs_copy<T: Copy>(x: T) -> T { x }
+fun main() {
+    let owned := "text";
+    let c := [owned]|| -> i64 { 1 };
+    needs_copy(c); // ERROR[T0012]
+}

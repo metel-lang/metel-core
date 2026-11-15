@@ -1,0 +1,7 @@
+// metel-core#739: the same closure is moved, not copied, by move checking, so the bound and the checker agree.
+fun main() {
+    let owned := "text";
+    let c := [owned]|| -> i64 { 1 };
+    let a := c;
+    let b := c; // ERROR[T0019]
+}

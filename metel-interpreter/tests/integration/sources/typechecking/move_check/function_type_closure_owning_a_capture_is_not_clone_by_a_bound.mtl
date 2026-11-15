@@ -1,0 +1,8 @@
+// metel-core#739: `Clone` of a function type is the provided clone of a `Copy` one, so a closure that is not `Copy` is
+// not `Clone` either.
+fun needs_clone<T: Clone>(x: T) -> T { x.clone() }
+fun main() {
+    let owned := "text";
+    let c := [owned]|| -> i64 { 1 };
+    needs_clone(c); // ERROR[T0012]
+}

@@ -1,0 +1,6 @@
+// metel-core#739, RFC-0166: a written function type is move-only under move checking too.
+fun main() {
+    let f: |i64| -> i64 := |x: i64| -> i64 { x };
+    let a := f;
+    let b := f; // ERROR[T0019]
+}
