@@ -352,7 +352,8 @@ loop_expr   = { "loop" ~ block }
 // type (`("->" ~ type_expr)?`, not `"->" ~ type_expr?`). Nullary is `|| { ... }` — the
 // `or_op = "||"` alternative is only reachable in `or_expr`'s repetition, never at
 // operand start, so there is no ambiguity and no lexer hack.
-closure_expr = { capture_list? ~ once_kw? ~ mut_kw? ~ "|" ~ param_list? ~ "|" ~ ("->" ~ type_expr)? ~ block }
+// RFC-0219: `copy` is not a closure-literal qualifier; the parser rejects it with an explanation.
+closure_expr = { capture_list? ~ copy_kw? ~ once_kw? ~ mut_kw? ~ "|" ~ param_list? ~ "|" ~ ("->" ~ type_expr)? ~ block }
 capture_list = { "[" ~ (capture_item ~ ("," ~ capture_item)* ~ ","?)? ~ "]" }
 capture_item = { "&" ~ mut_kw ~ ident | "&" ~ ident | ident ~ "." ~ clone_kw ~ "(" ~ ")" | ident }
 
@@ -467,7 +468,8 @@ open_record_projection_type = { type_path ~ ".{" ~ label ~ ("," ~ label)* ~ "," 
 // first alternative and now unambiguous — nothing else in `type_expr` starts with `|`
 // (or a `once`/`mut` qualifier then `|`).
 fun_type   = { fun_type_qualifier* ~ "|" ~ type_list? ~ "|" ~ "->" ~ type_expr }
-fun_type_qualifier = { once_kw | mut_kw }
+// RFC-0219: `copy |T| -> U` is a copyable function type; the qualifiers may come in any order.
+fun_type_qualifier = { once_kw | mut_kw | copy_kw }
 reference_type = { "&" ~ type_expr }
 mut_reference_type = { "&" ~ mut_kw ~ type_expr }
 // RFC-0171: merges the old sized_array_type ("[" Type ";" INT "]") and postfix

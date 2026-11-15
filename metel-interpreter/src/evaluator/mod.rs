@@ -1543,6 +1543,7 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => {
             let params = params
                 .iter()
@@ -1550,6 +1551,9 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             let mut prefix = String::new();
+            if *use_multiplicity == crate::data::types::UseMultiplicity::Copy {
+                prefix.push_str("copy ");
+            }
             if *call_multiplicity == crate::data::types::CallMultiplicity::Once {
                 prefix.push_str("once ");
             }

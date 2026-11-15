@@ -13,7 +13,7 @@ use crate::data::ast::{
     WhereConstraint, WhileStmt,
 };
 use crate::data::error::{MetelError, ParseErrorCode};
-use crate::data::types::{CallMultiplicity, CallMutation};
+use crate::data::types::{CallMultiplicity, CallMutation, UseMultiplicity};
 
 #[derive(Parser)]
 #[grammar = "grammar.pest"]
@@ -2313,6 +2313,14 @@ fn parse_closure_expr(
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::capture_list => captures = parse_capture_list(p, filename)?,
+            Rule::copy_kw => {
+                return Err(MetelError::parse(
+                    ParseErrorCode::P0001,
+                    "`copy` is not a closure qualifier: whether a closure is copyable is derived from its \
+                     captures; write `copy` on a function type (`copy |T| -> U`) to require it",
+                    &Span::of(&p, filename),
+                ));
+            }
             Rule::once_kw => call_multiplicity = CallMultiplicity::Once,
             Rule::mut_kw => call_mutation = CallMutation::Mutating,
             Rule::param_list => params = parse_param_list(p, filename)?,
@@ -3562,9 +3570,20 @@ fn parse_type_expr(
             let mut return_type = None;
             let mut call_multiplicity = CallMultiplicity::Many;
             let mut call_mutation = CallMutation::Reading;
+            let mut use_multiplicity = UseMultiplicity::Move;
             for p in pair.into_inner() {
                 match p.as_rule() {
                     Rule::fun_type_qualifier => match p.as_str() {
+                        "copy" => {
+                            if use_multiplicity == UseMultiplicity::Copy {
+                                return Err(MetelError::parse(
+                                    ParseErrorCode::P0001,
+                                    "duplicate `copy` function type qualifier",
+                                    &Span::of(&p, filename),
+                                ));
+                            }
+                            use_multiplicity = UseMultiplicity::Copy;
+                        }
                         "once" => {
                             if call_multiplicity == CallMultiplicity::Once {
                                 return Err(MetelError::parse(
@@ -3603,6 +3622,7 @@ fn parse_type_expr(
                 return_type,
                 call_multiplicity,
                 call_mutation,
+                use_multiplicity,
             })
         }
         Rule::named_type => {

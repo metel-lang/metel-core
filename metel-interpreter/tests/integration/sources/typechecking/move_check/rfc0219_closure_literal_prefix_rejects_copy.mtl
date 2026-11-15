@@ -1,0 +1,5 @@
+// RFC-0219 rule 5: `copy` is not a closure-literal qualifier; a literal's copyability is derived from its captures.
+fun main() {
+    let k := 1;
+    let c := [k] copy |x: i64| -> i64 { x + k }; // ERROR[P0001]
+}

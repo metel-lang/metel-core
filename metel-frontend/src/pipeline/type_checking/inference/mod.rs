@@ -1699,11 +1699,12 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => InferType::Fun(
             params.iter().map(go).collect(),
             Box::new(ret.as_deref().map_or_else(InferType::unit, go)),
             *call_multiplicity,
-            crate::data::types::UseMultiplicity::Move,
+            *use_multiplicity,
             *call_mutation,
         ),
         TypeExpr::ImplAspect { bound, .. } => go(bound),

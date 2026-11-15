@@ -206,7 +206,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 Some(t) => {
                     let value = maybe_singleton_coerce(t, value, &ld.span, ctx.registry)?;
                     let value = maybe_dyn_coerce(t, value, &ld.span, ctx)?;
-                    maybe_fn_move_coerce(t, value)
+                    maybe_fn_move_coerce(t, value, &ld.span)?
                 }
                 None => value,
             };
@@ -255,7 +255,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 Some(t) => {
                     let value = maybe_singleton_coerce(t, value, &md.span, ctx.registry)?;
                     let value = maybe_dyn_coerce(t, value, &md.span, ctx)?;
-                    maybe_fn_move_coerce(t, value)
+                    maybe_fn_move_coerce(t, value, &md.span)?
                 }
                 None => value,
             };

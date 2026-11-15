@@ -159,7 +159,11 @@ impl std::fmt::Display for InferType {
             InferType::Concrete(t) => write!(f, "{t}"),
             InferType::Var(v) => write!(f, "{v}"),
             InferType::Never => write!(f, "!"),
-            InferType::Fun(params, ret, call_mult, _use_mult, call_mutation) => {
+            InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => {
+                // RFC-0219: a copyable function type is written `copy |T| -> U`.
+                if *use_mult == UseMultiplicity::Copy {
+                    write!(f, "copy ")?;
+                }
                 if *call_mult == CallMultiplicity::Once {
                     write!(f, "once ")?;
                 }
@@ -349,8 +353,13 @@ fn render_with_names(
             .or_else(|| local.get(v))
             .cloned()
             .unwrap_or_else(|| ty.to_string()),
-        InferType::Fun(params, ret, call_mult, _use_mult, call_mutation) => format!(
-            "{}{}|{}| -> {}",
+        InferType::Fun(params, ret, call_mult, use_mult, call_mutation) => format!(
+            "{}{}{}|{}| -> {}",
+            if *use_mult == UseMultiplicity::Copy {
+                "copy "
+            } else {
+                ""
+            },
             if *call_mult == CallMultiplicity::Once {
                 "once "
             } else {
@@ -2900,7 +2909,11 @@ impl fmt::Display for GenericBound {
                     return_type: ret,
                     call_multiplicity,
                     call_mutation,
+                    use_multiplicity,
                 } => {
+                    if *use_multiplicity == UseMultiplicity::Copy {
+                        f.write_str("copy ")?;
+                    }
                     if *call_multiplicity == CallMultiplicity::Once {
                         f.write_str("once ")?;
                     }

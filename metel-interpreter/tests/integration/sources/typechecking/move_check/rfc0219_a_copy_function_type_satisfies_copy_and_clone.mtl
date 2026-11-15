@@ -1,0 +1,12 @@
+// RFC-0219 rule 6: `copy |T| -> U` satisfies `Copy` and the provided `Clone` through the resolver, as move checking does.
+fun needs_copy<T: Copy>(x: T) -> T { x }
+fun needs_clone<T: Clone>(x: T) -> T { x.clone() }
+fun both(f: copy |i64| -> i64) -> i64 {
+    let a := needs_copy(f);
+    let b := needs_clone(f);
+    a(1) + b(2)
+}
+fun main() {
+    let k := 2;
+    assert(both([k] |x: i64| -> i64 { x + k }) == 7);
+}

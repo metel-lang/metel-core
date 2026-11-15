@@ -1,0 +1,6 @@
+// RFC-0219 rule 2: an exclusive reference `[&var x]` is not `Copy`, so a closure holding one cannot fill a `copy` slot.
+fun fanout(f: copy |i64| -> i64) -> i64 { f(1) }
+fun main() {
+    var shared := 1;
+    fanout([&var shared] var |x: i64| -> i64 { x }); // ERROR[T0001]
+}

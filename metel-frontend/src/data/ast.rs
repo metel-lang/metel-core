@@ -1,4 +1,4 @@
-use crate::data::types::{CallMultiplicity, CallMutation};
+use crate::data::types::{CallMultiplicity, CallMutation, UseMultiplicity};
 use crate::identity::symbols::SymbolId;
 
 // ── Span ──────────────────────────────────────────────────────────────────────
@@ -1173,6 +1173,8 @@ pub enum TypeExpr {
         return_type: Option<Box<TypeExpr>>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
+        /// RFC-0219: `copy |T| -> U` is `Copy`; a bare written function type is `Move` (RFC-0166).
+        use_multiplicity: UseMultiplicity,
     },
     /// `extends Aspect` in parameter position (spelled `impl Aspect` before RFC-0130;
     /// the AST node keeps the internal name). Lowered to a fresh anonymous type param

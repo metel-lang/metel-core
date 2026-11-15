@@ -117,13 +117,13 @@ mod phase_2_infer_types {
             vec![InferType::int(), InferType::bool()],
             Box::new(InferType::str()),
         );
-        assert_eq!(format!("{}", ty), "|i64, boolean| -> String");
+        assert_eq!(format!("{}", ty), "copy |i64, boolean| -> String");
     }
 
     #[test]
     fn test_display_fun_no_params() {
         let ty = InferType::fun(vec![], Box::new(InferType::unit()));
-        assert_eq!(format!("{}", ty), "|| -> ()");
+        assert_eq!(format!("{}", ty), "copy || -> ()");
     }
 
     #[test]
@@ -164,7 +164,7 @@ mod phase_2_infer_types {
             vec![InferType::var(TypeVar(0))],
             Box::new(InferType::var(TypeVar(0))),
         );
-        assert_eq!(format!("{}", ty), "|?t0| -> ?t0");
+        assert_eq!(format!("{}", ty), "copy |?t0| -> ?t0");
     }
 
     #[test]
@@ -174,7 +174,7 @@ mod phase_2_infer_types {
             vec![InferType::int()],
             Box::new(InferType::bool()),
         )));
-        assert_eq!(format!("{}", ty), "[|i64| -> boolean]");
+        assert_eq!(format!("{}", ty), "[copy |i64| -> boolean]");
     }
 
     #[test]
@@ -825,7 +825,7 @@ mod phase_6_type_schemes {
                 Box::new(InferType::var(TypeVar(0))),
             ),
         };
-        assert_eq!(format!("{}", scheme), "∀?t0. |?t0| -> ?t0");
+        assert_eq!(format!("{}", scheme), "∀?t0. copy |?t0| -> ?t0");
     }
 
     #[test]
@@ -850,7 +850,7 @@ mod phase_6_type_schemes {
                 Box::new(InferType::var(TypeVar(1))),
             ),
         };
-        assert_eq!(format!("{}", scheme), "∀?t0, ?t1. |?t0| -> ?t1");
+        assert_eq!(format!("{}", scheme), "∀?t0, ?t1. copy |?t0| -> ?t1");
     }
 }
 

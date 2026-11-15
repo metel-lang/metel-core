@@ -153,6 +153,7 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            ..
         } => CanonicalType::Fun(
             params.iter().map(go).collect(),
             ret.as_deref().map(go).map(Box::new),
@@ -260,6 +261,7 @@ fn canonicalize_impl_target(
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            ..
         } => CanonicalType::Fun(
             params
                 .iter()

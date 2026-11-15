@@ -133,6 +133,7 @@ fn lower_impl_aspect_param_type(
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params
                 .iter()
@@ -147,6 +148,7 @@ fn lower_impl_aspect_param_type(
             }),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         TypeExpr::Projection {
             base,
@@ -959,11 +961,13 @@ fn lower_projections_in_type(
             return_type: ret,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params.iter().map(go).collect(),
             return_type: ret.as_deref().map(go).map(Box::new),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         TypeExpr::ImplAspect {
             bound,
@@ -1082,11 +1086,13 @@ fn substitute_type_params(
             return_type,
             call_multiplicity,
             call_mutation,
+            use_multiplicity,
         } => TypeExpr::Fun {
             params: params.iter().map(go).collect(),
             return_type: return_type.as_deref().map(|r| Box::new(go(r))),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            use_multiplicity: *use_multiplicity,
         },
         // `Self::Item` (a default lowered with its aspect's projections) names the same
         // associated type the bare spelling does
