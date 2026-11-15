@@ -91,7 +91,12 @@ pub fn expand(graph: &mut ModuleGraph, names: &ResolvedNames) -> Result<(), Mete
         ))
         .copied();
     let flow_aspects = Aspects {
-        implicit: aspects.iter().find(|(_, a)| a.implicit).map(|(id, _)| *id),
+        // The language's own `implicit` aspect, declared in `std::core`. A user aspect that writes the property is
+        // rejected later (T0045); until then it must not be mistaken for `Copy`, whatever order the table iterates in.
+        implicit: aspects
+            .iter()
+            .find(|(_, a)| a.implicit && a.module == ["std".to_string(), "core".to_string()])
+            .map(|(id, _)| *id),
         clone: clone_id,
     };
     let module_flows = flows::module_table(graph, names, &flow_aspects);
