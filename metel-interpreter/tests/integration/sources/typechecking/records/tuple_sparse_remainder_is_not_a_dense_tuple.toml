@@ -1,0 +1,7 @@
+[options]
+error = ["T0001"]
+spec = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-3"]
+
+[expect]
+status = "typecheck_error"
+code = "T0001"

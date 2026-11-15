@@ -1042,7 +1042,6 @@ fn type_expr_contains_row_arg(ty: &crate::data::ast::TypeExpr) -> bool {
     use crate::data::ast::TypeExpr;
     match ty {
         TypeExpr::Named(_, args, _) => args.iter().any(type_expr_contains_row_arg),
-        TypeExpr::Tuple(items) => items.iter().any(type_expr_contains_row_arg),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
@@ -1541,12 +1540,6 @@ fn freshen_anonymous_row_args_for_method(
                 .collect(),
             id.clone(),
         ),
-        InferType::Tuple(items) => InferType::Tuple(
-            items
-                .iter()
-                .map(|item| freshen_anonymous_row_args_for_method(item, type_var_gen, vars))
-                .collect(),
-        ),
         InferType::Array(inner) => InferType::Array(Box::new(
             freshen_anonymous_row_args_for_method(inner, type_var_gen, vars),
         )),
@@ -1786,12 +1779,6 @@ fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) -> TypeExpr
                 .map(|arg| substitute_structural_self(arg, replacement))
                 .collect(),
             span.clone(),
-        ),
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(
-            items
-                .iter()
-                .map(|item| substitute_structural_self(item, replacement))
-                .collect(),
         ),
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
@@ -2154,8 +2141,7 @@ fn resolve_declaring_nominals(
             }
             resolve_declaring_nominals(result, registry, module);
         }
-        InferType::Tuple(items)
-        | InferType::Dyn {
+        InferType::Dyn {
             type_args: items, ..
         } => {
             for item in items {

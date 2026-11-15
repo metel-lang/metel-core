@@ -185,17 +185,6 @@ impl InferContext {
                     Projection::field(field.clone()),
                 );
             }
-            crate::data::ast::Expr::TupleAccess { object, index, .. } => {
-                let crate::data::ast::Expr::Ident(root, _) = object.as_ref() else {
-                    return;
-                };
-                self.note_field_move_infer(
-                    expr,
-                    root.clone(),
-                    None,
-                    Projection::TupleIndex(*index),
-                );
-            }
             // metel-core#1454: `h.{ name }` moves every non-`Copy` field it names out of `h`,
             // exactly as `h.name` does, so `h` narrows here too. Without this the inference
             // pass accepted a later `h.name` and the construction pass, which does narrow,
@@ -320,12 +309,6 @@ fn place_from_assign_target(target: &crate::data::ast::AssignTarget) -> Option<P
             };
             Some(Place::new(root.clone()).with_projection(Projection::field(field.clone())))
         }
-        crate::data::ast::AssignTarget::TupleAccess { object, index, .. } => {
-            let crate::data::ast::Expr::Ident(root, _) = object.as_ref() else {
-                return None;
-            };
-            Some(Place::new(root.clone()).with_projection(Projection::TupleIndex(*index)))
-        }
         _ => None,
     }
 }
@@ -344,7 +327,6 @@ fn infer_type_has_var(ty: &InferType) -> bool {
         | InferType::MutReference(inner)
         | InferType::Array(inner)
         | InferType::SizedArray(inner, _) => infer_type_has_var(inner),
-        InferType::Tuple(items) => items.iter().any(infer_type_has_var),
         InferType::Named(_, args, ..)
         | InferType::Dyn {
             type_args: args, ..
@@ -365,7 +347,7 @@ fn infer_type_has_var(ty: &InferType) -> bool {
 pub(crate) fn typed_move_place(typed: &TypedExpr) -> Option<Place> {
     let place = place_from_expr(typed)?;
     match place.projections() {
-        [Projection::Field { .. } | Projection::TupleIndex(_)] => Some(place),
+        [Projection::Field { .. }] => Some(place),
         _ => None,
     }
 }

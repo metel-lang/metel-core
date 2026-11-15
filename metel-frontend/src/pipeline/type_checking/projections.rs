@@ -550,21 +550,6 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            TypeExpr::Tuple(items) => {
-                for t in items {
-                    self.ty_at(
-                        t,
-                        span,
-                        field_of,
-                        generics,
-                        self_allowed,
-                        self_target,
-                        impl_aspect_allowed,
-                        local_types,
-                    )?;
-                }
-                Ok(())
-            }
             TypeExpr::Record(fields) => {
                 for (_, t) in fields {
                     self.ty_at(
@@ -1013,7 +998,7 @@ impl Cx<'_> {
             | Expr::ResolvedPath { .. }
             | Expr::RecordProjection { .. }
             | Expr::Continue(_) => Ok(()),
-            Expr::Tuple(items, _) | Expr::Array(items, _) => {
+            Expr::Array(items, _) => {
                 for item in items {
                     self.expr(item, generics, self_allowed, self_target, local_types)?;
                 }
@@ -1038,7 +1023,6 @@ impl Cx<'_> {
             | Expr::UnaryOp(_, value, _)
             | Expr::NamedArg { value, .. }
             | Expr::FieldAccess { object: value, .. }
-            | Expr::TupleAccess { object: value, .. }
             | Expr::PropagateError { expr: value, .. } => {
                 self.expr(value, generics, self_allowed, self_target, local_types)
             }
@@ -1190,9 +1174,7 @@ impl Cx<'_> {
     ) -> Result<(), MetelError> {
         match target {
             AssignTarget::Ident(_, _) => Ok(()),
-            AssignTarget::FieldAccess { object, .. }
-            | AssignTarget::TupleAccess { object, .. }
-            | AssignTarget::Deref { object, .. } => {
+            AssignTarget::FieldAccess { object, .. } | AssignTarget::Deref { object, .. } => {
                 self.expr(object, generics, self_allowed, self_target, local_types)
             }
             AssignTarget::Index { object, index, .. } => {
@@ -1367,7 +1349,7 @@ impl Cx<'_> {
                 }
                 Ok(())
             }
-            TypeExpr::Named(_, items, _) | TypeExpr::Tuple(items) => items.iter().try_for_each(go),
+            TypeExpr::Named(_, items, _) => items.iter().try_for_each(go),
             TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
                 fields.iter().try_for_each(|(_, t)| go(t))
             }

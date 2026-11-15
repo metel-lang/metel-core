@@ -158,7 +158,7 @@ impl ConstructCtx<'_> {
 
 fn note_consumed_expr(ctx: &mut ConstructCtx, typed: &TypedExpr) {
     // A tuple / array literal takes ownership of each element.
-    if let TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) = typed {
+    if let TypedExpr::Array(items, ..) = typed {
         for item in items {
             note_consumed_expr(ctx, item);
         }
@@ -203,9 +203,6 @@ fn place_of_expr(ctx: &ConstructCtx, expr: &TypedExpr) -> Option<Place> {
             place_of_expr(ctx, object)?
                 .with_projection(Projection::field_with_id(field.clone(), *field_id)),
         ),
-        TypedExpr::TupleAccess { object, index, .. } => {
-            Some(place_of_expr(ctx, object)?.with_projection(Projection::TupleIndex(*index)))
-        }
         TypedExpr::Index { object, .. } => {
             Some(place_of_expr(ctx, object)?.with_projection(Projection::OpaqueIndex))
         }
@@ -219,9 +216,6 @@ fn place_of_target(ctx: &ConstructCtx, place: &TypedPlace) -> Option<Place> {
         TypedPlace::Ident(_, _, span) => Some(Place::new(ctx.flow_root_at(span))),
         TypedPlace::Field { object, field, .. } => {
             Some(place_of_target(ctx, object)?.with_projection(Projection::field(field.clone())))
-        }
-        TypedPlace::Tuple { object, index, .. } => {
-            Some(place_of_target(ctx, object)?.with_projection(Projection::TupleIndex(*index)))
         }
         TypedPlace::Index { object, .. } => {
             Some(place_of_target(ctx, object)?.with_projection(Projection::OpaqueIndex))
@@ -241,10 +235,7 @@ fn record_move_of_place(ctx: &mut ConstructCtx, place: &Place, leaf: &TypedExpr)
     let [projection] = place.projections() else {
         return;
     };
-    if !matches!(
-        projection,
-        Projection::Field { .. } | Projection::TupleIndex(_)
-    ) {
+    if !matches!(projection, Projection::Field { .. }) {
         return;
     }
     // The moved leaf must be non-`Copy` for a move to happen at all.

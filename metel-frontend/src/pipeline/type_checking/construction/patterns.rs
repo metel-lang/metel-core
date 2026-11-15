@@ -282,10 +282,6 @@ pub(super) fn lower_typed_pattern(pattern: &Pattern, ctx: &ConstructCtx) -> Type
             span,
             ctx,
         ),
-        Pattern::Tuple(pats, span) => TypedPattern::Tuple(
-            pats.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
-            span.clone(),
-        ),
         Pattern::Array { elems, rest, span } => TypedPattern::Array {
             elems: elems.iter().map(|p| lower_typed_pattern(p, ctx)).collect(),
             rest: rest
@@ -515,7 +511,6 @@ pub(super) fn is_catch_all_pattern(pattern: &TypedPattern) -> bool {
             nested.iter().all(|(_, sub)| is_catch_all_pattern(sub))
         }
         // A tuple pattern is irrefutable when every element is also irrefutable.
-        TypedPattern::Tuple(pats, _) => pats.iter().all(is_catch_all_pattern),
         // An array pattern with a rest binding is irrefutable if all explicit elems are.
         TypedPattern::Array {
             elems,
@@ -633,15 +628,6 @@ pub(super) fn construct_pattern_bindings(
         Pattern::Wildcard(_) | Pattern::Literal(_, _) => {}
         Pattern::Binding(name, span) => {
             ctx.bind(name, span, scrutinee_ty.clone());
-        }
-        Pattern::Tuple(pats, _) => {
-            let elems = match scrutinee_ty {
-                Type::Tuple(ts) => ts.clone(),
-                _ => return Err(MetelError::internal("tuple pattern on non-tuple")),
-            };
-            for (pat, elem_ty) in pats.iter().zip(elems.iter()) {
-                construct_pattern_bindings(pat, elem_ty, mutable, ctx)?;
-            }
         }
         Pattern::EnumVariant {
             path,

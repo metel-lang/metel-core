@@ -359,7 +359,7 @@ fn elaborate_place(place: &mut TypedPlace, cx: &ElabCtx<'_>) {
     match place {
         TypedPlace::Ident(..) => {}
         TypedPlace::Deref { object, .. } => elaborate_expr(object, cx),
-        TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+        TypedPlace::Field { object, .. } => {
             elaborate_place(object, cx);
         }
         TypedPlace::Index { object, index, .. } => {
@@ -413,7 +413,7 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
         }
         TypedExpr::UnaryOp(_, operand, ..) => elaborate_expr(operand, cx),
         TypedExpr::RefTemp { init, .. } => elaborate_expr(init, cx),
-        TypedExpr::Tuple(elems, ..) | TypedExpr::Array(elems, ..) => {
+        TypedExpr::Array(elems, ..) => {
             for e in elems.iter_mut() {
                 elaborate_expr(e, cx);
             }
@@ -423,7 +423,7 @@ fn elaborate_expr(expr: &mut TypedExpr, cx: &ElabCtx<'_>) {
             elaborate_place(target, cx);
             elaborate_expr(value, cx);
         }
-        TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
+        TypedExpr::FieldAccess { object, .. } => {
             elaborate_expr(object, cx);
         }
         TypedExpr::Index { object, index, .. } => {

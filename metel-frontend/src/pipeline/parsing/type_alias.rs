@@ -731,7 +731,7 @@ impl Expander<'_> {
         use crate::data::ast::Pattern;
         match pat {
             Pattern::EnumVariant { path, .. } => self.rewrite_value_path(path)?,
-            Pattern::Tuple(elems, _) | Pattern::Array { elems, .. } => {
+            Pattern::Array { elems, .. } => {
                 for p in elems {
                     self.walk_pattern(p)?;
                 }
@@ -1049,7 +1049,7 @@ impl Expander<'_> {
             // projection (`P.{ f }`) may lead with a type-alias name.
             Expr::Path(segs, _, _) => self.rewrite_value_path(segs)?,
             Expr::RecordProjection { path, .. } => self.rewrite_value_path(path)?,
-            Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
+            Expr::Array(elems, _) => {
                 for e in elems {
                     self.walk_expr(e)?;
                 }
@@ -1099,7 +1099,7 @@ impl Expander<'_> {
                     self.walk_expr(a)?;
                 }
             }
-            Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+            Expr::FieldAccess { object, .. } => {
                 self.walk_expr(object)?;
             }
             Expr::PropagateError { expr, .. } => self.walk_expr(expr)?,
@@ -1173,9 +1173,9 @@ impl Expander<'_> {
     fn walk_assign_target(&mut self, target: &mut AssignTarget) -> Result<(), MetelError> {
         match target {
             AssignTarget::Ident(..) => {}
-            AssignTarget::FieldAccess { object, .. }
-            | AssignTarget::TupleAccess { object, .. }
-            | AssignTarget::Deref { object, .. } => self.walk_expr(object)?,
+            AssignTarget::FieldAccess { object, .. } | AssignTarget::Deref { object, .. } => {
+                self.walk_expr(object)?;
+            }
             AssignTarget::Index { object, index, .. } => {
                 self.walk_expr(object)?;
                 self.walk_expr(index)?;
@@ -1243,7 +1243,7 @@ fn subst_params_in_place(te: &mut TypeExpr, subst: &HashMap<&str, &TypeExpr>) {
 /// (including a `Named`'s type arguments).
 fn children_mut(te: &mut TypeExpr) -> Vec<&mut TypeExpr> {
     match te {
-        TypeExpr::Named(_, args, _) | TypeExpr::Tuple(args) => args.iter_mut().collect(),
+        TypeExpr::Named(_, args, _) => args.iter_mut().collect(),
         TypeExpr::Record(fields) => fields.iter_mut().map(|(_, t)| t).collect(),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)

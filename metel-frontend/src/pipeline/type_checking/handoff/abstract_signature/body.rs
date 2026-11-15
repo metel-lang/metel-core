@@ -252,11 +252,6 @@ impl BodyFreezer<'_, '_> {
                     self.retain_nominal_ownership(argument);
                 }
             }
-            AbstractType::Tuple(items) => {
-                for item in items {
-                    self.retain_nominal_ownership(item);
-                }
-            }
             AbstractType::Record(fields) | AbstractType::Residual { fields, .. } => {
                 for (_, ty) in fields {
                     self.retain_nominal_ownership(ty);
@@ -631,7 +626,7 @@ impl BodyFreezer<'_, '_> {
                     selection: self.record_pattern_field_selection(ty, label)?,
                     binding: None,
                 };
-                Ok::<_, String>((entry, self.tuple_pattern(sub_pattern, &field_ty)?))
+                Ok::<_, String>((entry, self.nested_pattern(sub_pattern, &field_ty)?))
             })
             .collect()
     }
@@ -722,7 +717,7 @@ impl BodyFreezer<'_, '_> {
         })
     }
 
-    fn tuple_pattern(
+    fn nested_pattern(
         &self,
         pattern: &Pattern,
         ty: &AbstractType,
@@ -736,21 +731,6 @@ impl BodyFreezer<'_, '_> {
                 span,
                 ty.clone(),
             )?)),
-            Pattern::Tuple(patterns, _) => {
-                let AbstractType::Tuple(items) = ty else {
-                    return Err("tuple pattern has no retained tuple shape".to_string());
-                };
-                if patterns.len() != items.len() {
-                    return Err("tuple pattern arity is not retained".to_string());
-                }
-                Ok(AbstractMatchPattern::Tuple(
-                    patterns
-                        .iter()
-                        .zip(items)
-                        .map(|(pattern, item)| self.tuple_pattern(pattern, item))
-                        .collect::<Result<_, _>>()?,
-                ))
-            }
             Pattern::Record { .. } => Ok(AbstractMatchPattern::Record(
                 self.record_pattern(pattern, ty)?,
             )),
@@ -788,7 +768,7 @@ impl BodyFreezer<'_, '_> {
         Ok(AbstractMatchPattern::Array {
             elements: elems
                 .iter()
-                .map(|pattern| self.tuple_pattern(pattern, item))
+                .map(|pattern| self.nested_pattern(pattern, item))
                 .collect::<Result<_, _>>()?,
             remainder,
         })
@@ -1003,12 +983,6 @@ impl BodyFreezer<'_, '_> {
                 usage: *usage,
                 mutation: *mutation,
             },
-            InferType::Tuple(items) => AbstractType::Tuple(
-                items
-                    .iter()
-                    .map(|item| self.freeze_nominal_record_field_type(item, substitutions))
-                    .collect::<Result<_, _>>()?,
-            ),
             InferType::Record(fields) => AbstractType::Record(
                 fields
                     .iter()
@@ -1133,7 +1107,6 @@ impl BodyFreezer<'_, '_> {
                     .coerce_boundary(value, &ty, span)
                     .map_err(|_| "ascription coercion facts are not yet retained".to_string());
             }
-            Expr::Tuple(items, _) => AbstractExprKind::Tuple(self.items(items)?),
             Expr::Array(items, _) => AbstractExprKind::Array(self.items(items)?),
             Expr::RecordLiteral { fields, spread, .. } => {
                 self.record_literal(fields, spread.as_ref())?
@@ -1176,7 +1149,6 @@ impl BodyFreezer<'_, '_> {
             Expr::UnaryOp(UnaryOp::Deref, value, _) => {
                 AbstractExprKind::Dereference(Box::new(self.expression(value)?))
             }
-            Expr::TupleAccess { .. } => self.tuple_selection(expression, &ty)?,
             Expr::Index { object, index, .. } => self.index(object, index, &ty)?,
             Expr::Call {
                 callee, args, span, ..
@@ -1389,10 +1361,6 @@ impl BodyFreezer<'_, '_> {
                         .first()
                         .ok_or("match binding fact is absent")?;
                     AbstractMatchPattern::Binding(binding(name, span, ty)?)
-                }
-                DefinitionMatchPatternKind::Tuple => {
-                    catch_all = true;
-                    self.tuple_pattern(&arm.pattern, &scrutinee.ty)?
                 }
                 DefinitionMatchPatternKind::Array => {
                     catch_all = true;
@@ -1629,27 +1597,6 @@ impl BodyFreezer<'_, '_> {
         let unsupported =
             || "aggregate closure ownership contracts are not yet retained".to_string();
         match kind {
-            AbstractExprKind::Tuple(items) if items.iter().any(holds) => {
-                let AbstractType::Tuple(types) = ty else {
-                    return Err(unsupported());
-                };
-                if types.len() != items.len() {
-                    return Err(unsupported());
-                }
-                Ok(Some(AbstractType::Tuple(
-                    types
-                        .iter()
-                        .zip(items)
-                        .map(|(ty, item)| {
-                            if holds(item) {
-                                item.ty.clone()
-                            } else {
-                                ty.clone()
-                            }
-                        })
-                        .collect(),
-                )))
-            }
             AbstractExprKind::RecordLiteral { fields, .. }
                 if fields.iter().any(|(_, value)| holds(value)) =>
             {
@@ -2026,24 +1973,6 @@ impl BodyFreezer<'_, '_> {
                     inputs,
                 })
             }
-            AssignTarget::TupleAccess { object, index, .. } => {
-                let object = self.expression(object)?;
-                let mut place = object
-                    .place()
-                    .ok_or("tuple assignment base is not a retained place")?;
-                let (_, dereferences) = peel_references(&object.ty);
-                place
-                    .projections
-                    .extend(std::iter::repeat_n(Projection::Deref, dereferences));
-                place.projections.push(Projection::TupleIndex(*index));
-                let inputs = Self::assignment_inputs(&object)?;
-                Ok(FrozenAssignmentPlace {
-                    binding: place.binding,
-                    projections: place.projections,
-                    selection: None,
-                    inputs,
-                })
-            }
             AssignTarget::Deref { object, .. } => {
                 let object = self.expression(object)?;
                 let mut place = object
@@ -2087,7 +2016,6 @@ impl BodyFreezer<'_, '_> {
                 Ok(inputs)
             }
             AbstractExprKind::Dereference(object)
-            | AbstractExprKind::TupleAccess { object, .. }
             | AbstractExprKind::FieldAccess { object, .. } => Self::assignment_inputs(object),
             _ => Err("assignment input operations are not retained".to_string()),
         }
@@ -2104,6 +2032,15 @@ impl BodyFreezer<'_, '_> {
             return Ok(AbstractFieldSelection::Nominal {
                 label: label.to_string(),
                 field: *field,
+            });
+        }
+        // Assigning a field that a move took out of a structural value reinitialises it and widens the value's row
+        // back (RFC-0137 slice 2): the narrowed row no longer lists the label, the assignment's own type does.
+        if matches!(base, AbstractType::Record(fields) | AbstractType::Residual { fields, .. }
+            if !fields.iter().any(|(name, _)| name == label))
+        {
+            return Ok(AbstractFieldSelection::Structural {
+                label: label.to_string(),
             });
         }
         self.field_selection(base, label, span, field_type)
@@ -2297,42 +2234,6 @@ impl BodyFreezer<'_, '_> {
             Expr::Continue(_) => Ok(AbstractExprKind::Continue),
             _ => Err("unsupported abstract control-flow expression".to_string()),
         }
-    }
-
-    fn tuple_selection(
-        &self,
-        expression: &Expr,
-        ty: &AbstractType,
-    ) -> Result<AbstractExprKind, String> {
-        let Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } = expression
-        else {
-            return Err("tuple selection is not a tuple access".to_string());
-        };
-        let index = *index;
-        let object = self.expression(object)?;
-        let (base, auto_dereferences) = peel_references(&object.ty);
-        let AbstractType::Tuple(fields) = base else {
-            // A record, residual or row with an integer label (RFC-0151): `r.0` is field access on `.0`.
-            let selection = self.field_selection(base, &index.to_string(), span, ty)?;
-            return Ok(AbstractExprKind::FieldAccess {
-                object: Box::new(object),
-                selection,
-                auto_dereferences,
-            });
-        };
-        let field = fields
-            .get(index)
-            .ok_or("tuple selection disagrees with retained tuple shape")?;
-        Self::check_value_type(field, ty)?;
-        Ok(AbstractExprKind::TupleAccess {
-            object: Box::new(object),
-            index,
-            auto_dereferences,
-        })
     }
 
     fn index(
@@ -2606,7 +2507,12 @@ impl BodyFreezer<'_, '_> {
                 .collect()
         };
         Some(match template {
-            InferType::Tuple(parts) => AbstractType::Tuple(items(parts)?),
+            InferType::Record(fields) => AbstractType::Record(
+                fields
+                    .iter()
+                    .map(|(label, ty)| Some((label.clone(), self.refine_call_result(ty, bound)?)))
+                    .collect::<Option<Vec<_>>>()?,
+            ),
             InferType::Array(inner) => {
                 AbstractType::Array(Box::new(self.refine_call_result(inner, bound)?))
             }
@@ -2902,20 +2808,34 @@ impl BodyFreezer<'_, '_> {
         if value.ty == *target || value.ty == AbstractType::Never {
             return Ok(value);
         }
-        if let (AbstractExprKind::Tuple(items), AbstractType::Tuple(target_items)) =
-            (&value.kind, target)
-            && items.len() == target_items.len()
+        if let (
+            AbstractExprKind::RecordLiteral {
+                fields,
+                spread: None,
+            },
+            AbstractType::Record(target_fields),
+        ) = (&value.kind, target)
+            && fields.len() == target_fields.len()
+            && fields
+                .iter()
+                .zip(target_fields)
+                .all(|((label, _), (target_label, _))| label == target_label)
         {
-            let items = items
+            let fields = fields
                 .iter()
                 .cloned()
-                .zip(target_items)
-                .map(|(item, target)| self.coerce_boundary(item, target, span))
-                .collect::<Result<Vec<_>, _>>()?;
+                .zip(target_fields)
+                .map(|((label, item), (_, target))| {
+                    Ok((label, self.coerce_boundary(item, target, span)?))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
             return Ok(AbstractExpr {
                 ty: target.clone(),
                 span: value.span,
-                kind: AbstractExprKind::Tuple(items),
+                kind: AbstractExprKind::RecordLiteral {
+                    fields,
+                    spread: None,
+                },
             });
         }
         if matches!(target, AbstractType::OpenRecord { fields, tail } if fields.is_empty() && tail.as_ref() == &value.ty)
@@ -3099,8 +3019,7 @@ fn assignment_target_span(target: &AssignTarget) -> &Span {
         AssignTarget::Ident(_, span)
         | AssignTarget::Deref { span, .. }
         | AssignTarget::Index { span, .. }
-        | AssignTarget::FieldAccess { span, .. }
-        | AssignTarget::TupleAccess { span, .. } => span,
+        | AssignTarget::FieldAccess { span, .. } => span,
     }
 }
 
@@ -3108,7 +3027,6 @@ fn assignment_target_span(target: &AssignTarget) -> &Span {
 fn holds_closure(ty: &AbstractType) -> bool {
     match ty {
         AbstractType::Closure { .. } => true,
-        AbstractType::Tuple(items) => items.iter().any(holds_closure),
         AbstractType::Record(fields) => fields.iter().any(|(_, ty)| holds_closure(ty)),
         AbstractType::Named { arguments, .. } => arguments.iter().any(holds_closure),
         AbstractType::Array(element) | AbstractType::SizedArray(element, _) => {
@@ -3242,13 +3160,19 @@ fn bind_template(
             };
             Ok(())
         }
-        (InferType::Tuple(templates), AbstractType::Tuple(values))
-            if templates.len() == values.len() =>
+        (InferType::Record(templates), AbstractType::Record(values))
+            if templates.len() == values.len()
+                && templates
+                    .iter()
+                    .zip(values)
+                    .all(|((template, _), (value, _))| template == value) =>
         {
             templates
                 .iter()
                 .zip(values)
-                .try_for_each(|(template, value)| bind_template(template, value, params, bound))
+                .try_for_each(|((_, template), (_, value))| {
+                    bind_template(template, value, params, bound)
+                })
         }
         (InferType::Named(_, templates, _), AbstractType::Named { arguments, .. })
             if templates.len() == arguments.len() =>
@@ -3287,13 +3211,17 @@ fn bind_call_variables(
             bound.insert(*var, merged);
             Some(())
         }
-        (InferType::Tuple(parameters), AbstractType::Tuple(arguments))
-            if parameters.len() == arguments.len() =>
+        (InferType::Record(parameters), AbstractType::Record(arguments))
+            if parameters.len() == arguments.len()
+                && parameters
+                    .iter()
+                    .zip(arguments)
+                    .all(|((parameter, _), (argument, _))| parameter == argument) =>
         {
             parameters
                 .iter()
                 .zip(arguments)
-                .try_for_each(|(parameter, argument)| {
+                .try_for_each(|((_, parameter), (_, argument))| {
                     bind_call_variables(parameter, argument, bound)
                 })
         }
@@ -3323,7 +3251,7 @@ fn bind_call_variables(
             bind_call_variables(parameter, argument, bound)
         }
         (
-            parameter @ (InferType::Named(..) | InferType::Tuple(_) | InferType::Array(_)),
+            parameter @ (InferType::Named(..) | InferType::Record(_) | InferType::Array(_)),
             AbstractType::Reference(argument) | AbstractType::MutReference(argument),
         ) => bind_call_variables(parameter, argument, bound),
         (parameter, _) => free_vars(parameter).is_empty().then_some(()),
@@ -3335,7 +3263,6 @@ fn erase_contracts(ty: &AbstractType) -> AbstractType {
     let all = |items: &[AbstractType]| items.iter().map(erase_contracts).collect();
     match ty {
         AbstractType::Closure { signature, .. } => erase_contracts(signature),
-        AbstractType::Tuple(items) => AbstractType::Tuple(all(items)),
         AbstractType::Record(fields) => AbstractType::Record(
             fields
                 .iter()

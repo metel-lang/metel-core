@@ -639,14 +639,6 @@ pub(super) fn construct_expr(
             };
             construct_unaryop(op, operand, span, inner_hint, ctx)
         }
-        Expr::Tuple(elems, span) => {
-            let typed: Vec<TypedExpr> = elems
-                .iter()
-                .map(|e| construct_expr(e, None, ctx))
-                .collect::<Result<_, _>>()?;
-            let ty = Type::Tuple(typed.iter().map(|e| e.ty().clone()).collect());
-            Ok(TypedExpr::Tuple(typed, ty, span.clone()))
-        }
         Expr::RecordLiteral {
             fields,
             spread,
@@ -1472,8 +1464,7 @@ pub(super) fn construct_expr(
             // 2): the unit type, a tuple of `Clone` parts, a `Copy` closure. The runtime performs the copy.
             if method == "clone"
                 && args.is_empty()
-                && let provided @ (Type::Tuple(_) | Type::Fun(..)) =
-                    peel_type_references(typed_receiver.ty())
+                && let provided @ Type::Fun(..) = peel_type_references(typed_receiver.ty())
             {
                 if !ctx
                     .registry
@@ -2344,62 +2335,6 @@ pub(super) fn construct_expr(
             })
         }
 
-        Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } => {
-            let typed_obj = construct_expr(object, None, ctx)?;
-            let ty = match peel_type_references(typed_obj.ty()) {
-                Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "tuple index {index} out of bounds (tuple has {} elements)",
-                            elems.len()
-                        ),
-                        span,
-                    )
-                })?,
-                // A record, residual or row with an integer label (RFC-0151): `r.0` is field access on `.0`.
-                Type::Record(fields)
-                | Type::OpenRecord { fields, .. }
-                | Type::Residual { fields, .. } => {
-                    let field = index.to_string();
-                    let field_ty = fields
-                        .iter()
-                        .find(|(name, _)| *name == field)
-                        .map(|(_, ty)| ty.clone())
-                        .ok_or_else(|| {
-                            MetelError::type_error(
-                                TypeErrorCode::T0003,
-                                format!("no field `{field}` on {}", typed_obj.ty()),
-                                span,
-                            )
-                        })?;
-                    return Ok(TypedExpr::FieldAccess {
-                        object: Box::new(typed_obj),
-                        field,
-                        field_id: None,
-                        ty: field_ty,
-                        span: span.clone(),
-                    });
-                }
-                _ => {
-                    return Err(MetelError::type_error(
-                        TypeErrorCode::T0002,
-                        "cannot infer tuple type for index access; add a type annotation",
-                        span,
-                    ));
-                }
-            };
-            Ok(TypedExpr::TupleAccess {
-                object: Box::new(typed_obj),
-                index: *index,
-                ty,
-                span: span.clone(),
-            })
-        }
         Expr::Loop { body, span } => {
             let saved_break = ctx.push_break_type(expected_ty.cloned());
             ctx.enter_loop();

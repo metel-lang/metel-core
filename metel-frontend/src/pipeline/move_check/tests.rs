@@ -3870,20 +3870,6 @@ let name := wrapper.pair.0;
 }
 
 #[test]
-fn tuple_element_partial_move_then_reuse_is_reported() {
-    assert_has_violation(
-        r#"
-fun main() {
-let pair := ("x", 1);
-let left := pair.0;
-let again := pair.0;
-}
-"#,
-        "pair",
-    );
-}
-
-#[test]
 fn enum_payload_move_consumes_whole_value() {
     assert_has_violation(
         r#"
@@ -4210,7 +4196,7 @@ fn concrete() -> InferType {
 
 #[test]
 fn tuple_with_an_unresolved_element_converts_to_none_not_a_shorter_tuple() {
-    let ty = InferType::Tuple(vec![var(), concrete()]);
+    let ty = tuple_row(vec![var(), concrete()]);
     assert_eq!(infer_to_type(&ty), None);
 }
 
@@ -4241,10 +4227,14 @@ fn named_with_an_unresolved_argument_converts_to_none_not_fewer_arguments() {
 
 #[test]
 fn fully_resolved_compounds_still_convert_and_keep_their_arity() {
-    let tuple = InferType::Tuple(vec![concrete(), concrete(), concrete()]);
+    let tuple = tuple_row(vec![concrete(), concrete(), concrete()]);
     assert_eq!(
         infer_to_type(&tuple),
-        Some(Type::Tuple(vec![Type::I64, Type::I64, Type::I64]))
+        Some(Type::Record(vec![
+            ("0".to_string(), Type::I64),
+            ("1".to_string(), Type::I64),
+            ("2".to_string(), Type::I64)
+        ]))
     );
 
     let fun = InferType::fun(vec![concrete(), concrete()], concrete());
@@ -5396,4 +5386,15 @@ fun main() {}
         1,
         "{report:#?}"
     );
+}
+
+/// RFC-0151: a tuple is the closed row of integer labels `0 .. N-1`.
+fn tuple_row(items: Vec<InferType>) -> InferType {
+    InferType::Record(
+        items
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| (index.to_string(), item))
+            .collect(),
+    )
 }

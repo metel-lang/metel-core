@@ -63,7 +63,6 @@ use crate::pipeline::elaboration::ElaboratedModuleGraph;
 #[derive(Debug, Clone)]
 pub enum PathSegment {
     Field(String),
-    TupleIndex(usize),
     ArrayIndex(usize),
 }
 
@@ -87,7 +86,6 @@ pub enum Value {
     Boolean(bool),
     Str(String),
     // ── Compound types ────────────────────────────────────────────────────────
-    Tuple(Vec<Value>),
     Array(Rc<RefCell<Vec<Value>>>),
     Record {
         fields: HashMap<String, Value>,
@@ -1291,7 +1289,6 @@ fn deep_clone_value(v: Value) -> Value {
             let cloned: Vec<Value> = rc.borrow().iter().cloned().map(deep_clone_value).collect();
             Value::Array(Rc::new(RefCell::new(cloned)))
         }
-        Value::Tuple(items) => Value::Tuple(items.into_iter().map(deep_clone_value).collect()),
         Value::Record { fields, type_id } => Value::Record {
             fields: fields
                 .into_iter()
@@ -1348,14 +1345,6 @@ fn read_path(root: &Value, path: &[PathSegment], span: &Span) -> Result<Value, M
                     format!("fat pointer: no field `{f}`"),
                 )
             })?,
-            (PathSegment::TupleIndex(i), Value::Tuple(elems)) => {
-                elems.get(*i).cloned().ok_or_else(|| {
-                    MetelError::internal_with_code(
-                        InternalErrorCode::I0005,
-                        format!("fat pointer: tuple index {i} out of bounds"),
-                    )
-                })?
-            }
             (PathSegment::ArrayIndex(i), Value::Array(rc)) => {
                 rc.borrow().get(*i).cloned().ok_or_else(|| {
                     MetelError::panic(
@@ -1419,15 +1408,6 @@ fn write_path(
                 MetelError::internal_with_code(
                     InternalErrorCode::I0005,
                     format!("fat pointer: no field `{f}`"),
-                )
-            })?;
-            write_path(child, &path[1..], new_val, span)
-        }
-        (PathSegment::TupleIndex(i), Value::Tuple(elems)) => {
-            let child = elems.get_mut(*i).ok_or_else(|| {
-                MetelError::internal_with_code(
-                    InternalErrorCode::I0005,
-                    format!("fat pointer: tuple index {i} out of bounds"),
                 )
             })?;
             write_path(child, &path[1..], new_val, span)
@@ -1545,14 +1525,6 @@ fn runtime_type_key(ty: &TypeExpr) -> String {
                 .join(", ")
         ),
         TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
-        TypeExpr::Tuple(items) => format!(
-            "({})",
-            items
-                .iter()
-                .map(runtime_type_key)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
         // Must read as `Type`'s Display does (`.{ .x: i64 }`): `row_guards_hold` compares the two.
         TypeExpr::Record(fields) => format!(
             ".{{ {} }}",
@@ -1821,14 +1793,6 @@ fn build_mut_path(
                 ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
             };
             path.push(PathSegment::Field(field.clone()));
-            Ok(ControlFlow::Continue((root, binding, path)))
-        }
-        TypedExpr::TupleAccess { object, index, .. } => {
-            let (root, binding, mut path) = match build_mut_path(object, env, runtime, span)? {
-                ControlFlow::Continue(path) => path,
-                ControlFlow::Break(signal) => return Ok(ControlFlow::Break(signal)),
-            };
-            path.push(PathSegment::TupleIndex(*index));
             Ok(ControlFlow::Continue((root, binding, path)))
         }
         TypedExpr::Index { object, index, .. } => {
@@ -3424,11 +3388,6 @@ fn eval_assign_expr(
             object: _,
             field: _,
             span: tspan,
-        }
-        | TypedPlace::Tuple {
-            object: _,
-            index: _,
-            span: tspan,
         } => {
             let (rc, path) = lvalue::resolve_place_assign_root(target, env, runtime)?;
             let new_val = if matches!(op, crate::data::ast::AssignOp::Assign) {
@@ -3671,10 +3630,10 @@ fn eval_method_call_expr(
             format!("method `{method}` not found on this value"),
         )
     });
-    // A kind with no impl to write the `Clone` in (unit, tuple, `Copy` closure): the compiler provides it.
+    // A kind with no impl to write the `Clone` in (a `Copy` closure): the compiler provides it.
     let method_entry = match method_entry {
         Err(_) if method == "clone" => {
-            if let Some(cloned) = record_clone::provided_clone(&recv_type_view, span, runtime)? {
+            if let Some(cloned) = record_clone::provided_clone(&recv_type_view) {
                 return Ok(Signal::Value(cloned));
             }
             return Err(MetelError::internal_with_code(
@@ -4025,18 +3984,6 @@ pub fn eval_expr(
             }
         }
 
-        TypedExpr::Tuple(elems, _, _) => {
-            let mut vals = Vec::with_capacity(elems.len());
-            for e in elems {
-                let value = match eval_to_value(e, env, runtime)? {
-                    ControlFlow::Continue(value) => value,
-                    ControlFlow::Break(signal) => return Ok(signal),
-                };
-                vals.push(value);
-            }
-            Ok(Signal::Value(Value::Tuple(vals)))
-        }
-
         TypedExpr::Array(elems, _, _) => {
             let mut vals = Vec::with_capacity(elems.len());
             for e in elems {
@@ -4375,39 +4322,6 @@ pub fn eval_expr(
             Ok(Signal::Value(v))
         }
 
-        TypedExpr::TupleAccess {
-            object,
-            index,
-            span,
-            ..
-        } => {
-            let v = match eval_to_value(object, env, runtime)? {
-                ControlFlow::Continue(value) => value,
-                ControlFlow::Break(signal) => return Ok(signal),
-            };
-            let v = deref_value(&v, span)?.unwrap_or(v);
-            match v {
-                // R0005: same defensive-fallback reasoning as lvalue.rs's own
-                // TypedPlace::Tuple site -- metel-core#987, #986.
-                Value::Tuple(elems) => {
-                    elems
-                        .into_iter()
-                        .nth(*index)
-                        .map(Signal::Value)
-                        .ok_or_else(|| {
-                            MetelError::panic(
-                                RuntimeErrorCode::R0005,
-                                format!("tuple index {index} out of bounds"),
-                                span,
-                            )
-                        })
-                }
-                _ => Err(MetelError::internal(
-                    "tuple access on non-tuple (typechecker should have caught this)",
-                )),
-            }
-        }
-
         TypedExpr::Index {
             object,
             index,
@@ -4588,7 +4502,6 @@ pub fn eval_expr(
                     crate::data::types::Type::Record(_)
                         | crate::data::types::Type::Residual { .. }
                         | crate::data::types::Type::Array(_)
-                        | crate::data::types::Type::Tuple(_)
                 )
             {
                 return Err(MetelError::internal(

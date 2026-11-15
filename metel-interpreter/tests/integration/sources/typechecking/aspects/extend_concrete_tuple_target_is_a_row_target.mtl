@@ -1,0 +1,14 @@
+// RFC-0151: a tuple is the row of integer labels, so a concrete tuple target is a concrete anonymous-record target and
+// its methods are found on a tuple value and on the row written with its labels.
+aspect Area {
+    fun area(&self) -> i64;
+}
+
+extend (i64, i64): Area {
+    fun area(&self) -> i64 { return self.0 * self.1; }
+}
+
+fun main() {
+    assert((3, 4).area() == 12);
+    assert(.{ .0 = 2, .1 = 5 }.area() == 10);
+}

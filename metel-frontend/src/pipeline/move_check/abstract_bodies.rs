@@ -51,14 +51,6 @@ impl Environment<'_> {
             AbstractType::Closure { .. } => "a closure".to_string(),
             AbstractType::Reference(inner) => format!("&{}", self.render(inner)),
             AbstractType::MutReference(inner) => format!("&var {}", self.render(inner)),
-            AbstractType::Tuple(items) => {
-                let shown: Vec<String> = items.iter().map(|a| self.render(a)).collect();
-                format!(
-                    "({}{})",
-                    shown.join(", "),
-                    if shown.len() == 1 { "," } else { "" }
-                )
-            }
             _ => "_".to_string(),
         }
     }
@@ -381,7 +373,7 @@ impl Checker<'_> {
             return Ok(());
         }
         let Some(abstract_place) = expr.place() else {
-            if let AbstractExprKind::Tuple(items) | AbstractExprKind::Array(items) = &expr.kind {
+            if let AbstractExprKind::Array(items) = &expr.kind {
                 return self.consume_abstract_items(items.iter(), env, state);
             }
             return self.observe_abstract_expr(expr, env, state);
@@ -686,7 +678,7 @@ impl Checker<'_> {
             AbstractExprKind::Unary { operand, .. } | AbstractExprKind::NumericCast(operand) => {
                 self.observe_abstract_expr(operand, env, state)
             }
-            AbstractExprKind::Tuple(items) | AbstractExprKind::Array(items) => {
+            AbstractExprKind::Array(items) => {
                 for item in items {
                     self.observe_abstract_expr(item, env, state)?;
                 }
@@ -809,7 +801,6 @@ impl Checker<'_> {
                 self.observe_abstract_expr(index, env, state)
             }
             AbstractExprKind::Dereference(object)
-            | AbstractExprKind::TupleAccess { object, .. }
             | AbstractExprKind::FieldAccess { object, .. } => {
                 self.observe_abstract_place_inputs(object, env, state)
             }
@@ -1054,7 +1045,7 @@ impl Checker<'_> {
                 }
                 self.observe_abstract_expr(operand, env, state)
             }
-            AbstractExprKind::TupleAccess { .. } | AbstractExprKind::FieldAccess { .. } => {
+            AbstractExprKind::FieldAccess { .. } => {
                 self.observe_temporary_projection(expr, env, state)
             }
             AbstractExprKind::Binding(_) => {
@@ -1079,9 +1070,7 @@ impl Checker<'_> {
             return Err("temporary projection ownership contract is not yet retained".to_string());
         }
         let mut root = expr;
-        while let AbstractExprKind::TupleAccess { object, .. }
-        | AbstractExprKind::FieldAccess { object, .. } = &root.kind
-        {
+        while let AbstractExprKind::FieldAccess { object, .. } = &root.kind {
             root = object;
         }
         self.consume_abstract_expr(root, env, state, MoveCause::Other)
@@ -1152,9 +1141,8 @@ impl Checker<'_> {
         }) {
             return Ok(Some(MoveViolationKind::ArrayElementMove));
         }
-        let (AbstractExprKind::Dereference(object)
-        | AbstractExprKind::TupleAccess { object, .. }
-        | AbstractExprKind::FieldAccess { object, .. }) = &expr.kind
+        let (AbstractExprKind::Dereference(object) | AbstractExprKind::FieldAccess { object, .. }) =
+            &expr.kind
         else {
             return Ok(None);
         };
@@ -1181,9 +1169,6 @@ impl Checker<'_> {
         let bindings = match pattern {
             AbstractMatchPattern::Wildcard | AbstractMatchPattern::Literal(_) => return Ok(()),
             AbstractMatchPattern::Binding(binding) => vec![binding],
-            AbstractMatchPattern::Tuple(patterns) => {
-                return self.check_abstract_tuple_pattern(patterns, scrutinee, env, state);
-            }
             AbstractMatchPattern::Array {
                 elements,
                 remainder,
@@ -1232,9 +1217,6 @@ impl Checker<'_> {
         for pattern in patterns {
             match pattern {
                 AbstractMatchPattern::Binding(binding) => env.bind(binding, state),
-                AbstractMatchPattern::Tuple(items) => {
-                    Self::bind_abstract_pattern_values(items, env, state);
-                }
                 AbstractMatchPattern::Array {
                     elements,
                     remainder,
@@ -1252,34 +1234,6 @@ impl Checker<'_> {
         }
     }
 
-    fn check_abstract_tuple_pattern(
-        &mut self,
-        patterns: &[AbstractMatchPattern],
-        value: &AbstractExpr,
-        env: &mut Environment<'_>,
-        state: &mut FlowState,
-    ) -> Result<(), String> {
-        let AbstractType::Tuple(items) = &value.ty else {
-            return Err("tuple pattern has no retained tuple shape".to_string());
-        };
-        if patterns.len() != items.len() {
-            return Err("tuple pattern arity is not retained".to_string());
-        }
-        for (index, (pattern, item)) in patterns.iter().zip(items).enumerate() {
-            let item = AbstractExpr {
-                ty: item.clone(),
-                kind: AbstractExprKind::TupleAccess {
-                    object: Box::new(value.clone()),
-                    index,
-                    auto_dereferences: 0,
-                },
-                span: value.span.clone(),
-            };
-            self.apply_abstract_match_pattern(pattern, &item, env, state)?;
-        }
-        Ok(())
-    }
-
     // arch-implements: ["arch.move-check.requirement-8"]
     fn abstract_is_copy_in(
         &self,
@@ -1294,7 +1248,6 @@ impl Checker<'_> {
             AbstractType::Reference(_) | AbstractType::Array(_) => Ok(true),
             AbstractType::MutReference(_) => Ok(false),
             AbstractType::Function { usage, .. } => Ok(*usage == UseMultiplicity::Copy),
-            AbstractType::Tuple(items) => self.abstract_items_copy(items.iter(), env, active),
             AbstractType::Record(fields) | AbstractType::Residual { fields, .. } => {
                 self.abstract_items_copy(fields.iter().map(|(_, ty)| ty), env, active)
             }
@@ -1651,9 +1604,6 @@ fn source_place(expr: &AbstractExpr) -> Option<Place> {
             };
             Some(source_place(object)?.with_projection(Projection::field(label.clone())))
         }
-        AbstractExprKind::TupleAccess { object, index, .. } => {
-            Some(source_place(object)?.with_projection(Projection::TupleIndex(*index)))
-        }
         AbstractExprKind::Index { object, .. } => {
             Some(source_place(object)?.with_projection(Projection::OpaqueIndex))
         }
@@ -1686,7 +1636,6 @@ fn abstract_type_bucket(ty: &AbstractType) -> String {
         AbstractType::MutReference(_) => "&var T".to_string(),
         AbstractType::Array(_) => "[T]".to_string(),
         AbstractType::SizedArray(_, _) => "[T; N]".to_string(),
-        AbstractType::Tuple(_) => "tuple".to_string(),
         AbstractType::Record(_) | AbstractType::OpenRecord { .. } => "record".to_string(),
         AbstractType::Function { .. } | AbstractType::Closure { .. } => "fun".to_string(),
         AbstractType::Named { name, .. } => format!("named:{name}"),
@@ -1755,7 +1704,7 @@ fn operand_reads_only(
         AbstractExprKind::Unary { operand, .. } | AbstractExprKind::NumericCast(operand) => {
             operand_reads_only(operand, root, labels, reads)
         }
-        AbstractExprKind::Tuple(items) | AbstractExprKind::Array(items) => items
+        AbstractExprKind::Array(items) => items
             .iter()
             .all(|item| operand_reads_only(item, root, labels, reads)),
         AbstractExprKind::Call(call) => {
@@ -1809,11 +1758,6 @@ fn describe(ty: &AbstractType) -> String {
         AbstractType::Named {
             name, arguments, ..
         } => format!("{name}<{}>", list(arguments)),
-        AbstractType::Tuple(items) => format!(
-            "({}{})",
-            list(items),
-            if items.len() == 1 { "," } else { "" }
-        ),
         AbstractType::Array(inner) => format!("[{}]", describe(inner)),
         AbstractType::SizedArray(inner, n) => format!("[{}; {n}]", describe(inner)),
         AbstractType::Reference(inner) => format!("&{}", describe(inner)),

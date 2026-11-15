@@ -90,7 +90,6 @@ pub(crate) fn type_bucket(ty: &Type) -> String {
     match ty {
         Type::Array(_) => "[T]".to_string(),
         Type::SizedArray(_, _) => "[T; N]".to_string(),
-        Type::Tuple(_) => "tuple".to_string(),
         Type::Record(_) => "record".to_string(),
         Type::Str => "String".to_string(),
         Type::Reference(_) => "&T".to_string(),
@@ -637,7 +636,7 @@ impl<'a> Checker<'a> {
         match expr {
             TypedExpr::Literal(..) | TypedExpr::Ident(..) | TypedExpr::Path { .. } => {}
             TypedExpr::Continue(_) => self.reach_back_edge(state),
-            TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
+            TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.observe_expr(item, current_module, state);
                 }
@@ -691,7 +690,7 @@ impl<'a> Checker<'a> {
                     state,
                 );
             }
-            TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
+            TypedExpr::FieldAccess { object, .. } => {
                 self.observe_projection_base_expr(object, current_module, state);
             }
             TypedExpr::Index { object, index, .. } => {
@@ -1043,7 +1042,7 @@ impl<'a> Checker<'a> {
                     self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
                     self.observe_expr(index, current_module, state);
                 }
-                TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
+                TypedExpr::FieldAccess { object, .. } => {
                     self.consume_place(&place, &root_ty, expr.span(), current_module, state, cause);
                     self.observe_projection_base_expr(object, current_module, state);
                 }
@@ -1076,7 +1075,7 @@ impl<'a> Checker<'a> {
         // and also lost the move itself, so the element stayed usable
         // afterwards. Record and struct literals already consumed their fields;
         // these two were the outliers.
-        if let TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) = expr {
+        if let TypedExpr::Array(items, ..) = expr {
             for item in items {
                 self.consume_expr_with_cause(item, current_module, state, cause);
             }
@@ -1116,7 +1115,7 @@ impl<'a> Checker<'a> {
         match typed_place {
             TypedPlace::Ident(_, _, _) => {}
             TypedPlace::Deref { object, .. } => self.observe_expr(object, current_module, state),
-            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+            TypedPlace::Field { object, .. } => {
                 self.observe_projection_base_typed_place(object, current_module, state);
             }
             TypedPlace::Index { object, index, .. } => {
@@ -1137,7 +1136,7 @@ impl<'a> Checker<'a> {
                 return;
             }
             match expr {
-                TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
+                TypedExpr::FieldAccess { object, .. } => {
                     self.observe_projection_base_expr(object, current_module, state);
                 }
                 TypedExpr::Index { object, index, .. } => {
@@ -1165,7 +1164,7 @@ impl<'a> Checker<'a> {
         match typed_place {
             TypedPlace::Ident(_, _, _) => {}
             TypedPlace::Deref { object, .. } => self.observe_expr(object, current_module, state),
-            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+            TypedPlace::Field { object, .. } => {
                 self.observe_projection_base_typed_place(object, current_module, state);
             }
             TypedPlace::Index { object, index, .. } => {
@@ -1338,19 +1337,6 @@ impl<'a> Checker<'a> {
                     MoveCause::Other,
                 );
                 state.bind(name);
-            }
-            TypedPattern::Tuple(items, _) => {
-                for (index, item) in items.iter().enumerate() {
-                    let child = place.clone().with_projection(Projection::TupleIndex(index));
-                    self.apply_pattern_place_move(
-                        item,
-                        &child,
-                        root_ty,
-                        use_span,
-                        current_module,
-                        state,
-                    );
-                }
             }
             TypedPattern::Record {
                 rest_binding: Some(_),
@@ -1536,11 +1522,6 @@ impl<'a> Checker<'a> {
     fn observe_pattern_bindings(pattern: &TypedPattern, state: &mut FlowState) {
         match pattern {
             TypedPattern::Binding(name, _, _) => state.bind(name),
-            TypedPattern::Tuple(items, _) => {
-                for item in items {
-                    Self::observe_pattern_bindings(item, state);
-                }
-            }
             TypedPattern::Record {
                 fields,
                 nested,
@@ -1928,10 +1909,6 @@ impl<'a> Checker<'a> {
     ) -> Option<Type> {
         let peeled = peel_type_references(base_ty);
         match projection {
-            Projection::TupleIndex(index) => match peeled {
-                Type::Tuple(items) => items.get(*index).cloned(),
-                _ => None,
-            },
             Projection::OpaqueIndex => match peeled {
                 Type::Array(item) | Type::SizedArray(item, _) => Some((**item).clone()),
                 _ => None,
@@ -2112,12 +2089,6 @@ fn infer_to_type(ty: &crate::pipeline::type_checking::type_engine::InferType) ->
     match ty {
         InferType::Concrete(inner) => Some(inner.clone()),
         InferType::Never => Some(Type::Never),
-        InferType::Tuple(items) => Some(Type::Tuple(
-            items
-                .iter()
-                .map(infer_to_type)
-                .collect::<Option<Vec<_>>>()?,
-        )),
         InferType::Record(fields) => Some(Type::Record(
             fields
                 .iter()
@@ -2394,7 +2365,7 @@ impl FreeRootCollector {
     fn expr(&mut self, expr: &TypedExpr) {
         match expr {
             TypedExpr::Ident(name, _, ty, _) => self.capture_if_free(name, ty),
-            TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => {
+            TypedExpr::Array(items, ..) => {
                 for item in items {
                     self.expr(item);
                 }
@@ -2434,7 +2405,7 @@ impl FreeRootCollector {
                     self.expr(arg);
                 }
             }
-            TypedExpr::FieldAccess { object, .. } | TypedExpr::TupleAccess { object, .. } => {
+            TypedExpr::FieldAccess { object, .. } => {
                 self.expr(object);
             }
             TypedExpr::Index { object, index, .. } => {
@@ -2504,7 +2475,7 @@ impl FreeRootCollector {
         match place {
             TypedPlace::Ident(name, _, _) => self.capture_free_name(name),
             TypedPlace::Deref { object, .. } => self.expr(object),
-            TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
+            TypedPlace::Field { object, .. } => {
                 self.place(object);
             }
             TypedPlace::Index { object, index, .. } => {
@@ -2646,11 +2617,6 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
         TypedPattern::Binding(name, _, _) => {
             into.insert(name.clone());
         }
-        TypedPattern::Tuple(items, _) => {
-            for item in items {
-                bind_pattern_names(item, into);
-            }
-        }
         TypedPattern::EnumVariant { fields, .. } | TypedPattern::Struct { fields, .. } => {
             for (field, _id, _local) in fields {
                 into.insert(field.clone());
@@ -2687,9 +2653,9 @@ fn bind_pattern_names(pattern: &TypedPattern, into: &mut HashSet<String>) {
 fn root_place_ty_from_expr(expr: &TypedExpr) -> Option<&Type> {
     match expr {
         TypedExpr::Ident(_, _, ty, _) => Some(ty),
-        TypedExpr::FieldAccess { object, .. }
-        | TypedExpr::TupleAccess { object, .. }
-        | TypedExpr::Index { object, .. } => root_place_ty_from_expr(object),
+        TypedExpr::FieldAccess { object, .. } | TypedExpr::Index { object, .. } => {
+            root_place_ty_from_expr(object)
+        }
         _ => None,
     }
 }
@@ -2702,7 +2668,6 @@ fn typed_place_span(place: &TypedPlace) -> &Span {
         TypedPlace::Ident(_, _, span)
         | TypedPlace::Deref { span, .. }
         | TypedPlace::Field { span, .. }
-        | TypedPlace::Tuple { span, .. }
         | TypedPlace::Index { span, .. } => span,
     }
 }

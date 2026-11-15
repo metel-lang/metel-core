@@ -99,9 +99,6 @@ fn retain_match_pattern(pattern: &Pattern, ty: &InferType, span: &Span, ctx: &mu
             fact.bindings
                 .push((None, name.clone(), binding_span.clone(), ty.clone()));
         }
-        Pattern::Tuple(..) => {
-            fact.kind = DefinitionMatchPatternKind::Tuple;
-        }
         Pattern::Array { .. } => {
             fact.kind = DefinitionMatchPatternKind::Array;
         }
@@ -224,17 +221,6 @@ pub(super) fn infer_pattern(
         }
         Pattern::Binding(name, _) => {
             ctx.bind_mono(name, scrutinee_ty.clone(), mutable);
-        }
-        Pattern::Tuple(pats, _) => {
-            let elem_vars: Vec<InferType> = pats.iter().map(|_| ctx.fresh_var()).collect();
-            ctx.add_constraint(
-                scrutinee_ty.clone(),
-                InferType::Tuple(elem_vars.clone()),
-                span.clone(),
-            );
-            for (pat, elem_ty) in pats.iter().zip(elem_vars.iter()) {
-                infer_pattern(pat, elem_ty, mutable, ctx)?;
-            }
         }
         Pattern::EnumVariant {
             path,
@@ -847,7 +833,6 @@ pub(super) fn pattern_span(pattern: &Pattern) -> &Span {
         Pattern::Wildcard(s)
         | Pattern::Binding(_, s)
         | Pattern::Literal(_, s)
-        | Pattern::Tuple(_, s)
         | Pattern::EnumVariant { span: s, .. }
         | Pattern::Struct { span: s, .. }
         | Pattern::Record { span: s, .. }

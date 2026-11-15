@@ -1804,7 +1804,6 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
         }
         Expr::Literal(_, span)
         | Expr::Ident(_, span)
-        | Expr::Tuple(_, span)
         | Expr::Array(_, span)
         | Expr::RepeatArray(_, _, span)
         | Expr::BinOp(_, _, _, span)
@@ -1849,7 +1848,7 @@ fn shift_expr_span(expr: &mut Expr, base_start: usize, base_line: u32, base_col:
             }
             shift_span(span, base_start, base_line, base_col);
         }
-        Expr::FieldAccess { object, span, .. } | Expr::TupleAccess { object, span, .. } => {
+        Expr::FieldAccess { object, span, .. } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
@@ -1943,9 +1942,7 @@ fn shift_assign_target_span(
 ) {
     match target {
         AssignTarget::Ident(_, span) => shift_span(span, base_start, base_line, base_col),
-        AssignTarget::FieldAccess { object, span, .. }
-        | AssignTarget::TupleAccess { object, span, .. }
-        | AssignTarget::Deref { object, span } => {
+        AssignTarget::FieldAccess { object, span, .. } | AssignTarget::Deref { object, span } => {
             shift_expr_span(object, base_start, base_line, base_col);
             shift_span(span, base_start, base_line, base_col);
         }
@@ -2117,12 +2114,6 @@ fn shift_pattern_span(pattern: &mut Pattern, base_start: usize, base_line: u32, 
         Pattern::Wildcard(span) | Pattern::Binding(_, span) | Pattern::Literal(_, span) => {
             shift_span(span, base_start, base_line, base_col);
         }
-        Pattern::Tuple(items, span) => {
-            for item in items {
-                shift_pattern_span(item, base_start, base_line, base_col);
-            }
-            shift_span(span, base_start, base_line, base_col);
-        }
         Pattern::Array { elems, span, .. } => {
             for item in elems {
                 shift_pattern_span(item, base_start, base_line, base_col);
@@ -2167,7 +2158,16 @@ fn parse_tuple_or_paren(
     if elems.len() == 1 && !one_element_tuple {
         Ok(elems.into_iter().next().unwrap())
     } else {
-        Ok(Expr::Tuple(elems, span))
+        // RFC-0151: `(a, b)` is the record literal `.{ .0 = a, .1 = b }`.
+        Ok(Expr::RecordLiteral {
+            fields: elems
+                .into_iter()
+                .enumerate()
+                .map(|(index, elem)| (index.to_string(), elem))
+                .collect(),
+            spread: None,
+            span,
+        })
     }
 }
 
@@ -2805,9 +2805,10 @@ fn apply_postfix(
                         first.as_str()
                     ))
                 })?;
-                Ok(Expr::TupleAccess {
+                // RFC-0151: `t.0` is field access on the numeric label `.0`.
+                Ok(Expr::FieldAccess {
                     object: Box::new(base),
-                    index: idx,
+                    field: idx.to_string(),
                     span,
                 })
             }
@@ -3118,7 +3119,7 @@ fn parse_pattern(pair: pest::iterators::Pair<Rule>, filename: &str) -> Result<Pa
             if pats.len() == 1 && !one_element_tuple {
                 return Ok(pats.remove(0));
             }
-            Ok(Pattern::Tuple(pats, span))
+            Ok(tuple_pattern_as_record(pats, span))
         }
         Rule::record_pattern => {
             let span = Span::of(&pair, filename);
@@ -3322,9 +3323,9 @@ fn parse_assign_op(s: &str) -> AssignOp {
 fn is_assignable_place(expr: &Expr) -> bool {
     match expr {
         Expr::Ident(..) | Expr::UnaryOp(UnaryOp::Deref, ..) => true,
-        Expr::FieldAccess { object, .. }
-        | Expr::TupleAccess { object, .. }
-        | Expr::Index { object, .. } => is_assignable_place(object),
+        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => {
+            is_assignable_place(object)
+        }
         _ => false,
     }
 }
@@ -3342,9 +3343,7 @@ fn not_an_assignment_target(expr: &Expr) -> MetelError {
 }
 
 fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
-    if let Expr::FieldAccess { object, .. }
-    | Expr::TupleAccess { object, .. }
-    | Expr::Index { object, .. } = &expr
+    if let Expr::FieldAccess { object, .. } | Expr::Index { object, .. } = &expr
         && !is_assignable_place(object)
     {
         return Err(not_an_assignment_target(object));
@@ -3360,15 +3359,6 @@ fn expr_to_assign_target(expr: Expr) -> Result<AssignTarget, MetelError> {
         } => Ok(AssignTarget::FieldAccess {
             object,
             field,
-            span,
-        }),
-        Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } => Ok(AssignTarget::TupleAccess {
-            object,
-            index,
             span,
         }),
         Expr::Index {
@@ -3480,7 +3470,15 @@ fn parse_type_expr(
                 .filter(|p| p.as_rule() == Rule::type_expr)
                 .map(|p| parse_type_expr(p, filename))
                 .collect::<Result<_, _>>()?;
-            Ok(TypeExpr::Tuple(elems))
+            // RFC-0151: `(A, B)` is the row type `.{ .0: A, .1: B }`.
+            let elems: Vec<TypeExpr> = elems;
+            Ok(TypeExpr::Record(
+                elems
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, elem)| (index.to_string(), elem))
+                    .collect(),
+            ))
         }
         Rule::record_type | Rule::row_literal_closed => {
             let span = Span::of(&pair, filename);
@@ -4963,5 +4961,43 @@ mod architecture_evidence_tests {
             "{} defines an interpolation node; interpolation must lower during parsing",
             path.display()
         );
+    }
+}
+
+/// RFC-0151: the tuple pattern `(p₀, …, pₙ)` is the record pattern `.{ .0: p₀, …, .n: pₙ }`. A name binds the field, `_`
+/// discards it, and any other pattern is matched against it through a generated binder.
+fn tuple_pattern_as_record(patterns: Vec<Pattern>, span: Span) -> Pattern {
+    let mut fields = vec![];
+    let mut labels = vec![];
+    let mut field_spans = vec![];
+    let mut ignored_fields = vec![];
+    let mut nested = vec![];
+    for (index, pattern) in patterns.into_iter().enumerate() {
+        let label = index.to_string();
+        match pattern {
+            Pattern::Binding(name, name_span) => {
+                field_spans.push(name_span);
+                fields.push(name);
+                labels.push(label);
+            }
+            Pattern::Wildcard(_) => ignored_fields.push(label),
+            sub => {
+                let binder = crate::data::ast::nested_binder(&label);
+                field_spans.push(sub.span().clone());
+                fields.push(binder.clone());
+                labels.push(label);
+                nested.push((binder, sub));
+            }
+        }
+    }
+    Pattern::Record {
+        fields,
+        labels,
+        field_spans,
+        ignored_fields,
+        nested,
+        rest: false,
+        rest_binding: None,
+        span,
     }
 }

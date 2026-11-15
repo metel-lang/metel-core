@@ -68,11 +68,6 @@ pub(super) fn resolve_place_assign_root(
                 path.push(PathSegment::Field(field.clone()));
                 Ok(root_rc)
             }
-            TypedPlace::Tuple { object, index, .. } => {
-                let root_rc = walk(object, path, env, runtime)?;
-                path.push(PathSegment::TupleIndex(*index));
-                Ok(root_rc)
-            }
             TypedPlace::Index { .. } => Err(MetelError::internal_with_code(
                 InternalErrorCode::I0003,
                 "assign: unsupported receiver form",
@@ -141,32 +136,6 @@ pub(super) fn eval_typed_place_value(
                 }),
                 _ => Err(MetelError::internal(format!(
                     "field `{field}`: receiver is not a record/struct/enum"
-                ))),
-            }
-        }
-        TypedPlace::Tuple {
-            object,
-            index,
-            span: tspan,
-        } => {
-            let parent = eval_typed_place_value(object, env, runtime)?;
-            match parent {
-                // R0005: believed genuinely unreachable via well-typed source --
-                // `index` is a source-literal tuple index the typechecker already
-                // validates against the tuple type's known arity before this ever
-                // runs (metel-core#987, #986's own audit). Kept as a defensive
-                // fallback rather than `unreachable!()`/an outright panic: a
-                // clean diagnostic here is strictly better than UB or a Rust
-                // panic if some untried construct ever proves this wrong.
-                Value::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
-                    MetelError::panic(
-                        RuntimeErrorCode::R0005,
-                        format!("tuple index {index} out of bounds"),
-                        tspan,
-                    )
-                }),
-                _ => Err(MetelError::internal(format!(
-                    "tuple `{index}`: receiver is not a tuple"
                 ))),
             }
         }

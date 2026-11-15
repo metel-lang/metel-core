@@ -9,7 +9,9 @@ use crate::data::ast::{
     TypeExpr, Visibility,
 };
 use crate::data::error::MetelError;
-use crate::data::types::{CallMultiplicity, CallMutation, Type, UseMultiplicity};
+use crate::data::types::{
+    CallMultiplicity, CallMutation, Type, UseMultiplicity, is_dense_tuple_row, write_tuple_row,
+};
 use crate::identity::symbols::{Namespace, SymbolId};
 use crate::identity::{BindingSpans, FieldId, MemberTable, VariantId};
 use crate::pipeline::name_resolution::name_resolver::{
@@ -62,7 +64,6 @@ pub enum InferType {
         CallMutation,
     ),
     /// A tuple type.
-    Tuple(Vec<InferType>),
     /// A closed anonymous record type with lexicographically sorted labels.
     Record(Vec<(String, InferType)>),
     /// Anonymous row of a record-kinded type, retaining its source until resolved.
@@ -175,13 +176,9 @@ impl std::fmt::Display for InferType {
                 write!(f, "| -> {ret}")
             }
             // RFC-0151: a one-element tuple is written `(A,)`.
-            InferType::Tuple(ts) => {
-                let items: Vec<String> = ts.iter().map(ToString::to_string).collect();
-                let tail = if ts.len() == 1 { "," } else { "" };
-                write!(f, "({}{tail})", items.join(", "))
-            }
             // The empty closed row is the unit type and prints as `()` (RFC-0231).
             InferType::Record(fields) if fields.is_empty() => write!(f, "()"),
+            InferType::Record(fields) if is_dense_tuple_row(fields) => write_tuple_row(f, fields),
             InferType::Record(fields) => {
                 write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
@@ -313,11 +310,6 @@ fn collect_free_vars_in_order(
             }
             collect_free_vars_in_order(ret, known, local, next);
         }
-        InferType::Tuple(ts) => {
-            for t in ts {
-                collect_free_vars_in_order(t, known, local, next);
-            }
-        }
         InferType::Record(fields) | InferType::Residual { fields, .. } => {
             for (_, t) in fields {
                 collect_free_vars_in_order(t, known, local, next);
@@ -376,15 +368,16 @@ fn render_with_names(
                 .join(", "),
             render_with_names(ret, known, local)
         ),
-        InferType::Tuple(ts) => format!(
+        InferType::Record(fields) if fields.is_empty() => "()".to_string(),
+        InferType::Record(fields) if is_dense_tuple_row(fields) => format!(
             "({}{})",
-            ts.iter()
-                .map(|t| render_with_names(t, known, local))
+            fields
+                .iter()
+                .map(|(_, t)| render_with_names(t, known, local))
                 .collect::<Vec<_>>()
                 .join(", "),
-            if ts.len() == 1 { "," } else { "" }
+            if fields.len() == 1 { "," } else { "" }
         ),
-        InferType::Record(fields) if fields.is_empty() => "()".to_string(),
         InferType::Record(fields) => format!(
             ".{{ {} }}",
             fields
@@ -526,7 +519,6 @@ impl Substitution {
                 *use_mult,
                 *call_mutation,
             ),
-            InferType::Tuple(ts) => InferType::Tuple(ts.iter().map(|t| self.apply(t)).collect()),
             InferType::Record(fields) => InferType::Record(
                 fields
                     .iter()
@@ -686,7 +678,6 @@ fn occurs_in(var: TypeVar, ty: &InferType) -> bool {
         InferType::Fun(params, ret, ..) => {
             params.iter().any(|p| occurs_in(var, p)) || occurs_in(var, ret)
         }
-        InferType::Tuple(ts) => ts.iter().any(|t| occurs_in(var, t)),
         InferType::Record(fields) => fields.iter().any(|(_, ty)| occurs_in(var, ty)),
         InferType::RowExtend { fields, tail } => {
             fields.iter().any(|(_, ty)| occurs_in(var, ty)) || occurs_in(var, tail)
@@ -792,9 +783,6 @@ fn nested_fun_axes_match_at(a: &InferType, b: &InferType, fun_depth: usize) -> b
                 && ap.iter().zip(bp).all(|(a, b)| deeper(a, b))
                 && deeper(ar, br)
         }
-        (InferType::Tuple(as_), InferType::Tuple(bs)) => {
-            as_.len() == bs.len() && as_.iter().zip(bs).all(|(a, b)| same(a, b))
-        }
         (InferType::Record(as_), InferType::Record(bs)) => {
             as_.len() == bs.len()
                 && as_
@@ -850,7 +838,6 @@ fn contains_type_var(ty: &InferType) -> bool {
         InferType::Fun(params, ret, ..) => {
             params.iter().any(contains_type_var) || contains_type_var(ret)
         }
-        InferType::Tuple(items) => items.iter().any(contains_type_var),
         InferType::Record(fields) => fields.iter().any(|(_, ty)| contains_type_var(ty)),
         InferType::RowExtend { fields, tail } => {
             fields.iter().any(|(_, ty)| contains_type_var(ty)) || contains_type_var(tail)
@@ -1012,16 +999,6 @@ pub fn unify(a: &InferType, b: &InferType) -> Result<Substitution, MetelError> {
                 return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
             }
             unify_seq(&mut subst, ret1, ret2)?;
-            Ok(subst)
-        }
-        (InferType::Tuple(ts1), InferType::Tuple(ts2)) => {
-            if ts1.len() != ts2.len() {
-                return Err(MetelError::internal(format!("cannot unify {a} with {b}")));
-            }
-            let mut subst = Substitution::new();
-            for (t1, t2) in ts1.iter().zip(ts2.iter()) {
-                unify_seq(&mut subst, t1, t2)?;
-            }
             Ok(subst)
         }
         (InferType::Record(fields1), InferType::Record(fields2)) => {
@@ -1520,17 +1497,18 @@ fn render_for_user(
                 "_".to_string()
             }
         }),
+        InferType::Record(fs) if fs.is_empty() => "()".to_string(),
+        InferType::Record(fs) if is_dense_tuple_row(fs) => format!(
+            "({}{})",
+            fs.iter().map(|(_, t)| go(t)).collect::<Vec<_>>().join(", "),
+            if fs.len() == 1 { "," } else { "" }
+        ),
         InferType::Record(fs) => format!(".{{ {} }}", fields(fs)),
         InferType::RowExtend { fields: fs, tail } => match tail.as_ref() {
             InferType::Var(_) if fs.is_empty() => ".{ .. }".to_string(),
             InferType::Var(_) => format!(".{{ {}, .. }}", fields(fs)),
             other => format!(".{{ {}, ..{} }}", fields(fs), go(other)),
         },
-        InferType::Tuple(ts) => format!(
-            "({}{})",
-            ts.iter().map(go).collect::<Vec<_>>().join(", "),
-            if ts.len() == 1 { "," } else { "" }
-        ),
         InferType::Array(t) => format!("[{}]", go(t)),
         InferType::SizedArray(t, n) => format!("[{}; {n}]", go(t)),
         InferType::Reference(t) => format!("&{}", go(t)),
@@ -1912,11 +1890,17 @@ fn unify_expected(actual: &InferType, expected: &InferType) -> Result<Substituti
     if matches!(expected, InferType::RowView(source) if source.as_ref() == actual) {
         return Ok(Substitution::new());
     }
-    if let (InferType::Tuple(actual), InferType::Tuple(expected)) = (actual, expected)
+    // RFC-0151: a closed row is the tuple's generalisation, so its fields are coerced to the expected fields one by
+    // one in the same way (a field of type `R` fills a field expected as `{ ..R }`).
+    if let (InferType::Record(actual), InferType::Record(expected)) = (actual, expected)
         && actual.len() == expected.len()
+        && actual
+            .iter()
+            .zip(expected)
+            .all(|((actual, _), (expected, _))| actual == expected)
     {
         let mut subst = Substitution::new();
-        for (actual, expected) in actual.iter().zip(expected) {
+        for ((_, actual), (_, expected)) in actual.iter().zip(expected) {
             let delta = unify_expected(&subst.apply(actual), &subst.apply(expected))?;
             subst = subst.compose(&delta);
         }
@@ -2057,9 +2041,7 @@ fn collect_free_vars(ty: &InferType, vars: &mut HashSet<TypeVar>) {
             }
             collect_free_vars(ret, vars);
         }
-        InferType::Tuple(ts)
-        | InferType::Named(_, ts, ..)
-        | InferType::Dyn { type_args: ts, .. } => {
+        InferType::Named(_, ts, ..) | InferType::Dyn { type_args: ts, .. } => {
             for t in ts {
                 collect_free_vars(t, vars);
             }
@@ -2885,16 +2867,6 @@ impl fmt::Display for GenericBound {
                     Ok(())
                 }
                 TypeExpr::Record(fields) if fields.is_empty() => f.write_str("()"),
-                TypeExpr::Tuple(items) => {
-                    f.write_str("(")?;
-                    for (index, item) in items.iter().enumerate() {
-                        if index > 0 {
-                            f.write_str(", ")?;
-                        }
-                        write_type_expr(f, item)?;
-                    }
-                    f.write_str(")")
-                }
                 TypeExpr::Record(fields) => {
                     f.write_str("{ ")?;
                     for (index, (label, item_ty)) in fields.iter().enumerate() {
@@ -3081,7 +3053,6 @@ pub fn type_to_infer(ty: &Type) -> InferType {
         Type::Never => InferType::Never,
         Type::Array(t) => InferType::Array(Box::new(type_to_infer(t))),
         Type::SizedArray(t, n) => InferType::SizedArray(Box::new(type_to_infer(t)), *n),
-        Type::Tuple(ts) => InferType::Tuple(ts.iter().map(type_to_infer).collect()),
         Type::Record(fields) => InferType::Record(
             fields
                 .iter()
@@ -4750,9 +4721,6 @@ impl TypeDefinitionRegistry {
                         .iter()
                         .any(|arg| self.type_contains_symbolic_parameters(arg))
             }
-            Type::Tuple(items) => items
-                .iter()
-                .any(|item| self.type_contains_symbolic_parameters(item)),
             Type::Record(fields) => fields
                 .iter()
                 .any(|(_, field)| self.type_contains_symbolic_parameters(field)),
@@ -5269,7 +5237,6 @@ impl TypeDefinitionRegistry {
                 *usage,
                 *mutation,
             ),
-            InferType::Tuple(items) => InferType::Tuple(items.iter().map(resolve).collect()),
             InferType::Record(fields) => InferType::Record(
                 fields
                     .iter()
@@ -5680,22 +5647,6 @@ impl TypeDefinitionRegistry {
                     aspect_name,
                     assumptions,
                 )
-            }
-            InferType::Tuple(items) => {
-                // A tuple is `Clone` when every part is (provided, RFC-0206 section 2).
-                if is_copy || aspect_name == "Clone" {
-                    // #299: tuple `Copy` stays hardcoded here until tuple impl targets stop
-                    // being checker-only and can move into the stdlib.
-                    return items.iter().all(|item| {
-                        self.infer_type_satisfies_aspect(
-                            current_module,
-                            item,
-                            aspect_name,
-                            assumptions,
-                        )
-                    });
-                }
-                false
             }
             InferType::Reference(_) => {
                 // `&T` is `Copy`, and so `Clone`, for every `T` (RFC-0206): the clone is another
@@ -7433,7 +7384,6 @@ pub(crate) enum DefinitionMatchPatternKind {
     Wildcard,
     Literal(crate::data::ast::Literal),
     Binding,
-    Tuple,
     Array,
     Record,
     Struct(crate::identity::symbols::SymbolId),

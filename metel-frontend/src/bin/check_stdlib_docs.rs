@@ -93,12 +93,6 @@ fn render_type(t: &TypeExpr) -> String {
             )
         }
         TypeExpr::Record(fields) if fields.is_empty() => "()".to_string(),
-        TypeExpr::Tuple(items) => {
-            format!(
-                "({})",
-                items.iter().map(render_type).collect::<Vec<_>>().join(", ")
-            )
-        }
         TypeExpr::Array(inner) => format!("[{}]", render_type(inner)),
         TypeExpr::SizedArray(inner, n) => format!("[{}; {n}]", render_type(inner)),
         TypeExpr::Reference(inner) => format!("&{}", render_type(inner)),

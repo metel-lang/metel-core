@@ -239,12 +239,6 @@ fn freshen_anonymous_row_args(ty: InferType, ctx: &mut InferContext) -> InferTyp
                 .collect(),
             id,
         ),
-        InferType::Tuple(items) => InferType::Tuple(
-            items
-                .into_iter()
-                .map(|item| freshen_anonymous_row_args(item, ctx))
-                .collect(),
-        ),
         InferType::Record(fields) => InferType::Record(
             fields
                 .into_iter()
@@ -486,11 +480,6 @@ fn impl_params(ib: &ImplBlock, ctx: &mut InferContext) -> (Vec<ImplParam>, Aspec
 fn infer_type_to_concrete_if_closed(ty: &InferType) -> Option<Type> {
     match ty {
         InferType::Concrete(concrete) => Some(concrete.clone()),
-        InferType::Tuple(items) => items
-            .iter()
-            .map(infer_type_to_concrete_if_closed)
-            .collect::<Option<Vec<_>>>()
-            .map(Type::Tuple),
         InferType::Array(item) => {
             infer_type_to_concrete_if_closed(item).map(|item| Type::Array(Box::new(item)))
         }
@@ -530,7 +519,6 @@ fn mentions_type_param(ty: &TypeExpr, params: &std::collections::HashSet<&str>) 
     let go = |t: &TypeExpr| mentions_type_param(t, params);
     match ty {
         TypeExpr::Named(name, args, _) => params.contains(name.as_str()) || args.iter().any(go),
-        TypeExpr::Tuple(items) => items.iter().any(go),
         TypeExpr::Record(fields) => fields.iter().any(|(_, t)| go(t)),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
@@ -615,7 +603,6 @@ fn substitute_impl_params(
         InferType::Var(var) => type_param_args
             .get(var)
             .map_or_else(|| ty.clone(), |arg| type_expr_as_infer(arg, params)),
-        InferType::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         InferType::Record(fields) => InferType::Record(
             fields
                 .iter()
@@ -677,7 +664,6 @@ fn type_expr_as_infer(ty: &TypeExpr, params: &[ImplParam]) -> InferType {
             args.iter().map(go).collect(),
             crate::data::types::NominalId::NONE,
         ),
-        TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => InferType::Record(
             fields
                 .iter()
@@ -709,14 +695,6 @@ fn display_type(ty: &InferType, params: &[ImplParam]) -> String {
         InferType::Named(name, args, ..) if !args.is_empty() => {
             let rendered: Vec<String> = args.iter().map(|a| display_type(a, params)).collect();
             format!("{name}<{}>", rendered.join(", "))
-        }
-        InferType::Tuple(items) => {
-            let rendered: Vec<String> = items.iter().map(|i| display_type(i, params)).collect();
-            format!(
-                "({}{})",
-                rendered.join(", "),
-                if rendered.len() == 1 { "," } else { "" }
-            )
         }
         InferType::Array(item) => format!("[{}]", display_type(item, params)),
         InferType::SizedArray(item, size) => format!("[{}; {size}]", display_type(item, params)),
@@ -1387,7 +1365,6 @@ fn type_names_row_arg(ty: &TypeExpr, var: &str) -> bool {
         TypeExpr::Reference(inner) | TypeExpr::MutReference(inner) | TypeExpr::Array(inner) => {
             type_names_row_arg(inner, var)
         }
-        TypeExpr::Tuple(items) => items.iter().any(|t| type_names_row_arg(t, var)),
         _ => false,
     }
 }
@@ -1707,7 +1684,6 @@ fn signature_type_expr_to_infer(te: &TypeExpr, env: &SignatureEnv) -> InferType 
             args.iter().map(go).collect(),
             crate::data::types::NominalId::NONE,
         ),
-        TypeExpr::Tuple(items) => InferType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => InferType::Record(
             fields
                 .iter()
@@ -2967,9 +2943,7 @@ fn contains_dyn_erasure(ty: &InferType) -> bool {
         | InferType::MutReference(inner)
         | InferType::Array(inner)
         | InferType::SizedArray(inner, _) => contains_dyn_erasure(inner),
-        InferType::Tuple(items) | InferType::Named(_, items, _) => {
-            items.iter().any(contains_dyn_erasure)
-        }
+        InferType::Named(_, items, _) => items.iter().any(contains_dyn_erasure),
         InferType::Record(fields) | InferType::Residual { fields, .. } => {
             fields.iter().any(|(_, ty)| contains_dyn_erasure(ty))
         }
@@ -2989,9 +2963,9 @@ fn contains_dyn_erasure(ty: &InferType) -> bool {
 fn root_binding_for_write(expr: &Expr) -> Option<(&str, &Span)> {
     match expr {
         Expr::Ident(name, span) => Some((name.as_str(), span)),
-        Expr::FieldAccess { object, .. }
-        | Expr::TupleAccess { object, .. }
-        | Expr::Index { object, .. } => root_binding_for_write(object),
+        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => {
+            root_binding_for_write(object)
+        }
         _ => None,
     }
 }
@@ -3194,56 +3168,6 @@ fn infer_row_extend_field_type(
         _ => Err(MetelError::type_error(
             TypeErrorCode::T0003,
             format!("no field `{field}` on {whole}"),
-            target_span,
-        )),
-    }
-}
-
-fn infer_tuple_assign_type(
-    object: &Expr,
-    index: usize,
-    target_span: &Span,
-    ctx: &mut InferContext,
-    fun_generalizations: &mut Vec<FunGeneralization>,
-) -> Result<InferType, MetelError> {
-    let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
-    let obj_ty = ctx.solve()?.apply(&obj_ty);
-    let is_through_mut_ptr = matches!(&obj_ty, InferType::MutReference(_))
-        || matches!(
-            root_binding_for_write(object).and_then(|(name, _)| ctx.lookup_mono_raw(name)),
-            Some(InferType::MutReference(_))
-        );
-    if !is_through_mut_ptr && let Some((name, span)) = root_binding_for_write(object) {
-        let _ = ctx.lookup_for_write(name, span)?;
-    }
-    // Reach through a reference at the root, the way field- and index-path assignment
-    // already do (`s.x = v` and `xs[0] = v` both work for a `&var` receiver). Peeled
-    // *after* the `is_through_mut_ptr` check above, which needs the unpeeled shape.
-    match peel_all_references(&obj_ty) {
-        InferType::Tuple(elems) => elems.get(index).cloned().ok_or_else(|| {
-            MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!(
-                    "tuple index {index} out of bounds (tuple has {} elements)",
-                    elems.len()
-                ),
-                target_span,
-            )
-        }),
-        // A record or row with an integer label (RFC-0151): `r.0 = v` writes the field `.0`.
-        InferType::Record(_) | InferType::Residual { .. } | InferType::RowExtend { .. } => {
-            field_assign_type_for(
-                object,
-                &obj_ty,
-                &index.to_string(),
-                is_through_mut_ptr,
-                target_span,
-                ctx,
-            )
-        }
-        _ => Err(MetelError::type_error(
-            TypeErrorCode::T0002,
-            "cannot infer tuple type for assignment; add a type annotation",
             target_span,
         )),
     }

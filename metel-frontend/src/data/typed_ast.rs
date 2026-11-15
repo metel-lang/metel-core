@@ -372,11 +372,6 @@ pub enum TypedPlace {
         field: String,
         span: Span,
     },
-    Tuple {
-        object: Box<TypedPlace>,
-        index: usize,
-        span: Span,
-    },
     Index {
         object: Box<TypedPlace>,
         index: Box<TypedExpr>,
@@ -415,7 +410,6 @@ pub enum TypedExpr {
         ty: Type,
         span: Span,
     },
-    Tuple(Vec<TypedExpr>, Type, Span),
     Array(Vec<TypedExpr>, Type, Span),
     RecordLiteral {
         fields: Vec<(String, TypedExpr)>,
@@ -483,12 +477,6 @@ pub enum TypedExpr {
         /// diagnostic-recovery state, never a fabricated id. `field` is retained
         /// for diagnostics and the (pre-#1063) evaluator.
         field_id: Option<FieldId>,
-        ty: Type,
-        span: Span,
-    },
-    TupleAccess {
-        object: Box<TypedExpr>,
-        index: usize,
         ty: Type,
         span: Span,
     },
@@ -637,7 +625,6 @@ impl TypedExpr {
             TypedExpr::Literal(_, ty, _)
             | TypedExpr::Ident(_, _, ty, _)
             | TypedExpr::Path { ty, .. }
-            | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
             | TypedExpr::RecordLiteral { ty, .. }
             | TypedExpr::RepeatArray(_, _, ty, _)
@@ -648,7 +635,6 @@ impl TypedExpr {
             | TypedExpr::Call { ty, .. }
             | TypedExpr::MethodCall { ty, .. }
             | TypedExpr::FieldAccess { ty, .. }
-            | TypedExpr::TupleAccess { ty, .. }
             | TypedExpr::Index { ty, .. }
             | TypedExpr::Cast { ty, .. }
             | TypedExpr::If { ty, .. }
@@ -674,7 +660,6 @@ impl TypedExpr {
             TypedExpr::Literal(_, ty, _)
             | TypedExpr::Ident(_, _, ty, _)
             | TypedExpr::Path { ty, .. }
-            | TypedExpr::Tuple(_, ty, _)
             | TypedExpr::Array(_, ty, _)
             | TypedExpr::RecordLiteral { ty, .. }
             | TypedExpr::RepeatArray(_, _, ty, _)
@@ -685,7 +670,6 @@ impl TypedExpr {
             | TypedExpr::Call { ty, .. }
             | TypedExpr::MethodCall { ty, .. }
             | TypedExpr::FieldAccess { ty, .. }
-            | TypedExpr::TupleAccess { ty, .. }
             | TypedExpr::Index { ty, .. }
             | TypedExpr::Cast { ty, .. }
             | TypedExpr::If { ty, .. }
@@ -709,7 +693,6 @@ impl TypedExpr {
             TypedExpr::Literal(_, _, s)
             | TypedExpr::Ident(_, _, _, s)
             | TypedExpr::Path { span: s, .. }
-            | TypedExpr::Tuple(_, _, s)
             | TypedExpr::Array(_, _, s)
             | TypedExpr::RecordLiteral { span: s, .. }
             | TypedExpr::RepeatArray(_, _, _, s)
@@ -720,7 +703,6 @@ impl TypedExpr {
             | TypedExpr::Call { span: s, .. }
             | TypedExpr::MethodCall { span: s, .. }
             | TypedExpr::FieldAccess { span: s, .. }
-            | TypedExpr::TupleAccess { span: s, .. }
             | TypedExpr::Index { span: s, .. }
             | TypedExpr::Cast { span: s, .. }
             | TypedExpr::If { span: s, .. }
@@ -800,7 +782,6 @@ pub enum TypedPattern {
         rest: bool,
         span: Span,
     },
-    Tuple(Vec<TypedPattern>, Span),
     Array {
         elems: Vec<TypedPattern>,
         /// The rest-binding's spelling and the `LocalId` it introduces
@@ -845,7 +826,6 @@ pub fn is_lvalue_path(expr: &TypedExpr) -> bool {
     match expr {
         TypedExpr::Ident(..) => true,
         TypedExpr::FieldAccess { object, .. }
-        | TypedExpr::TupleAccess { object, .. }
         | TypedExpr::Index { object, .. }
         | TypedExpr::UnaryOp(crate::data::ast::UnaryOp::Deref, object, _, _) => {
             is_lvalue_path(object)

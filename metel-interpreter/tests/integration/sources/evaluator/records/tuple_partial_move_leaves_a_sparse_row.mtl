@@ -1,0 +1,18 @@
+// RFC-0151: moving one element out of a tuple narrows it to the row of the elements that remain, keeping their labels:
+// the last element of a pair leaves the one-element tuple, a middle element leaves a row with a gap that a row-bounded
+// parameter accepts.
+fun keep_one(t: (String,)) -> String { t.0 }
+fun first_label<record R: .{ .0: String, .. }>(t: R) -> String { t.0 }
+
+fun main() {
+    let pair := ("a", "b");
+    let moved := pair.1;
+    assert(moved == "b");
+    assert(keep_one(pair) == "a");
+
+    let triple := ("x", "y", "z");
+    let middle := triple.1;
+    assert(middle == "y");
+    assert(first_label(triple) == "x");
+    assert(triple.2 == "z");
+}

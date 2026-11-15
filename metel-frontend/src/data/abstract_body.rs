@@ -29,7 +29,6 @@ pub enum AbstractType {
         usage: UseMultiplicity,
         mutation: CallMutation,
     },
-    Tuple(Vec<Self>),
     Record(Vec<(String, Self)>),
     OpenRecord {
         fields: Vec<(String, Self)>,
@@ -282,7 +281,6 @@ impl AbstractMatchPattern {
         match self {
             Self::Wildcard | Self::Binding(_) => true,
             Self::Literal(_) | Self::Variant { .. } => false,
-            Self::Tuple(items) => items.iter().all(Self::is_irrefutable),
             Self::Array { elements, .. } => elements.iter().all(Self::is_irrefutable),
             Self::Record(pattern) => pattern.nested.iter().all(|(_, sub)| sub.is_irrefutable()),
         }
@@ -312,7 +310,6 @@ pub enum AbstractMatchPattern {
     Wildcard,
     Literal(Literal),
     Binding(AbstractBinding),
-    Tuple(Vec<Self>),
     Array {
         elements: Vec<Self>,
         remainder: Option<AbstractBinding>,
@@ -360,7 +357,6 @@ pub enum AbstractExprKind {
         operator: crate::data::ast::UnaryOp,
         operand: Box<AbstractExpr>,
     },
-    Tuple(Vec<AbstractExpr>),
     Array(Vec<AbstractExpr>),
     RepeatArray {
         value: Box<AbstractExpr>,
@@ -415,11 +411,6 @@ pub enum AbstractExprKind {
     Index {
         object: Box<AbstractExpr>,
         index: Box<AbstractExpr>,
-        auto_dereferences: usize,
-    },
-    TupleAccess {
-        object: Box<AbstractExpr>,
-        index: usize,
         auto_dereferences: usize,
     },
     Call(AbstractCall),
@@ -538,18 +529,6 @@ impl AbstractExpr {
             AbstractExprKind::Dereference(object) => {
                 let mut place = object.place()?;
                 place.projections.push(Projection::Deref);
-                Some(place)
-            }
-            AbstractExprKind::TupleAccess {
-                object,
-                index,
-                auto_dereferences,
-            } => {
-                let mut place = object.place()?;
-                place
-                    .projections
-                    .extend(std::iter::repeat_n(Projection::Deref, *auto_dereferences));
-                place.projections.push(Projection::TupleIndex(*index));
                 Some(place)
             }
             AbstractExprKind::Index {

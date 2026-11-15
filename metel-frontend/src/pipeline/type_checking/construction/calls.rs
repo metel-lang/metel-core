@@ -10,9 +10,7 @@ use crate::identity::{BindingSpans, TypeParamId};
 
 fn is_through_shared_reference(expr: &TypedExpr) -> bool {
     match expr {
-        TypedExpr::FieldAccess { object, .. }
-        | TypedExpr::TupleAccess { object, .. }
-        | TypedExpr::Index { object, .. } => {
+        TypedExpr::FieldAccess { object, .. } | TypedExpr::Index { object, .. } => {
             matches!(object.ty(), Type::Reference(_)) || is_through_shared_reference(object)
         }
         _ => matches!(expr.ty(), Type::Reference(_)),
@@ -1756,23 +1754,6 @@ pub(super) fn check_type_satisfies_bounds(
             }
             return Ok(());
         }
-        Type::Tuple(_) => {
-            for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
-                if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
-                    let message = if registry.is_copy_aspect(current_module, aspect) {
-                        format!(
-                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuples implement `{aspect}` only when every element does"
-                        )
-                    } else {
-                        format!(
-                            "`{concrete}` does not implement `{aspect}` (required by `{fun_name}`)\n       hint: tuple impls are not yet provided; use a named struct instead"
-                        )
-                    };
-                    return Err(MetelError::type_error(TypeErrorCode::T0012, message, span));
-                }
-            }
-            return Ok(());
-        }
         Type::Reference(_) | Type::MutReference(_) | Type::Fun(..) => {
             for aspect in bounds.iter().filter_map(GenericBound::aspect_name) {
                 if !registry.type_satisfies_aspect(current_module, concrete, aspect) {
@@ -1905,7 +1886,6 @@ pub(super) fn check_type_does_not_satisfy_bound(
         Type::Named(n, ..) => n.clone(),
         Type::Array(_)
         | Type::SizedArray(_, _)
-        | Type::Tuple(_)
         | Type::Reference(_)
         | Type::MutReference(_)
         | Type::Fun(..)

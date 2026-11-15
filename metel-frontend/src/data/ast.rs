@@ -793,7 +793,6 @@ pub enum Expr {
         original: Vec<String>,
         span: Span,
     },
-    Tuple(Vec<Expr>, Span),
     Array(Vec<Expr>, Span),
     RecordLiteral {
         fields: Vec<(String, Expr)>,
@@ -834,11 +833,6 @@ pub enum Expr {
     FieldAccess {
         object: Box<Expr>,
         field: String,
-        span: Span,
-    },
-    TupleAccess {
-        object: Box<Expr>,
-        index: usize,
         span: Span,
     },
     Index {
@@ -927,7 +921,6 @@ impl Expr {
             | Expr::Ident(_, s)
             | Expr::Path(_, _, s)
             | Expr::ResolvedPath { span: s, .. }
-            | Expr::Tuple(_, s)
             | Expr::Array(_, s)
             | Expr::RecordLiteral { span: s, .. }
             | Expr::RepeatArray(_, _, s)
@@ -938,7 +931,6 @@ impl Expr {
             | Expr::Call { span: s, .. }
             | Expr::MethodCall { span: s, .. }
             | Expr::FieldAccess { span: s, .. }
-            | Expr::TupleAccess { span: s, .. }
             | Expr::Index { span: s, .. }
             | Expr::Cast { span: s, .. }
             | Expr::Ascribe { span: s, .. }
@@ -1034,7 +1026,6 @@ pub enum Pattern {
         rest_binding: Option<(String, Span)>,
         span: Span,
     },
-    Tuple(Vec<Pattern>, Span),
     Array {
         elems: Vec<Pattern>,
         /// The rest-binding's name paired with its own declaration span
@@ -1120,11 +1111,6 @@ pub enum AssignTarget {
         field: String,
         span: Span,
     },
-    TupleAccess {
-        object: Box<Expr>,
-        index: usize,
-        span: Span,
-    },
     Index {
         object: Box<Expr>,
         index: Box<Expr>,
@@ -1173,7 +1159,6 @@ impl TypeExpr {
 #[derive(Debug, Clone)]
 pub enum TypeExpr {
     Named(String, Vec<TypeExpr>, NameSpan),
-    Tuple(Vec<TypeExpr>),
     Record(Vec<(String, TypeExpr)>),
     /// RFC-0121: `{ x: f64, ..R }` or `{ ..R }` -- a record type with an open
     /// row tail. A top-level function parameter has dedicated row-bound
@@ -1310,7 +1295,6 @@ impl Pattern {
             Pattern::Wildcard(s)
             | Pattern::Binding(_, s)
             | Pattern::Literal(_, s)
-            | Pattern::Tuple(_, s)
             | Pattern::EnumVariant { span: s, .. }
             | Pattern::Struct { span: s, .. }
             | Pattern::Record { span: s, .. }

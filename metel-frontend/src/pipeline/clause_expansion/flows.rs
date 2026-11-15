@@ -377,7 +377,6 @@ fn collect(
         }
         TypeExpr::Reference(_) | TypeExpr::Array(_) => {}
         TypeExpr::MutReference(inner) | TypeExpr::SizedArray(inner, _) => recurse(inner, out),
-        TypeExpr::Tuple(items) => items.iter().for_each(|t| recurse(t, out)),
         TypeExpr::Record(fields) => fields.iter().for_each(|(_, t)| recurse(t, out)),
         _ => out.extend(params.iter().cloned()),
     }

@@ -140,9 +140,6 @@ fn type_expr_violation(te: &TypeExpr, assoc_type_names: &HashSet<&str>) -> Optio
             }
             type_expr_violation(base, assoc_type_names)
         }
-        TypeExpr::Tuple(items) => items
-            .iter()
-            .find_map(|t| type_expr_violation(t, assoc_type_names)),
         TypeExpr::Record(fields) => fields
             .iter()
             .find_map(|(_, t)| type_expr_violation(t, assoc_type_names)),

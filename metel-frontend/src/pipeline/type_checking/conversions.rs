@@ -143,9 +143,7 @@ pub(crate) fn find_anonymous_open_record_tail(te: &TypeExpr) -> Option<&crate::d
                     .find_map(|(_, ty)| find_anonymous_open_record_tail(ty))
             }
         }
-        TypeExpr::Named(_, args, _) | TypeExpr::Tuple(args) => {
-            args.iter().find_map(find_anonymous_open_record_tail)
-        }
+        TypeExpr::Named(_, args, _) => args.iter().find_map(find_anonymous_open_record_tail),
         TypeExpr::Record(fields) => fields
             .iter()
             .find_map(|(_, ty)| find_anonymous_open_record_tail(ty)),
@@ -324,11 +322,6 @@ fn type_expr_to_infer_in_context(
                 }
             }
         }
-        TypeExpr::Tuple(ts) => InferType::Tuple(
-            ts.iter()
-                .map(|t| type_expr_to_infer_in_context(t, generics, self_ty_name, assoc_ctx))
-                .collect(),
-        ),
         TypeExpr::Record(fields) => InferType::Record(
             fields
                 .iter()
@@ -684,10 +677,6 @@ pub(super) fn infer_type_to_type(ty: &InferType, span: &Span) -> Result<Type, Me
                 *use_mult,
                 *call_mutation,
             ))
-        }
-        InferType::Tuple(ts) => {
-            let t: Result<Vec<_>, _> = ts.iter().map(|t| infer_type_to_type(t, span)).collect();
-            Ok(Type::Tuple(t?))
         }
         InferType::Record(fields) => Ok(Type::Record(
             fields

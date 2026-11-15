@@ -4,8 +4,8 @@ use super::{
     TypeVar, ann_to_infer, builtin_pattern_method_type, chain_provides_mut_access,
     check_field_visibility, constrain_at_declared_boundary, infer_binop, infer_block,
     infer_enum_variant_literal, infer_field_assign_type, infer_literal, infer_match,
-    infer_propagate_error, infer_struct_literal, infer_to_type_for_from, infer_tuple_assign_type,
-    infer_type_name, infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
+    infer_propagate_error, infer_struct_literal, infer_to_type_for_from, infer_type_name,
+    infer_type_to_type, infer_unaryop, is_shared_reference_chain, named_type_name,
     peel_all_references, record_projection_base_expr, resolve_row_bound_field,
     signature_type_expr_to_infer, type_to_infer,
 };
@@ -189,11 +189,16 @@ fn check_forwarded_generic_bounds(
                 ctx,
             );
         }
-        // The same forwarding through a reference, an array or a tuple (`x: &T` passed on as `&U`).
-        (InferType::Tuple(param_items), InferType::Tuple(arg_items))
-            if param_items.len() == arg_items.len() =>
+        // The same forwarding through a reference or an array (`x: &T` passed on as `&U`).
+        // RFC-0151: a closed row forwards field by field, as a tuple (a row of integer labels) does.
+        (InferType::Record(param_fields), InferType::Record(arg_fields))
+            if param_fields.len() == arg_fields.len()
+                && param_fields
+                    .iter()
+                    .zip(arg_fields)
+                    .all(|((param, _), (arg, _))| param == arg) =>
         {
-            for (param_item, arg_item) in param_items.iter().zip(arg_items) {
+            for ((_, param_item), (_, arg_item)) in param_fields.iter().zip(arg_fields) {
                 check_forwarded_generic_bounds(
                     callee_name,
                     scheme,
@@ -626,13 +631,6 @@ fn infer_expr_inner(
         // call's business (`keyword_binding`); an overloaded call infers its arguments as written
         // before it can select a candidate.
         Expr::NamedArg { value, .. } => infer_expr(value, ctx, fun_generalizations),
-        Expr::Tuple(elems, _) => {
-            let elem_tys: Vec<InferType> = elems
-                .iter()
-                .map(|e| infer_expr(e, ctx, fun_generalizations))
-                .collect::<Result<_, _>>()?;
-            Ok(InferType::Tuple(elem_tys))
-        }
         Expr::RecordLiteral { fields, spread, .. } => {
             let mut inferred_fields = Vec::with_capacity(fields.len());
             for (name, expr) in fields {
@@ -1237,13 +1235,6 @@ fn infer_expr_inner(
                     field,
                     span: target_span,
                 } => infer_field_assign_type(object, field, target_span, ctx, fun_generalizations)?,
-                AssignTarget::TupleAccess {
-                    object,
-                    index,
-                    span: target_span,
-                } => {
-                    infer_tuple_assign_type(object, *index, target_span, ctx, fun_generalizations)?
-                }
             };
             let target_span = match target {
                 AssignTarget::Ident(_, target_span)
@@ -1254,9 +1245,6 @@ fn infer_expr_inner(
                     span: target_span, ..
                 }
                 | AssignTarget::FieldAccess {
-                    span: target_span, ..
-                }
-                | AssignTarget::TupleAccess {
                     span: target_span, ..
                 } => target_span,
             };
@@ -2235,22 +2223,12 @@ fn infer_expr_inner(
                 ));
             }
 
-            // The `Clone` the compiler provides for a kind with no impl to write it in (RFC-0206 section 2):
-            // the unit type, a tuple of `Clone` parts, a `Copy` closure. The clone has the receiver's type.
+            // The `Clone` the compiler provides for a `Copy` closure (RFC-0206 section 2), which has no impl to
+            // write it in. The clone has the receiver's type. A closure's copy-ness is settled when its
+            // captures are known, so construction judges it. A tuple is a row and clones through the row impl.
             if method == "clone"
                 && args.is_empty()
-                && (matches!(peeled_recv_for_bounds, InferType::Fun(..))
-                    // A closure's copy-ness is settled when its captures are known, so construction
-                    // judges it; the unit type and a tuple are judged here.
-                    || (matches!(
-                        peeled_recv_for_bounds,
-                        InferType::Tuple(_)
-                    ) && ctx.registry().infer_type_satisfies_aspect(
-                        ctx.current_module_path(),
-                        &peeled_recv_for_bounds,
-                        "Clone",
-                        &ctx.current_aspect_assumptions(),
-                    )))
+                && matches!(peeled_recv_for_bounds, InferType::Fun(..))
             {
                 return Ok(peeled_recv_for_bounds);
             }
@@ -2516,30 +2494,6 @@ fn infer_expr_inner(
                 ));
             }
             Ok(target_ty)
-        }
-        Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } => {
-            let obj_ty = infer_expr(object, ctx, fun_generalizations)?;
-            let obj_ty = ctx.solve()?.apply(&obj_ty);
-            let peeled = peel_all_references(&obj_ty);
-            match &peeled {
-                InferType::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "tuple index {index} out of bounds (tuple has {} elements)",
-                            elems.len()
-                        ),
-                        span,
-                    )
-                }),
-                // A record, residual or row-bounded parameter with an integer label (RFC-0151): `r.0` is field
-                // access on the label `.0`.
-                _ => infer_field_access(object, &obj_ty, &index.to_string(), span, ctx),
-            }
         }
         Expr::Loop { body, span } => {
             let break_var = ctx.fresh_var();
@@ -3402,9 +3356,7 @@ fn callee_chain_reaches_shared_reference(
     ctx: &mut InferContext,
 ) -> Result<bool, MetelError> {
     let mut object = match callee {
-        Expr::FieldAccess { object, .. }
-        | Expr::TupleAccess { object, .. }
-        | Expr::Index { object, .. } => object.as_ref(),
+        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => object.as_ref(),
         _ => return Ok(false),
     };
     loop {
@@ -3423,9 +3375,9 @@ fn callee_chain_reaches_shared_reference(
             return Ok(true);
         }
         match object {
-            Expr::FieldAccess { object: inner, .. }
-            | Expr::TupleAccess { object: inner, .. }
-            | Expr::Index { object: inner, .. } => object = inner.as_ref(),
+            Expr::FieldAccess { object: inner, .. } | Expr::Index { object: inner, .. } => {
+                object = inner.as_ref();
+            }
             _ => return Ok(false),
         }
     }
@@ -3556,11 +3508,14 @@ fn infer_field_access(
                     };
                     return residual_field_error(ctx, brand, base, field, "used", span);
                 }
-                MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    format!("no field `{field}` on {peeled}"),
-                    span,
-                )
+                // RFC-0151: an integer label past the end of a tuple row is an index out of bounds.
+                let tuple_row = matches!(&peeled, InferType::Record(fields) if crate::data::types::is_dense_tuple_row(fields));
+                let message = if tuple_row && field.bytes().all(|byte| byte.is_ascii_digit()) {
+                    format!("tuple index `{field}` is out of bounds for {peeled}")
+                } else {
+                    format!("no field `{field}` on {peeled}")
+                };
+                MetelError::type_error(TypeErrorCode::T0003, message, span)
             });
     }
     // RFC-0121 remainder (#1306, #1310): a row extension preserves its

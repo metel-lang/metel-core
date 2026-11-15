@@ -166,11 +166,6 @@ fn signature_variables(ty: &InferType, scheme: &TypeScheme, ordered: &mut Vec<Ty
             }
             signature_variables(result, scheme, ordered);
         }
-        InferType::Tuple(items) => {
-            for item in items {
-                signature_variables(item, scheme, ordered);
-            }
-        }
         InferType::Record(fields) | InferType::Residual { fields, .. } => {
             for (_, ty) in fields {
                 signature_variables(ty, scheme, ordered);
@@ -236,7 +231,6 @@ impl SignatureFreezer<'_> {
                 usage: *usage,
                 mutation: *mutation,
             },
-            InferType::Tuple(items) => AbstractType::Tuple(self.items(items)?),
             InferType::Record(fields) => AbstractType::Record(self.fields(fields)?),
             InferType::RowView(tail) => AbstractType::OpenRecord {
                 fields: Vec::new(),
