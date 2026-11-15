@@ -157,15 +157,32 @@ pub(super) fn construct_match(
     if any_arm {
         ctx.flow = joined_flow;
     }
-    check_match_exhaustiveness(
-        &typed_arms,
-        &scrutinee_ty,
-        match &scrutinee_ty {
-            Type::Named(..) => ctx.enum_info_of(&scrutinee_ty),
-            _ => None,
-        },
-        &m.span,
-    )?;
+    // RFC-0151: a record (a tuple is one) is covered field by field, so arms with refutable sub-patterns can
+    // cover it together (metel-core#2040). Every other scrutinee keeps the per-kind check.
+    if matches!(scrutinee_ty, Type::Record(_)) {
+        let rows: Vec<Vec<Option<&TypedPattern>>> = typed_arms
+            .iter()
+            .filter(|arm| arm.guard.is_none())
+            .map(|arm| vec![refutable(&arm.pattern)])
+            .collect();
+        if !rows_exhaustive(&rows, std::slice::from_ref(&scrutinee_ty), ctx, &m.span) {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0008,
+                "non-exhaustive match: not all cases are covered".to_string(),
+                &m.span,
+            ));
+        }
+    } else {
+        check_match_exhaustiveness(
+            &typed_arms,
+            &scrutinee_ty,
+            match &scrutinee_ty {
+                Type::Named(..) => ctx.enum_info_of(&scrutinee_ty),
+                _ => None,
+            },
+            &m.span,
+        )?;
+    }
     // RFC-0078 §3.4: if all arms diverge, the match's type is `!`. An empty match
     // (only legal on a `!` scrutinee, per the exhaustiveness check above) is
     // vacuously `!` too — it can never actually be entered.
@@ -422,6 +439,100 @@ pub(super) fn is_variant_uninhabited(
         .fields
         .iter()
         .any(|f| infer_type_to_type(&remap.apply(&f.ty), span).is_ok_and(|t| t == Type::Never))
+}
+
+/// `None` for a pattern that matches every value of its type, `Some` for one that can fail.
+fn refutable(pattern: &TypedPattern) -> Option<&TypedPattern> {
+    if is_catch_all_pattern(pattern) {
+        None
+    } else {
+        Some(pattern)
+    }
+}
+
+fn tail_of<'a>(row: &[Option<&'a TypedPattern>]) -> Vec<Option<&'a TypedPattern>> {
+    row[1..].to_vec()
+}
+
+/// Whether the rows cover every combination of values of `tys`: the usual pattern-matrix check. Each row holds one
+/// pattern per column, `None` standing for a wildcard. A record is one constructor whose fields become columns, an
+/// enum splits by variant, a boolean by `true` and `false`; any other type is covered only by a wildcard.
+fn rows_exhaustive(
+    rows: &[Vec<Option<&TypedPattern>>],
+    tys: &[Type],
+    ctx: &ConstructCtx,
+    span: &Span,
+) -> bool {
+    let Some((ty, rest_tys)) = tys.split_first() else {
+        return !rows.is_empty();
+    };
+    if matches!(ty, Type::Never) {
+        return true;
+    }
+    match ty {
+        Type::Record(fields) => {
+            let mut next_tys: Vec<Type> = fields
+                .iter()
+                .map(|(_, field_ty)| field_ty.clone())
+                .collect();
+            next_tys.extend_from_slice(rest_tys);
+            let mut next = Vec::new();
+            for row in rows {
+                let mut expanded: Vec<Option<&TypedPattern>> = match row[0] {
+                    None => vec![None; fields.len()],
+                    Some(TypedPattern::Record { nested, .. }) => fields
+                        .iter()
+                        .map(|(label, _)| {
+                            nested
+                                .iter()
+                                .find(|(name, _)| name == label)
+                                .and_then(|(_, sub)| refutable(sub))
+                        })
+                        .collect(),
+                    Some(_) => continue,
+                };
+                expanded.extend(tail_of(row));
+                next.push(expanded);
+            }
+            rows_exhaustive(&next, &next_tys, ctx, span)
+        }
+        Type::Boolean => [true, false].into_iter().all(|value| {
+            let next: Vec<_> = rows
+                .iter()
+                .filter(|row| match row[0] {
+                    None => true,
+                    Some(pattern) => is_bool_literal_pattern(pattern, value),
+                })
+                .map(|row| tail_of(row))
+                .collect();
+            rows_exhaustive(&next, rest_tys, ctx, span)
+        }),
+        Type::Named(name, type_args, ..) if ctx.enum_info_of(ty).is_some() => {
+            let info = ctx.enum_info_of(ty).expect("checked above");
+            let remap = enum_variant_type_param_remap(info, type_args);
+            info.variants.iter().all(|variant| {
+                is_variant_uninhabited(variant, &remap, span) || {
+                    let next: Vec<_> = rows
+                        .iter()
+                        .filter(|row| match row[0] {
+                            None => true,
+                            Some(pattern) => pattern_covers_variant(pattern, name, &variant.name),
+                        })
+                        .map(|row| tail_of(row))
+                        .collect();
+                    rows_exhaustive(&next, rest_tys, ctx, span)
+                }
+            })
+        }
+        _ => {
+            let next: Vec<_> = rows
+                .iter()
+                .filter(|row| row[0].is_none())
+                .map(|row| tail_of(row))
+                .collect();
+            rows_exhaustive(&next, rest_tys, ctx, span)
+        }
+    }
 }
 
 pub(super) fn check_match_exhaustiveness(

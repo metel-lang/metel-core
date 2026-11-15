@@ -1,0 +1,13 @@
+// RFC-0151 (metel-core#2041): a variant pattern after `.label:` in a generic body keeps its fact, so move checking
+// analyses the body instead of reporting that it cannot.
+enum Shape { Dot, Disc { radius: i64 } }
+fun area<T: Copy>(t: .{ .shape: Shape, .tag: T }) -> i64 {
+    match (t) {
+        .{ .shape: Shape::Disc { radius }, .tag: _ } => radius * radius,
+        _ => 0,
+    }
+}
+fun main() {
+    assert(area(.{ .shape = Shape::Disc { radius = 3 }, .tag = 1 }) == 9);
+    assert(area(.{ .shape = Shape::Dot, .tag = 1 }) == 0);
+}

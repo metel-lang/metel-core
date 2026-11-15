@@ -797,6 +797,11 @@ section = "Types"
 pest = "unit_type"
 mode = "inline"
 [[rule]]
+pest = "grouped_type"
+mode = "named"
+name = "GroupedType"
+section = "Types"
+[[rule]]
 pest = "tuple_type"
 mode = "named"
 name = "TupleType"

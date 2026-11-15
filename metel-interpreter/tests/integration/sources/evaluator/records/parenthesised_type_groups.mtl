@@ -1,0 +1,12 @@
+// RFC-0151 (metel-core#2038): `(T)` groups, it is `T`; `(T,)` is the one-element tuple.
+fun id(x: (i64)) -> (i64) { x }
+fun apply(f: (|i64| -> i64), v: ((i64, i64))) -> (i64) { f(v.0) }
+fun main() {
+    let a: (i64) := 1;
+    let p: ((i64, String)) := (1, "x");
+    assert(id(a) == 1);
+    assert(apply(|x: i64| -> i64 { x + 1 }, (4, 5)) == 5);
+    assert(p.0 == 1);
+    let one: (i64,) := (7,);
+    assert(one.0 == 7);
+}

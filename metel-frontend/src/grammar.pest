@@ -417,6 +417,7 @@ type_expr = {
   | bracket_array_type  // "[" Type (";" INT)? "]" — RFC-0171
   | unit_type
   | tuple_type
+  | grouped_type  // RFC-0151: `(T)` without the trailing comma groups, it is not a tuple
   | open_record_projection_type  // parses everywhere so a misplaced use gets a targeted error (#1461)
   | record_projection_type
   | open_record_type
@@ -446,6 +447,7 @@ extends_type = { "extends" ~ named_type }
 dyn_type = { "dyn" ~ named_type }
 
 unit_type  = { "()" }
+grouped_type = { "(" ~ type_expr ~ ")" }
 tuple_type = { "(" ~ type_expr ~ ("," ~ type_expr)+ ~ ")" | "(" ~ type_expr ~ one_comma ~ ")" }
 record_type = { ".{" ~ (record_type_field ~ ("," ~ record_type_field)* ~ ","?)? ~ "}" }
 record_type_field = { label ~ ":" ~ type_expr }

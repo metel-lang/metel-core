@@ -1,0 +1,9 @@
+// RFC-0151 (metel-core#2042): a remainder binding beside a sub-pattern is retained in a generic body; the entry the
+// sub-pattern matches is not part of the remainder.
+fun f<T>(t: .{ .0: (T, i64), .1: i64, .2: i64 }) -> i64 {
+    let .{ .0: (a, _), ..rest } := t;
+    rest.1
+}
+fun main() {
+    assert(f(.{ .0 = ("x", 1), .1 = 5, .2 = 6 }) == 5);
+}
