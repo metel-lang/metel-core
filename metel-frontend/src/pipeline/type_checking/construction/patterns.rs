@@ -135,6 +135,7 @@ pub(super) fn construct_match(
         } else {
             arm.pattern.clone()
         };
+        let pattern = resolve_nested_patterns(&pattern, &scrutinee_ty, &ConstructPatternTypes(ctx));
         ctx.flow = entry_flow.clone();
         ctx.push_scope();
         construct_pattern_bindings(&pattern, &scrutinee_ty, false, ctx)?;
@@ -661,6 +662,118 @@ pub(super) fn pattern_covers_variant(
 /// (they would resolve against a nested field type, not the scrutinee enum). Once
 /// rewritten, every downstream consumer sees an ordinary two-segment `EnumVariant`,
 /// so exhaustiveness, binding, and runtime matching need no changes.
+/// What a pattern after `.label:` has to be resolved against: the nominal kind of the field's type.
+pub(in crate::pipeline::type_checking) enum NominalPatternKind {
+    /// An enum, with the name and fieldlessness of each variant.
+    Enum(String, Vec<(String, bool)>),
+    /// A struct.
+    Struct(String),
+    Other,
+}
+
+/// How the two passes look up the types a nested pattern is matched against (`Type` in construction, `InferType`
+/// in inference).
+pub(in crate::pipeline::type_checking) trait PatternTypes<T> {
+    fn kind(&self, ty: &T) -> NominalPatternKind;
+    fn field(&self, ty: &T, label: &str) -> Option<T>;
+    fn element(&self, ty: &T) -> Option<T>;
+}
+
+/// RFC-0151 (metel-core#2053): a bare variant or struct pattern nested in a record or array pattern is resolved
+/// against the type of the field it matches, as the top of a `match` resolves its arm against the scrutinee. The
+/// pattern's own children are rewritten, so the result can be walked by the ordinary pattern code.
+pub(in crate::pipeline::type_checking) fn resolve_nested_patterns<T>(
+    pattern: &Pattern,
+    ty: &T,
+    types: &dyn PatternTypes<T>,
+) -> Pattern {
+    let resolve_one = |sub: &Pattern, sub_ty: &T| -> Pattern {
+        let top = match types.kind(sub_ty) {
+            NominalPatternKind::Enum(name, variants) => resolve_bare_variant(sub, &name, &variants),
+            NominalPatternKind::Struct(name) => resolve_struct_pattern(sub, &name),
+            NominalPatternKind::Other => sub.clone(),
+        };
+        resolve_nested_patterns(&top, sub_ty, types)
+    };
+    match pattern {
+        Pattern::Record {
+            fields,
+            labels,
+            nested,
+            ..
+        } if !nested.is_empty() => {
+            let mut rewritten = pattern.clone();
+            if let Pattern::Record { nested: out, .. } = &mut rewritten {
+                for (binder, sub) in out.iter_mut() {
+                    let label = fields
+                        .iter()
+                        .position(|field| field == binder)
+                        .and_then(|index| labels.get(index));
+                    if let Some(field_ty) = label.and_then(|label| types.field(ty, label)) {
+                        *sub = resolve_one(sub, &field_ty);
+                    }
+                }
+            }
+            rewritten
+        }
+        Pattern::Array { elems, rest, span } => match types.element(ty) {
+            Some(element_ty) => Pattern::Array {
+                elems: elems
+                    .iter()
+                    .map(|elem| resolve_one(elem, &element_ty))
+                    .collect(),
+                rest: rest.clone(),
+                span: span.clone(),
+            },
+            None => pattern.clone(),
+        },
+        _ => pattern.clone(),
+    }
+}
+
+/// `PatternTypes` over the checked `Type`s of construction.
+pub(in crate::pipeline::type_checking) struct ConstructPatternTypes<'a, 'b>(
+    pub &'a ConstructCtx<'b>,
+);
+
+impl PatternTypes<Type> for ConstructPatternTypes<'_, '_> {
+    fn kind(&self, ty: &Type) -> NominalPatternKind {
+        let Type::Named(name, ..) = ty else {
+            return NominalPatternKind::Other;
+        };
+        if let Some(info) = self.0.enum_info_of(ty) {
+            NominalPatternKind::Enum(
+                name.clone(),
+                info.variants
+                    .iter()
+                    .map(|v| (v.name.clone(), v.fields.is_empty()))
+                    .collect(),
+            )
+        } else if self.0.struct_fields_of(ty).is_some() {
+            NominalPatternKind::Struct(name.clone())
+        } else {
+            NominalPatternKind::Other
+        }
+    }
+
+    fn field(&self, ty: &Type, label: &str) -> Option<Type> {
+        match ty {
+            Type::Record(fields) | Type::OpenRecord { fields, .. } => fields
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, ty)| ty.clone()),
+            _ => None,
+        }
+    }
+
+    fn element(&self, ty: &Type) -> Option<Type> {
+        match ty {
+            Type::Array(item) | Type::SizedArray(item, _) => Some(item.as_ref().clone()),
+            _ => None,
+        }
+    }
+}
+
 pub(in crate::pipeline::type_checking) fn resolve_bare_variant(
     pattern: &Pattern,
     enum_name: &str,

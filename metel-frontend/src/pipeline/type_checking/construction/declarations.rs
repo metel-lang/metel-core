@@ -225,8 +225,13 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
         Decl::LetPattern(decl) => {
             let value = construct_expr(&decl.value, None, ctx)?;
             ctx.note_consumed(&value);
-            construct_pattern_bindings(&decl.pattern, value.ty(), decl.mutable, ctx)?;
-            let pattern = lower_typed_pattern(&decl.pattern, ctx);
+            let resolved = super::patterns::resolve_nested_patterns(
+                &decl.pattern,
+                value.ty(),
+                &super::patterns::ConstructPatternTypes(ctx),
+            );
+            construct_pattern_bindings(&resolved, value.ty(), decl.mutable, ctx)?;
+            let pattern = lower_typed_pattern(&resolved, ctx);
             // RFC-0151: a declaration binds, so its pattern must match every value of the type.
             if !is_catch_all_pattern(&pattern) {
                 return Err(MetelError::type_error(

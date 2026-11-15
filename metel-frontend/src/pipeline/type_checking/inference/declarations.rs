@@ -211,7 +211,14 @@ pub(super) fn infer_decl(
         Decl::LetPattern(decl) => {
             let value_ty = infer_expr(&decl.value, ctx, fun_generalizations)?;
             ctx.note_consumed_infer(&decl.value);
-            infer_pattern(&decl.pattern, &value_ty, decl.mutable, ctx)?;
+            let solved = ctx.solve()?.apply(&value_ty);
+            let resolved = super::super::construction::resolve_nested_patterns(
+                &decl.pattern,
+                &solved,
+                &super::patterns::InferPatternTypes(ctx),
+            );
+            infer_pattern(&resolved, &value_ty, decl.mutable, ctx)?;
+            super::patterns::retain_nested_match_patterns(&resolved, ctx);
             Ok(InferType::unit())
         }
         Decl::Mut(md) => {

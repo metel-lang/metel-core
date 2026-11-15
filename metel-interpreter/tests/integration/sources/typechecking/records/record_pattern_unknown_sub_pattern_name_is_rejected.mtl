@@ -1,0 +1,4 @@
+// RFC-0151 (metel-core#2053): a name that is neither the field's struct nor one of its variants stays unresolved.
+fun main() {
+    let .{ .0: Missing { n }, .1: _ } := .{ .0 = 1, .1 = 2 }; // ERROR[T0003]
+}

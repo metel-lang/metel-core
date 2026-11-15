@@ -1,0 +1,9 @@
+// RFC-0151 (metel-core#2053): a field bound through a struct sub-pattern is moved out, so reusing the value is rejected
+// in a generic body too.
+struct Doc { title: String }
+fun f<T>(t: .{ .0: Doc, .1: i64 }, unused: T) -> String {
+    let .{ .0: Doc { title }, .1: _ } := t;
+    let again := t; // ERROR[T0019]
+    title
+}
+fun main() {}
