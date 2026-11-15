@@ -16,7 +16,7 @@
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
-pub enum Option<T> derives Clone {
+pub enum Option<T> derives Clone, Copy via T {
     Some { pub value: T },
     None,
 }
@@ -83,7 +83,7 @@ extend Option<T> {
     }
 }
 
-pub enum Result<T, E> derives Clone {
+pub enum Result<T, E> derives Clone, Copy via T + E {
     Ok { pub value: T },
     Err { pub error: E },
 }

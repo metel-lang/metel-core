@@ -1,0 +1,6 @@
+// metel-core#2009: `Option<String>` is not `Copy`, because `String` is not, so a second use is a move error.
+fun main() {
+    let o := Option::Some { value = "x" };
+    let a := o;
+    let b := o; // ERROR[T0019]
+}

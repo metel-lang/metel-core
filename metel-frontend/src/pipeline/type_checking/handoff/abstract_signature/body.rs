@@ -210,41 +210,55 @@ fn freeze_body_with(
 }
 
 impl BodyFreezer<'_, '_> {
+    /// Whether a `record` that takes no type arguments has `aspect`, decided the way a concrete body decides it
+    /// (metel-core#1752): its ownership does not depend on any abstract parameter, so the stored rules being
+    /// unable to represent the row impl that matches a record's fields is not a reason to leave it undecided in a
+    /// generic body.
+    fn closed_nominal_aspect(
+        &self,
+        name: &str,
+        identity: &crate::data::types::NominalId,
+        arguments: &[AbstractType],
+        aspect: &str,
+    ) -> Option<bool> {
+        if !arguments.is_empty() || !self.registry.is_record_struct(identity) {
+            return None;
+        }
+        // The aspect is the standard library's, never a same-named aspect a user declared.
+        let module = ["std".to_string(), "core".to_string()];
+        let ty = crate::data::types::Type::Named(name.to_string(), Vec::new(), identity.clone());
+        Some(self.registry.type_satisfies_aspect(&module, &ty, aspect))
+    }
+
     fn retain_nominal_ownership(&self, ty: &AbstractType) {
         match ty {
             AbstractType::Named {
+                name,
                 identity,
                 arguments,
-                ..
             } => {
                 let mut retained = self.nominal_ownership.borrow_mut();
                 if !retained.iter().any(|fact| &fact.ty == ty) {
+                    let decide = |aspect: &str| {
+                        self.registry
+                            .abstract_nominal_aspect(
+                                identity,
+                                arguments,
+                                aspect,
+                                self.signature.facts.as_deref().unwrap_or_default(),
+                            )
+                            .or_else(|| {
+                                self.closed_nominal_aspect(name, identity, arguments, aspect)
+                            })
+                            .map_or(
+                                crate::data::abstract_body::AbstractNominalAspect::Conditional,
+                                crate::data::abstract_body::AbstractNominalAspect::Proven,
+                            )
+                    };
                     retained.push(crate::data::abstract_body::AbstractNominalOwnership {
                         ty: ty.clone(),
-                        copy: self
-                            .registry
-                            .abstract_nominal_aspect(
-                                identity,
-                                arguments,
-                                self.registry.implicit_aspect_name(),
-                                self.signature.facts.as_deref().unwrap_or_default(),
-                            )
-                            .map_or(
-                                crate::data::abstract_body::AbstractNominalAspect::Conditional,
-                                crate::data::abstract_body::AbstractNominalAspect::Proven,
-                            ),
-                        drop: self
-                            .registry
-                            .abstract_nominal_aspect(
-                                identity,
-                                arguments,
-                                "Drop",
-                                self.signature.facts.as_deref().unwrap_or_default(),
-                            )
-                            .map_or(
-                                crate::data::abstract_body::AbstractNominalAspect::Conditional,
-                                crate::data::abstract_body::AbstractNominalAspect::Proven,
-                            ),
+                        copy: decide(self.registry.implicit_aspect_name()),
+                        drop: decide("Drop"),
                     });
                 }
                 drop(retained);

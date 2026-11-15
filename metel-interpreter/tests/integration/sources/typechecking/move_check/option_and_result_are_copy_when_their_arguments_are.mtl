@@ -1,0 +1,12 @@
+// metel-core#2009: `Option<T>` is `Copy` when `T` is, and `Result<T, E>` when both are, through `derives Copy via`.
+fun main() {
+    let o := Option::Some { value = 1 };
+    let a := o;
+    let b := o;
+    let r: Result<i64, boolean> := Result::Ok { value = 2 };
+    let c := r;
+    let d := r;
+    let none: Option<i64> := Option::None;
+    let e := none;
+    let f := none;
+}
