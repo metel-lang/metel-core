@@ -1,0 +1,9 @@
+// metel-core#1752: a record whose fields are all `Copy` is `Copy` in a generic body, as it is in a concrete one.
+record P { a: i64, b: i64 }
+fun f<T>(x: T) -> T {
+    let p := P { a = 1, b = 2 };
+    let q := p;
+    let r := p;
+    x
+}
+fun main() { f(2); }

@@ -1,0 +1,9 @@
+// metel-core#2009, #2000: an `Option` holding a closure whose captures are all `Copy` is `Copy`, also after a generic call.
+fun id<T>(x: T) -> T { x }
+fun main() {
+    let k := 3;
+    let c := Option::Some { value = [k] |x: i64| -> i64 { x + k } };
+    let d := id(c);
+    let e := d;
+    let f := d;
+}

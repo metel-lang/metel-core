@@ -5303,6 +5303,14 @@ impl TypeDefinitionRegistry {
         )
     }
 
+    /// Whether `identity` names a `record`, a nominal type whose aspects a row impl can also grant (RFC-0123).
+    #[must_use]
+    pub fn is_record_struct(&self, identity: &crate::data::types::NominalId) -> bool {
+        identity
+            .get()
+            .is_some_and(|id| self.record_structs.contains(&id))
+    }
+
     /// Retain argument-independent nominal ownership facts. Conditional
     /// candidates and negative overrides require a separate proof artifact;
     /// absence of a proof must not become a proof of absence.
