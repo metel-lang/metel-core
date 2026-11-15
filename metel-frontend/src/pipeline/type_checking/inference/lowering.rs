@@ -100,12 +100,6 @@ fn lower_impl_aspect_param_type(
                 .collect(),
             span.clone(),
         ),
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(
-            items
-                .iter()
-                .map(|item| lower_impl_aspect_param_type(item, counter, extra_generics))
-                .collect(),
-        ),
         TypeExpr::Record(fields) => {
             TypeExpr::Record(lower_impl_aspect_fields(fields, counter, extra_generics))
         }
@@ -831,7 +825,6 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
                 .collect(),
             span: m.span.clone(),
         }),
-        Expr::Tuple(es, s) => Expr::Tuple(es.iter().map(go).collect(), s.clone()),
         Expr::Array(es, s) => Expr::Array(es.iter().map(go).collect(), s.clone()),
         Expr::RecordLiteral {
             fields,
@@ -875,15 +868,6 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
         } => Expr::FieldAccess {
             object: Box::new(go(object)),
             field: field.clone(),
-            span: span.clone(),
-        },
-        Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } => Expr::TupleAccess {
-            object: Box::new(go(object)),
-            index: *index,
             span: span.clone(),
         },
         Expr::Index {
@@ -960,7 +944,6 @@ fn lower_projections_in_type(
         TypeExpr::Named(name, args, span) => {
             TypeExpr::Named(name.clone(), args.iter().map(go).collect(), span.clone())
         }
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
                 .iter()
@@ -1083,7 +1066,6 @@ fn substitute_type_params(
         TypeExpr::Named(name, args, span) => {
             TypeExpr::Named(name.clone(), args.iter().map(go).collect(), span.clone())
         }
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => {
             TypeExpr::Record(fields.iter().map(|(n, t)| (n.clone(), go(t))).collect())
         }

@@ -198,7 +198,6 @@ impl FactFreezer<'_> {
                 params.iter().any(|ty| self.has_unresolved_projection(ty))
                     || self.has_unresolved_projection(result)
             }
-            InferType::Tuple(items) => items.iter().any(|ty| self.has_unresolved_projection(ty)),
             InferType::Record(fields) | InferType::Residual { fields, .. } => fields
                 .iter()
                 .any(|(_, ty)| self.has_unresolved_projection(ty)),
@@ -465,7 +464,6 @@ fn has_unresolved_nominal(ty: &crate::data::abstract_body::AbstractType) -> bool
         AbstractType::Function {
             parameters, result, ..
         } => parameters.iter().any(has_unresolved_nominal) || has_unresolved_nominal(result),
-        AbstractType::Tuple(items) => items.iter().any(has_unresolved_nominal),
         AbstractType::Record(fields) | AbstractType::Residual { fields, .. } => {
             fields.iter().any(|(_, ty)| has_unresolved_nominal(ty))
         }

@@ -93,7 +93,6 @@ pub enum Type {
     F32,
     F64,
     // ─────────────────────────────────────────────────────────────────────────
-    Tuple(Vec<Type>),
     Record(Vec<(String, Type)>),
     /// Ownership reconstruction retains an abstract row tail instead of pretending
     /// its unknown fields are absent. Runtime specializations normalize to Record.
@@ -276,22 +275,9 @@ impl std::fmt::Display for Type {
             Type::U32 => write!(f, "u32"),
             Type::U64 => write!(f, "u64"),
             Type::F32 => write!(f, "f32"),
-            Type::Tuple(ts) => {
-                write!(f, "(")?;
-                for (i, t) in ts.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{t}")?;
-                }
-                // RFC-0151: a one-element tuple is written `(A,)`; `(A)` would read as grouping.
-                if ts.len() == 1 {
-                    write!(f, ",")?;
-                }
-                write!(f, ")")
-            }
             // The empty closed row is the unit type (RFC-0231): one type, written `()`.
             Type::Record(fields) if fields.is_empty() => write!(f, "()"),
+            Type::Record(fields) if is_dense_tuple_row(fields) => write_tuple_row(f, fields),
             Type::Record(fields) => {
                 write!(f, ".{{ ")?;
                 for (i, (name, ty)) in fields.iter().enumerate() {
@@ -420,4 +406,36 @@ mod tuple_row_tests {
         assert!(!row(&["0", "x"]).is_tuple_row());
         assert!(!Type::I64.is_tuple_row());
     }
+}
+
+/// RFC-0151: whether a closed row's labels are exactly `0 .. N-1` in order, the shape a tuple has. The empty row is
+/// not counted: it is the unit type and prints as `()`.
+#[must_use]
+pub fn is_dense_tuple_row<T>(fields: &[(String, T)]) -> bool {
+    !fields.is_empty()
+        && fields
+            .iter()
+            .enumerate()
+            .all(|(position, (label, _))| *label == position.to_string())
+}
+
+/// Write a dense row the way a tuple is written: `(A, B)`, and `(A,)` for one element.
+///
+/// # Errors
+/// Propagates a formatter error.
+pub fn write_tuple_row<T: std::fmt::Display>(
+    f: &mut std::fmt::Formatter<'_>,
+    fields: &[(String, T)],
+) -> std::fmt::Result {
+    write!(f, "(")?;
+    for (index, (_, ty)) in fields.iter().enumerate() {
+        if index > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{ty}")?;
+    }
+    if fields.len() == 1 {
+        write!(f, ",")?;
+    }
+    write!(f, ")")
 }

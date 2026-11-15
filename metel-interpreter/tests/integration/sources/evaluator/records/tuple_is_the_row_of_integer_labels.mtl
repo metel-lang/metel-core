@@ -1,0 +1,21 @@
+// RFC-0151: a tuple type is the closed record type of the integer labels `.0 .. .N-1` and a tuple value is that
+// record: one type and one value, so each is accepted where the other is written.
+fun sum_pair(p: .{ .0: i64, .1: i64 }) -> i64 { p.0 + p.1 }
+fun first_of(t: (i64, String)) -> i64 { t.0 }
+fun swap(t: (i64, String)) -> (String, i64) {
+    let (a, b) := t;
+    (b, a)
+}
+
+fun main() {
+    assert(sum_pair((3, 4)) == 7);
+    assert(first_of(.{ .0 = 9, .1 = "x" }) == 9);
+    let swapped := swap((1, "a"));
+    assert(swapped.0 == "a");
+    assert(swapped.1 == 1);
+    // A tuple pattern and the record pattern it stands for match the same value.
+    let t := (5, 6);
+    let .{ .0: x, .1: y } := t;
+    let (p, q) := .{ .0 = 5, .1 = 6 };
+    assert(x == p && y == q);
+}

@@ -1132,7 +1132,6 @@ fn record_target_mentions_type_param(ib: &crate::data::ast::ImplBlock) -> bool {
             TypeExpr::Named(name, args, _) => {
                 params.contains(name.as_str()) || args.iter().any(|a| mentions(a, params))
             }
-            TypeExpr::Tuple(items) => items.iter().any(|t| mentions(t, params)),
             TypeExpr::Record(fields) | TypeExpr::OpenRecord(fields, _) => {
                 fields.iter().any(|(_, t)| mentions(t, params))
             }
@@ -1258,7 +1257,6 @@ pub(crate) fn reject_unregisterable_impl_target(
         TypeExpr::Array(_) => {
             "an array type whose element is not one of the impl's own type parameters"
         }
-        TypeExpr::Tuple(_) => "a tuple type",
         TypeExpr::Record(_) | TypeExpr::OpenRecord(..) => {
             "an anonymous record type whose field types name the impl's own type parameters"
         }
@@ -1687,9 +1685,6 @@ fn capture_has_copy_grant(
 ) -> bool {
     match ty {
         InferType::Fun(..) => true,
-        InferType::Tuple(items) => items
-            .iter()
-            .all(|item| capture_has_copy_grant(ctx, item, current_module, assumptions)),
         _ => ctx
             .registry()
             .infer_type_is_copy(current_module, ty, assumptions),

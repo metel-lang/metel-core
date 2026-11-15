@@ -128,7 +128,7 @@ mod phase_2_infer_types {
 
     #[test]
     fn test_display_tuple() {
-        let ty = InferType::Tuple(vec![InferType::int(), InferType::bool()]);
+        let ty = super::tuple_row(vec![InferType::int(), InferType::bool()]);
         assert_eq!(format!("{}", ty), "(i64, boolean)");
     }
 
@@ -266,10 +266,10 @@ mod phase_3_substitution {
         let mut s = Substitution::new();
         s.bind(TypeVar(0), InferType::int());
         s.bind(TypeVar(1), InferType::bool());
-        let ty = InferType::Tuple(vec![InferType::var(TypeVar(0)), InferType::var(TypeVar(1))]);
+        let ty = super::tuple_row(vec![InferType::var(TypeVar(0)), InferType::var(TypeVar(1))]);
         assert_eq!(
             s.apply(&ty),
-            InferType::Tuple(vec![InferType::int(), InferType::bool()])
+            super::tuple_row(vec![InferType::int(), InferType::bool()])
         );
     }
 
@@ -427,16 +427,16 @@ mod phase_4_unification {
     #[test]
     fn test_unify_tuple_types() {
         // (?t0, boolean)  with  (i64, boolean)  => ?t0 = i64
-        let a = InferType::Tuple(vec![InferType::var(TypeVar(0)), InferType::bool()]);
-        let b = InferType::Tuple(vec![InferType::int(), InferType::bool()]);
+        let a = super::tuple_row(vec![InferType::var(TypeVar(0)), InferType::bool()]);
+        let b = super::tuple_row(vec![InferType::int(), InferType::bool()]);
         let s = unify(&a, &b).unwrap();
         assert_eq!(s.apply(&InferType::var(TypeVar(0))), InferType::int());
     }
 
     #[test]
     fn test_unify_tuple_length_mismatch() {
-        let a = InferType::Tuple(vec![InferType::int()]);
-        let b = InferType::Tuple(vec![InferType::int(), InferType::bool()]);
+        let a = super::tuple_row(vec![InferType::int()]);
+        let b = super::tuple_row(vec![InferType::int(), InferType::bool()]);
         assert!(unify(&a, &b).is_err());
     }
 
@@ -480,7 +480,7 @@ mod phase_4_unification {
         assert!(unify(&a, &b).is_err());
 
         // Tuple vs Concrete
-        assert!(unify(&InferType::Tuple(vec![InferType::int()]), &InferType::int()).is_err());
+        assert!(unify(&super::tuple_row(vec![InferType::int()]), &InferType::int()).is_err());
     }
 
     // arch-verifies: ["arch.type-inference.requirement-6"]
@@ -1305,4 +1305,18 @@ mod phase_8_known_limitations {
         // triggers T0002 "cannot infer struct type for field access".
         assert!(matches!(unresolved, InferType::Var(_)));
     }
+}
+
+/// RFC-0151: a tuple is the closed row of integer labels `0 .. N-1`.
+fn tuple_row(
+    items: Vec<metel_frontend::pipeline::type_checking::type_engine::InferType>,
+) -> metel_frontend::pipeline::type_checking::type_engine::InferType {
+    use metel_frontend::pipeline::type_checking::type_engine::InferType;
+    InferType::Record(
+        items
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| (index.to_string(), item))
+            .collect(),
+    )
 }

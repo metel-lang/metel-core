@@ -65,14 +65,6 @@ pub(super) fn match_pattern(
             true
         }
 
-        TypedPattern::Tuple(sub_patterns, _) => match value {
-            Value::Tuple(elems) if elems.len() == sub_patterns.len() => sub_patterns
-                .iter()
-                .zip(elems.iter())
-                .all(|(p, v)| match_pattern(p, v, out)),
-            _ => false,
-        },
-
         TypedPattern::EnumVariant {
             path,
             variant_id,

@@ -33,8 +33,6 @@ use crate::identity::FieldId;
 pub enum Projection {
     /// A named field: `.f`. `id` is the field's interned identity when known.
     Field { name: String, id: Option<FieldId> },
-    /// A tuple element: `.0`.
-    TupleIndex(usize),
     /// An element reached through a dynamic index: `[i]`. Which element is not
     /// known statically, so two `OpaqueIndex` steps into the same sequence are
     /// the same place.
@@ -66,7 +64,6 @@ impl Projection {
     fn rank(&self) -> u8 {
         match self {
             Projection::Field { .. } => 0,
-            Projection::TupleIndex(_) => 1,
             Projection::OpaqueIndex => 2,
             Projection::Deref => 3,
         }
@@ -77,7 +74,6 @@ impl PartialEq for Projection {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Projection::Field { name: a, .. }, Projection::Field { name: b, .. }) => a == b,
-            (Projection::TupleIndex(a), Projection::TupleIndex(b)) => a == b,
             (Projection::OpaqueIndex, Projection::OpaqueIndex)
             | (Projection::Deref, Projection::Deref) => true,
             _ => false,
@@ -92,7 +88,6 @@ impl Hash for Projection {
         self.rank().hash(state);
         match self {
             Projection::Field { name, .. } => name.hash(state),
-            Projection::TupleIndex(i) => i.hash(state),
             Projection::OpaqueIndex | Projection::Deref => {}
         }
     }
@@ -110,7 +105,6 @@ impl Ord for Projection {
             .cmp(&other.rank())
             .then_with(|| match (self, other) {
                 (Projection::Field { name: a, .. }, Projection::Field { name: b, .. }) => a.cmp(b),
-                (Projection::TupleIndex(a), Projection::TupleIndex(b)) => a.cmp(b),
                 _ => Ordering::Equal,
             })
     }
@@ -173,10 +167,6 @@ impl std::fmt::Display for Place {
                     rendered.push('.');
                     rendered.push_str(name);
                 }
-                Projection::TupleIndex(index) => {
-                    rendered.push('.');
-                    rendered.push_str(&index.to_string());
-                }
                 Projection::OpaqueIndex => rendered.push_str("[_]"),
                 // A deref reads leftwards, so it wraps what has been built so far.
                 Projection::Deref => rendered = format!("(*{rendered})"),
@@ -206,9 +196,6 @@ pub fn from_expr(expr: &TypedExpr) -> Option<Place> {
         } => Some(
             from_expr(object)?.with_projection(Projection::field_with_id(field.clone(), *field_id)),
         ),
-        TypedExpr::TupleAccess { object, index, .. } => {
-            Some(from_expr(object)?.with_projection(Projection::TupleIndex(*index)))
-        }
         TypedExpr::Index { object, .. } => {
             Some(from_expr(object)?.with_projection(Projection::OpaqueIndex))
         }
@@ -226,9 +213,6 @@ pub fn from_typed_place(place: &TypedPlace) -> Option<Place> {
         // back to the name here.
         TypedPlace::Field { object, field, .. } => {
             Some(from_typed_place(object)?.with_projection(Projection::field(field.clone())))
-        }
-        TypedPlace::Tuple { object, index, .. } => {
-            Some(from_typed_place(object)?.with_projection(Projection::TupleIndex(*index)))
         }
         TypedPlace::Index { object, .. } => {
             Some(from_typed_place(object)?.with_projection(Projection::OpaqueIndex))

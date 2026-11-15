@@ -43,14 +43,6 @@ pub(super) fn format_value(val: &Value) -> String {
         Value::U32(n) => n.to_string(),
         Value::U64(n) => n.to_string(),
         Value::F32(f) => f.to_string(),
-        Value::Tuple(items) => {
-            let inner = items
-                .iter()
-                .map(format_value)
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({inner})")
-        }
         Value::Array(arr) => {
             let inner = arr
                 .borrow()
@@ -65,6 +57,13 @@ pub(super) fn format_value(val: &Value) -> String {
             fields,
             type_id: None,
         } if fields.is_empty() => "()".to_string(),
+        // RFC-0151: an anonymous row whose labels are exactly `0 .. N-1` prints as a tuple.
+        Value::Record { .. } if tuple_elements(val).is_some() => {
+            let elements = tuple_elements(val).unwrap_or_default();
+            let inner = elements.into_iter().map(format_value).collect::<Vec<_>>();
+            let tail = if inner.len() == 1 { "," } else { "" };
+            format!("({}{tail})", inner.join(", "))
+        }
         Value::Record { fields, .. } => {
             let mut pairs: Vec<_> = fields.iter().collect();
             pairs.sort_by(|(left, _), (right, _)| crate::data::types::label_cmp(left, right));
@@ -148,3 +147,21 @@ pub(super) fn format_value(val: &Value) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// RFC-0151: the elements of an anonymous row whose labels are exactly `0 .. N-1`, in label order (`None` for any other
+/// value, the empty row included, which is the unit value).
+pub(super) fn tuple_elements(value: &Value) -> Option<Vec<&Value>> {
+    let Value::Record {
+        fields,
+        type_id: None,
+    } = value
+    else {
+        return None;
+    };
+    if fields.is_empty() {
+        return None;
+    }
+    (0..fields.len())
+        .map(|index| fields.get(&index.to_string()))
+        .collect()
+}

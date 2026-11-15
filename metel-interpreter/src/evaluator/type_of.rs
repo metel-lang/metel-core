@@ -37,7 +37,6 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
         Value::U32(_) => Type::U32,
         Value::U64(_) => Type::U64,
         Value::F32(_) => Type::F32,
-        Value::Tuple(elems) => Type::Tuple(elems.iter().map(go).collect()),
         Value::Record { fields, .. } => {
             let mut items: Vec<(String, Type)> =
                 fields.iter().map(|(k, v)| (k.clone(), go(v))).collect();
@@ -107,7 +106,7 @@ pub(super) fn value_to_type(value: &Value, registry: &TypeDefinitionRegistry, sp
                         .into_iter()
                         .find(|(name, _)| name == f)
                         .map_or(Type::unit(), |(_, ty)| ty),
-                    (super::PathSegment::TupleIndex(_) | super::PathSegment::ArrayIndex(_), t) => t,
+                    (super::PathSegment::ArrayIndex(_), t) => t,
                     _ => Type::unit(),
                 };
             }
@@ -160,12 +159,6 @@ pub fn refine_with_static(runtime: &Type, static_ty: &Type) -> Type {
         (Type::MutReference(r), Type::MutReference(s)) => {
             Type::MutReference(Box::new(refine_with_static(r, s)))
         }
-        (Type::Tuple(r), Type::Tuple(s)) if r.len() == s.len() => Type::Tuple(
-            r.iter()
-                .zip(s.iter())
-                .map(|(a, b)| refine_with_static(a, b))
-                .collect(),
-        ),
         (Type::Named(rn, ra, rid), Type::Named(sn, sa, sid))
             if rn == sn && ra.len() == sa.len() =>
         {

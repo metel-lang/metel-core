@@ -424,7 +424,7 @@ fn normalize_expr(
             Ok(())
         }
 
-        Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
+        Expr::Array(elems, _) => {
             for e in elems {
                 normalize_expr(e, scope, current_module, module_names, symbols)?;
             }
@@ -471,7 +471,7 @@ fn normalize_expr(
             }
             Ok(())
         }
-        Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+        Expr::FieldAccess { object, .. } => {
             normalize_expr(object, scope, current_module, module_names, symbols)
         }
         Expr::Index { object, index, .. } => {

@@ -234,12 +234,15 @@ fun main() {}
     assert_ne!(binding.identity, parameter.identity);
     assert_eq!(binding.ty, parameter.ty);
     assert!(matches!(value.kind, AbstractExprKind::Binding(id) if id == parameter.identity));
-    let AbstractExprKind::Tuple(items) = &body.block.tail.as_ref().unwrap().kind else {
+    // RFC-0151: a tuple is the record literal of integer labels.
+    let AbstractExprKind::RecordLiteral { fields: items, .. } =
+        &body.block.tail.as_ref().unwrap().kind
+    else {
         panic!("tuple tail")
     };
-    assert!(matches!(items[0].kind, AbstractExprKind::Binding(id) if id == binding.identity));
-    assert!(matches!(items[1].kind, AbstractExprKind::Binding(id) if id == parameter.identity));
-    assert_eq!(items[0].ty, parameter.ty);
+    assert!(matches!(items[0].1.kind, AbstractExprKind::Binding(id) if id == binding.identity));
+    assert!(matches!(items[1].1.kind, AbstractExprKind::Binding(id) if id == parameter.identity));
+    assert_eq!(items[0].1.ty, parameter.ty);
     let forward = find("forward");
     assert!(
         matches!(
@@ -767,7 +770,7 @@ fun main() {}
         assert_eq!(projections.len(), 2);
         assert_eq!(projections[0], Projection::Deref);
         match name {
-            "tuple" => assert_eq!(projections[1], Projection::TupleIndex(0)),
+            "tuple" => assert_eq!(projections[1], Projection::field("0")),
             _ => assert_eq!(projections[1], Projection::field("payload")),
         }
     }
@@ -873,7 +876,7 @@ fun main() {}
     ));
     let first = body("first").block.tail.as_ref().unwrap().place().unwrap();
     assert_eq!(first.binding, body("first").parameters[0].identity);
-    assert_eq!(first.projections, [Projection::TupleIndex(0)]);
+    assert_eq!(first.projections, [Projection::field("0")]);
     let borrowed = body("read_first")
         .block
         .tail
@@ -883,7 +886,7 @@ fun main() {}
         .unwrap();
     assert_eq!(
         borrowed.projections,
-        [Projection::Deref, Projection::TupleIndex(0)]
+        [Projection::Deref, Projection::field("0")]
     );
     assert!(
         matches!(tail_call("recursive").callee.kind, AbstractExprKind::Binding(BindingId::Global(id)) if id == find("recursive").def_id.unwrap())

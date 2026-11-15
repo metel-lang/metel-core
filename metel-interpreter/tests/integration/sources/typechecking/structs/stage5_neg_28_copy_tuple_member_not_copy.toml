@@ -4,4 +4,4 @@ error = ["T0012"]
 [expect]
 status = "typecheck_error"
 code = "T0012"
-contains = "tuples implement `Copy` only when every element does"
+contains = "does not implement `Copy`"

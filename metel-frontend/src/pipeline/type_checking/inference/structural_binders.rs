@@ -87,11 +87,6 @@ fn rename_type(ty: &mut TypeExpr, replacements: &HashMap<String, String>) {
                 rename_type(argument, replacements);
             }
         }
-        TypeExpr::Tuple(items) => {
-            for item in items {
-                rename_type(item, replacements);
-            }
-        }
         TypeExpr::Record(fields) => rename_fields(fields, replacements),
         TypeExpr::OpenRecord(fields, tail) => {
             rename_fields(fields, replacements);

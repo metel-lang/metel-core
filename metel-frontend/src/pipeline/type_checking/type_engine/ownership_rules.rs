@@ -287,7 +287,6 @@ fn flow_condition(
             facts,
         ),
         AbstractType::Concrete(ty) => Some(registry.type_is_copy(&[], ty)),
-        AbstractType::Tuple(items) => all(&mut items.iter()),
         AbstractType::Record(fields) => all(&mut fields.iter().map(|(_, ty)| ty)),
         AbstractType::SizedArray(item, _) => flow_condition(registry, item, identity, facts),
         AbstractType::Reference(_) | AbstractType::Array(_) => Some(true),

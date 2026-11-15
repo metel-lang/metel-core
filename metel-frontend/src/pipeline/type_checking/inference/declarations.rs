@@ -558,7 +558,6 @@ pub(super) fn type_expr_contains_impl_aspect(te: &TypeExpr) -> bool {
     match te {
         TypeExpr::ImplAspect { .. } => true,
         TypeExpr::Named(_, args, _) => args.iter().any(type_expr_contains_impl_aspect),
-        TypeExpr::Tuple(elems) => elems.iter().any(type_expr_contains_impl_aspect),
         TypeExpr::Record(fields) => fields
             .iter()
             .any(|(_, ty)| type_expr_contains_impl_aspect(ty)),
@@ -621,12 +620,6 @@ pub(super) fn rewrite_impl_aspect_returns(
                 .map(|a| rewrite_impl_aspect_returns(a, counter, replacements))
                 .collect(),
             span.clone(),
-        ),
-        TypeExpr::Tuple(elems) => TypeExpr::Tuple(
-            elems
-                .iter()
-                .map(|e| rewrite_impl_aspect_returns(e, counter, replacements))
-                .collect(),
         ),
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
@@ -855,11 +848,6 @@ fn collect_row_view_consumes(actual: &InferType, expected: &InferType, out: &mut
         (InferType::Var(var), InferType::RowView(source)) if source.as_ref() == actual => {
             out.insert(*var);
         }
-        (InferType::Tuple(actual), InferType::Tuple(expected)) => {
-            for (actual, expected) in actual.iter().zip(expected) {
-                collect_row_view_consumes(actual, expected, out);
-            }
-        }
         _ => {}
     }
 }
@@ -938,7 +926,6 @@ fn names_open_row(te: &TypeExpr) -> bool {
             true
         }
         TypeExpr::Named(_, args, _) => args.iter().any(names_open_row),
-        TypeExpr::Tuple(items) => items.iter().any(names_open_row),
         TypeExpr::Array(inner)
         | TypeExpr::SizedArray(inner, _)
         | TypeExpr::Reference(inner)
@@ -2962,12 +2949,6 @@ pub(super) fn substitute_structural_self(te: &TypeExpr, replacement: &TypeExpr) 
                 .collect(),
             span.clone(),
         ),
-        TypeExpr::Tuple(items) => TypeExpr::Tuple(
-            items
-                .iter()
-                .map(|item| substitute_structural_self(item, replacement))
-                .collect(),
-        ),
         TypeExpr::Record(fields) => TypeExpr::Record(
             fields
                 .iter()
@@ -3196,12 +3177,6 @@ fn freshen_anonymous_row_args_with_vars(
                 id.clone(),
             )
         }
-        InferType::Tuple(items) => InferType::Tuple(
-            items
-                .iter()
-                .map(|t| freshen_anonymous_row_args_with_vars(t, ctx, vars))
-                .collect(),
-        ),
         InferType::Array(inner) => InferType::Array(Box::new(
             freshen_anonymous_row_args_with_vars(inner, ctx, vars),
         )),

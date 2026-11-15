@@ -1,0 +1,9 @@
+// RFC-0151: a tuple is a row, so it is `Display` through the row impl when its fields are, and satisfies the bound.
+fun show<T: Display>(x: T) -> String {
+    return x.to_string();
+}
+
+fun main() {
+    assert(show((1, 2)) == "(1, 2)");
+    assert(show((5,)) == "(5,)");
+}

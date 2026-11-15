@@ -565,7 +565,6 @@ fn mentions_owned(ty: &TypeExpr, name: &str) -> bool {
         TypeExpr::MutReference(inner) | TypeExpr::Array(inner) | TypeExpr::SizedArray(inner, _) => {
             mentions_owned(inner, name)
         }
-        TypeExpr::Tuple(items) => items.iter().any(|t| mentions_owned(t, name)),
         TypeExpr::Record(fields) => fields.iter().any(|(_, t)| mentions_owned(t, name)),
         _ => true,
     }

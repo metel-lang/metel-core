@@ -1301,11 +1301,6 @@ impl Walker<'_> {
                     self.record_type_expr(arg);
                 }
             }
-            TypeExpr::Tuple(items) => {
-                for item in items {
-                    self.record_type_expr(item);
-                }
-            }
             TypeExpr::OpenRecord(fields, tail) => {
                 for (_, field) in fields {
                     self.record_type_expr(field);
@@ -1585,7 +1580,7 @@ impl Walker<'_> {
                     self.record_use(name, path_span);
                 }
             }
-            Expr::Tuple(xs, _) | Expr::Array(xs, _) => {
+            Expr::Array(xs, _) => {
                 for x in xs {
                     self.walk_expr(x);
                 }
@@ -1594,7 +1589,6 @@ impl Walker<'_> {
             | Expr::UnaryOp(_, x, _)
             | Expr::NamedArg { value: x, .. }
             | Expr::FieldAccess { object: x, .. }
-            | Expr::TupleAccess { object: x, .. }
             | Expr::Cast { expr: x, .. }
             | Expr::Ascribe { expr: x, .. } => self.walk_expr(x),
             Expr::PropagateError { expr: x, span } => {
@@ -1719,9 +1713,9 @@ impl Walker<'_> {
     fn walk_assign_target(&mut self, target: &AssignTarget) {
         match target {
             AssignTarget::Ident(name, span) => self.record_use(name, span),
-            AssignTarget::FieldAccess { object, .. }
-            | AssignTarget::TupleAccess { object, .. }
-            | AssignTarget::Deref { object, .. } => self.walk_expr(object),
+            AssignTarget::FieldAccess { object, .. } | AssignTarget::Deref { object, .. } => {
+                self.walk_expr(object);
+            }
             AssignTarget::Index { object, index, .. } => {
                 self.walk_expr(object);
                 self.walk_expr(index);
@@ -1749,15 +1743,6 @@ impl Walker<'_> {
                     DefinitionKind::PatternBinding,
                     LexicalSeg::PatternField(name.clone()),
                 );
-            }
-            Pattern::Tuple(elems, _) => {
-                for (i, e) in elems.iter().enumerate() {
-                    self.path.push(LexicalSeg::PatternElem(
-                        u32::try_from(i).unwrap_or(u32::MAX),
-                    ));
-                    self.bind_pattern(e);
-                    self.path.pop();
-                }
             }
             Pattern::EnumVariant {
                 fields,

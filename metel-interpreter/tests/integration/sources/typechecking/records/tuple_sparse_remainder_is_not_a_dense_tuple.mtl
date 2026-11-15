@@ -1,0 +1,9 @@
+// RFC-0151: the remainder of a tuple keeps its labels and is not renumbered, so a pair with a moved middle element is
+// not the dense pair a `(A, C)` parameter takes.
+fun takes_pair(t: (String, String)) -> String { t.0 }
+
+fun main() {
+    let triple := ("x", "y", "z");
+    let middle := triple.1;
+    takes_pair(triple);
+}

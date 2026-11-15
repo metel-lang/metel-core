@@ -107,7 +107,7 @@ fn in_expr<'a>(expression: &'a Expr, found: &mut impl Visitor<'a>) {
         | Expr::ResolvedPath { .. }
         | Expr::Continue(..)
         | Expr::RecordProjection { .. } => {}
-        Expr::Tuple(items, _) | Expr::Array(items, _) => {
+        Expr::Array(items, _) => {
             for item in items {
                 in_expr(item, found);
             }
@@ -131,8 +131,7 @@ fn in_expr<'a>(expression: &'a Expr, found: &mut impl Visitor<'a>) {
         | Expr::Cast { expr: value, .. }
         | Expr::Ascribe { expr: value, .. }
         | Expr::PropagateError { expr: value, .. }
-        | Expr::FieldAccess { object: value, .. }
-        | Expr::TupleAccess { object: value, .. } => in_expr(value, found),
+        | Expr::FieldAccess { object: value, .. } => in_expr(value, found),
         Expr::BinOp(left, _, right, _)
         | Expr::Index {
             object: left,
@@ -196,9 +195,9 @@ fn in_expr<'a>(expression: &'a Expr, found: &mut impl Visitor<'a>) {
 fn in_target<'a>(target: &'a AssignTarget, found: &mut impl Visitor<'a>) {
     match target {
         AssignTarget::Ident(..) => {}
-        AssignTarget::FieldAccess { object, .. }
-        | AssignTarget::TupleAccess { object, .. }
-        | AssignTarget::Deref { object, .. } => in_expr(object, found),
+        AssignTarget::FieldAccess { object, .. } | AssignTarget::Deref { object, .. } => {
+            in_expr(object, found);
+        }
         AssignTarget::Index { object, index, .. } => {
             in_expr(object, found);
             in_expr(index, found);

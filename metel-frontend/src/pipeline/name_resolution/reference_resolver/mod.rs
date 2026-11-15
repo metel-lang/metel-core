@@ -350,7 +350,7 @@ impl Walker<'_, '_> {
             | Expr::Literal(_, _)
             | Expr::RecordProjection { .. }
             | Expr::Continue(_) => {}
-            Expr::Tuple(elems, _) | Expr::Array(elems, _) => {
+            Expr::Array(elems, _) => {
                 for e in elems {
                     self.resolve_expr(e);
                 }
@@ -381,7 +381,7 @@ impl Walker<'_, '_> {
                     self.resolve_expr(a);
                 }
             }
-            Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+            Expr::FieldAccess { object, .. } => {
                 self.resolve_expr(object);
             }
             Expr::Index { object, index, .. } => {
@@ -446,9 +446,7 @@ impl Walker<'_, '_> {
             // declaration and needs its `SymbolId` for the resolution freeze
             // (ADR-0054 / metel-core#1052).
             AssignTarget::Ident(name, span) => self.record_ref(name, span),
-            AssignTarget::FieldAccess { object, .. }
-            | AssignTarget::TupleAccess { object, .. }
-            | AssignTarget::Deref { object, .. } => {
+            AssignTarget::FieldAccess { object, .. } | AssignTarget::Deref { object, .. } => {
                 self.resolve_expr(object);
             }
             AssignTarget::Index { object, index, .. } => {
@@ -493,11 +491,6 @@ fn bind_pattern(pattern: &Pattern, bind: &mut dyn FnMut(&str)) {
             }
             if let Some((name, _)) = rest_binding {
                 bind(name);
-            }
-        }
-        Pattern::Tuple(elems, _) => {
-            for p in elems {
-                bind_pattern(p, bind);
             }
         }
         Pattern::Array { elems, rest, .. } => {

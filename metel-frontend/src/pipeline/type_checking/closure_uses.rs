@@ -112,7 +112,6 @@ fn collect_assign_target_uses(
             }
         }
         crate::data::ast::AssignTarget::FieldAccess { object, .. }
-        | crate::data::ast::AssignTarget::TupleAccess { object, .. }
         | crate::data::ast::AssignTarget::Deref { object, .. } => {
             collect_closure_expr_uses(object, &mut bound.clone(), reads, writes, spans);
             if let crate::data::ast::Expr::Ident(name, ident_span) = object.as_ref()
@@ -145,9 +144,7 @@ fn collect_assign_target_uses(
 fn lvalue_root_ident(expr: &Expr) -> Option<(&String, &Span)> {
     match expr {
         Expr::Ident(name, span) => Some((name, span)),
-        Expr::FieldAccess { object, .. }
-        | Expr::TupleAccess { object, .. }
-        | Expr::Index { object, .. } => lvalue_root_ident(object),
+        Expr::FieldAccess { object, .. } | Expr::Index { object, .. } => lvalue_root_ident(object),
         _ => None,
     }
 }
@@ -180,7 +177,7 @@ fn collect_closure_expr_uses(
                 reads.insert(resolved.clone());
             }
         }
-        Expr::Tuple(items, _) | Expr::Array(items, _) => {
+        Expr::Array(items, _) => {
             for item in items {
                 collect_closure_expr_uses(item, bound, reads, writes, spans);
             }
@@ -254,7 +251,7 @@ fn collect_closure_expr_uses(
                 collect_closure_expr_uses(arg, bound, reads, writes, spans);
             }
         }
-        Expr::FieldAccess { object, .. } | Expr::TupleAccess { object, .. } => {
+        Expr::FieldAccess { object, .. } => {
             collect_closure_expr_uses(object, bound, reads, writes, spans);
         }
         Expr::Match(m) => {
@@ -419,7 +416,7 @@ fn inner_consumed_names(
     out: &mut Vec<(String, Span)>,
 ) {
     match expr {
-        Expr::Tuple(items, _) | Expr::Array(items, _) => {
+        Expr::Array(items, _) => {
             for item in items {
                 consume(item, bound, out);
             }
@@ -465,8 +462,7 @@ fn inner_consumed_names(
         | Expr::Cast { expr: value, .. }
         | Expr::Ascribe { expr: value, .. }
         | Expr::PropagateError { expr: value, .. }
-        | Expr::FieldAccess { object: value, .. }
-        | Expr::TupleAccess { object: value, .. } => inner_consumed_names(value, bound, out),
+        | Expr::FieldAccess { object: value, .. } => inner_consumed_names(value, bound, out),
         Expr::BinOp(left, _, right, _) => {
             inner_consumed_names(left, bound, out);
             inner_consumed_names(right, bound, out);
@@ -510,11 +506,6 @@ fn collect_pattern_bindings(
     match pattern {
         crate::data::ast::Pattern::Binding(name, _) => {
             bound.insert(name.clone());
-        }
-        crate::data::ast::Pattern::Tuple(items, _) => {
-            for item in items {
-                collect_pattern_bindings(item, bound);
-            }
         }
         crate::data::ast::Pattern::Array { elems, rest, .. } => {
             for item in elems {

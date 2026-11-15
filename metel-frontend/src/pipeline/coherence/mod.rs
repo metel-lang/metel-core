@@ -102,7 +102,6 @@ fn declaring_modules(names: &ResolvedNames) -> HashMap<SymbolId, Vec<String>> {
 enum CanonicalType {
     Resolved(SymbolId, Vec<CanonicalType>),
     Unresolved(String, Vec<CanonicalType>),
-    Tuple(Vec<CanonicalType>),
     Record(Vec<(String, CanonicalType)>),
     /// `{ x: T, ..R }` as an impl target (RFC-0121 §3): the named fields; the tail is
     /// the impl's own row variable, so it contributes nothing to the comparison.
@@ -137,7 +136,6 @@ fn canonicalize(names: &ResolvedNames, current_module: &[String], ty: &TypeExpr)
                 None => CanonicalType::Unresolved(name.clone(), cargs),
             }
         }
-        TypeExpr::Tuple(items) => CanonicalType::Tuple(items.iter().map(go).collect()),
         TypeExpr::Record(fields) => CanonicalType::Record(
             fields
                 .iter()
@@ -251,13 +249,6 @@ fn canonicalize_impl_target(
         TypeExpr::SizedArray(inner, n) => {
             CanonicalType::SizedArray(Box::new(map_arg(0, inner)), *n)
         }
-        TypeExpr::Tuple(items) => CanonicalType::Tuple(
-            items
-                .iter()
-                .enumerate()
-                .map(|(i, arg)| map_arg(i, arg))
-                .collect(),
-        ),
         TypeExpr::Record(fields) => CanonicalType::Record(
             fields
                 .iter()
@@ -349,14 +340,6 @@ fn scoped_type_param_bounds(ib: &ImplBlock) -> (Vec<Vec<GenericBound>>, Vec<Vec<
                 .into_iter()
                 .collect();
             (1, map)
-        }
-        TypeExpr::Tuple(items) => {
-            let map = items
-                .iter()
-                .enumerate()
-                .filter_map(|(i, arg)| name_at(arg, &impl_param_names).map(|n| (n, i)))
-                .collect();
-            (items.len(), map)
         }
         // `extend<record R: { .. }> { ..R }: Aspect`: the whole receiver row is position 0,
         // so the tail variable's row bound attaches there.
@@ -688,13 +671,6 @@ fn canonical_types_compatible(a: &CanonicalType, b: &CanonicalType) -> bool {
                     .zip(args_b)
                     .all(|(x, y)| canonical_types_compatible(x, y))
         }
-        (CanonicalType::Tuple(xs), CanonicalType::Tuple(ys)) => {
-            xs.len() == ys.len()
-                && xs
-                    .iter()
-                    .zip(ys)
-                    .all(|(x, y)| canonical_types_compatible(x, y))
-        }
         // Record targets (RFC-0121 §3). Two closed rows are compatible only when they
         // name the same labels; a row-tailed target is open, so it is compatible with
         // any other record target whose labels carry its own named ones. Whether the
@@ -756,7 +732,6 @@ fn contains_type_param(ct: &CanonicalType) -> bool {
         CanonicalType::Resolved(_, args) | CanonicalType::Unresolved(_, args) => {
             args.iter().any(contains_type_param)
         }
-        CanonicalType::Tuple(items) => items.iter().any(contains_type_param),
         CanonicalType::Record(fields) => fields.iter().any(|(_, ty)| contains_type_param(ty)),
         CanonicalType::Array(inner)
         | CanonicalType::SizedArray(inner, _)
@@ -1111,10 +1086,7 @@ fn collect_impl<'a>(
     let is_structural_or_generic = !ib.generics.is_empty()
         || matches!(
             ib.target_type,
-            TypeExpr::Array(_)
-                | TypeExpr::SizedArray(_, _)
-                | TypeExpr::Tuple(_)
-                | TypeExpr::Fun { .. }
+            TypeExpr::Array(_) | TypeExpr::SizedArray(_, _) | TypeExpr::Fun { .. }
         );
     let target_head = match &ib.target_type {
         TypeExpr::Named(name, _, _) => name.rsplit("::").next().unwrap_or(name).to_string(),

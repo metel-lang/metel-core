@@ -12,7 +12,7 @@ use crate::data::ast::Span;
 use crate::data::error::{InternalErrorCode, MetelError};
 
 use super::call::{ReceiverBinding, call_method_function};
-use super::display::value_to_display_string;
+use super::display::{tuple_elements, value_to_display_string};
 use super::{ReceiverTypeArgs, RuntimeRegistry, Signal, Value, deref_value};
 
 /// The label the `std::core` record `Display` impl's native is registered under.
@@ -42,6 +42,14 @@ fn display_string(
     }
     if let Some(text) = value_to_display_string(&value) {
         return Ok(text);
+    }
+    if let Some(elements) = tuple_elements(&value) {
+        let inner = elements
+            .into_iter()
+            .map(|element| display_string(element, span, runtime))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tail = if inner.len() == 1 { "," } else { "" };
+        return Ok(format!("({}{tail})", inner.join(", ")));
     }
     if let Value::Record { fields, .. } = &value {
         return fields_string(None, fields.iter(), span, runtime);

@@ -258,7 +258,7 @@ fn expr_at_expr<'a>(
     byte_offset: usize,
 ) -> Option<&'a TypedExpr> {
     let child = match expr {
-        TypedExpr::Tuple(items, ..) | TypedExpr::Array(items, ..) => items
+        TypedExpr::Array(items, ..) => items
             .iter()
             .find_map(|item| expr_at_expr(item, filename, byte_offset)),
         TypedExpr::RecordLiteral { fields, spread, .. } => fields
@@ -276,7 +276,6 @@ fn expr_at_expr<'a>(
         | TypedExpr::UnaryOp(_, value, ..)
         | TypedExpr::RefTemp { init: value, .. }
         | TypedExpr::FieldAccess { object: value, .. }
-        | TypedExpr::TupleAccess { object: value, .. }
         | TypedExpr::Cast { expr: value, .. }
         | TypedExpr::SingletonCoerce { inner: value, .. }
         | TypedExpr::RowCoerce { inner: value, .. }
@@ -347,9 +346,7 @@ fn place_expr_at<'a>(
 ) -> Option<&'a TypedExpr> {
     match place {
         TypedPlace::Deref { object, .. } => expr_at_expr(object, filename, byte_offset),
-        TypedPlace::Field { object, .. } | TypedPlace::Tuple { object, .. } => {
-            place_expr_at(object, filename, byte_offset)
-        }
+        TypedPlace::Field { object, .. } => place_expr_at(object, filename, byte_offset),
         TypedPlace::Index { object, index, .. } => place_expr_at(object, filename, byte_offset)
             .or_else(|| expr_at_expr(index, filename, byte_offset)),
         TypedPlace::Ident(_, _, _) => None,

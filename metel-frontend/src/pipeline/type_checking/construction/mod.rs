@@ -1721,7 +1721,6 @@ fn type_to_type_expr(ty: &Type) -> TypeExpr {
         Type::U32 => named("u32"),
         Type::U64 => named("u64"),
         Type::F32 => named("f32"),
-        Type::Tuple(items) => TypeExpr::Tuple(items.iter().map(type_to_type_expr).collect()),
         Type::Record(fields) => TypeExpr::Record(
             fields
                 .iter()
@@ -2061,7 +2060,6 @@ fn construct_propagate_option(
 fn shared_reference_root_in_lvalue_path(expr: &TypedExpr) -> Option<&Type> {
     match expr {
         TypedExpr::FieldAccess { object, .. }
-        | TypedExpr::TupleAccess { object, .. }
         | TypedExpr::Index { object, .. }
         | TypedExpr::UnaryOp(UnaryOp::Deref, object, _, _) => {
             if let Type::Reference(inner) = object.ty() {
@@ -2281,21 +2279,39 @@ fn maybe_singleton_coerce(
     if &actual_ty == expected {
         return Ok(actual);
     }
-    if let (Type::Tuple(expected_items), TypedExpr::Tuple(items, _, tuple_span)) =
-        (expected, &actual)
-        && items.len() == expected_items.len()
+    // RFC-0151: a record literal (a tuple is one) coerces its fields one by one to the expected row.
+    if let (
+        Type::Record(expected_fields),
+        TypedExpr::RecordLiteral {
+            fields,
+            spread: None,
+            span: literal_span,
+            ..
+        },
+    ) = (expected, &actual)
+        && fields.len() == expected_fields.len()
+        && fields
+            .iter()
+            .zip(expected_fields)
+            .all(|((label, _), (expected_label, _))| label == expected_label)
     {
-        let items = items
+        let fields = fields
             .iter()
             .cloned()
-            .zip(expected_items)
-            .map(|(item, expected)| maybe_singleton_coerce(expected, item, span, registry))
-            .collect::<Result<Vec<_>, _>>()?;
-        return Ok(TypedExpr::Tuple(
-            items,
-            expected.clone(),
-            tuple_span.clone(),
-        ));
+            .zip(expected_fields)
+            .map(|((label, item), (_, expected))| {
+                Ok((
+                    label,
+                    maybe_singleton_coerce(expected, item, span, registry)?,
+                ))
+            })
+            .collect::<Result<Vec<_>, MetelError>>()?;
+        return Ok(TypedExpr::RecordLiteral {
+            fields,
+            spread: None,
+            ty: expected.clone(),
+            span: literal_span.clone(),
+        });
     }
     let actual_infer = type_to_infer(&actual_ty);
     if matches!((&actual_ty, expected), (Type::Named(..), Type::Record(_)))
@@ -2493,48 +2509,6 @@ fn assign_target_to_typed_place(
             field: field.clone(),
             span: span.clone(),
         }),
-        AssignTarget::TupleAccess {
-            object,
-            index,
-            span,
-        } => {
-            let typed_object = expr_to_typed_place(object, ctx)?;
-            let raw_object_ty = typed_place_ty(&typed_object, ctx, span)?;
-            // Reach through a reference at the root, matching field/index paths.
-            let object_ty = peel_type_references(&raw_object_ty).clone();
-            match object_ty {
-                Type::Tuple(elems) => {
-                    if *index >= elems.len() {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!(
-                                "tuple index {index} out of bounds (tuple has {} elements)",
-                                elems.len()
-                            ),
-                            span,
-                        ));
-                    }
-                    Ok(TypedPlace::Tuple {
-                        object: Box::new(typed_object),
-                        index: *index,
-                        span: span.clone(),
-                    })
-                }
-                // A record, residual or row with an integer label (RFC-0151): the place is the field `.N`.
-                Type::Record(_) | Type::OpenRecord { .. } | Type::Residual { .. } => {
-                    Ok(TypedPlace::Field {
-                        object: Box::new(typed_object),
-                        field: index.to_string(),
-                        span: span.clone(),
-                    })
-                }
-                _ => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer tuple type for assignment; add a type annotation",
-                    span,
-                )),
-            }
-        }
         AssignTarget::Index {
             object,
             index,
@@ -2592,48 +2566,6 @@ fn expr_to_typed_place(expr: &Expr, ctx: &mut ConstructCtx<'_>) -> Result<TypedP
             field: field.clone(),
             span: span.clone(),
         }),
-        Expr::TupleAccess {
-            object,
-            index,
-            span,
-        } => {
-            let typed_object = expr_to_typed_place(object, ctx)?;
-            let raw_object_ty = typed_place_ty(&typed_object, ctx, span)?;
-            // Reach through a reference at the root, matching field/index paths.
-            let object_ty = peel_type_references(&raw_object_ty).clone();
-            match object_ty {
-                Type::Tuple(elems) => {
-                    if *index >= elems.len() {
-                        return Err(MetelError::type_error(
-                            TypeErrorCode::T0003,
-                            format!(
-                                "tuple index {index} out of bounds (tuple has {} elements)",
-                                elems.len()
-                            ),
-                            span,
-                        ));
-                    }
-                    Ok(TypedPlace::Tuple {
-                        object: Box::new(typed_object),
-                        index: *index,
-                        span: span.clone(),
-                    })
-                }
-                // A record, residual or row with an integer label (RFC-0151): the place is the field `.N`.
-                Type::Record(_) | Type::OpenRecord { .. } | Type::Residual { .. } => {
-                    Ok(TypedPlace::Field {
-                        object: Box::new(typed_object),
-                        field: index.to_string(),
-                        span: span.clone(),
-                    })
-                }
-                _ => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer tuple type for assignment; add a type annotation",
-                    span,
-                )),
-            }
-        }
         Expr::Index {
             object,
             index,
@@ -2698,30 +2630,6 @@ fn typed_place_ty(
             // `s.t.0 = v` for `s: &var S` resolves `s.t` through this arm.
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, field_span)?).clone();
             typed_place_field_ty(&object_ty, field, field_span, ctx)
-        }
-        TypedPlace::Tuple {
-            object,
-            index,
-            span,
-        } => {
-            let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
-            match object_ty {
-                Type::Tuple(elems) => elems.get(*index).cloned().ok_or_else(|| {
-                    MetelError::type_error(
-                        TypeErrorCode::T0003,
-                        format!(
-                            "tuple index {index} out of bounds (tuple has {} elements)",
-                            elems.len()
-                        ),
-                        span,
-                    )
-                }),
-                _ => Err(MetelError::type_error(
-                    TypeErrorCode::T0002,
-                    "cannot infer tuple type for assignment; add a type annotation",
-                    span,
-                )),
-            }
         }
         TypedPlace::Index { object, .. } => {
             let object_ty = peel_type_references(&typed_place_ty(object, ctx, span)?).clone();
