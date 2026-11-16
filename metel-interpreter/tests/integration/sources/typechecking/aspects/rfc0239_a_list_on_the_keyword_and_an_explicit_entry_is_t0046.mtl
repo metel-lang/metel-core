@@ -1,0 +1,3 @@
+// RFC-0239: the keyword's list is the flow of both entries; an explicit entry beside it would state it twice.
+copy(T) struct W<T> derives Clone(T) { value: T } // ERROR[T0046]
+fun main() {}

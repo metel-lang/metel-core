@@ -320,13 +320,15 @@ fn name_class_keywords(
                     added.push(ClauseEntry {
                         name: sup,
                         from_class_keyword: true,
-                        flow: None,
+                        // An argument list on the keyword is the flow of both entries (RFC-0239).
+                        flow: entry.flow.clone(),
                         span: entry.span.clone(),
                     });
                 }
             }
         }
     }
+    check_keyword_against_entries(clauses, module, ctx)?;
     for entry in added {
         let present = clauses.derives.iter().any(|e| {
             super::coherence::resolve_id(ctx.names, module, &e.name)
@@ -335,6 +337,58 @@ fn name_class_keywords(
         if !present {
             clauses.derives.push(entry);
         }
+    }
+    Ok(())
+}
+
+/// RFC-0239 section 3: an explicit `derives` entry beside the `copy` class keyword restates an entry the keyword
+/// stands for. With a list on the keyword the flow would be stated twice, which is an error; without one the explicit
+/// entry replaces the keyword's own entry, keeping its list.
+fn check_keyword_against_entries(
+    clauses: &mut crate::data::ast::DeclClauses,
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> Result<(), MetelError> {
+    let Some(keyword) = clauses
+        .derives
+        .iter()
+        .find(|e| e.from_class_keyword)
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let keyword_id = super::coherence::resolve_id(ctx.names, module, &keyword.name);
+    let mut restated: Vec<Option<SymbolId>> = vec![keyword_id];
+    if let Some(id) = keyword_id {
+        restated.extend(
+            derived_supers(id, ctx)
+                .into_iter()
+                .map(|(_, sup)| Some(sup)),
+        );
+    }
+    let explicit_copy = clauses.derives.iter().any(|e| {
+        !e.from_class_keyword
+            && super::coherence::resolve_id(ctx.names, module, &e.name) == keyword_id
+    });
+    if let Some(list) = &keyword.flow
+        && let Some(entry) = clauses.derives.iter().find(|e| {
+            !e.from_class_keyword
+                && restated.contains(&super::coherence::resolve_id(ctx.names, module, &e.name))
+        })
+    {
+        let stated = list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>();
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0046,
+            format!(
+                "`{}` is stated both by the `copy({})` keyword and by this entry: write `copy(..)` or the `derives` entries, not both (RFC-0239)",
+                entry.name,
+                stated.join(", ")
+            ),
+            &entry.span,
+        ));
+    }
+    if explicit_copy {
+        clauses.derives.retain(|e| !e.from_class_keyword);
     }
     Ok(())
 }
@@ -536,7 +590,7 @@ fn check_public_flow_stated(
     let aspect = entry.name.as_str();
     let message = if entry.from_class_keyword {
         format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `copy` states none; write `derives Clone({0}), Copy({0})` (RFC-0227)",
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and a bare `copy` states none; write `copy({})` (RFC-0239)",
             flow_args(&set)
         )
     } else {
