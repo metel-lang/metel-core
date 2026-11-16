@@ -1,7 +1,7 @@
-//! The flow sets of derived impls (RFC-0224 sections 1 and 2): the type parameters each derived `Copy`, and each
-//! derived `Clone` that is not brought by a `Copy`, depends on.
+//! The flow sets of derived impls (RFC-0224 sections 1 and 2, RFC-0227): the type parameters each derived `Copy`
+//! and each derived `Clone` depends on, each in its own entry.
 //!
-//! A stated `derives Copy via A + B` set is the interface as written. An unstated one is computed here, from
+//! A stated `derives Clone, Copy(A, B)` set is the interface as written. An unstated one is computed here, from
 //! the fields, by substituting the flow of every type a field names: a parameter depends on itself, a nominal
 //! application on the arguments at the positions in its own flow, a tuple, record or sized array on its
 //! components, a reference and the borrowed view on nothing. Declarations are solved together by a monotone
@@ -10,8 +10,8 @@
 //! function body is solved with the others of its block, the enclosing blocks and the module in view, and a
 //! local name shadows an outer one.
 //!
-//! A `Clone` that a `Copy` brings has the `Copy` flow (RFC-0224 section 3); a `derives Clone` without `Copy` is
-//! computed the same way and reads, for a field type that derives `Copy`, that type's `Copy` flow.
+//! A type that derives `Copy` also derives `Clone`, in its own entry (RFC-0234), so the two flows are independent:
+//! each is stated or computed on its own, and a field type's `Clone` reads that type's `Clone` flow.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -61,8 +61,7 @@ impl Table {
     fn lookup(&self, key: &Key, kind: Kind) -> Option<&Entry> {
         match kind {
             Kind::Copy => self.copy.get(key),
-            // A `Copy` type's `Clone` is the provided one, with the `Copy` flow.
-            Kind::Clone => self.copy.get(key).or_else(|| self.clone.get(key)),
+            Kind::Clone => self.clone.get(key),
         }
     }
 }
@@ -111,12 +110,12 @@ impl<'a> Scope<'a> {
     }
 }
 
-/// Whether a declaration derives `Copy`, and with which flow.
+/// Whether a declaration derives `Copy` or `Clone`, and with which flow.
 enum Copying {
     No,
-    /// `derives Copy` without `via`: the flow is computed.
+    /// The entry has no argument list: the flow is computed.
     Computed,
-    /// `derives Copy via ...`: the set as written.
+    /// The entry states its argument list: the set as written (empty for `derives Clone()`).
     Stated(Vec<String>),
 }
 
@@ -130,8 +129,7 @@ pub(super) struct FlowDecl {
     params: Vec<String>,
     fields: Vec<TypeExpr>,
     copy: Copying,
-    /// Whether the declaration derives `Clone` itself.
-    clone: bool,
+    clone: Copying,
 }
 
 /// How `collect` recognises the aspects of a declaration's clauses.
@@ -173,15 +171,22 @@ pub(super) fn flow_decl(
         .derives
         .iter()
         .find(|e| e.from_class_keyword || derives(aspects.implicit, e));
-    let clone = clauses.derives.iter().any(|e| derives(aspects.clone, e));
-    if copy_entry.is_none() && !clone {
+    // The `copy` class keyword stands for `derives Clone, Copy` (RFC-0234), with a computed `Clone` flow unless the
+    // clause also writes a `Clone` entry of its own.
+    let clone_entry = clauses.derives.iter().find(|e| derives(aspects.clone, e));
+    if copy_entry.is_none() && clone_entry.is_none() {
         return None;
     }
-    let copy = match copy_entry {
-        None => Copying::No,
-        Some(e) => e.flow.as_ref().map_or(Copying::Computed, |flow| {
+    let stated = |e: &crate::data::ast::ClauseEntry| {
+        e.flow.as_ref().map_or(Copying::Computed, |flow| {
             Copying::Stated(flow.iter().map(|p| p.name.clone()).collect())
-        }),
+        })
+    };
+    let copy = copy_entry.map_or(Copying::No, stated);
+    let clone = match clone_entry {
+        Some(e) => stated(e),
+        None if copy_entry.is_some() => Copying::Computed,
+        None => Copying::No,
     };
     Some(FlowDecl {
         key: key_of(name)?,
@@ -216,19 +221,19 @@ pub(super) fn solve(
             generics: decl.generics.clone(),
             set,
         };
-        match &decl.copy {
-            Copying::Stated(stated) => {
-                table
-                    .copy
-                    .insert(decl.key.clone(), entry(stated.iter().cloned().collect()));
+        for (flow, map) in [
+            (&decl.copy, &mut table.copy),
+            (&decl.clone, &mut table.clone),
+        ] {
+            match flow {
+                Copying::Stated(stated) => {
+                    map.insert(decl.key.clone(), entry(stated.iter().cloned().collect()));
+                }
+                Copying::Computed => {
+                    map.insert(decl.key.clone(), entry(BTreeSet::new()));
+                }
+                Copying::No => {}
             }
-            Copying::Computed => {
-                table.copy.insert(decl.key.clone(), entry(BTreeSet::new()));
-            }
-            Copying::No if decl.clone => {
-                table.clone.insert(decl.key.clone(), entry(BTreeSet::new()));
-            }
-            Copying::No => {}
         }
     }
     loop {
@@ -239,20 +244,20 @@ pub(super) fn solve(
             let scope = Scope::new(&tables);
             for decl in decls {
                 // A stated flow is the interface as written; only the others are computed.
-                let kind = match &decl.copy {
-                    Copying::Computed => Kind::Copy,
-                    Copying::No if decl.clone => Kind::Clone,
-                    Copying::Stated(_) | Copying::No => continue,
-                };
-                let deps = dependence(
-                    &decl.fields,
-                    &decl.params,
-                    &decl.module,
-                    names,
-                    &scope,
-                    kind,
-                );
-                updates.push((decl.key.clone(), kind, deps));
+                for (flow, kind) in [(&decl.copy, Kind::Copy), (&decl.clone, Kind::Clone)] {
+                    if !matches!(flow, Copying::Computed) {
+                        continue;
+                    }
+                    let deps = dependence(
+                        &decl.fields,
+                        &decl.params,
+                        &decl.module,
+                        names,
+                        &scope,
+                        kind,
+                    );
+                    updates.push((decl.key.clone(), kind, deps));
+                }
             }
         }
         let mut changed = false;

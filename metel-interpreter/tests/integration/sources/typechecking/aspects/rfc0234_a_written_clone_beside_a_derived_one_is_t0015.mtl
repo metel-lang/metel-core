@@ -1,0 +1,4 @@
+// RFC-0234: `Copy` requires a derived `Clone`, and the derived impl cannot be replaced by a written one.
+struct P derives Clone, Copy { n: i64 }
+extend P: Clone { fun clone(&self) -> P { P { n = 1 } } } // ERROR[T0015]
+fun main() {}

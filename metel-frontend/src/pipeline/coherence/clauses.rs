@@ -32,7 +32,7 @@ fn facts_of(ad: &AspectDecl) -> AspectFacts {
         name: ad.name.clone(),
         declared: has(AspectProperty::Declared),
         // A `deriving` super marks the aspect\'s derivation as bringing it (`aspect Copy: deriving Clone`).
-        derivable: has(AspectProperty::Derivable) || ad.supers.iter().any(|entry| entry.deriving),
+        derivable: has(AspectProperty::Derivable) || ad.supers.iter().any(|entry| entry.derived),
         implicit: has(AspectProperty::Implicit),
         method_count: ad.methods.len(),
     }

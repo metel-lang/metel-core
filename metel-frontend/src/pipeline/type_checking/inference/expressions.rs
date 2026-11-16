@@ -2477,7 +2477,7 @@ fn infer_expr_inner(
             if source_resolved == target_resolved {
                 return Ok(target_ty);
             }
-            // Check via From aspect registry: target must implement From<source>.
+            // Check via From aspect registry requires target must implement From<source>.
             let source_concrete = infer_to_type_for_from(&source_resolved);
             let target_name = infer_type_name(&target_resolved);
             let valid = match (source_concrete.as_ref(), target_name) {

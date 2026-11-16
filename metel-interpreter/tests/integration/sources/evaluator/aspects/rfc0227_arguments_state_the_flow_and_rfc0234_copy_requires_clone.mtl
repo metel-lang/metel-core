@@ -1,0 +1,20 @@
+// RFC-0227: `derives A(args)` states the flow of a field-wise derivation; `derives Clone()` states none.
+// RFC-0234: `Copy` requires a derived `Clone` (`copy struct` declares both), and the `Clone` of a `Copy` type is
+// the copy.
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
+struct Free<T> derives Clone() { n: i64 }
+copy struct Plain { n: i64 }
+
+fun main() {
+    let w := Wrapper { value = 3 };
+    let v := w;
+    assert(w.value + v.value == 6);
+    let s := Wrapper { value = "s" };
+    let t := s.clone();
+    let f: Free<String> := Free { n = 5 };
+    assert(f.clone().n == 5);
+    let p := Plain { n = 4 };
+    let q := p.clone();
+    let r := p;
+    assert(q.n + r.n == 8);
+}

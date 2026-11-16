@@ -1,7 +1,7 @@
-//! Super-aspects (RFC-0213, metel-core#1801): the declared relation `aspect A: B, deriving C, !D` and
+//! Super-aspects (RFC-0213, metel-core#1801): the declared relation `aspect A requires B, derived C, !D` and
 //! what it demands of impls.
 //!
-//! - Every entry names an aspect (`T0003` otherwise); a cycle, a self-exclusion and a `deriving` mark
+//! - Every entry names an aspect (`T0003` otherwise); a cycle, a self-exclusion and a `derived` mark
 //!   on a user aspect are `T0044`. Only std aspects may carry the mark in v0.16.0.
 //! - An impl of `A` for a type needs a coherent positive impl of every direct and transitive positive
 //!   super-aspect for that type (`T0012`, naming the missing one) and may not sit beside a negative
@@ -30,8 +30,8 @@ pub(super) struct SuperTable {
     direct: HashMap<SymbolId, Vec<Super>>,
     names: HashMap<SymbolId, String>,
     spans: HashMap<SymbolId, Span>,
-    /// `(aspect, super)` pairs whose super the compiler provides with the aspect: the `deriving` entry of an
-    /// `implicit` aspect (`Copy: deriving Clone`, RFC-0206 section 2). Its obligation is met without an impl.
+    /// `(aspect, super)` pairs whose super the compiler provides with the aspect: the `derived` entry of an
+    /// `implicit` aspect (`Copy requires derived Clone`, RFC-0206 section 2, RFC-0234). Its obligation is met without an impl.
     provided: std::collections::HashSet<(SymbolId, SymbolId)>,
 }
 
@@ -62,11 +62,11 @@ impl SuperTable {
                 let in_std = module.module_path.first().is_some_and(|m| m == "std");
                 let mut entries = Vec::new();
                 for entry in &ad.supers {
-                    if entry.deriving && !in_std {
+                    if entry.derived && !in_std {
                         return Err(error(
                             TypeErrorCode::T0044,
                             format!(
-                                "`deriving` marks a super-aspect of a std aspect only; `{}` is a user aspect, so `{}` is an obligation its impls write by hand",
+                                "`derived` marks a super-aspect of a std aspect only; `{}` is a user aspect, so `{}` is an obligation its impls write by hand",
                                 ad.name, entry.name
                             ),
                             &entry.span,
@@ -99,7 +99,7 @@ impl SuperTable {
                             &entry.span,
                         ));
                     }
-                    if entry.deriving
+                    if entry.derived
                         && !entry.negative
                         && ad
                             .properties

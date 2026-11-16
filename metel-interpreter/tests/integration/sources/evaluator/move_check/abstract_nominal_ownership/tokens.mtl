@@ -1,7 +1,7 @@
 import std::core::Copy as Repeatable;
 
 // The alias carries the aspect's properties: `derives` resolves it by identity.
-pub struct Token derives Repeatable { pub count: i64 }
+pub struct Token derives Clone, Repeatable { pub count: i64 }
 
 pub fun copied<T>(value: Token, unused: T) -> i64 {
     let first := value;

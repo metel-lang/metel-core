@@ -1,0 +1,4 @@
+// RFC-0235: super-aspects follow `requires`; the colon after an aspect's name is rejected.
+aspect Named { fun name(&self) -> String; }
+aspect Loud: Named { } // ERROR[P0001]
+fun main() {}

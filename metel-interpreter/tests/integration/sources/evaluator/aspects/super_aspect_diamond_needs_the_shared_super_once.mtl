@@ -1,8 +1,8 @@
 // RFC-0213 section 4: `A: B, C` with `B: D` and `C: D` has one obligation `D`.
 aspect D { fun d(&self) -> i64; }
-aspect B: D { fun b(&self) -> i64; }
-aspect C: D { fun c(&self) -> i64; }
-aspect A: B, C { fun a(&self) -> i64; }
+aspect B requires D { fun b(&self) -> i64; }
+aspect C requires D { fun c(&self) -> i64; }
+aspect A requires B, C { fun a(&self) -> i64; }
 struct S { n: i64 }
 extend S: D { fun d(&self) -> i64 { 1 } }
 extend S: B { fun b(&self) -> i64 { 2 } }

@@ -1,7 +1,7 @@
 // RFC-0213: a bound `T: Greeter` proves `T: Named`, and the methods of both are callable through it.
 aspect Named { fun name(&self) -> String; }
-aspect Greeter: Named { fun greet(&self) -> String; }
-aspect Loud: Greeter { fun shout(&self) -> String; }
+aspect Greeter requires Named { fun greet(&self) -> String; }
+aspect Loud requires Greeter { fun shout(&self) -> String; }
 struct P { n: i64 }
 extend P: Named { fun name(&self) -> String { "p" } }
 extend P: Greeter { fun greet(&self) -> String { "hi" } }

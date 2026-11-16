@@ -1,0 +1,3 @@
+// RFC-0234: `Copy` requires a derived `Clone`; nothing is generated, so the entry must be written.
+struct P derives Copy { n: i64 } // ERROR[T0046]
+fun main() {}

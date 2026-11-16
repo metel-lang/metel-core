@@ -1,9 +1,9 @@
-// RFC-0224 section 1: `via` states the type parameters a `derives Copy` entry's copy-ness flows from. A set larger
+// RFC-0224 section 1: `via` states the type parameters a `derives Clone, Copy` entry's copy-ness flows from. A set larger
 // than the fields need is accepted; the type is then `Copy` only when those arguments are.
-struct Wrapper<T> derives Copy via T { value: T }
-struct Pair<A, B> derives Copy via A + B, Clone { a: A, b: B }
-struct Handle<T> derives Copy via T { id: i64 }
-enum Maybe<T> derives Copy via T { None, Some { value: T } }
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
+struct Pair<A, B> derives Clone, Copy(A, B) { a: A, b: B }
+struct Handle<T> derives Clone(T), Copy(T) { id: i64 }
+enum Maybe<T> derives Clone(T), Copy(T) { None, Some { value: T } }
 
 fun main() {
     let h: Handle<i64> := Handle { id = 1 };
