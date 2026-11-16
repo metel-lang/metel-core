@@ -1,0 +1,20 @@
+// RFC-0239: `copy(T) struct` is `derives Clone(T), Copy(T)`; `copy()` states no conditions; an explicit entry
+// beside a bare keyword replaces the keyword's own.
+pub copy(T) struct Boxed<T> { value: T }
+copy() struct Id<T> { n: i64 }
+pub copy struct W<T> derives Clone(T), Copy(T) { value: T }
+
+fun main() {
+    let b := Boxed { value = 3 };
+    let c := b;
+    assert(b.value + c.value == 6);
+    let s := Boxed { value = "s" };
+    let t := s.clone();
+    let i: Id<String> := Id { n = 2 };
+    let j := i;
+    let k := i;
+    assert(j.n + k.n == 4);
+    let w := W { value = 5 };
+    let x := w;
+    assert(w.value + x.value == 10);
+}

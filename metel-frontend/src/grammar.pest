@@ -82,7 +82,8 @@ native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 struct_decl = { pub_kw? ~ class_kw? ~ "struct" ~ ident ~ generic_params? ~ colon_list? ~ derives_clause? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 // RFC-0207: the class keywords and the two declaration clauses. All three words are contextual.
-class_kw       = { copy_kw | linear_kw }
+// RFC-0239: `copy` may carry the flow of the declaration it stands for, `copy(T) struct W<T>`; `linear` takes none.
+class_kw       = { copy_kw ~ derive_args? | linear_kw }
 copy_kw        = @{ "copy" ~ !(ASCII_ALPHANUMERIC | "_") }
 linear_kw      = @{ "linear" ~ !(ASCII_ALPHANUMERIC | "_") }
 derives_kw     = @{ "derives" ~ !(ASCII_ALPHANUMERIC | "_") }

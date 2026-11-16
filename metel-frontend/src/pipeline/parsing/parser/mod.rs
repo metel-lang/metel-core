@@ -690,12 +690,26 @@ fn parse_clause_part(
                     &span,
                 ));
             }
+            // RFC-0239: an argument list after `copy` is the flow of both entries the keyword stands for.
+            let flow = pair
+                .clone()
+                .into_inner()
+                .find(|p| p.as_rule() == Rule::derive_args)
+                .map(|args| {
+                    args.into_inner()
+                        .filter(|p| p.as_rule() == Rule::ident)
+                        .map(|p| FlowParam {
+                            name: p.as_str().to_string(),
+                            span: Span::of(&p, filename),
+                        })
+                        .collect::<Vec<_>>()
+                });
             clauses.derives.push(ClauseEntry {
                 // The aspect the `copy` keyword names is the one with the `implicit` property; the clause
                 // expansion fills the name in once names resolve.
                 name: String::new(),
                 from_class_keyword: true,
-                flow: None,
+                flow,
                 span,
             });
         }

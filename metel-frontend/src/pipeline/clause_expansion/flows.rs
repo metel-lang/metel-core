@@ -167,12 +167,14 @@ pub(super) fn flow_decl(
     let derives = |id: Option<SymbolId>, e: &crate::data::ast::ClauseEntry| {
         id.is_some() && crate::pipeline::coherence::resolve_id(names, module, &e.name) == id
     };
+    // The `copy` class keyword stands for `derives Clone, Copy` (RFC-0234), with the flow it states or a computed one
+    // (RFC-0239). An explicit entry for either aspect beside a keyword without a list replaces the keyword's entry.
+    let keyword = clauses.derives.iter().find(|e| e.from_class_keyword);
     let copy_entry = clauses
         .derives
         .iter()
-        .find(|e| e.from_class_keyword || derives(aspects.implicit, e));
-    // The `copy` class keyword stands for `derives Clone, Copy` (RFC-0234), with a computed `Clone` flow unless the
-    // clause also writes a `Clone` entry of its own.
+        .find(|e| !e.from_class_keyword && derives(aspects.implicit, e))
+        .or(keyword);
     let clone_entry = clauses.derives.iter().find(|e| derives(aspects.clone, e));
     if copy_entry.is_none() && clone_entry.is_none() {
         return None;
@@ -183,10 +185,11 @@ pub(super) fn flow_decl(
         })
     };
     let copy = copy_entry.map_or(Copying::No, stated);
-    let clone = match clone_entry {
-        Some(e) => stated(e),
-        None if copy_entry.is_some() => Copying::Computed,
-        None => Copying::No,
+    let clone = match (clone_entry, keyword) {
+        (Some(e), _) => stated(e),
+        (None, Some(k)) => stated(k),
+        (None, None) if copy_entry.is_some() => Copying::Computed,
+        (None, None) => Copying::No,
     };
     Some(FlowDecl {
         key: key_of(name)?,
