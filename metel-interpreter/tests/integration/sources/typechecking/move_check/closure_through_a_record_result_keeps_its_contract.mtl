@@ -1,0 +1,16 @@
+// metel-core#2014: a closure returned inside a record keeps its contract through a generic call, so the record is copied
+// when the captures are `Copy` and moved when one is not.
+fun pair<T>(x: T) -> .{ .a: T, .n: i64 } { .{ .a = x, .n = 1 } }
+fun copyable<T: Copy>(x: T) {
+    let c := [x]|k: i64| -> i64 { k };
+    let p := pair(c);
+    let a := p;
+    let b := p;
+}
+fun owning<T>(x: T, owned: String) {
+    let c := [owned]|k: i64| -> i64 { k };
+    let p := pair(c);
+    let a := p;
+    let b := p; // ERROR[T0019]
+}
+fun main() {}

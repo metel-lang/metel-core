@@ -1237,8 +1237,8 @@ fun main() {}
 fn abstract_ownership_keeps_assignment_storage_contracts_pending() {
     let report = move_report_for_source_with(
         r#"
-fun stored<T>(slots: &var [once || -> T; 2], value: T) {
-    slots[0u64] = [value] once || { value };
+fun stored<T>(slots: &var [[T]; 1], items: [T; 1]) {
+    slots[0u64] = items;
 }
 fun main() {}
 "#,
@@ -1966,7 +1966,8 @@ fn abstract_ownership_reports_preparation_and_consumer_fallbacks_without_partial
         r#"
 aspect Marker;
 fun item(k: i64) -> i64 { k }
-fun preparation<T>(value: T, other: |i64| -> i64) { fun nested<U>(held: U) -> U { held } let pair := [|k: i64| -> i64 { k }, other]; }
+struct Takes<T> { f: |T| -> i64 }
+fun preparation<T>(value: T, other: |i64| -> i64) { fun nested<U>(held: U) -> U { held } let held := Takes { f = |k: T| -> i64 { 0 } }; }
 fun ownership<T>(value: T, holder: dyn Marker) {
     let first := value; let second := value; let held := holder;
 }

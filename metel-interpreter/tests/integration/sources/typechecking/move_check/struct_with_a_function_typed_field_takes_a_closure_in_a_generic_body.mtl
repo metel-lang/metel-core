@@ -1,0 +1,8 @@
+// metel-core#2012: a struct with no type parameters whose field has a written function type takes a closure; the field's
+// declared type is the contract.
+struct Holder { f: |i64| -> i64 }
+fun f<T: Copy>(x: T, y: i64) {
+    let h := Holder { f = [y]|k: i64| -> i64 { k + y } };
+    let g := h.f;
+}
+fun main() {}
