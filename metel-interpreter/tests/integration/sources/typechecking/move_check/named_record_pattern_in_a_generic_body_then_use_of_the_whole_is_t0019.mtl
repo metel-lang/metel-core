@@ -1,0 +1,12 @@
+// metel-core#2056: the pattern moves `second` out of `p`, so using `p` as a whole afterwards is a use of a partially moved value.
+record Pair { first: i64, second: String }
+
+fun f<T>(p: Pair, unused: T) -> String {
+    let .{ .first, .second } := p;
+    let q := p; // ERROR[T0019]
+    second
+}
+
+fun main() {
+    println(f(Pair { first = 1, second = "s" }, 0));
+}

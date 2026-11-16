@@ -1,0 +1,9 @@
+[options]
+move_check = true
+error = ["T0019"]
+spec = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0019"
+contains = "partially moved"
