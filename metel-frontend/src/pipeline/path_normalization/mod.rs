@@ -959,7 +959,24 @@ fn try_normalize_struct_path(
             }
         }
     }
-    let prefix_len = best?;
+    let Some(prefix_len) = best else {
+        // No glob import names the module (metel-core#1772): the module prefix itself names the type, as it does
+        // for a unit variant or a static method (#1680, #1683). The type is the first segment after the longest
+        // prefix that is a module declaring it, and a type of another module must be public.
+        return (1..path.len()).rev().find_map(|split| {
+            let module = path[..split].to_vec();
+            let type_name = &path[split];
+            let id = *symbols
+                .map
+                .get(&(module.clone(), Namespace::Type, type_name.clone()))?;
+            if report_module_cycle(symbols, current_module, &module, path) {
+                return None;
+            }
+            let nameable = module == current_module
+                || symbols.public_types.contains(&(module, type_name.clone()));
+            nameable.then(|| (path[split..].to_vec(), Some(id)))
+        });
+    };
     // The stripped remainder is `[TypeName]` (struct) or `[EnumName, Variant]` (enum).
     // Either way the *type* is its first segment, declared in the matched module.
     let module = path[..prefix_len].to_vec();

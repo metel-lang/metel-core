@@ -1,0 +1,9 @@
+pub enum Kind { A, B { pub n: i64 } }
+pub struct Counter { pub n: i64 }
+pub fun double(x: i64) -> i64 { return x * 2; }
+pub fun payload(k: Kind) -> i64 {
+    match (k) {
+        Kind::A => 0,
+        Kind::B { n } => n,
+    }
+}
