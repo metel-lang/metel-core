@@ -1,6 +1,6 @@
 // RFC-0224 section 2: a flow argument is `Copy` by the rule of its own type form. A tuple and a record are
 // `Copy` when their components are, a sized array when its element is, and a shared reference always.
-struct Wrapper<T> derives Copy via T { value: T }
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 
 fun tuple_arg<T: Copy>(w: Wrapper<(T, i64)>) -> (Wrapper<(T, i64)>, Wrapper<(T, i64)>) { (w, w) }
 fun record_arg<T: Copy>(w: Wrapper<.{ .x: T }>) -> (Wrapper<.{ .x: T }>, Wrapper<.{ .x: T }>) { (w, w) }

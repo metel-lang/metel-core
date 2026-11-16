@@ -3,9 +3,11 @@
 //! `struct T: A derives B` is `struct T` with `extend T: A;` and `extend T: B;`, so the later stages see an
 //! `extend` and a clause for the same aspect as the overlap they are (`T0015`). This runs after name
 //! resolution because it has to read the aspect declarations:
-//! - the `copy` class keyword names the aspect with the `implicit` property;
-//! - `derives A` also grants every positive super-aspect `A` marks `deriving` (`Copy: deriving Clone`,
-//!   RFC-0213 section 4), under the same condition;
+//! - the `copy` class keyword names the aspect with the `implicit` property, and also stands for the entries of
+//!   the super-aspects that aspect marks `derived` (`copy struct P` is `derives Clone, Copy`, RFC-0234);
+//! - `derives A` requires an entry of its own for every positive super-aspect `A` marks `derived`
+//!   (`Copy requires derived Clone`, RFC-0213 section 4, RFC-0234): nothing is generated, a missing entry is an error;
+//! - an entry may carry arguments, the flow of a field-wise derivation (RFC-0227);
 //! - the host `clone` body belongs to the std `Clone` aspect, whose derivation is native.
 //!
 //! A generic type's impl is generic over the same parameters, and a `derives` impl bounds each parameter a
@@ -30,8 +32,8 @@ struct Aspect {
     name: String,
     module: Vec<String>,
     implicit: bool,
-    /// Positive `deriving` supers, as written in the declaring module.
-    deriving: Vec<String>,
+    /// Positive `derived` supers, as written in the declaring module.
+    derived: Vec<String>,
 }
 
 /// Resolve names, then write the impls of the declaration clauses: the one step every pipeline entry point
@@ -71,10 +73,10 @@ pub fn expand(graph: &mut ModuleGraph, names: &ResolvedNames) -> Result<(), Mete
                             .properties
                             .iter()
                             .any(|(p, _)| *p == AspectProperty::Implicit),
-                        deriving: ad
+                        derived: ad
                             .supers
                             .iter()
-                            .filter(|s| s.deriving && !s.negative)
+                            .filter(|s| s.derived && !s.negative)
                             .map(|s| s.name.clone())
                             .collect(),
                     },
@@ -266,91 +268,134 @@ struct Declaration<'a> {
     public: bool,
 }
 
-/// The `copy` class keyword names the aspect with the `implicit` property.
+/// The positive `derived` super-aspects of an aspect, transitively: the aspects a type that derives it must also
+/// derive (RFC-0234). Each is named as written in the declaring module and resolved there.
+fn derived_supers(id: SymbolId, ctx: &Ctx<'_>) -> Vec<(String, SymbolId)> {
+    let mut out: Vec<(String, SymbolId)> = Vec::new();
+    let mut stack = vec![id];
+    while let Some(next) = stack.pop() {
+        let Some(aspect) = ctx.aspects.get(&next) else {
+            continue;
+        };
+        for sup in &aspect.derived {
+            if let Some(sup_id) = super::coherence::resolve_id(ctx.names, &aspect.module, sup)
+                && sup_id != id
+                && !out.iter().any(|(_, seen)| *seen == sup_id)
+            {
+                out.push((sup.clone(), sup_id));
+                stack.push(sup_id);
+            }
+        }
+    }
+    out
+}
+
+/// The `copy` class keyword names the aspect with the `implicit` property, and stands for the entries of the
+/// super-aspects that aspect marks `derived` (`copy struct P` is `derives Clone, Copy`, RFC-0234), unless the
+/// clause writes them itself.
 fn name_class_keywords(
     clauses: &mut crate::data::ast::DeclClauses,
+    module: &[String],
     ctx: &Ctx<'_>,
 ) -> Result<(), MetelError> {
+    let mut added: Vec<ClauseEntry> = Vec::new();
     for entry in &mut clauses.derives {
         if entry.from_class_keyword && entry.name.is_empty() {
-            let implicit = ctx.aspects.values().find(|a| a.implicit).ok_or_else(|| {
-                MetelError::type_error(
-                    TypeErrorCode::T0003,
-                    "the `copy` class keyword needs an aspect with the `implicit` property, and the program has none".to_string(),
+            let implicit = ctx
+                .flow_aspects
+                .implicit
+                .and_then(|id| ctx.aspects.get(&id).map(|a| (id, a)))
+                .or_else(|| ctx.aspects.iter().find(|(_, a)| a.implicit).map(|(id, a)| (*id, a)))
+                .ok_or_else(|| {
+                    MetelError::type_error(
+                        TypeErrorCode::T0003,
+                        "the `copy` class keyword needs an aspect with the `implicit` property, and the program has none".to_string(),
+                        &entry.span,
+                    )
+                })?;
+            entry.name = implicit.1.name.clone();
+            for (sup, sup_id) in derived_supers(implicit.0, ctx) {
+                // The super as the declaring module wrote it must name the same aspect here.
+                if super::coherence::resolve_id(ctx.names, module, &sup) == Some(sup_id) {
+                    added.push(ClauseEntry {
+                        name: sup,
+                        from_class_keyword: true,
+                        flow: None,
+                        span: entry.span.clone(),
+                    });
+                }
+            }
+        }
+    }
+    for entry in added {
+        let present = clauses.derives.iter().any(|e| {
+            super::coherence::resolve_id(ctx.names, module, &e.name)
+                == super::coherence::resolve_id(ctx.names, module, &entry.name)
+        });
+        if !present {
+            clauses.derives.push(entry);
+        }
+    }
+    Ok(())
+}
+
+/// RFC-0234: `derives A` requires an entry of its own for every super-aspect `A` marks `derived`. Nothing is
+/// generated; a missing entry is an error that names the entry to add.
+fn check_derived_obligations(
+    clauses: &crate::data::ast::DeclClauses,
+    module: &[String],
+    ctx: &Ctx<'_>,
+) -> Result<(), MetelError> {
+    for entry in &clauses.derives {
+        let Some(id) = super::coherence::resolve_id(ctx.names, module, &entry.name) else {
+            continue;
+        };
+        for (sup, sup_id) in derived_supers(id, ctx) {
+            let present = clauses
+                .derives
+                .iter()
+                .any(|e| super::coherence::resolve_id(ctx.names, module, &e.name) == Some(sup_id));
+            if !present {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0046,
+                    format!(
+                        "`{}` requires a derived `{sup}`: add `{sup}` to the `derives` clause (RFC-0234); a written `extend T: {sup}` does not satisfy it",
+                        entry.name
+                    ),
                     &entry.span,
-                )
-            })?;
-            entry.name = implicit.name.clone();
+                ));
+            }
         }
     }
     Ok(())
 }
 
 /// Each entry with the aspect that bounds a generic type's parameters: a `derives` entry is bounded by itself,
-/// a colon-list marker by nothing; a brought super is bounded by the aspect that brought it.
-fn clause_entries(
-    clauses: &crate::data::ast::DeclClauses,
-    module: &[String],
-    ctx: &Ctx<'_>,
-) -> Vec<(ClauseEntry, Option<String>)> {
+/// a colon-list marker by nothing.
+fn clause_entries(clauses: &crate::data::ast::DeclClauses) -> Vec<(ClauseEntry, Option<String>)> {
     let mut entries: Vec<(ClauseEntry, Option<String>)> = Vec::new();
     for entry in &clauses.colon {
         entries.push((entry.clone(), None));
     }
     for entry in &clauses.derives {
         entries.push((entry.clone(), Some(entry.name.clone())));
-        let Some(id) = super::coherence::resolve_id(ctx.names, module, &entry.name) else {
-            continue;
-        };
-        let Some(aspect) = ctx.aspects.get(&id) else {
-            continue;
-        };
-        for sup in &aspect.deriving {
-            // The super as the declaring module wrote it must name the same aspect here.
-            let same = super::coherence::resolve_id(ctx.names, &aspect.module, sup).is_some_and(
-                |sup_id| super::coherence::resolve_id(ctx.names, module, sup) == Some(sup_id),
-            );
-            if same {
-                entries.push((
-                    ClauseEntry {
-                        name: sup.clone(),
-                        from_class_keyword: false,
-                        // The `Clone` a `Copy` brings has the flow of the `Copy` entry (RFC-0224 section 3).
-                        flow: entry.flow.clone(),
-                        span: entry.span.clone(),
-                    },
-                    Some(entry.name.clone()),
-                ));
-            }
-        }
     }
     entries
 }
 
-/// What a clause entry is for the flow (RFC-0224): the `Copy` entry and the supers it brings carry the flow of
-/// the `Copy` declaration; an original `derives Clone` carries its own computed flow; any other entry has none.
-/// Also whether the entry is a `derives` entry as written (not a brought super), and whether it is the `Copy` one.
-fn entry_origin(
-    entry: &ClauseEntry,
-    bound: Option<&str>,
-    module: &[String],
-    ctx: &Ctx<'_>,
-) -> (bool, bool, Option<Kind>) {
-    let original = bound == Some(entry.name.as_str());
-    let resolves = |name: &str, id: Option<SymbolId>| {
-        id.is_some() && super::coherence::resolve_id(ctx.names, module, name) == id
+/// Which field-wise derivation an entry is, for the flow (RFC-0224, RFC-0227): `Copy` (the aspect with the
+/// `implicit` property) or `Clone`; any other entry has no flow.
+fn entry_kind(entry: &ClauseEntry, module: &[String], ctx: &Ctx<'_>) -> Option<Kind> {
+    let resolves = |id: Option<SymbolId>| {
+        id.is_some() && super::coherence::resolve_id(ctx.names, module, &entry.name) == id
     };
-    let implicit = ctx.flow_aspects.implicit;
-    let is_copy_entry = resolves(&entry.name, implicit);
-    let from_copy = is_copy_entry || bound.is_some_and(|b| resolves(b, implicit));
-    let origin = if from_copy {
+    if resolves(ctx.flow_aspects.implicit) {
         Some(Kind::Copy)
-    } else if original && resolves(&entry.name, ctx.clone_id) {
+    } else if resolves(ctx.clone_id) {
         Some(Kind::Clone)
     } else {
         None
-    };
-    (original, is_copy_entry, origin)
+    }
 }
 
 fn clause_impls(
@@ -363,37 +408,45 @@ fn clause_impls(
     if clauses.is_empty() {
         return Ok(Vec::new());
     }
-    name_class_keywords(clauses, ctx)?;
+    name_class_keywords(clauses, module, ctx)?;
+    check_derived_obligations(clauses, module, ctx)?;
     let args: Vec<TypeExpr> = decl
         .generics
         .iter()
         .map(|g| TypeExpr::Named(g.name.clone(), Vec::new(), NameSpan(decl.span.clone())))
         .collect();
     let target = TypeExpr::Named(decl.name.to_string(), args, NameSpan(decl.span.clone()));
-    let entries = clause_entries(clauses, module, ctx);
+    let entries = clause_entries(clauses);
     let mut seen = std::collections::HashSet::new();
     let mut impls = Vec::new();
-    // Derivation is idempotent per type and aspect: `copy struct T derives Copy` derives it once.
+    let mut flows: Vec<(Kind, Vec<String>, Span)> = Vec::new();
+    // Derivation is idempotent per type and aspect: `copy struct T derives Clone, Copy` derives it once.
     for (entry, bound) in entries
         .iter()
         .filter(|(entry, _)| seen.insert(entry.name.clone()))
     {
-        let (original, is_copy_entry, origin) = entry_origin(entry, bound.as_deref(), module, ctx);
-        if original {
-            check_flow(
-                entry,
-                is_copy_entry,
-                decl.generics,
-                decl.fields,
-                module,
-                ctx,
-                scope,
-            )?;
-            if is_copy_entry && decl.public && entry.flow.is_none() {
-                check_public_flow_stated(decl, entry, module, ctx, scope)?;
+        let kind = entry_kind(entry, module, ctx);
+        if bound.is_some() {
+            check_flow(entry, kind, decl.generics, decl.fields, module, ctx, scope)?;
+            // The `Clone` entry a class keyword stands for has no argument list to write, so the type's `Copy`
+            // entry is the one that must state the flow.
+            let implied = entry.from_class_keyword && kind == Some(Kind::Clone);
+            if let Some(kind) = kind
+                && decl.public
+                && entry.flow.is_none()
+                && !implied
+            {
+                check_public_flow_stated(decl, entry, kind, module, ctx, scope)?;
             }
         }
-        let flow = entry_flow(entry, origin, decl.name, module, ctx, scope);
+        let flow = if bound.is_some() {
+            entry_flow(entry, kind, decl.name, module, ctx, scope)
+        } else {
+            None
+        };
+        if let (Some(kind), Some(flow)) = (kind, &flow) {
+            flows.push((kind, flow.clone(), entry.span.clone()));
+        }
         impls.push(ImplBlock {
             polarity: Polarity::Positive,
             generics: impl_generics(
@@ -413,25 +466,42 @@ fn clause_impls(
             span: entry.span.clone(),
         });
     }
+    check_clone_flow_within_copy(&flows)?;
     Ok(impls)
 }
 
-/// The flow an entry's impl is generated with (RFC-0224): the `Copy` entry and the supers it brings carry the
-/// `Copy` declaration's flow, stated with `via` or computed from the fields; a `derives Clone` that no `Copy`
-/// brings carries its computed `Clone` flow; any other entry has none (its parameters are bounded by the
-/// per-parameter rule).
+/// RFC-0234 section 2: a type that derives `Copy` is `Clone` wherever it is `Copy`, so the `Clone` flow must be
+/// contained in the `Copy` flow. A parameter only `Clone` depends on is an error at the `Copy` entry.
+fn check_clone_flow_within_copy(flows: &[(Kind, Vec<String>, Span)]) -> Result<(), MetelError> {
+    let copy = flows.iter().find(|(kind, ..)| *kind == Kind::Copy);
+    let clone = flows.iter().find(|(kind, ..)| *kind == Kind::Clone);
+    if let (Some((_, copy_flow, copy_span)), Some((_, clone_flow, _))) = (copy, clone)
+        && let Some(extra) = clone_flow.iter().find(|p| !copy_flow.contains(p))
+    {
+        return Err(MetelError::type_error(
+            TypeErrorCode::T0046,
+            format!(
+                "the `Clone` of this type depends on `{extra}`, which its `Copy` flow does not cover: a type is `Clone` wherever it is `Copy`, so state `Copy` with `{extra}` or narrow the `Clone` flow (RFC-0234)"
+            ),
+            copy_span,
+        ));
+    }
+    Ok(())
+}
+
+/// The flow an entry's impl is generated with (RFC-0224, RFC-0227): the argument list the entry states, or the
+/// flow the compiler computes from the fields for a `Copy` or `Clone` entry; any other entry has none (its
+/// parameters are bounded by the per-parameter rule).
 fn entry_flow(
     entry: &ClauseEntry,
-    origin: Option<Kind>,
+    kind: Option<Kind>,
     type_name: &str,
     module: &[String],
     ctx: &Ctx<'_>,
     scope: &Scope<'_>,
 ) -> Option<Vec<String>> {
-    let kind = origin?;
-    if kind == Kind::Copy
-        && let Some(stated) = &entry.flow
-    {
+    let kind = kind?;
+    if let Some(stated) = &entry.flow {
         return Some(stated.iter().map(|p| p.name.clone()).collect());
     }
     scope
@@ -439,42 +509,58 @@ fn entry_flow(
         .map(|e| e.set().iter().cloned().collect())
 }
 
-/// RFC-0224 section 2 rule 3: a `pub` generic type that derives `Copy` without `via` has a computed flow, which
-/// is its published interface, so it may omit `via` only when that flow is empty. Otherwise the error shows
-/// the computed set as the fix-it. Non-`pub` and non-generic types are unaffected.
+/// The spelling of a flow argument list, for the fix-its.
+fn flow_args(set: &[&str]) -> String {
+    set.join(", ")
+}
+
+/// RFC-0224 section 2 rule 3, widened to every field-wise derivation by RFC-0227: a `pub` generic type that
+/// derives `Copy` or `Clone` without an argument list has a computed flow, which is its published interface, so
+/// it may omit the list only when that flow is empty. Otherwise the error shows the computed set as the fix-it.
+/// Non-`pub` and non-generic types are unaffected.
 fn check_public_flow_stated(
     decl: &Declaration<'_>,
     entry: &ClauseEntry,
+    kind: Kind,
     module: &[String],
     ctx: &Ctx<'_>,
     scope: &Scope<'_>,
 ) -> Result<(), MetelError> {
-    let Some(computed) = scope.own(decl.name, module, ctx.names, Kind::Copy) else {
+    let Some(computed) = scope.own(decl.name, module, ctx.names, kind) else {
         return Ok(());
     };
     let set: Vec<&str> = computed.set().iter().map(String::as_str).collect();
     if set.is_empty() {
         return Ok(());
     }
+    let aspect = entry.name.as_str();
+    let message = if entry.from_class_keyword {
+        format!(
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `copy` states none; write `derives Clone({0}), Copy({0})` (RFC-0227)",
+            flow_args(&set)
+        )
+    } else {
+        format!(
+            "a public generic type must state the flow of its `{aspect}` when it is not empty; write `derives {aspect}({})` (RFC-0227)",
+            flow_args(&set)
+        )
+    };
     Err(MetelError::type_error(
         TypeErrorCode::T0046,
-        format!(
-            "a public generic type must state the flow of its `Copy` when it is not empty; write `derives Copy via {}` (RFC-0224 rule 3)",
-            set.join(" + ")
-        ),
+        message,
         &entry.span,
     ))
 }
 
-/// RFC-0224 section 2: the checks on a `derives Copy` entry's flow, stated or computed. A `via` clause is
-/// accepted on `Copy` only (rule: the other markers adopt it in their own RFCs), names only type
-/// parameters of the declaration, and must contain every parameter a field's copy-ness depends on (it
-/// may contain more). A `Copy` declaration with a field that depends on a row- or record-kinded parameter is
-/// rejected (rule 7). Rule 6, a field that depends on an associated type, needs no check yet: a struct or enum
-/// field `T::Item` is rejected as an unknown type before this runs.
+/// RFC-0224 section 2 and RFC-0227: the checks on a `derives` entry's arguments, stated or computed. An argument
+/// list is accepted on a field-wise derivation (`Copy`, `Clone`) only, names only type parameters of the
+/// declaration, and must contain every parameter a field's derivation depends on (it may contain more). A
+/// `Copy` declaration with a field that depends on a row- or record-kinded parameter is rejected (rule 7).
+/// Rule 6, a field that depends on an associated type, needs no check yet: a struct or enum field `T::Item` is
+/// rejected as an unknown type before this runs.
 fn check_flow(
     entry: &ClauseEntry,
-    is_copy_entry: bool,
+    kind: Option<Kind>,
     generics: &[GenericParam],
     field_types: &[TypeExpr],
     module: &[String],
@@ -484,22 +570,22 @@ fn check_flow(
     let invalid =
         |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
     if let Some(flow) = &entry.flow {
-        if !is_copy_entry {
+        let Some(_) = kind else {
             return Err(invalid(
                 format!(
-                    "a `via` clause is accepted only on `derives Copy` in this release (RFC-0224), not on `{}`",
+                    "`{}` takes no arguments: only the field-wise derivations `Copy` and `Clone` state a flow (RFC-0227)",
                     entry.name
                 ),
                 &entry.span,
             ));
-        }
+        };
         for param in flow {
             let declared = generics.iter().find(|g| g.name == param.name);
             match declared {
                 None => {
                     return Err(invalid(
                         format!(
-                            "`via {}` names no type parameter of this declaration",
+                            "`{}` names no type parameter of this declaration",
                             param.name
                         ),
                         &param.span,
@@ -508,7 +594,7 @@ fn check_flow(
                 Some(g) if g.is_record || g.is_row => {
                     return Err(invalid(
                         format!(
-                            "`via {}` names a row- or record-kinded parameter; a flow lists type parameters only (RFC-0224 rule 7)",
+                            "`{}` is a row- or record-kinded parameter; a flow lists type parameters only (RFC-0224 rule 7)",
                             param.name
                         ),
                         &param.span,
@@ -518,27 +604,30 @@ fn check_flow(
             }
         }
     }
-    if !is_copy_entry {
+    let Some(kind) = kind else {
         return Ok(());
-    }
-    for g in generics.iter().filter(|g| g.is_record || g.is_row) {
-        if field_types.iter().any(|ty| mentions_owned(ty, &g.name)) {
-            return Err(invalid(
-                format!(
-                    "a `Copy` declaration cannot have a field that depends on the row- or record-kinded parameter `{}` (RFC-0224 rule 7)",
-                    g.name
-                ),
-                &entry.span,
-            ));
+    };
+    if kind == Kind::Copy {
+        for g in generics.iter().filter(|g| g.is_record || g.is_row) {
+            if field_types.iter().any(|ty| mentions_owned(ty, &g.name)) {
+                return Err(invalid(
+                    format!(
+                        "a `Copy` declaration cannot have a field that depends on the row- or record-kinded parameter `{}` (RFC-0224 rule 7)",
+                        g.name
+                    ),
+                    &entry.span,
+                ));
+            }
         }
     }
     if let Some(flow) = &entry.flow {
+        let aspect = entry.name.as_str();
         let params: Vec<String> = generics
             .iter()
             .filter(|g| !g.is_record && !g.is_row)
             .map(|g| g.name.clone())
             .collect();
-        let needs = flows::dependence(field_types, &params, module, ctx.names, scope, Kind::Copy);
+        let needs = flows::dependence(field_types, &params, module, ctx.names, scope, kind);
         for g in generics.iter().filter(|g| !g.is_record && !g.is_row) {
             let needed = needs.contains(&g.name);
             if needed && !flow.iter().any(|p| p.name == g.name) {
@@ -547,10 +636,10 @@ fn check_flow(
                 fixed.push(&g.name);
                 return Err(invalid(
                     format!(
-                        "a field's `Copy` depends on `{}`, which `via {}` does not cover; write `via {}` (RFC-0224 rule 1)",
+                        "a field's `{aspect}` depends on `{}`, which `{aspect}({})` does not cover; write `{aspect}({})` (RFC-0224 rule 1)",
                         g.name,
-                        stated.join(" + "),
-                        fixed.join(" + ")
+                        flow_args(&stated),
+                        flow_args(&fixed)
                     ),
                     &entry.span,
                 ));

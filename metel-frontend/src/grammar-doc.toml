@@ -256,10 +256,23 @@ mode = "named"
 name = "ViaClause"
 section = "Declarations"
 [[rule]]
+pest = "derive_args"
+mode = "named"
+name = "DeriveArgs"
+section = "Declarations"
+[[rule]]
 pest = "clause_entry"
 mode = "named"
 name = "ClauseEntry"
 section = "Declarations"
+[[rule]]
+pest = "requires_kw"
+mode = "literal"
+values = ["requires"]
+[[rule]]
+pest = "derived_mark"
+mode = "literal"
+values = ["derived"]
 [[rule]]
 pest = "super_aspects"
 mode = "named"
@@ -274,6 +287,16 @@ section = "Declarations"
 pest = "deriving_mark"
 mode = "literal"
 values = ["deriving"]
+[[rule]]
+pest = "legacy_super_aspects"
+mode = "named"
+name = "LegacySuperAspects"
+section = "Declarations"
+[[rule]]
+pest = "legacy_super_aspect"
+mode = "named"
+name = "LegacySuperAspect"
+section = "Declarations"
 [[rule]]
 pest = "aspect_decl"
 mode = "named"

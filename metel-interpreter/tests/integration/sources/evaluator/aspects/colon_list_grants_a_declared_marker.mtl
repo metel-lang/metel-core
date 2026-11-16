@@ -2,7 +2,7 @@
 declared aspect Validated;
 declared aspect Audited;
 struct Ticket: Validated { id: i64 }
-struct Receipt: Validated, Audited derives Copy { id: i64 }
+struct Receipt: Validated, Audited derives Clone, Copy { id: i64 }
 
 fun needs_validated<T: Validated>(t: &T) -> i64 { 1 }
 

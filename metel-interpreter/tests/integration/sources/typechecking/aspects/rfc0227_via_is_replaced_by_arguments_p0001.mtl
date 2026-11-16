@@ -1,0 +1,3 @@
+// RFC-0227: the argument list replaces `via`.
+struct W<T> derives Copy via T { value: T } // ERROR[P0001]
+fun main() {}

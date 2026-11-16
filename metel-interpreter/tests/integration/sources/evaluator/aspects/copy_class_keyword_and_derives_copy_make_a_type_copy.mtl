@@ -1,8 +1,8 @@
-// RFC-0207: `copy struct T` is `struct T derives Copy`; the declaration is the grant, for structs, enums
+// RFC-0207: `copy struct T` is `struct T derives Clone, Copy`; the declaration is the grant, for structs, enums
 // and generic types alike, and deriving twice is the same as once.
 copy struct Point { x: i64, y: i64 }
-struct Pixel derives Copy { v: i64 }
-copy struct Both derives Copy { n: i64 }
+struct Pixel derives Clone, Copy { v: i64 }
+copy struct Both derives Clone, Copy { n: i64 }
 copy struct Wrapper<T> { v: T }
 copy enum Dir { Up, Down }
 

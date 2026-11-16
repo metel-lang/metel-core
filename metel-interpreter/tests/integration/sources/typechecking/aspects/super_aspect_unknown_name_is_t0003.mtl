@@ -1,2 +1,2 @@
-aspect G: Nope; // ERROR[T0003]
+aspect G requires Nope; // ERROR[T0003]
 fun main() {}

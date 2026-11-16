@@ -1,6 +1,6 @@
 // RFC-0213 section 3: `aspect Cold: !Hot` forbids granting both, and nothing else.
 aspect Hot;
-aspect Cold: !Hot;
+aspect Cold requires !Hot;
 struct Stove { n: i64 }
 struct Ice { n: i64 }
 extend Stove: Hot;

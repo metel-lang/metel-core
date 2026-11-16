@@ -1,0 +1,3 @@
+// RFC-0234: a type is `Clone` wherever it is `Copy`, so the `Clone` flow must be inside the `Copy` flow.
+struct P<A, B> derives Clone(A, B), Copy(A) { a: A, n: i64 } // ERROR[T0046]
+fun main() {}

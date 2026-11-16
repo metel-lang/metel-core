@@ -1,5 +1,5 @@
 aspect Send2;
-aspect Shared: Send2;
+aspect Shared requires Send2;
 struct P { n: i64 }
 extend P: !Send2;
 extend P: Shared; // ERROR[T0015]

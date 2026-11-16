@@ -3,7 +3,7 @@
 copy struct View<T> { r: &T }
 
 fun main() {
-    struct Hold<T> derives Copy via T { v: View<T> }
+    struct Hold<T> derives Clone(T), Copy(T) { v: View<T> }
     let s := "x".to_string();
     let h: Hold<String> := Hold { v = View { r = &s } };
     let a := h;

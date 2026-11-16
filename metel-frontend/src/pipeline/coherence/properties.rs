@@ -3,7 +3,7 @@
 //! Properties are read from the aspect's declaration by identity, so an import, alias or re-export
 //! carries them unchanged. A violation is `T0045`:
 //! - `implicit` and `auto` are accepted only on an aspect declared in the standard library;
-//! - an `implicit` aspect refines `Clone` through a `deriving` super-aspect, and a program has at
+//! - an `implicit` aspect refines `Clone` through a `derived` super-aspect, and a program has at
 //!   most one (the first, in source order, is the one that stands);
 //! - a property is written once on one declaration;
 //! - an `extend T: A` of a `declared` aspect `A` is rejected for a named type (its declaration grants
@@ -174,14 +174,14 @@ fn check_implicit(
     first_implicit: &mut Option<String>,
 ) -> Result<(), MetelError> {
     let refines_clone = ad.supers.iter().any(|entry| {
-        entry.deriving
+        entry.derived
             && !entry.negative
             && super::resolve_id(names, module, &entry.name).is_some_and(|id| Some(id) == clone_id)
     });
     if !refines_clone {
         return Err(error(
             format!(
-                "an `implicit` aspect must refine `Clone` through a `deriving` super-aspect (`aspect {}: deriving Clone`)",
+                "an `implicit` aspect must refine `Clone` through a `derived` super-aspect (`aspect {} requires derived Clone`)",
                 ad.name
             ),
             span,
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn an_implicit_aspect_that_derives_clone_is_accepted() {
-        check_all("implicit aspect Dup: deriving Clone;\nfun main() {}").expect("accepted");
+        check_all("implicit aspect Dup requires derived Clone;\nfun main() {}").expect("accepted");
     }
 
     #[test]
@@ -284,21 +284,23 @@ mod tests {
 
     #[test]
     fn an_implicit_aspect_whose_clone_super_is_not_derived_is_rejected() {
-        let error = check_all("implicit aspect Weak: Clone;\nfun main() {}").expect_err("rejected");
+        let error =
+            check_all("implicit aspect Weak requires Clone;\nfun main() {}").expect_err("rejected");
         assert!(error.to_string().contains("must refine `Clone`"), "{error}");
     }
 
     #[test]
     fn an_implicit_aspect_deriving_another_aspect_is_rejected() {
-        let error = check_all("aspect Other;\nimplicit aspect Odd: deriving Other;\nfun main() {}")
-            .expect_err("rejected");
+        let error =
+            check_all("aspect Other;\nimplicit aspect Odd requires derived Other;\nfun main() {}")
+                .expect_err("rejected");
         assert!(error.to_string().contains("must refine `Clone`"), "{error}");
     }
 
     #[test]
     fn a_second_implicit_aspect_is_rejected() {
         let error = check_all(
-            "implicit aspect One: deriving Clone;\nimplicit aspect Two: deriving Clone;\nfun main() {}",
+            "implicit aspect One requires derived Clone;\nimplicit aspect Two requires derived Clone;\nfun main() {}",
         )
         .expect_err("rejected");
         assert!(

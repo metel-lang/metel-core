@@ -459,15 +459,15 @@ impl DeclClauses {
 pub struct ClauseEntry {
     /// The aspect as written, resolved against the declaring module.
     pub name: String,
-    /// The `copy` class keyword stands for `derives Copy`; its entry is marked so a diagnostic can say so.
+    /// The `copy` class keyword stands for `derives Clone, Copy`; its entry is marked so a diagnostic can say so.
     pub from_class_keyword: bool,
-    /// RFC-0224: the type parameters a `derives Copy via A + B` entry states its copy-ness flows from;
-    /// `None` when the entry states no flow (the compiler then computes it).
+    /// RFC-0227: the type parameters a `derives Clone, Copy(A, B)` entry states its flow from (empty for `derives Clone()`);
+    /// `None` when the entry states no argument list (the compiler then computes the flow).
     pub flow: Option<Vec<FlowParam>>,
     pub span: Span,
 }
 
-/// A type parameter named after `via` in a `derives` entry (RFC-0224).
+/// A type parameter named in the argument list of a `derives` entry (RFC-0227).
 #[derive(Debug, Clone)]
 pub struct FlowParam {
     pub name: String,
@@ -499,15 +499,16 @@ impl AspectProperty {
     }
 }
 
-/// One entry of an aspect's super-aspect list: `aspect A: B, deriving C, !D` (RFC-0213).
+/// One entry of an aspect's super-aspect list: `aspect A requires B, derived C, !D` (RFC-0213, RFC-0235).
 #[derive(Debug, Clone)]
 pub struct SuperAspect {
     /// The aspect as written; resolved against the declaring module's scope.
     pub name: String,
     /// `!D`: an exclusion. No type may be granted both aspects (RFC-0213 section 3).
     pub negative: bool,
-    /// `deriving C`: derived together with the sub-aspect (RFC-0213 section 4). Std aspects only.
-    pub deriving: bool,
+    /// `derived C`: a type that derives the sub-aspect must also derive `C`, in its own entry (RFC-0234).
+    /// Std aspects only.
+    pub derived: bool,
     pub span: Span,
 }
 

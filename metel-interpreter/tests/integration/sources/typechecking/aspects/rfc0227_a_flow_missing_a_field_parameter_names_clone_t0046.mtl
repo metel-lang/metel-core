@@ -1,0 +1,3 @@
+// RFC-0227: the flow of a `Clone` entry is checked as a `Copy` flow is: it must cover every parameter a field depends on.
+struct P<A, B> derives Clone(A) { a: A, b: B } // ERROR[T0046]
+fun main() {}

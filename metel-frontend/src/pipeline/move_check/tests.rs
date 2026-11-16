@@ -1710,7 +1710,7 @@ fn abstract_ownership_preserves_aliased_ownership_aspects() {
         r#"
 import std::core::Copy as Repeatable;
 import std::core::Drop as Finalize;
-struct Witness<T> derives Repeatable { count: i64 }
+struct Witness<T> derives Clone, Repeatable { count: i64 }
 struct Guardian<T> { value: T }
 extend<T> Guardian<T>: Finalize { fun drop(&var self) {} }
 struct Conditional<T> { value: T }

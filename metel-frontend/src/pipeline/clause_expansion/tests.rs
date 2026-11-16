@@ -1,5 +1,5 @@
 //! The flow computation reaches declarations inside function bodies (metel-core#1964): the clause expansion
-//! writes `extend<T> W<T>: Copy` for a local `struct W<T> derives Copy { v: View<T> }`, with no bound on `T`
+//! writes `extend<T> W<T>: Copy` for a local `struct W<T> derives Clone, Copy { v: View<T> }`, with no bound on `T`
 //! because a view holds it by reference, and shadows a module-level type of the same name.
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,9 +54,9 @@ fn a_local_copy_declaration_gets_its_computed_flow() {
     let impls = local_impls(
         "copy struct View<T> { r: &T }
          fun main() {
-             struct W<T> derives Copy { v: View<T> }
-             struct Plain<T> derives Copy { v: T }
-             struct Outer<A, B> derives Copy { w: Plain<A>, n: B }
+             struct W<T> derives Clone, Copy { v: View<T> }
+             struct Plain<T> derives Clone, Copy { v: T }
+             struct Outer<A, B> derives Clone, Copy { w: Plain<A>, n: B }
          }",
     );
     // W<T> holds T only through a view: no bound. Plain<T> holds it: bounded. Outer reads the flow of the
@@ -78,10 +78,10 @@ fn a_local_declaration_shadows_a_module_level_type_of_the_same_name() {
     // must read the local flow, so it bounds nothing.
     let impls = local_impls(
         "copy struct View<T> { r: &T }
-         struct Hold<T> derives Copy { v: T }
+         struct Hold<T> derives Clone, Copy { v: T }
          fun main() {
-             struct Hold<T> derives Copy { v: View<T> }
-             struct W<T> derives Copy { h: Hold<T> }
+             struct Hold<T> derives Clone, Copy { v: View<T> }
+             struct W<T> derives Clone, Copy { h: Hold<T> }
          }",
     );
     let unbounded = impls

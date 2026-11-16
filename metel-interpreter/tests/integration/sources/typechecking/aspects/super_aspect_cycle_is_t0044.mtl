@@ -1,3 +1,3 @@
-aspect A: B; // ERROR[T0044]
-aspect B: A;
+aspect A requires B; // ERROR[T0044]
+aspect B requires A;
 fun main() {}

@@ -673,7 +673,7 @@ fn parse_struct_decl(
 }
 
 /// One piece of a struct or enum header after the name: the colon list, the `derives` clause, or a
-/// class keyword (RFC-0207). The `copy` keyword is sugar for `derives Copy`; `linear` is reserved.
+/// class keyword (RFC-0207). The `copy` keyword is sugar for `derives Clone, Copy`; `linear` is reserved.
 fn parse_clause_part(
     pair: pest::iterators::Pair<Rule>,
     filename: &str,
@@ -702,8 +702,8 @@ fn parse_clause_part(
         Rule::colon_list | Rule::derives_clause => {
             let is_colon = pair.as_rule() == Rule::colon_list;
             for entry in pair.into_inner() {
-                // RFC-0224: a `via` clause belongs to the entry just before it.
-                if entry.as_rule() == Rule::via_clause {
+                // RFC-0227: an argument list belongs to the entry just before it.
+                if entry.as_rule() == Rule::derive_args {
                     let flow = entry
                         .into_inner()
                         .filter(|p| p.as_rule() == Rule::ident)
@@ -716,6 +716,24 @@ fn parse_clause_part(
                         last.flow = Some(flow);
                     }
                     continue;
+                }
+                // The former `via` clause (RFC-0224) is replaced by the argument list.
+                if entry.as_rule() == Rule::via_clause {
+                    let span = Span::of(&entry, filename);
+                    let params = entry
+                        .into_inner()
+                        .filter(|p| p.as_rule() == Rule::ident)
+                        .map(|p| p.as_str().to_string())
+                        .collect::<Vec<_>>();
+                    let aspect = clauses.derives.last().map_or("Aspect", |e| e.name.as_str());
+                    return Err(MetelError::parse(
+                        ParseErrorCode::P0001,
+                        format!(
+                            "`via` is replaced by the argument list of the entry: write `derives {aspect}({})`",
+                            params.join(", ")
+                        ),
+                        &span,
+                    ));
                 }
                 if entry.as_rule() != Rule::clause_entry {
                     continue;
@@ -4428,24 +4446,38 @@ fn parse_aspect_decl(
         match p.as_rule() {
             Rule::super_aspects => {
                 for entry in p.into_inner() {
+                    if entry.as_rule() != Rule::super_aspect {
+                        continue;
+                    }
                     let span = Span::of(&entry, filename);
                     let mut negative = false;
-                    let mut deriving = false;
+                    let mut derived = false;
                     let mut name = String::new();
                     for part in entry.into_inner() {
                         match part.as_rule() {
                             Rule::bang => negative = true,
-                            Rule::deriving_mark => deriving = true,
+                            Rule::derived_mark => derived = true,
                             _ => name = part.as_str().trim().to_string(),
                         }
                     }
                     supers.push(crate::data::ast::SuperAspect {
                         name,
                         negative,
-                        deriving,
+                        derived,
                         span,
                     });
                 }
+            }
+            // RFC-0235: the colon list and the `deriving` mark are replaced by `requires` and `derived`.
+            Rule::legacy_super_aspects => {
+                let span = Span::of(&p, filename);
+                let mut message = format!(
+                    "super-aspects follow `requires`: write `aspect {name} requires ...`, not a colon list"
+                );
+                if p.as_str().contains("deriving") {
+                    message.push_str(" (the mark `deriving` is spelled `derived`)");
+                }
+                return Err(MetelError::parse(ParseErrorCode::P0001, message, &span));
             }
             Rule::generic_params => {
                 for gp in p.into_inner() {

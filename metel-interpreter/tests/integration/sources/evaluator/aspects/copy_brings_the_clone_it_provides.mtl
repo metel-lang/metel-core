@@ -1,8 +1,8 @@
 // RFC-0206 section 2, RFC-0213 section 4: `aspect Copy: deriving Clone` is `implicit`, so the compiler
-// provides the `Clone` of a `Copy` type: `derives Copy` and `copy struct` each bring it, and `T: Copy`
+// provides the `Clone` of a `Copy` type: `derives Clone, Copy` and `copy struct` each bring it, and `T: Copy`
 // proves `T: Clone`.
 copy struct Point { x: i64, y: i64 }
-struct Pixel derives Copy { v: i64 }
+struct Pixel derives Clone, Copy { v: i64 }
 copy struct Wrapper<T> { v: T }
 copy enum Dir { Up, Down }
 

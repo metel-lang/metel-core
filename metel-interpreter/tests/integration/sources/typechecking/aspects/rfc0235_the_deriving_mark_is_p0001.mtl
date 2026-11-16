@@ -1,0 +1,4 @@
+// RFC-0235: the mark is spelled `derived`; the old spelling is rejected with the new one named.
+aspect Other;
+aspect G: deriving Other; // ERROR[P0001]
+fun main() {}

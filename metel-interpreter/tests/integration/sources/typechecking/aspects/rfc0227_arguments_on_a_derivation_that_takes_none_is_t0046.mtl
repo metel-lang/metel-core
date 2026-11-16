@@ -1,0 +1,5 @@
+// RFC-0227: an argument list is the flow of a field-wise derivation (`Copy`, `Clone`); an aspect whose derivation
+// takes no arguments rejects one.
+struct Wrapper<T> derives Eq(T) { value: T } // ERROR[T0046]
+
+fun main() {}

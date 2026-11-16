@@ -16,7 +16,7 @@
 
 // ── Core sum types ──────────────────────────────────────────────────────────
 
-pub enum Option<T> derives Clone, Copy via T {
+pub enum Option<T> derives Clone(T), Copy(T) {
     Some { pub value: T },
     None,
 }
@@ -83,7 +83,7 @@ extend Option<T> {
     }
 }
 
-pub enum Result<T, E> derives Clone, Copy via T + E {
+pub enum Result<T, E> derives Clone(T, E), Copy(T, E) {
     Ok { pub value: T },
     Err { pub error: E },
 }
@@ -191,10 +191,10 @@ pub derivable aspect Clone {
     fun clone(&self) -> Self;
 }
 
-// `Copy` is `declared` (granted in a type's declaration: `copy struct`, `derives Copy`), `implicit` (a by-value
+// `Copy` is `declared` (granted in a type's declaration: `copy struct`, `derives Clone, Copy`), `implicit` (a by-value
 // use copies), brings the `Clone` the compiler provides, and excludes `Drop` (RFC-0206 section 2, RFC-0212,
 // RFC-0213).
-pub declared derivable implicit aspect Copy: deriving Clone, !Drop {
+pub declared derivable implicit aspect Copy requires derived Clone, !Drop {
 }
 
 pub aspect Drop {
