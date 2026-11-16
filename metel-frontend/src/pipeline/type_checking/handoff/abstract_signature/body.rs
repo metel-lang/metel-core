@@ -995,10 +995,13 @@ impl BodyFreezer<'_, '_> {
         ) {
             return Ok(None);
         }
-        let parameters = self
+        // The registry records type parameters only for a generic declaration, so a non-generic named record has
+        // none: an empty list, which must agree with the type's (empty) arguments. A generic one whose parameters
+        // were not retained fails the arity check below instead of being read as non-generic (metel-core#2056).
+        let parameters: &[_] = self
             .registry
             .struct_type_params_by_id(id)
-            .ok_or("nominal record pattern type parameters are not retained")?;
+            .map_or(&[], Vec::as_slice);
         if parameters.len() != arguments.len() {
             return Err("nominal record pattern argument arity is not retained".to_string());
         }

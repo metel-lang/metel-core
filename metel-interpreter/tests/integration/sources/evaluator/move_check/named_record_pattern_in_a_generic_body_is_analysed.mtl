@@ -1,0 +1,27 @@
+// metel-core#2056: a record pattern over a named record in a generic function is analysed (shape, field types, bound and
+// discarded entries, the remainder), not given up on as I0011.
+record Pair { first: i64, second: i64 }
+record Wrap<U> { v: U, n: i64 }
+struct Tag { n: i64 }
+record Holder { tag: Tag, other: i64 }
+
+fun first<T>(p: Pair, unused: T) -> i64 {
+    let .{ .first, .second: _ } := p;
+    first
+}
+
+fun count<T>(w: Wrap<T>) -> i64 {
+    let .{ .n, .v: _ } := w;
+    n
+}
+
+fun tag_and_other<T>(h: Holder, unused: T) -> i64 {
+    let .{ .tag: Tag { n }, .other } := h;
+    n + other
+}
+
+fun main() {
+    assert(first(Pair { first = 1, second = 2 }, 0) == 1);
+    assert(count(Wrap { v = 1, n = 9 }) == 9);
+    assert(tag_and_other(Holder { tag = Tag { n = 2 }, other = 3 }, 0) == 5);
+}
