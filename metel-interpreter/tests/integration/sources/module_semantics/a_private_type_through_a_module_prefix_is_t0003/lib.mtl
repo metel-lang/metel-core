@@ -1,0 +1,2 @@
+struct Hidden { pub n: i64 }
+pub fun f() -> i64 { 1 }

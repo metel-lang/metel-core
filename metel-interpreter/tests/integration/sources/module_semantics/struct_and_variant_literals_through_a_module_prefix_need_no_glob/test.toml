@@ -1,0 +1,6 @@
+runner = "full_pipeline"
+prelude = "empty"
+[options]
+spec = ["spec.modules.paths.legality-2"]
+[expect]
+status = "success"
