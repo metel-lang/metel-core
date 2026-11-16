@@ -1,0 +1,20 @@
+// metel-core#2011: storing a closure into an array element, a record field, a tuple item or a struct field widens the
+// contract of that position, in a generic body.
+struct Holder { f: |i64| -> i64 }
+fun f<T: Copy>(x: T, y: i64) {
+    var arr := [|k: i64| -> i64 { k }];
+    arr[0] = [y]|k: i64| -> i64 { k + y };
+    let a := arr;
+    let b := arr;
+    var rec := .{ .f = |k: i64| -> i64 { k }, .n = 1 };
+    rec.f = [y]|k: i64| -> i64 { k + y };
+    let c := rec;
+    let d := rec;
+    var pair := (|k: i64| -> i64 { k }, 1);
+    pair.0 = [y]|k: i64| -> i64 { k + y };
+    let e := pair;
+    let g := pair;
+    var holder := Holder { f = |k: i64| -> i64 { k } };
+    holder.f = [y]|k: i64| -> i64 { k + y };
+}
+fun main() {}

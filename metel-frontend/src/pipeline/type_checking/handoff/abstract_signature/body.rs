@@ -31,6 +31,11 @@ struct BodyFreezer<'a, 'return_type> {
     return_type: &'return_type AbstractType,
     binding_names: &'a RefCell<HashMap<crate::identity::BindingId, String>>,
     closure_types: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
+    /// The contract each closure-holding binding was declared with, before any reassignment widened it.
+    declared_closure_types: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
+    /// The binding the assignment being built writes: a closure that captures it moves its *old* value in
+    /// (metel-core#2010).
+    assigning: &'a RefCell<Option<crate::identity::BindingId>>,
     /// The contract of every closure a closure-holding binding is reassigned to, merged (metel-core#2000).
     reassigned: &'a RefCell<HashMap<crate::identity::BindingId, AbstractType>>,
     /// What the previous attempt observed in `reassigned`: a binding's contract starts as the conjunction of its
@@ -154,6 +159,8 @@ fn freeze_body_with(
     };
     let binding_names = RefCell::new(HashMap::new());
     let closure_types = RefCell::new(HashMap::new());
+    let declared_closure_types = RefCell::new(HashMap::new());
+    let assigning = RefCell::new(None);
     let reassigned = RefCell::new(HashMap::new());
     let nominal_ownership = RefCell::new(Vec::new());
     let locals = super::LocalParameters::new(signature.binder, signature.parameters.len());
@@ -174,6 +181,8 @@ fn freeze_body_with(
         return_type: result,
         binding_names: &binding_names,
         closure_types: &closure_types,
+        declared_closure_types: &declared_closure_types,
+        assigning: &assigning,
         reassigned: &reassigned,
         widened,
         loop_results: RefCell::new(Vec::new()),
@@ -318,13 +327,14 @@ impl BodyFreezer<'_, '_> {
         // binding: the typechecker's own type for the use writes the closure as a function type.
         if holds_closure(&ty) {
             // A closure the binding is later reassigned to widens what it may own.
-            let contract = match (&ty, self.widened.get(&identity)) {
-                (AbstractType::Closure { .. }, Some(assigned)) => {
-                    merge_contracts(Some(ty.clone()), assigned)?
-                        .ok_or("closure reassignment ownership contracts are not yet retained")?
-                }
-                _ => ty.clone(),
+            let contract = match self.widened.get(&identity) {
+                Some(assigned) => merge_shape(&ty, assigned)
+                    .ok_or("closure reassignment ownership contracts are not yet retained")?,
+                None => ty.clone(),
             };
+            self.declared_closure_types
+                .borrow_mut()
+                .insert(identity, ty.clone());
             self.closure_types.borrow_mut().insert(identity, contract);
         }
         Ok(AbstractBinding {
@@ -1142,6 +1152,16 @@ impl BodyFreezer<'_, '_> {
         }
     }
 
+    /// An element or field selection, typed with the contract of a closure it holds when it has one.
+    fn selection(
+        &self,
+        (kind, retained): (AbstractExprKind, Option<AbstractType>),
+        ty: AbstractType,
+        expression: &Expr,
+    ) -> Result<AbstractExpr, String> {
+        self.finish_expression(retained.unwrap_or(ty), kind, expression.span())
+    }
+
     fn expression(&self, expression: &Expr) -> Result<AbstractExpr, String> {
         let ty = self.expression_type(expression)?;
         let kind = match expression {
@@ -1201,7 +1221,9 @@ impl BodyFreezer<'_, '_> {
             Expr::UnaryOp(UnaryOp::Deref, value, _) => {
                 AbstractExprKind::Dereference(Box::new(self.expression(value)?))
             }
-            Expr::Index { object, index, .. } => self.index(object, index, &ty)?,
+            Expr::Index { object, index, .. } => {
+                return self.selection(self.index(object, index, &ty)?, ty, expression);
+            }
             Expr::Call {
                 callee, args, span, ..
             } => {
@@ -1212,7 +1234,7 @@ impl BodyFreezer<'_, '_> {
                 object,
                 field,
                 span,
-            } => self.field(object, field, span, &ty)?,
+            } => return self.selection(self.field(object, field, span, &ty)?, ty, expression),
             Expr::MethodCall {
                 receiver,
                 method,
@@ -1696,10 +1718,11 @@ impl BodyFreezer<'_, '_> {
                     .registry
                     .struct_fields_by_id(id)
                     .ok_or_else(unsupported)?;
+                // A struct without type parameters has no entry: its fields' declared types are the contracts.
                 let params = self
                     .registry
                     .struct_type_params_by_id(id)
-                    .ok_or_else(unsupported)?;
+                    .map_or(&[][..], Vec::as_slice);
                 let mut bound: Vec<Option<AbstractType>> = vec![None; params.len()];
                 for (field, value) in fields.iter().filter(|(_, value)| holds(value)) {
                     let template = templates
@@ -1949,23 +1972,37 @@ impl BodyFreezer<'_, '_> {
             inputs,
         } = self.assignment_place(target, target_span, &target_type)?;
         let held = self.closure_types.borrow().get(&target).cloned();
-        let mut value = self.expression(value)?;
+        let previous = self.assigning.replace(Some(target));
+        let value = self.expression(value);
+        *self.assigning.borrow_mut() = previous;
+        let mut value = value?;
         if let Some(held) = held {
-            // A closure stored in a closure-holding binding: its contract joins the binding's.
-            let supported = projections.is_empty()
-                && matches!(operator, AssignOp::Assign)
-                && matches!(held, AbstractType::Closure { .. });
-            let assigned = closure_contract(&value.ty)
-                .filter(|_| supported)
-                .ok_or("closure reassignment ownership contracts are not yet retained")?;
-            let merged =
-                merge_contracts(self.reassigned.borrow().get(&target).cloned(), &assigned)?;
-            if let Some(merged) = merged {
-                self.reassigned.borrow_mut().insert(target, merged);
+            // A closure stored in a closure-holding binding, or at a position of an aggregate that holds one: its
+            // contract joins the contract the binding, or that position, already has (metel-core#2011).
+            let unsupported =
+                || "closure reassignment ownership contracts are not yet retained".to_string();
+            if !matches!(operator, AssignOp::Assign) {
+                return Err(unsupported());
             }
-            value = Self::coerce_callable(value, &target_type).map_err(|_| {
-                "closure reassignment ownership contracts are not yet retained".to_string()
-            })?;
+            let slot = type_at(&held, &projections).ok_or_else(unsupported)?;
+            if holds_closure(&slot) {
+                let assigned = closure_contract(&value.ty)
+                    .filter(|_| matches!(slot, AbstractType::Closure { .. }))
+                    .ok_or_else(unsupported)?;
+                let widened = replace_at(&held, &projections, &assigned).ok_or_else(unsupported)?;
+                let merged = match self.reassigned.borrow().get(&target) {
+                    Some(previous) => merge_shape(previous, &widened).ok_or_else(unsupported)?,
+                    None => widened,
+                };
+                self.reassigned.borrow_mut().insert(target, merged);
+                value = Self::coerce_callable(value, &target_type).map_err(|_| unsupported())?;
+            }
+        }
+        // A closure stored in a slot of a written function type (a field, an element, a tuple item) goes in as the
+        // slot's move-only type (RFC-0166); its own contract stays with the closure-holding binding, if any.
+        if value.ty != target_type && value.ty != AbstractType::Never {
+            value = Self::coerce_callable(value, &target_type)
+                .map_err(|_| "assignment storage contract is not yet retained".to_string())?;
         }
         if value.ty != target_type && value.ty != AbstractType::Never {
             return Err("assignment storage contract is not yet retained".to_string());
@@ -2042,7 +2079,7 @@ impl BodyFreezer<'_, '_> {
             AssignTarget::Index { object, index, .. } => {
                 let indexed = AbstractExpr {
                     ty: target_type.clone(),
-                    kind: self.index(object, index, target_type)?,
+                    kind: self.index(object, index, target_type)?.0,
                     span: target_span.clone(),
                 };
                 let place = indexed
@@ -2095,7 +2132,16 @@ impl BodyFreezer<'_, '_> {
                 label: label.to_string(),
             });
         }
-        self.field_selection(base, label, span, field_type)
+        // A field that holds a closure is written through with its contract (metel-core#2011).
+        let held = match base {
+            AbstractType::Record(fields) => fields
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, field)| field)
+                .filter(|field| holds_closure(field) && erase_contracts(field) == *field_type),
+            _ => None,
+        };
+        self.field_selection(base, label, span, held.unwrap_or(field_type))
     }
 
     fn closure(
@@ -2162,6 +2208,8 @@ impl BodyFreezer<'_, '_> {
             return_type: result,
             binding_names: self.binding_names,
             closure_types: self.closure_types,
+            declared_closure_types: self.declared_closure_types,
+            assigning: self.assigning,
             reassigned: self.reassigned,
             widened: self.widened,
             loop_results: RefCell::new(Vec::new()),
@@ -2217,15 +2265,18 @@ impl BodyFreezer<'_, '_> {
             .binding_spans
             .get(span)
             .ok_or("closure capture has no frozen binding identity")?;
-        let ty = self
-            .closure_types
-            .borrow()
-            .get(&binding)
-            .cloned()
-            .map_or_else(
-                || self.types.freeze(ty).map_err(|error| error.to_string()),
-                Ok,
-            )?;
+        // A closure that captures the binding it is being assigned to moves the old value in. The old value's
+        // contract is the declared one: the widened contract already holds this assignment's own result, so
+        // reading it here would grow it on every rebuild (metel-core#2010).
+        let ty = if *self.assigning.borrow() == Some(binding) {
+            self.declared_closure_types.borrow().get(&binding).cloned()
+        } else {
+            self.closure_types.borrow().get(&binding).cloned()
+        }
+        .map_or_else(
+            || self.types.freeze(ty).map_err(|error| error.to_string()),
+            Ok,
+        )?;
         Ok(AbstractCapture {
             binding,
             name: name.to_string(),
@@ -2293,7 +2344,7 @@ impl BodyFreezer<'_, '_> {
         object: &Expr,
         index: &Expr,
         ty: &AbstractType,
-    ) -> Result<AbstractExprKind, String> {
+    ) -> Result<(AbstractExprKind, Option<AbstractType>), String> {
         let object = self.expression(object)?;
         let mut retained_index = self.expression(index)?;
         // Construction applies the u64 expectation to an unsuffixed literal,
@@ -2322,12 +2373,21 @@ impl BodyFreezer<'_, '_> {
             AbstractType::Array(item) | AbstractType::SizedArray(item, _) => item,
             _ => return Err("array index has no retained array shape".to_string()),
         };
-        Self::check_value_type(item, ty)?;
-        Ok(AbstractExprKind::Index {
-            object: Box::new(object),
-            index: Box::new(retained_index),
-            auto_dereferences,
-        })
+        // An element that holds a closure keeps its contract; the typechecker writes it as a function type.
+        let retained = if holds_closure(item) && erase_contracts(item) == *ty {
+            Some(item.as_ref().clone())
+        } else {
+            Self::check_value_type(item, ty)?;
+            None
+        };
+        Ok((
+            AbstractExprKind::Index {
+                object: Box::new(object),
+                index: Box::new(retained_index),
+                auto_dereferences,
+            },
+            retained,
+        ))
     }
 
     fn conditional(
@@ -2609,15 +2669,28 @@ impl BodyFreezer<'_, '_> {
         label: &str,
         span: &Span,
         ty: &AbstractType,
-    ) -> Result<AbstractExprKind, String> {
+    ) -> Result<(AbstractExprKind, Option<AbstractType>), String> {
         let object = self.expression(object)?;
         let (base, auto_dereferences) = peel_references(&object.ty);
-        let selection = self.field_selection(base, label, span, ty)?;
-        Ok(AbstractExprKind::FieldAccess {
-            object: Box::new(object),
-            selection,
-            auto_dereferences,
-        })
+        // A field that holds a closure keeps its contract; the typechecker writes it as a function type.
+        let retained = match base {
+            AbstractType::Record(fields) => fields
+                .iter()
+                .find(|(name, _)| name == label)
+                .map(|(_, field)| field)
+                .filter(|field| holds_closure(field) && erase_contracts(field) == *ty)
+                .cloned(),
+            _ => None,
+        };
+        let selection = self.field_selection(base, label, span, retained.as_ref().unwrap_or(ty))?;
+        Ok((
+            AbstractExprKind::FieldAccess {
+                object: Box::new(object),
+                selection,
+                auto_dereferences,
+            },
+            retained,
+        ))
     }
 
     /// A method call and, when a closure comes back through the receiver's or an argument's type, its type
@@ -3095,6 +3168,24 @@ fn merge_contracts(
     next: &AbstractType,
 ) -> Result<Option<AbstractType>, String> {
     let unsupported = || "aggregate closure ownership contracts are not yet retained".to_string();
+    // A move-only function value has an unknown capture set, so what it joins is move-only: its own type is the
+    // contract, which is the typechecker's and the sound answer (metel-core#2012).
+    if let AbstractType::Function {
+        usage: crate::data::types::UseMultiplicity::Move,
+        ..
+    } = next
+    {
+        return Ok(Some(next.clone()));
+    }
+    if let Some(
+        move_only @ AbstractType::Function {
+            usage: crate::data::types::UseMultiplicity::Move,
+            ..
+        },
+    ) = merged.as_ref()
+    {
+        return Ok(Some(move_only.clone()));
+    }
     let next = closure_contract(next).ok_or_else(unsupported)?;
     let Some(merged) = merged else {
         return Ok(Some(next));
@@ -3124,6 +3215,95 @@ fn merge_contracts(
         },
         owned_captures,
     }))
+}
+
+/// The type at the end of a place's projections: an array element, a record field. `None` for a dereference or a
+/// shape the walk does not follow.
+fn type_at(
+    ty: &AbstractType,
+    projections: &[crate::ownership::place::Projection],
+) -> Option<AbstractType> {
+    use crate::ownership::place::Projection;
+    let Some((first, rest)) = projections.split_first() else {
+        return Some(ty.clone());
+    };
+    let next = match (first, ty) {
+        (
+            Projection::OpaqueIndex,
+            AbstractType::Array(item) | AbstractType::SizedArray(item, _),
+        ) => item.as_ref().clone(),
+        (Projection::Field { name, .. }, AbstractType::Record(fields)) => fields
+            .iter()
+            .find(|(label, _)| label == name)
+            .map(|(_, field)| field.clone())?,
+        _ => return None,
+    };
+    type_at(&next, rest)
+}
+
+/// `ty` with the type at the end of `projections` replaced by `replacement`.
+fn replace_at(
+    ty: &AbstractType,
+    projections: &[crate::ownership::place::Projection],
+    replacement: &AbstractType,
+) -> Option<AbstractType> {
+    use crate::ownership::place::Projection;
+    let Some((first, rest)) = projections.split_first() else {
+        return Some(replacement.clone());
+    };
+    match (first, ty) {
+        (Projection::OpaqueIndex, AbstractType::Array(item)) => Some(AbstractType::Array(
+            Box::new(replace_at(item, rest, replacement)?),
+        )),
+        (Projection::OpaqueIndex, AbstractType::SizedArray(item, length)) => Some(
+            AbstractType::SizedArray(Box::new(replace_at(item, rest, replacement)?), *length),
+        ),
+        (Projection::Field { name, .. }, AbstractType::Record(fields)) => {
+            let mut fields = fields.clone();
+            let field = fields.iter_mut().find(|(label, _)| label == name)?;
+            field.1 = replace_at(&field.1, rest, replacement)?;
+            Some(AbstractType::Record(fields))
+        }
+        _ => None,
+    }
+}
+
+/// The conjunction of two contracts of one shape: the closure contracts at each position merged, everything else
+/// equal. `None` when the shapes differ.
+fn merge_shape(left: &AbstractType, right: &AbstractType) -> Option<AbstractType> {
+    if left == right {
+        return Some(left.clone());
+    }
+    match (left, right) {
+        (AbstractType::Closure { .. }, AbstractType::Closure { .. }) => {
+            merge_contracts(Some(left.clone()), right).ok().flatten()
+        }
+        (AbstractType::Array(item), AbstractType::Array(other)) => {
+            Some(AbstractType::Array(Box::new(merge_shape(item, other)?)))
+        }
+        (AbstractType::SizedArray(item, length), AbstractType::SizedArray(other, other_length))
+            if length == other_length =>
+        {
+            Some(AbstractType::SizedArray(
+                Box::new(merge_shape(item, other)?),
+                *length,
+            ))
+        }
+        (AbstractType::Record(fields), AbstractType::Record(others))
+            if fields.len() == others.len() =>
+        {
+            let merged = fields
+                .iter()
+                .zip(others)
+                .map(|((label, field), (other_label, other))| {
+                    (label == other_label)
+                        .then(|| Some((label.clone(), merge_shape(field, other)?)))?
+                })
+                .collect::<Option<Vec<_>>>()?;
+            Some(AbstractType::Record(merged))
+        }
+        _ => None,
+    }
 }
 
 /// A closure's own contract, or the contract of a function item: its function type owning no capture. `None`
@@ -3196,6 +3376,11 @@ fn bind_template(
     use crate::pipeline::type_checking::type_engine::InferType;
     let unsupported = || "aggregate closure ownership contracts are not yet retained".to_string();
     if !holds_closure(value) {
+        return Ok(());
+    }
+    // A template with no type variable has nothing to bind: the slot's declared type is the contract, and a written
+    // function type is move-only (RFC-0166), whatever closure is stored in it (metel-core#2012).
+    if crate::pipeline::type_checking::type_engine::free_vars(template).is_empty() {
         return Ok(());
     }
     match (template, value) {

@@ -1,0 +1,10 @@
+// metel-core#2010: a closure-holding binding reassigned to a closure that captures the binding settles: the old value
+// moves into the new closure, and its contract is the declared one, so a chain of reassignments is finite.
+fun f<T: Copy>(x: T) {
+    var c := [x]|k: i64| -> i64 { k };
+    c = [c]|k: i64| -> i64 { k };
+    c = [c]|k: i64| -> i64 { k };
+    let a := c;
+    let b := c;
+}
+fun main() {}

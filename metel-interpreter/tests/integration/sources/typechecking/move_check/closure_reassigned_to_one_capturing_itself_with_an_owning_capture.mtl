@@ -1,0 +1,8 @@
+// metel-core#2010: the same chain over a capture that is not `Copy` is not `Copy`, so a second use is rejected.
+fun f<T>(x: T) {
+    var c := [x]|k: i64| -> i64 { k };
+    c = [c]|k: i64| -> i64 { k };
+    let a := c;
+    let b := c; // ERROR[T0019]
+}
+fun main() {}

@@ -1,0 +1,9 @@
+// metel-core#2011: a closure that owns a capture that is not `Copy`, stored into an array element, makes the array
+// move-only, so a second use of it is rejected.
+fun f<T>(x: T, y: String) {
+    var arr := [|k: i64| -> i64 { k }];
+    arr[0] = [y]|k: i64| -> i64 { k };
+    let a := arr;
+    let b := arr; // ERROR[T0019]
+}
+fun main() {}

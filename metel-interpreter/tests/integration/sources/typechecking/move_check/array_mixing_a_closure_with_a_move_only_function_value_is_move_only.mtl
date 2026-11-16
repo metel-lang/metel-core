@@ -1,0 +1,8 @@
+// metel-core#2012: an array that mixes a closure with a function value that is not `Copy` is move-only; the body is
+// analysed instead of reported as not retained.
+fun f<T>(x: T, other: |i64| -> i64) {
+    let arr := [|k: i64| -> i64 { k }, other];
+    let a := arr;
+    let b := arr; // ERROR[T0019]
+}
+fun main() {}
