@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.functions.first-class-functions.legality-9", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-17", "spec.ownership.copy.legality-4"]

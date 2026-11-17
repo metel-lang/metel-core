@@ -1,0 +1,28 @@
+// metel-core#2078: a Copy struct holding a `copy |T| -> U` field is Clone, and its clone is the copy; the same through a
+// copy(T) keyword, a flow-stating derive, and a generic struct holding the function.
+copy struct Holder { f: copy |i64| -> i64, n: i64 }
+copy(T) struct Boxed<T> { value: T }
+struct Pair<A, B> derives Clone(A, B), Copy(A, B) { a: A, b: B }
+
+fun main() {
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let h := Holder { f = inc, n = 1 };
+    let h2 := h;
+    let h3 := h;
+    let c := h.clone();
+    assert((h2.f)(1) == 2);
+    assert((c.f)(2) == 3);
+    assert(h3.n == 1);
+    let b := Boxed { value = inc };
+    let b2 := b;
+    let b3 := b;
+    assert((b2.value)(3) == 4);
+    assert((b3.value)(4) == 5);
+    let p := Pair { a = inc, b = 2 };
+    let p2 := p;
+    let p3 := p;
+    assert((p2.a)(4) == 5);
+    assert(p3.b == 2);
+    let q := p.clone();
+    assert((q.a)(5) == 6);
+}
