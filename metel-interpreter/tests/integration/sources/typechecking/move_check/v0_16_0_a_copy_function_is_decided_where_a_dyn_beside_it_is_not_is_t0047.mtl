@@ -1,0 +1,10 @@
+// v0.16.0 integration: undecided ownership x the copy function-type qualifier. The copy function is reused twice and is
+// decided; only the `dyn` is reported.
+aspect Marker;
+fun reuse<T>(f: copy |i64| -> i64, d: dyn Marker, other: T) { // ERROR[T0047]
+    let a := f;
+    let b := f;
+    let c := d;
+    let e := d;
+}
+fun main() {}

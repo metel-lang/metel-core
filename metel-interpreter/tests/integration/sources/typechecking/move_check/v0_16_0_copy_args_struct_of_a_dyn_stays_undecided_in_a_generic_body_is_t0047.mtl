@@ -1,0 +1,8 @@
+// v0.16.0 integration: undecided ownership x a copy(T) struct instantiated with a `dyn`.
+aspect Marker;
+copy(T) struct W<T> { value: T }
+fun reuse<T>(w: W<dyn Marker>, other: T) { // ERROR[T0047]
+    let first := w;
+    let again := w;
+}
+fun main() {}

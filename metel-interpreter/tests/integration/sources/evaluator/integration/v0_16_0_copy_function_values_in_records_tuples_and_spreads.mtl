@@ -1,0 +1,23 @@
+// v0.16.0 integration: the `copy` function-type qualifier x dotted row labels x tuples as rows x record spread x assignment.
+// A copy function value is stored in a record and a tuple, survives a spread, is duplicated by value and called.
+fun apply(f: copy |i64| -> i64, x: i64) -> i64 { f(x) }
+fun main() {
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let r := .{ .f = inc, .n = 1 };
+    let t := (inc, 2);
+    let s := .{ ..r, .n = 5 };
+    let a := r;
+    let b := r;
+    assert((a.f)(1) == 2);
+    assert((b.f)(2) == 3);
+    let u := t;
+    let v := t;
+    assert((u.0)(3) == 4);
+    assert((v.0)(4) == 5);
+    assert((s.f)(6) == 7);
+    assert(s.n == 5);
+    var total := 0;
+    total = apply(inc, total);
+    total = apply(inc, total);
+    assert(total == 2);
+}

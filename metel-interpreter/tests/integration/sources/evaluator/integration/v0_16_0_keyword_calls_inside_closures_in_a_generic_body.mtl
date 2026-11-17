@@ -1,0 +1,18 @@
+// v0.16.0 integration: keyword arguments x closures x a generic body x a tuple parameter.
+copy struct Id { n: i64 }
+fun total<T>(args: (i64, i64), unused: T) -> i64 {
+    let f := |a: i64, b: i64| { a + b };
+    f(args.0, args.1)
+}
+fun scale(factor: i64, value: i64) -> i64 { factor * value }
+fun apply_keyed<T>(unused: T) -> i64 {
+    let g := || { scale(value = 4, factor = 3) };
+    g()
+}
+fun main() {
+    assert(total((1, 2), 0) == 3);
+    assert(apply_keyed(0) == 12);
+    let id := Id { n = 2 };
+    var h := || { scale(factor = id.n, value = 5) };
+    assert(h() == 10);
+}

@@ -1,0 +1,7 @@
+// v0.16.0 integration: undecided ownership x record spread.
+aspect Marker;
+fun reuse<T>(r: .{ .d: dyn Marker, .n: i64 }, other: T) { // ERROR[T0047]
+    let s := .{ ..r, .n = 1 };
+    let again := r;
+}
+fun main() {}
