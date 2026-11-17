@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.functions.keyword-arguments.legality-1", "spec.functions.closures.legality-1"]

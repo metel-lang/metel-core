@@ -1,0 +1,8 @@
+// v0.16.0 integration: undecided ownership x a residual after a partial move.
+aspect Marker;
+fun reuse<T>(r: .{ .d: dyn Marker, .s: String }, other: T) { // ERROR[T0047]
+    let s := r.s;
+    let first := r;
+    let again := r;
+}
+fun main() {}

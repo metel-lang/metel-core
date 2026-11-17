@@ -1,0 +1,8 @@
+// v0.16.0 integration: undecided ownership x a closure capture in a generic body.
+aspect Marker;
+fun reuse<T>(d: dyn Marker, other: T) { // ERROR[T0047]
+    let f := || { let x := d; };
+    let g := d;
+    let h := d;
+}
+fun main() {}

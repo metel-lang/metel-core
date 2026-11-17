@@ -1,0 +1,16 @@
+// v0.16.0 integration: a block-local aspect impl x record spread x tuples as rows x the copy function-type qualifier.
+aspect Describe { fun describe(&self) -> i64; }
+fun main() {
+    struct Local { n: i64 }
+    extend Local: Describe { fun describe(&self) -> i64 { self.n } }
+    let r := .{ .l = Local { n = 1 }, .k = 0 };
+    let s := .{ ..r, .k = 5 };
+    assert(s.l.describe() == 1);
+    assert(s.k == 5);
+    let t := (Local { n = 2 }, 3);
+    assert(t.0.describe() == 2);
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let u := .{ .f = inc, .l = Local { n = 3 } };
+    assert((u.f)(1) == 2);
+    assert(u.l.describe() == 3);
+}

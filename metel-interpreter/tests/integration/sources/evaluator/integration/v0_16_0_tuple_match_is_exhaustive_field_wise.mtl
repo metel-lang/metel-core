@@ -1,0 +1,17 @@
+// v0.16.0 integration: tuples as rows x field-wise match exhaustiveness. A match over a tuple of enums is exhaustive when
+// every combination of the fields is covered.
+enum Color { Red, Green, Blue }
+fun code(a: Color, b: Color) -> i64 {
+    match ((a, b)) {
+        (Color::Red, _) => 1,
+        (Color::Green, Color::Red) => 2,
+        (Color::Green, _) => 3,
+        (Color::Blue, _) => 4,
+    }
+}
+fun main() {
+    assert(code(Color::Red, Color::Blue) == 1);
+    assert(code(Color::Green, Color::Red) == 2);
+    assert(code(Color::Green, Color::Blue) == 3);
+    assert(code(Color::Blue, Color::Green) == 4);
+}

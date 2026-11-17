@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.open-rows.legality-4", "spec.types.tuples.legality-4", "spec.functions.first-class-functions.legality-7", "spec.declarations.aspects.implementing-an-aspect.legality-1"]

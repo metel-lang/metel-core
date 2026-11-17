@@ -1,0 +1,8 @@
+// v0.16.0 integration: undecided ownership x a named record pattern in a generic body.
+aspect Marker;
+record Holder { d: dyn Marker, n: i64 }
+fun reuse<T>(h: Holder, other: T) { // ERROR[T0047]
+    let .{ .n, .d: _ } := h;
+    let again := h;
+}
+fun main() {}

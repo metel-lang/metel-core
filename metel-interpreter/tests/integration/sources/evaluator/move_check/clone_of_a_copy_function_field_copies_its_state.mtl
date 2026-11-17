@@ -1,0 +1,15 @@
+// metel-core#2078 with RFC-0219 rule 7: the clone of a Copy struct holding a `copy var` closure owns an independent copy of
+// the closure's state, as a use by value does.
+copy struct Counter { next: copy var || -> i64 }
+
+fun run(c: copy var || -> i64) -> i64 {
+    let h := Counter { next = c };
+    var a := h.clone();
+    var b := h.clone();
+    (a.next)() + (a.next)() + (b.next)()
+}
+
+fun main() {
+    var n := 0;
+    assert(run([n] var || -> i64 { let r := n; n += 1; r }) == 1);
+}

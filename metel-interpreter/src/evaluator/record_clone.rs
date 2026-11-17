@@ -88,6 +88,11 @@ fn clone_fields(
             if matches!(value, Value::Reference(_) | Value::FieldReference { .. }) {
                 return Ok((label.clone(), value.clone()));
             }
+            // A callable field is a `copy` function value (the checker accepts no other as `Clone`): its clone is the
+            // copy a use by value makes, so a `copy var` closure gets independent state (RFC-0219 rule 10).
+            if matches!(value, Value::Callable(_)) {
+                return Ok((label.clone(), super::deep_clone_value(value.clone())));
+            }
             let method = clone_method(value, span, runtime).ok_or_else(|| {
                 MetelError::internal(format!(
                     "record clone: field `{label}` has no Clone implementation"

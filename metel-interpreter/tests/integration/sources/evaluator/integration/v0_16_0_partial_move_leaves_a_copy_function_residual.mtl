@@ -1,0 +1,12 @@
+// v0.16.0 integration: aspects on a residual x the `copy` function-type qualifier. Moving the String out of a record leaves
+// a residual whose only field is a copy function, which is Copy.
+fun main() {
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let r := .{ .f = inc, .s = "owned" };
+    let s := r.s;
+    let g := r;
+    let h := r;
+    assert((g.f)(1) == 2);
+    assert((h.f)(2) == 3);
+    assert(s == "owned");
+}

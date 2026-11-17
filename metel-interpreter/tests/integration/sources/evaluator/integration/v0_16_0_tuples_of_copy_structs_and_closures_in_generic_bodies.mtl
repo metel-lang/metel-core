@@ -1,0 +1,23 @@
+// v0.16.0 integration: tuples as rows x copy(T) structs x partial moves x a closure over a tuple in a generic body.
+copy(T) struct Boxed<T> { value: T }
+struct Pair { name: String, n: i64 }
+fun take_first<T>(t: (Boxed<T>, String), unused: T) -> String {
+    let rest := t.1;
+    rest
+}
+fun sum<T>(t: (i64, i64), unused: T) -> i64 {
+    let f := || { t.0 + t.1 };
+    f()
+}
+fun main() {
+    let t: (Boxed<i64>, String) := (Boxed { value = 1 }, "s");
+    let u := t.0;
+    let v := t.0;
+    assert(u.value + v.value == 2);
+    assert(take_first(t, 0) == "s");
+    assert(sum((3, 4), 0) == 7);
+    let p := (Pair { name = "a", n = 1 }, 5);
+    let name := p.0.name;
+    assert(p.1 == 5);
+    assert(name == "a");
+}

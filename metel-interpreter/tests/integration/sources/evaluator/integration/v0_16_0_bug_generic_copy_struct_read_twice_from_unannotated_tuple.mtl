@@ -1,0 +1,8 @@
+// metel-core#2079: reading a generic copy struct twice from an unannotated tuple (unresolved literal type argument).
+copy(T) struct Boxed<T> { value: T }
+fun main() {
+    let t := (Boxed { value = 1 }, "s");
+    let u := t.0;
+    let v := t.0;
+    assert(u.value + v.value == 2);
+}

@@ -1,0 +1,7 @@
+// v0.16.0 integration: undecided ownership x tuples as rows. A `dyn` element of a tuple has no stored flow, so the tuple is undecided.
+aspect Marker;
+fun reuse<T>(p: (dyn Marker, i64), other: T) { // ERROR[T0047]
+    let first := p;
+    let again := p;
+}
+fun main() {}

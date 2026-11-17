@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.types.generics.row-bounds.legality-1", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.functions.first-class-functions.legality-9"]
