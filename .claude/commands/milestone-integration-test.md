@@ -23,7 +23,7 @@ the normal per-PR flow — **one issue per finding**, never a single omnibus com
 
 ---
 
-## Step 1 — Enumerate the milestone's language-visible surface
+## Step 1 — Reconcile the feature registry
 
 ```bash
 git checkout develop && git pull --recurse-submodules
@@ -31,44 +31,49 @@ git log --oneline $(git describe --tags --abbrev=0 origin/main)..develop
 python3 docs/rfcs/tools/rfc.py check
 ```
 
-List every **feature** the milestone shipped that a program can observe:
+The committed registry in `tools/feature-matrix/registry.toml` is the persistent inventory.
+Reconcile it against implemented RFCs and the changelog for `$ARGUMENTS`, including
+language-visible fixes and integrated RFC slices. Each capability has a stable ID, source,
+introduction release, subsystem tags and owned spec rule IDs. Name capabilities by behavior,
+not RFC number.
 
-- Every RFC that reached `4-implemented` this milestone
-  (`grep -l '^target: '$ARGUMENTS docs/rfcs/4-implemented/*.md`, cross-checked against
-  each RFC's `impl_status`).
-- Every entry in `docs/release-notes/changelog.md`'s in-progress `## $ARGUMENTS` section
-  that changes syntax, type-checking, move-checking, or runtime behaviour — including the
-  "Fixes:" block, since a fix changes observable behaviour too.
-- Any `3-integrated` RFC targeting this milestone that shipped in slices (its slice
-  issues are closed) — the slice is a feature even though the RFC file has not moved.
+Do not infer an introduction release from an RFC title or creation date. If neither the
+RFC's release metadata nor the changelog establishes it, leave it `unresolved` and report
+it. The script reports features without owned spec rules.
 
-Each becomes one row/column label in Step 2. Name them by capability, not RFC number,
-so the matrix reads (`written fn types move-only`, not `RFC-0166`).
+## Step 2 — Compute rule coverage and the release gate
 
-## Step 2 — Build the interaction matrix
+```bash
+python3 tools/feature_matrix.py "$ARGUMENTS"
+```
 
-Form the N×N grid of Step 1's features. The diagonal is single-feature (already covered
-per-PR — skip). For every off-diagonal **unordered pair**, decide one of:
+The script reads the registry, hand-set dispositions in `tools/feature-matrix/states.toml`,
+and fixture `spec = [...]` tags. It checks registered rule IDs against the public spec and
+computes the milestone baseline plus new-feature rows against the full registry. Use
+`--blockers` to print blocking Tier A cells with their fixture evidence, or `--details` to
+print every new-feature pair.
 
-- **Fixture exists** — a corpus fixture under
-  `metel-interpreter/tests/integration/sources/` already exercises both features in the
-  same program. Record its path.
-- **No interaction possible** — the two features cannot appear in one program in a way
-  that could interact (e.g. a pure-syntax parse rule and a runtime builtin). Record a
-  one-line justification.
-- **Gap** — neither. This pair needs a new fixture.
+For a pair A × B, a fixture contributes only when its `spec` tags cite at least one rule
+owned by A and one owned by B. The rule-coverage score is the distinct owned rules cited by
+all joint fixtures divided by the distinct owned rules of both features. It measures
+citation breadth; review fixture behavior as well. The score accumulates across fixtures and
+falls automatically if a fixture is removed or loses relevant tags.
 
-A pair is **high-risk** (must be filled, not just noted) when both features touch the
-same subsystem:
+Cell state is computed from the score unless the state file records a disposition:
 
-| Subsystem | Features that touch it |
-|---|---|
-| move / ownership | narrowing, widening, `--move-check`, written fn types move-only, closure capture lists, closure mutation axis |
-| type inference / unification | row narrowing, row bounds, type aliases, first-class generic functions, function-type multiplicity widening |
-| closures | every closure-cluster RFC, pipe notation, written fn types |
-| pattern matching | struct patterns, row-bounded `..`, parenthesized scrutinee |
+- **covered** — 100% of the pair's owned rules have joint-fixture evidence.
+- **partial** — some, but not all, owned rules have joint-fixture evidence.
+- **open** — no joint-fixture evidence, or no owned rules are available to score.
+- **n/a** — one-line reason in `states.toml`.
+- **deferred** — reason and GitHub issue URL in `states.toml`.
 
-Any gap where a row and a column are both in the same subsystem row above is high-risk.
+Tier A means a shared subsystem; Tier B means an explicitly configured adjacent-subsystem
+pair; Tier C is everything else. The gate passes only when each Tier A cell in a new
+feature's row is `covered`, `n/a` or `deferred`. A partial Tier A score blocks. Tier B/C
+remain visible as debt and do not block. Deferred Tier A cells must point to an issue.
+
+The milestone-only baseline is reported separately for comparison with #2080. Old-by-old
+cells do not block this release.
 
 ## Step 3 — Fill the high-risk gaps
 
@@ -129,14 +134,14 @@ off `main` and merged before `/cut-release` bumps the `docs` gitlink:
 
 ## Interaction matrix
 
-| | A | B | C |
-|---|---|---|---|
-| **A** | — | fixture / n-a / GAP→#N | … |
-| **B** | | — | … |
-| **C** | | | — |
+Paste the summary from `python3 tools/feature_matrix.py $ARGUMENTS`, including the
+milestone-only baseline, rule-coverage totals and full-registry gate verdict. Include the
+blocking rows from `python3 tools/feature_matrix.py $ARGUMENTS --blockers`, with fixture
+paths, and any `n/a`/deferred Tier A cells with their reason or issue link.
 
-Legend: fixture `path`, `n/a: <reason>`, `GAP→#N` (filled, fixture `path`),
-`BUG→#N` (documented, `skip`-tagged fixture `path`).
+The registry and state file preserve the feature rows and manual dispositions. The script
+recomputes fixture evidence each run, so deleted or retagged fixtures automatically reduce
+scores and can reopen cells.
 
 ## Fixtures added
 

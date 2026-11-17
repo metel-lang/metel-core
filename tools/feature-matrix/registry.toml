@@ -1,0 +1,867 @@
+schema_version = 1
+subsystems = ["move", "inference", "closures", "patterns", "surface", "functions", "types", "records", "aspects", "declarations", "modules", "runtime", "syntax", "expressions", "ownership", "rows", "language-surface"]
+
+# Registry seeded from implemented RFC coverage and release changelog capabilities.
+# `introduced = "unresolved"` marks historical RFCs with no target/version evidence.
+
+[[features]]
+id = "rfc-0006"
+name = "Closure Capture Semantics and Cross-Closure Reference Sharing"
+introduced = "v0.13.0"
+source = ["RFC-0006"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.dynamics-1", "spec.functions.closures.dynamics-2", "spec.functions.closures.dynamics-3", "spec.functions.closures.dynamics-4"]
+
+[[features]]
+id = "rfc-0007"
+name = "Compiler-Compatible Primitive Type System"
+introduced = "unresolved"
+source = ["RFC-0007"]
+subsystems = ["types"]
+rules = ["spec.types.arrays.legality-2", "spec.types.char.legality-1", "spec.types.sized-numeric-types.dynamics-1", "spec.types.sized-numeric-types.legality-1", "spec.types.sized-numeric-types.legality-2", "spec.types.sized-numeric-types.legality-3"]
+
+[[features]]
+id = "rfc-0008"
+name = "Aspect Objects"
+introduced = "v0.13.0"
+source = ["RFC-0008"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.dyn-aspect.dynamics-1", "spec.declarations.aspects.dyn-aspect.legality-1", "spec.declarations.aspects.dyn-aspect.legality-2", "spec.declarations.aspects.dyn-aspect.legality-3", "spec.declarations.aspects.dyn-aspect.legality-4", "spec.declarations.aspects.dyn-aspect.legality-6", "spec.declarations.aspects.static-dispatch-only.dynamics-1"]
+
+[[features]]
+id = "rfc-0010"
+name = "String Interpolation"
+introduced = "unresolved"
+source = ["RFC-0010"]
+subsystems = ["language-surface"]
+rules = ["spec.lexical.literals.dynamics-1", "spec.lexical.literals.dynamics-2", "spec.lexical.literals.dynamics-3", "spec.lexical.literals.dynamics-4"]
+
+[[features]]
+id = "rfc-0018"
+name = "Match Arm Blocks"
+introduced = "unresolved"
+source = ["RFC-0018"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.dynamics-1", "spec.expressions.pattern-matching.legality-1", "spec.expressions.pattern-matching.legality-2"]
+
+[[features]]
+id = "rfc-0019"
+name = "Return Context Type Propagation"
+introduced = "unresolved"
+source = ["RFC-0019"]
+subsystems = ["types"]
+rules = ["spec.types.type-inference.legality-1", "spec.types.type-inference.legality-2"]
+
+[[features]]
+id = "rfc-0020"
+name = "Language Keyword Rebranding"
+introduced = "unresolved"
+source = ["RFC-0020"]
+subsystems = ["aspects", "types"]
+rules = ["spec.declarations.aspects.legality-1", "spec.types.perhaps-t.legality-1"]
+
+[[features]]
+id = "rfc-0021"
+name = "Type Ascription Syntax"
+introduced = "unresolved"
+source = ["RFC-0021"]
+subsystems = ["types"]
+rules = ["spec.types.type-ascription.legality-1", "spec.types.type-ascription.legality-2", "spec.types.type-ascription.legality-3", "spec.types.type-casting.dynamics-1"]
+
+[[features]]
+id = "rfc-0022"
+name = "Braceless if body syntax"
+introduced = "unresolved"
+source = ["RFC-0022"]
+subsystems = ["language-surface"]
+rules = ["spec.expressions.control-flow.if-else.legality-1", "spec.expressions.control-flow.if-else.legality-2", "spec.expressions.control-flow.if-else.legality-3", "spec.expressions.control-flow.if-else.legality-4", "spec.expressions.control-flow.if-else.legality-5"]
+
+[[features]]
+id = "rfc-0023"
+name = "Type Ascription vs Turbofish — Call-Site Type Annotation Review"
+introduced = "unresolved"
+source = ["RFC-0023"]
+subsystems = ["functions", "types"]
+rules = ["spec.functions.turbofish.legality-1", "spec.functions.turbofish.legality-2", "spec.types.type-ascription.legality-1"]
+
+[[features]]
+id = "rfc-0030"
+name = "Module System Redesign"
+introduced = "unresolved"
+source = ["RFC-0030"]
+subsystems = ["modules"]
+rules = ["spec.modules.file-header-ordering.legality-1", "spec.modules.file-to-module-mapping.legality-1", "spec.modules.import-conflicts.legality-4", "spec.modules.imports.legality-4", "spec.modules.module-graph-loading.legality-2", "spec.modules.paths.legality-1", "spec.modules.re-exports.legality-2", "spec.modules.removed-module-keywords.legality-1", "spec.modules.single-file-compatibility.legality-1", "spec.modules.std-core-auto-import.legality-1", "spec.modules.visibility.legality-1"]
+
+[[features]]
+id = "rfc-0031"
+name = "Topological Per-Module Typechecking"
+introduced = "unresolved"
+source = ["RFC-0031"]
+subsystems = ["modules"]
+rules = ["spec.modules.import-conflicts.legality-4", "spec.modules.imports.legality-1", "spec.modules.imports.legality-2", "spec.modules.imports.legality-3", "spec.modules.module-graph-loading.legality-1", "spec.modules.re-exports.legality-1", "spec.modules.visibility.legality-1", "spec.modules.visibility.legality-2"]
+
+[[features]]
+id = "rfc-0032"
+name = "Field-Level Visibility"
+introduced = "v0.13.0"
+source = ["RFC-0032"]
+subsystems = ["modules"]
+rules = ["spec.expressions.struct-patterns.legality-1", "spec.modules.visibility.legality-1", "spec.modules.visibility.legality-3", "spec.modules.visibility.legality-4", "spec.modules.visibility.legality-5", "spec.modules.visibility.legality-6", "spec.modules.visibility.legality-7"]
+
+[[features]]
+id = "rfc-0034"
+name = "Aspect Bounds on Struct and Enum Generic Parameters"
+introduced = "v0.13.0"
+source = ["RFC-0034"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-1", "spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-2", "spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-3", "spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-4", "spec.declarations.aspects.aspect-bounds-on-struct-and-enum-type-parameters.legality-5"]
+
+[[features]]
+id = "rfc-0035"
+name = "impl Aspect Anonymous Type Parameters"
+introduced = "v0.13.0"
+source = ["RFC-0035"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-1", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-2", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-3", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-4", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-5", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-6"]
+
+[[features]]
+id = "rfc-0036"
+name = "Conditional Impl Blocks"
+introduced = "v0.10.0"
+source = ["RFC-0036"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.implementing-an-aspect.legality-10", "spec.declarations.aspects.implementing-an-aspect.legality-11", "spec.declarations.aspects.implementing-an-aspect.legality-2", "spec.declarations.aspects.implementing-an-aspect.legality-3", "spec.declarations.aspects.implementing-an-aspect.legality-4", "spec.declarations.aspects.implementing-an-aspect.legality-5", "spec.declarations.aspects.implementing-an-aspect.legality-6", "spec.declarations.aspects.implementing-an-aspect.legality-7", "spec.declarations.aspects.implementing-an-aspect.legality-8", "spec.declarations.aspects.implementing-an-aspect.legality-9"]
+
+[[features]]
+id = "rfc-0037"
+name = "Return-Position impl Aspect"
+introduced = "v0.10.0"
+source = ["RFC-0037"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.dynamics-1", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.dynamics-2", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-14", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-15", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-16"]
+
+[[features]]
+id = "rfc-0040"
+name = "Aspect Bound Enforcement on Function Type Parameters"
+introduced = "unresolved"
+source = ["RFC-0040"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-10", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-11", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-12", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-13", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-7", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-8", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-9"]
+
+[[features]]
+id = "rfc-0041"
+name = "Lambda Syntax for Anonymous Functions"
+introduced = "v0.13.0"
+source = ["RFC-0041"]
+subsystems = ["closures", "functions"]
+rules = ["spec.functions.closures.legality-1", "spec.functions.closures.legality-2", "spec.functions.closures.legality-3", "spec.functions.closures.legality-4", "spec.functions.first-class-functions.legality-1", "spec.functions.named-function-declarations.legality-1"]
+
+[[features]]
+id = "rfc-0042"
+name = "let mut for Mutable Bindings"
+introduced = "unresolved"
+source = ["RFC-0042"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.variables.immutable-bindings.legality-1", "spec.declarations.variables.mutable-bindings.legality-1", "spec.expressions.control-flow.for-in.dynamics-1", "spec.expressions.control-flow.for-in.legality-1", "spec.expressions.control-flow.for.legality-1"]
+
+[[features]]
+id = "rfc-0044"
+name = "Explicit Receiver Semantics"
+introduced = "unresolved"
+source = ["RFC-0044"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.structs.receiver-forms.dynamics-1", "spec.declarations.structs.receiver-forms.legality-1", "spec.declarations.structs.receiver-forms.legality-2", "spec.declarations.structs.receiver-forms.legality-3", "spec.declarations.structs.receiver-forms.legality-4", "spec.declarations.structs.receiver-forms.legality-5", "spec.declarations.structs.receiver-forms.legality-6", "spec.declarations.structs.receiver-forms.legality-7"]
+
+[[features]]
+id = "rfc-0045"
+name = "Mutable Address-Of for Lvalue Paths"
+introduced = "unresolved"
+source = ["RFC-0045"]
+subsystems = ["language-surface"]
+rules = ["spec.expressions.references.dynamics-1", "spec.expressions.references.dynamics-2", "spec.expressions.references.dynamics-3", "spec.expressions.references.dynamics-4"]
+
+[[features]]
+id = "rfc-0050"
+name = "Closure Capture Lists"
+introduced = "v0.13.0"
+source = ["RFC-0050"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.legality-13", "spec.functions.closures.legality-19", "spec.functions.closures.legality-22", "spec.functions.closures.legality-5", "spec.functions.closures.legality-6"]
+
+[[features]]
+id = "rfc-0053"
+name = "Fixed-Size Array Type [T;N]"
+introduced = "v0.13.0"
+source = ["RFC-0053"]
+subsystems = ["types"]
+rules = ["spec.types.fixed-size-arrays.dynamics-1", "spec.types.fixed-size-arrays.legality-2", "spec.types.fixed-size-arrays.legality-3", "spec.types.fixed-size-arrays.legality-4", "spec.types.fixed-size-arrays.legality-5", "spec.types.fixed-size-arrays.legality-6", "spec.types.fixed-size-arrays.legality-7", "spec.types.fixed-size-arrays.legality-8", "spec.types.fixed-size-arrays.legality-9"]
+
+[[features]]
+id = "rfc-0054"
+name = "Standard List<T> Type"
+introduced = "unresolved"
+source = ["RFC-0054"]
+subsystems = ["types"]
+rules = ["spec.runtime.list-t.dynamics-1", "spec.types.list-t.dynamics-1", "spec.types.list-t.dynamics-2", "spec.types.list-t.dynamics-3", "spec.types.list-t.dynamics-4", "spec.types.list-t.legality-1"]
+
+[[features]]
+id = "rfc-0057"
+name = "Standard Library Layering and Host Module Boundary"
+introduced = "unresolved"
+source = ["RFC-0057"]
+subsystems = ["modules"]
+rules = ["spec.modules.std-core-auto-import.legality-1", "spec.runtime.core-sum-types.dynamics-1", "spec.runtime.list-t.dynamics-2", "spec.runtime.oserror.legality-1", "spec.runtime.standard-library-modules.std-env.dynamics-1", "spec.runtime.standard-library-modules.std-fs.dynamics-1", "spec.runtime.string-methods.dynamics-1"]
+
+[[features]]
+id = "rfc-0058"
+name = "SourceProvider Abstraction for the Module Loader"
+introduced = "unresolved"
+source = ["RFC-0058"]
+subsystems = ["modules"]
+rules = []
+
+[[features]]
+id = "rfc-0059"
+name = "Symbol Definition Index in ResolvedNames"
+introduced = "unresolved"
+source = ["RFC-0059"]
+subsystems = ["language-surface"]
+rules = []
+
+[[features]]
+id = "rfc-0060"
+name = "Aspect Impl Coherence"
+introduced = "v0.10.0"
+source = ["RFC-0060"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-implementation-coherence.legality-5", "spec.declarations.aspects.aspect-implementation-coherence.legality-6", "spec.declarations.aspects.aspect-implementation-coherence.legality-7", "spec.declarations.aspects.negative-impls.legality-2"]
+
+[[features]]
+id = "rfc-0061"
+name = "Structural Aspect Bounds"
+introduced = "v0.10.0"
+source = ["RFC-0061"]
+subsystems = ["types"]
+rules = ["spec.declarations.structural-aspect-bounds.legality-1", "spec.declarations.structural-aspect-bounds.legality-10", "spec.declarations.structural-aspect-bounds.legality-11", "spec.declarations.structural-aspect-bounds.legality-2", "spec.declarations.structural-aspect-bounds.legality-3", "spec.declarations.structural-aspect-bounds.legality-4", "spec.declarations.structural-aspect-bounds.legality-5", "spec.declarations.structural-aspect-bounds.legality-6", "spec.declarations.structural-aspect-bounds.legality-7", "spec.declarations.structural-aspect-bounds.legality-8", "spec.declarations.structural-aspect-bounds.legality-9", "spec.types.arrays.legality-1"]
+
+[[features]]
+id = "rfc-0067a"
+name = "Reference Types"
+introduced = "v0.10.0"
+source = ["RFC-0067A"]
+subsystems = ["types"]
+rules = ["spec.declarations.structs.receiver-forms.legality-1", "spec.expressions.references.dynamics-5", "spec.expressions.references.dynamics-6", "spec.types.references.legality-1", "spec.types.references.reading-a-value-out-of-a-reference.legality-1"]
+
+[[features]]
+id = "rfc-0072"
+name = "Negative Bounds"
+introduced = "v0.10.0"
+source = ["RFC-0072"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.negative-bounds.legality-1", "spec.declarations.aspects.negative-bounds.legality-10", "spec.declarations.aspects.negative-bounds.legality-2", "spec.declarations.aspects.negative-bounds.legality-3", "spec.declarations.aspects.negative-bounds.legality-4", "spec.declarations.aspects.negative-bounds.legality-5", "spec.declarations.aspects.negative-bounds.legality-6", "spec.declarations.aspects.negative-bounds.legality-7", "spec.declarations.aspects.negative-bounds.legality-8", "spec.declarations.aspects.negative-bounds.legality-9"]
+
+[[features]]
+id = "rfc-0078"
+name = "Bottom Type — `!`"
+introduced = "v0.10.0"
+source = ["RFC-0078"]
+subsystems = ["types"]
+rules = ["spec.types.never-type.dynamics-1", "spec.types.never-type.dynamics-2", "spec.types.never-type.legality-1", "spec.types.never-type.legality-10", "spec.types.never-type.legality-11", "spec.types.never-type.legality-2", "spec.types.never-type.legality-3", "spec.types.never-type.legality-4", "spec.types.never-type.legality-5", "spec.types.never-type.legality-6", "spec.types.never-type.legality-7", "spec.types.never-type.legality-8", "spec.types.never-type.legality-9"]
+
+[[features]]
+id = "rfc-0081"
+name = "Negative Impls"
+introduced = "v0.10.0"
+source = ["RFC-0081"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.negative-impls.legality-2", "spec.declarations.aspects.negative-impls.legality-4", "spec.declarations.aspects.negative-impls.legality-5", "spec.declarations.aspects.negative-impls.legality-6"]
+
+[[features]]
+id = "rfc-0082"
+name = "Associated Types"
+introduced = "v0.10.0"
+source = ["RFC-0082"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.associated-types.legality-1", "spec.declarations.aspects.associated-types.legality-2", "spec.declarations.aspects.associated-types.legality-3", "spec.declarations.aspects.associated-types.legality-4", "spec.declarations.aspects.associated-types.legality-5", "spec.declarations.aspects.associated-types.legality-6", "spec.declarations.aspects.associated-types.legality-7", "spec.declarations.aspects.dyn-aspect.legality-4"]
+
+[[features]]
+id = "rfc-0097"
+name = "Orphan Rule for Bare-Parameter Blanket Impls"
+introduced = "v0.10.0"
+source = ["RFC-0097"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-implementation-coherence.legality-1", "spec.declarations.aspects.aspect-implementation-coherence.legality-2", "spec.declarations.aspects.aspect-implementation-coherence.legality-3", "spec.declarations.aspects.aspect-implementation-coherence.legality-4"]
+
+[[features]]
+id = "rfc-0098"
+name = "Surface Keyword Renames"
+introduced = "v0.10.0"
+source = ["RFC-0098"]
+subsystems = ["aspects", "modules"]
+rules = ["spec.declarations.aspects.implementing-an-aspect.legality-1", "spec.declarations.structs.receiver-forms.legality-1", "spec.declarations.variables.mutable-bindings.legality-1", "spec.expressions.control-flow.for-in.dynamics-1", "spec.expressions.control-flow.for-in.legality-1", "spec.expressions.control-flow.for.legality-1", "spec.modules.visibility.legality-1"]
+
+[[features]]
+id = "rfc-0102"
+name = "Bodyless Extend Blocks for Marker Aspects and Negative Impls"
+introduced = "v0.10.0"
+source = ["RFC-0102"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.negative-impls.dynamics-1", "spec.declarations.aspects.negative-impls.dynamics-2", "spec.declarations.aspects.negative-impls.legality-1", "spec.declarations.aspects.negative-impls.legality-3"]
+
+[[features]]
+id = "rfc-0103"
+name = "Bodyless Aspect Declarations"
+introduced = "v0.10.0"
+source = ["RFC-0103"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.bodyless-aspect-declarations.legality-1"]
+
+[[features]]
+id = "rfc-0106"
+name = "Optional Braces for Empty Constructors"
+introduced = "v0.10.0"
+source = ["RFC-0106"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.enums.dynamics-1", "spec.declarations.enums.instantiation.legality-1", "spec.declarations.enums.legality-1", "spec.declarations.structs.instantiation-and-field-access.dynamics-2", "spec.declarations.structs.instantiation-and-field-access.legality-2", "spec.declarations.structs.instantiation-and-field-access.legality-3"]
+
+[[features]]
+id = "rfc-0107"
+name = "Unqualified Enum Variants in Match Patterns"
+introduced = "v0.11.0"
+source = ["RFC-0107"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.unqualified-variant-patterns.legality-1", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-2", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-3", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-4", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-5", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-7"]
+
+[[features]]
+id = "rfc-0108"
+name = "Reference-Transparent Match Scrutinees"
+introduced = "v0.11.0"
+source = ["RFC-0108"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.matching-through-a-reference.dynamics-1", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-2", "spec.expressions.pattern-matching.matching-through-a-reference.legality-1", "spec.expressions.pattern-matching.matching-through-a-reference.legality-2", "spec.expressions.pattern-matching.matching-through-a-reference.legality-3", "spec.expressions.pattern-matching.matching-through-a-reference.legality-4", "spec.expressions.pattern-matching.matching-through-a-reference.legality-5"]
+
+[[features]]
+id = "rfc-0110"
+name = "Explicit Dereference Operator"
+introduced = "v0.11.0"
+source = ["RFC-0110"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.matching-through-a-reference.dynamics-3", "spec.expressions.references.dynamics-10", "spec.expressions.references.dynamics-11", "spec.expressions.references.dynamics-7", "spec.expressions.references.dynamics-8", "spec.expressions.references.dynamics-9", "spec.expressions.references.legality-1", "spec.expressions.references.legality-2"]
+
+[[features]]
+id = "rfc-0111"
+name = "Unqualified Enum Variants in Expression Position"
+introduced = "v0.11.0"
+source = ["RFC-0111"]
+subsystems = ["types"]
+rules = ["spec.expressions.unqualified-variant-constructors.legality-1", "spec.expressions.unqualified-variant-constructors.legality-2", "spec.expressions.unqualified-variant-constructors.legality-3", "spec.expressions.unqualified-variant-constructors.legality-4", "spec.types.perhaps-t.legality-1"]
+
+[[features]]
+id = "rfc-0115"
+name = "Field Initializer Separator"
+introduced = "v0.11.0"
+source = ["RFC-0115"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.structs.instantiation-and-field-access.dynamics-1", "spec.declarations.structs.instantiation-and-field-access.legality-1"]
+
+[[features]]
+id = "rfc-0116"
+name = "Anonymous Record Types"
+introduced = "v0.12.0"
+source = ["RFC-0116"]
+subsystems = ["records"]
+rules = ["spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3"]
+
+[[features]]
+id = "rfc-0117"
+name = "Row Narrowing"
+introduced = "v0.13.0"
+source = ["RFC-0117"]
+subsystems = ["move"]
+rules = ["spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.legality-2"]
+
+[[features]]
+id = "rfc-0118"
+name = "Row Bounds"
+introduced = "v0.12.0"
+source = ["RFC-0118"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.row-bounds.legality-1", "spec.types.generics.row-bounds.legality-2", "spec.types.generics.row-bounds.legality-3", "spec.types.generics.row-bounds.legality-4", "spec.types.generics.row-bounds.legality-5"]
+
+[[features]]
+id = "rfc-0120"
+name = "Named Records"
+introduced = "v0.14.0"
+source = ["RFC-0120"]
+subsystems = ["records"]
+rules = ["spec.declarations.records.legality-1", "spec.declarations.records.legality-2", "spec.declarations.records.legality-3", "spec.declarations.records.legality-4"]
+
+[[features]]
+id = "rfc-0121"
+name = "Open Rows"
+introduced = "v0.14.0"
+source = ["RFC-0121"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.open-rows.legality-1", "spec.types.generics.open-rows.legality-2", "spec.types.generics.open-rows.legality-3", "spec.types.generics.row-conditional-impls.legality-1"]
+
+[[features]]
+id = "rfc-0123"
+name = "Field-Wise Row Constraints"
+introduced = "v0.14.0"
+source = ["RFC-0123"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.field-wise-row-constraints.legality-1"]
+
+[[features]]
+id = "rfc-0126"
+name = "T[] as a Copy Borrowed View"
+introduced = "v0.12.0"
+source = ["RFC-0126"]
+subsystems = ["types"]
+rules = ["spec.types.arrays.legality-1", "spec.types.fixed-size-arrays.legality-1", "spec.types.fixed-size-arrays.legality-2"]
+
+[[features]]
+id = "rfc-0129"
+name = "Aspect Method Generic Constraint Conformance"
+introduced = "v0.13.0"
+source = ["RFC-0129"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.implementing-an-aspect.legality-12", "spec.declarations.aspects.implementing-an-aspect.legality-13", "spec.declarations.aspects.implementing-an-aspect.legality-14"]
+
+[[features]]
+id = "rfc-0130"
+name = "extends Aspect: Renaming impl Aspect for Consistency with extend"
+introduced = "v0.13.0"
+source = ["RFC-0130"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-1"]
+
+[[features]]
+id = "rfc-0134"
+name = "Closure Call Capability"
+introduced = "v0.13.0"
+source = ["RFC-0134"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.dynamics-10", "spec.functions.closures.legality-20", "spec.functions.closures.legality-8", "spec.functions.closures.legality-9"]
+
+[[features]]
+id = "rfc-0136"
+name = "Walrus for Kept Bindings"
+introduced = "v0.13.0"
+source = ["RFC-0136"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.variables.mutable-bindings.legality-1"]
+
+[[features]]
+id = "rfc-0138"
+name = "Generic Functions as First-Class Values"
+introduced = "v0.13.0"
+source = ["RFC-0138"]
+subsystems = ["functions"]
+rules = ["spec.functions.first-class-functions.legality-2"]
+
+[[features]]
+id = "rfc-0152"
+name = "Function-Type Multiplicity Widening"
+introduced = "v0.13.0"
+source = ["RFC-0152"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.legality-15", "spec.functions.closures.legality-16", "spec.functions.closures.legality-9"]
+
+[[features]]
+id = "rfc-0153"
+name = "Closure Mutation Axis"
+introduced = "v0.13.0"
+source = ["RFC-0153"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.dynamics-7", "spec.functions.closures.dynamics-8", "spec.functions.closures.dynamics-9", "spec.functions.closures.legality-10", "spec.functions.closures.legality-24", "spec.functions.closures.legality-25"]
+
+[[features]]
+id = "rfc-0154"
+name = "Pipe Notation for Closures and Function Types"
+introduced = "v0.13.0"
+source = ["RFC-0154"]
+subsystems = ["closures", "functions"]
+rules = ["spec.functions.closures.legality-1", "spec.functions.closures.legality-2", "spec.functions.closures.legality-24", "spec.functions.first-class-functions.legality-1"]
+
+[[features]]
+id = "rfc-0156"
+name = "Parenthesize match Scrutinee"
+introduced = "v0.13.0"
+source = ["RFC-0156"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.legality-3"]
+
+[[features]]
+id = "rfc-0157"
+name = "Closure Capture Default (Move)"
+introduced = "v0.13.0"
+source = ["RFC-0157"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.dynamics-5"]
+
+[[features]]
+id = "rfc-0160"
+name = "Type Aliases"
+introduced = "v0.13.0"
+source = ["RFC-0160"]
+subsystems = ["language-surface"]
+rules = ["spec.declarations.type-aliases.legality-1"]
+
+[[features]]
+id = "rfc-0166"
+name = "Written Function Types Lower to Move-Only"
+introduced = "v0.13.0"
+source = ["RFC-0166"]
+subsystems = ["functions"]
+rules = ["spec.functions.first-class-functions.legality-3"]
+
+[[features]]
+id = "rfc-0167"
+name = "Reclassify unsoundness-only runtime errors as internal errors; split R0002"
+introduced = "v0.14.0"
+source = ["RFC-0167"]
+subsystems = ["functions"]
+rules = ["spec.functions.program-entry-point.legality-1"]
+
+[[features]]
+id = "rfc-0171"
+name = "Prefix array type syntax: [T] and [T; N]"
+introduced = "v0.14.0"
+source = ["RFC-0171"]
+subsystems = ["types"]
+rules = ["spec.types.arrays.legality-1"]
+
+[[features]]
+id = "rfc-0173"
+name = "Generic bodies are checked against their declared bounds"
+introduced = "v0.14.0"
+source = ["RFC-0173"]
+subsystems = ["language-surface"]
+rules = []
+
+[[features]]
+id = "rfc-0177"
+name = "Coercion-Aware Structural Aspect Lookup"
+introduced = "v0.15.0"
+source = ["RFC-0177"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.structural-aspect-bounds.legality-2"]
+
+[[features]]
+id = "rfc-0178"
+name = "Row Remainder Construction"
+introduced = "v0.14.0"
+source = ["RFC-0178"]
+subsystems = ["inference", "patterns"]
+rules = ["spec.expressions.record-rest-patterns.legality-1", "spec.types.generics.open-rows.legality-4"]
+
+[[features]]
+id = "rfc-0179"
+name = "By-value open-row parameters take the whole record"
+introduced = "v0.14.0"
+source = ["RFC-0179"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.open-rows.legality-3"]
+
+[[features]]
+id = "rfc-0180"
+name = "Literal rows in row arguments"
+introduced = "v0.14.0"
+source = ["RFC-0180"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.open-rows.legality-1"]
+
+[[features]]
+id = "rfc-0181"
+name = "Anonymous open rows in return and function types"
+introduced = "v0.15.0"
+source = ["RFC-0181"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.open-rows.legality-5"]
+
+[[features]]
+id = "rfc-0182"
+name = "Question Mark on Option"
+introduced = "v0.14.1"
+source = ["RFC-0182"]
+subsystems = ["closures", "functions"]
+rules = ["spec.functions.closures.dynamics-13", "spec.functions.the-operator.legality-1"]
+
+[[features]]
+id = "rfc-0184"
+name = "Rename Perhaps to Option"
+introduced = "v0.14.1"
+source = ["RFC-0184"]
+subsystems = ["types"]
+rules = ["spec.types.perhaps-t.legality-2"]
+
+[[features]]
+id = "rfc-0185"
+name = "Remove Type-Directed Dereference"
+introduced = "v0.14.1"
+source = ["RFC-0185"]
+subsystems = ["types"]
+rules = ["spec.types.references.reading-a-value-out-of-a-reference.legality-1"]
+
+[[features]]
+id = "rfc-0186"
+name = "Rows as an Operator on Record Parameters"
+introduced = "v0.15.0"
+source = ["RFC-0186"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.open-rows.legality-1"]
+
+[[features]]
+id = "rfc-0193"
+name = "Named Declarations Write Their Signature"
+introduced = "v0.15.0"
+source = ["RFC-0193"]
+subsystems = ["functions", "modules"]
+rules = ["spec.functions.named-function-declarations.legality-2", "spec.modules.visibility.legality-10"]
+
+[[features]]
+id = "rfc-0195"
+name = "Local Functions Do Not Capture"
+introduced = "v0.15.0"
+source = ["RFC-0195"]
+subsystems = ["functions", "inference"]
+rules = ["spec.functions.local-functions.legality-1", "spec.types.generics.rigid-type-parameters.legality-1"]
+
+[[features]]
+id = "rfc-0196"
+name = "Remove Inferred Let-Polymorphism"
+introduced = "v0.15.0"
+source = ["RFC-0196"]
+subsystems = ["closures"]
+rules = ["spec.functions.closures.legality-26"]
+
+[[features]]
+id = "keyword-arguments"
+name = "Keyword arguments at named calls"
+introduced = "v0.16.0"
+source = ["RFC-0223", "changelog:v0.16.0"]
+subsystems = ["closures"]
+rules = ["spec.functions.keyword-arguments.dynamics-1", "spec.functions.keyword-arguments.legality-1", "spec.functions.keyword-arguments.legality-2", "spec.functions.keyword-arguments.legality-3", "spec.functions.keyword-arguments.legality-4", "spec.functions.keyword-arguments.legality-5"]
+
+[[features]]
+id = "pub-visibility"
+name = "pub visibility and reserved declaration words"
+introduced = "v0.16.0"
+source = ["RFC-0218", "changelog:v0.16.0"]
+subsystems = ["surface"]
+rules = ["spec.modules.visibility.legality-1", "spec.modules.visibility.legality-10", "spec.modules.visibility.legality-2", "spec.modules.visibility.legality-3", "spec.modules.visibility.legality-4", "spec.modules.visibility.legality-5", "spec.modules.visibility.legality-6", "spec.modules.visibility.legality-7", "spec.modules.visibility.legality-8", "spec.modules.visibility.legality-9"]
+
+[[features]]
+id = "statement-assignment"
+name = "Assignment is a statement"
+introduced = "v0.16.0"
+source = ["RFC-0183", "changelog:v0.16.0"]
+subsystems = ["closures"]
+rules = ["spec.expressions.assignment.dynamics-1", "spec.expressions.assignment.legality-1", "spec.expressions.assignment.legality-2", "spec.expressions.assignment.legality-3"]
+
+[[features]]
+id = "dotted-row-labels"
+name = "Dotted row labels across records, patterns, and types"
+introduced = "v0.16.0"
+source = ["RFC-0221", "RFC-0225", "changelog:v0.16.0"]
+subsystems = ["inference"]
+rules = ["spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.dynamics-3", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3", "spec.types.record-labels.legality-1", "spec.types.record-labels.legality-2", "spec.types.record-labels.legality-3", "spec.types.record-labels.legality-4", "spec.types.record-labels.legality-5", "spec.types.record-labels.legality-6", "spec.types.record-labels.legality-7"]
+
+[[features]]
+id = "negative-row-bounds"
+name = "Negative row-bound entries"
+introduced = "v0.16.0"
+source = ["RFC-0189", "changelog:v0.16.0"]
+subsystems = ["inference"]
+rules = ["spec.types.generics.row-bounds.legality-1", "spec.types.generics.row-bounds.legality-2", "spec.types.generics.row-bounds.legality-3", "spec.types.generics.row-bounds.legality-4", "spec.types.generics.row-bounds.legality-5", "spec.types.generics.row-bounds.legality-6", "spec.types.generics.row-bounds.legality-7", "spec.types.generics.row-bounds.legality-8", "spec.types.generics.row-bounds.legality-9"]
+
+[[features]]
+id = "record-spread-update"
+name = "Replacing a field after row spread"
+introduced = "v0.16.0"
+source = ["RFC-0191", "changelog:v0.16.0"]
+subsystems = ["move", "inference"]
+rules = ["spec.types.generics.open-rows.legality-4"]
+
+[[features]]
+id = "tuple-rows"
+name = "Tuple values as numeric-label rows"
+introduced = "v0.16.0"
+source = ["RFC-0151", "RFC-0231", "changelog:v0.16.0"]
+subsystems = ["move", "inference", "patterns"]
+rules = ["spec.ownership.narrowing.legality-4", "spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-3", "spec.types.tuples.dynamics-1", "spec.types.tuples.legality-1", "spec.types.tuples.legality-2", "spec.types.tuples.legality-3", "spec.types.tuples.legality-4", "spec.types.tuples.legality-5", "spec.types.tuples.legality-6", "spec.types.tuples.legality-7"]
+
+[[features]]
+id = "record-subpatterns"
+name = "Record-rest and nested field patterns"
+introduced = "v0.16.0"
+source = ["RFC-0178", "RFC-0136", "changelog:v0.16.0"]
+subsystems = ["patterns"]
+rules = ["spec.declarations.variables.mutable-bindings.legality-1", "spec.declarations.variables.record-pattern-bindings.legality-1", "spec.declarations.variables.record-pattern-bindings.legality-2", "spec.expressions.record-rest-patterns.legality-1", "spec.expressions.record-rest-patterns.legality-2", "spec.expressions.record-rest-patterns.legality-3", "spec.types.generics.open-rows.legality-4"]
+
+[[features]]
+id = "pattern-exhaustiveness"
+name = "Pattern exhaustiveness across row-shaped values"
+introduced = "v0.16.0"
+source = ["RFC-0107", "changelog:v0.16.0"]
+subsystems = ["patterns"]
+rules = ["spec.expressions.pattern-matching.dynamics-1", "spec.expressions.pattern-matching.legality-1", "spec.expressions.pattern-matching.legality-2", "spec.expressions.pattern-matching.legality-3", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-1", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-2", "spec.expressions.pattern-matching.matching-through-a-reference.dynamics-3", "spec.expressions.pattern-matching.matching-through-a-reference.legality-1", "spec.expressions.pattern-matching.matching-through-a-reference.legality-2", "spec.expressions.pattern-matching.matching-through-a-reference.legality-3", "spec.expressions.pattern-matching.matching-through-a-reference.legality-4", "spec.expressions.pattern-matching.matching-through-a-reference.legality-5", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-1", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-2", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-3", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-4", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-5", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-6", "spec.expressions.pattern-matching.unqualified-variant-patterns.legality-7"]
+
+[[features]]
+id = "declaration-copy"
+name = "Copy granted by type declaration"
+introduced = "v0.16.0"
+source = ["RFC-0206", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.declarations.aspects.aspect-declaration-properties.legality-1", "spec.declarations.aspects.aspect-declaration-properties.legality-2", "spec.declarations.aspects.aspect-declaration-properties.legality-3", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.ownership.clone.legality-1", "spec.ownership.clone.legality-3", "spec.ownership.clone.legality-4", "spec.ownership.copy.legality-1", "spec.ownership.copy.legality-2", "spec.ownership.copy.legality-3", "spec.ownership.copy.legality-4", "spec.ownership.copy.legality-5", "spec.ownership.copy.legality-6", "spec.ownership.copy.legality-7", "spec.ownership.copy.legality-8"]
+
+[[features]]
+id = "declaration-clauses"
+name = "Declaration clauses and derives lists"
+introduced = "v0.16.0"
+source = ["RFC-0207", "changelog:v0.16.0"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-1", "spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-12", "spec.declarations.aspects.declaration-clauses.legality-13", "spec.declarations.aspects.declaration-clauses.legality-14", "spec.declarations.aspects.declaration-clauses.legality-15", "spec.declarations.aspects.declaration-clauses.legality-16", "spec.declarations.aspects.declaration-clauses.legality-17", "spec.declarations.aspects.declaration-clauses.legality-18", "spec.declarations.aspects.declaration-clauses.legality-2", "spec.declarations.aspects.declaration-clauses.legality-3", "spec.declarations.aspects.declaration-clauses.legality-4", "spec.declarations.aspects.declaration-clauses.legality-5", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.declarations.aspects.declaration-clauses.legality-7", "spec.declarations.aspects.declaration-clauses.legality-8", "spec.declarations.aspects.declaration-clauses.legality-9"]
+
+[[features]]
+id = "derivation-flow-arguments"
+name = "Flow arguments on Clone and Copy"
+introduced = "v0.16.0"
+source = ["RFC-0227", "RFC-0224", "changelog:v0.16.0"]
+subsystems = ["inference"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-12", "spec.declarations.aspects.declaration-clauses.legality-13", "spec.declarations.aspects.declaration-clauses.legality-17"]
+
+[[features]]
+id = "aspect-properties-and-supers"
+name = "Aspect properties and super-aspect requirements"
+introduced = "v0.16.0"
+source = ["RFC-0212", "RFC-0213", "RFC-0235", "changelog:v0.16.0"]
+subsystems = ["aspects"]
+rules = ["spec.declarations.aspects.aspect-declaration-properties.legality-1", "spec.declarations.aspects.aspect-declaration-properties.legality-2", "spec.declarations.aspects.aspect-declaration-properties.legality-3", "spec.declarations.aspects.declaration-clauses.legality-3", "spec.declarations.aspects.super-aspects.legality-1", "spec.declarations.aspects.super-aspects.legality-2", "spec.declarations.aspects.super-aspects.legality-3", "spec.declarations.aspects.super-aspects.legality-4", "spec.declarations.aspects.super-aspects.legality-5", "spec.declarations.aspects.super-aspects.legality-6"]
+
+[[features]]
+id = "copy-clone-obligations"
+name = "Clone derivation obligations required by Copy"
+introduced = "v0.16.0"
+source = ["RFC-0234", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-1", "spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-12", "spec.declarations.aspects.declaration-clauses.legality-13", "spec.declarations.aspects.declaration-clauses.legality-14", "spec.declarations.aspects.declaration-clauses.legality-15", "spec.declarations.aspects.declaration-clauses.legality-16", "spec.declarations.aspects.declaration-clauses.legality-17", "spec.declarations.aspects.declaration-clauses.legality-18", "spec.declarations.aspects.declaration-clauses.legality-2", "spec.declarations.aspects.declaration-clauses.legality-3", "spec.declarations.aspects.declaration-clauses.legality-4", "spec.declarations.aspects.declaration-clauses.legality-5", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.declarations.aspects.declaration-clauses.legality-7", "spec.declarations.aspects.declaration-clauses.legality-8", "spec.declarations.aspects.declaration-clauses.legality-9", "spec.ownership.aspects-on-a-residual.legality-1", "spec.ownership.clone.dynamics-1", "spec.ownership.clone.legality-1", "spec.ownership.clone.legality-2", "spec.ownership.clone.legality-3", "spec.ownership.clone.legality-4", "spec.ownership.copy.legality-1", "spec.ownership.copy.legality-2", "spec.ownership.copy.legality-3", "spec.ownership.copy.legality-4", "spec.ownership.copy.legality-5", "spec.ownership.copy.legality-6", "spec.ownership.copy.legality-7", "spec.ownership.copy.legality-8"]
+
+[[features]]
+id = "copy-class-arguments"
+name = "Type arguments on the copy class keyword"
+introduced = "v0.16.0"
+source = ["RFC-0239", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-18", "spec.declarations.aspects.declaration-clauses.legality-6"]
+
+[[features]]
+id = "clone-semantics"
+name = "Derived and built-in Clone behavior"
+introduced = "v0.16.0"
+source = ["RFC-0206", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-6", "spec.ownership.clone.dynamics-1", "spec.ownership.clone.legality-1", "spec.ownership.clone.legality-2", "spec.ownership.clone.legality-3", "spec.ownership.clone.legality-4", "spec.ownership.copy.legality-3"]
+
+[[features]]
+id = "undecided-generic-ownership"
+name = "Undecided ownership diagnostics in generic bodies"
+introduced = "v0.16.0"
+source = ["RFC-0206", "RFC-0224", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-12", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.ownership.clone.legality-1", "spec.ownership.clone.legality-3", "spec.ownership.clone.legality-4", "spec.ownership.copy.legality-3"]
+
+[[features]]
+id = "residual-aspects"
+name = "Aspect constraints on residual records"
+introduced = "v0.16.0"
+source = ["RFC-0211", "RFC-0117", "changelog:v0.16.0"]
+subsystems = ["move"]
+rules = ["spec.ownership.aspects-on-a-residual.dynamics-1", "spec.ownership.aspects-on-a-residual.legality-1", "spec.ownership.aspects-on-a-residual.legality-2", "spec.ownership.aspects-on-a-residual.legality-3", "spec.ownership.aspects-on-a-residual.legality-4", "spec.ownership.aspects-on-a-residual.legality-5", "spec.ownership.aspects-on-a-residual.legality-6", "spec.ownership.aspects-on-a-residual.legality-7", "spec.ownership.narrowing.dynamics-1", "spec.ownership.narrowing.legality-1", "spec.ownership.narrowing.legality-2", "spec.ownership.narrowing.legality-3", "spec.ownership.narrowing.legality-4", "spec.ownership.narrowing.legality-5"]
+
+[[features]]
+id = "copy-function-type"
+name = "The copy function-type qualifier"
+introduced = "v0.16.0"
+source = ["RFC-0219", "changelog:v0.16.0"]
+subsystems = ["move", "inference", "closures"]
+rules = ["spec.functions.first-class-functions.dynamics-1", "spec.functions.first-class-functions.legality-1", "spec.functions.first-class-functions.legality-10", "spec.functions.first-class-functions.legality-2", "spec.functions.first-class-functions.legality-3", "spec.functions.first-class-functions.legality-4", "spec.functions.first-class-functions.legality-5", "spec.functions.first-class-functions.legality-6", "spec.functions.first-class-functions.legality-7", "spec.functions.first-class-functions.legality-8", "spec.functions.first-class-functions.legality-9"]
+
+[[features]]
+id = "generic-closure-contracts"
+name = "Closure contracts checked in generic bodies"
+introduced = "v0.16.0"
+source = ["RFC-0173", "changelog:v0.16.0"]
+subsystems = ["move", "closures"]
+rules = ["spec.types.generics.rigid-type-parameters.legality-1", "spec.types.generics.rigid-type-parameters.legality-3"]
+
+[[features]]
+id = "generic-record-patterns"
+name = "Named record patterns checked in generic bodies"
+introduced = "v0.16.0"
+source = ["metel-core#2056", "changelog:v0.16.0"]
+subsystems = ["move", "patterns"]
+rules = []
+
+[[features]]
+id = "module-qualified-construction"
+name = "Module-qualified struct and variant literals"
+introduced = "v0.16.0"
+source = ["metel-core#1772", "changelog:v0.16.0"]
+subsystems = ["modules"]
+rules = ["spec.modules.paths.legality-1", "spec.modules.paths.legality-2"]
+
+[[features]]
+id = "block-local-flow-impls"
+name = "Block-local impls and aspect flow arguments"
+introduced = "v0.16.0"
+source = ["RFC-0224", "changelog:v0.16.0"]
+subsystems = ["inference"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-10", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-12"]
+
+[[features]]
+id = "anonymous-record-display"
+name = "Display for anonymous records and the empty row"
+introduced = "v0.16.0"
+source = ["RFC-0116", "RFC-0123", "RFC-0231", "changelog:v0.16.0"]
+subsystems = ["records"]
+rules = ["spec.ownership.narrowing.legality-4", "spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3", "spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.tuples.legality-2"]
+
+# Explicit adjacency for Tier B. Tier A is any shared subsystem tag.
+
+[[adjacent_subsystems]]
+left = "aspects"
+right = "declarations"
+
+[[adjacent_subsystems]]
+left = "closures"
+right = "move"
+
+[[adjacent_subsystems]]
+left = "functions"
+right = "types"
+
+[[adjacent_subsystems]]
+left = "modules"
+right = "declarations"
+
+[[adjacent_subsystems]]
+left = "move"
+right = "patterns"
+
+[[adjacent_subsystems]]
+left = "move"
+right = "records"
+
+[[adjacent_subsystems]]
+left = "patterns"
+right = "records"
+
+[[adjacent_subsystems]]
+left = "records"
+right = "types"
+
+[[adjacent_subsystems]]
+left = "inference"
+right = "types"

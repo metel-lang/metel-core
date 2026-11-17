@@ -1,0 +1,2 @@
+# Hand-set cell states. Only n/a and deferred are stored here.
+# `deferred` requires an issue URL and both states require a reason.

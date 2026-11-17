@@ -68,6 +68,7 @@ Confirm closed issues had their acceptance criteria satisfied; a closed box is n
 
 ```bash
 ls docs/release-notes/integration/$ARGUMENTS.md
+python3 tools/feature_matrix.py "$ARGUMENTS"
 ```
 
 `/milestone-integration-test $ARGUMENTS` has been run, and its report exists, is dated
@@ -77,6 +78,9 @@ rule, applied to the session's findings). A stale report — `<short-sha>` older
 `develop`'s tip — does not count; re-run the session on the frozen tree.
 
 If the report is missing, stop and run `/milestone-integration-test $ARGUMENTS` first.
+The computed gate must also print `Gate: PASS` on the frozen tree. It checks the new
+features' Tier A cells against the full registry; partial scores block until they reach
+100% or have an explicit `n/a` or deferred disposition.
 
 ## Step 2 — Release gate
 
