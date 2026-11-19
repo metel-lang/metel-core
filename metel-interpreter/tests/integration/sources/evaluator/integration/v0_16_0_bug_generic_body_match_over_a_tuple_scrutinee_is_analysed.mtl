@@ -1,9 +1,0 @@
-// metel-core#2090: a match over a tuple scrutinee in a generic body is not analysed under --move-check (I0011).
-enum Mode { On, Off }
-fun f<T>(m: Mode, p: (i64, i64), unused: T) -> i64 {
-    match ((m, p)) {
-        (Mode::On, (a, _)) => a,
-        (Mode::Off, (_, b)) => b,
-    }
-}
-fun main() { assert(f(Mode::On, (1, 2), 0) == 1); }

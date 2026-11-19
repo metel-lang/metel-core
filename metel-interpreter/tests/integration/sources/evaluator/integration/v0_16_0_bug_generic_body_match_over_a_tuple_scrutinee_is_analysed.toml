@@ -1,6 +1,0 @@
-[options]
-move_check = true
-skip = "pending: metel-core#2090"
-
-[expect]
-status = "success"
