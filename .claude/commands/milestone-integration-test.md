@@ -141,6 +141,17 @@ milestone-only baseline, rule-coverage totals and full-registry gate verdict. In
 blocking rows from `python3 tools/feature_matrix.py $ARGUMENTS --blockers`, with fixture
 paths, and any `n/a`/deferred Tier A cells with their reason or issue link.
 
+Also commit the metrics snapshot next to the report and paste the table, with the per-feature rows, into
+the report:
+
+```bash
+python3 tools/feature_matrix.py "$ARGUMENTS" --json > docs/release-notes/integration/$ARGUMENTS.metrics.json
+python3 tools/feature_matrix.py "$ARGUMENTS" --table --per-feature
+```
+
+The snapshot is what a later release diffs against; the compact table (without `--per-feature`) is published
+with the release in `changelog.md` (`/cut-release` Step 2).
+
 The registry and state file preserve the feature rows and manual dispositions. The script
 recomputes fixture evidence each run, so deleted or retagged fixtures automatically reduce
 scores and can reopen cells.

@@ -3,7 +3,10 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from tools.feature_matrix import Feature, Fixture, apply_bulk, evaluate_pair, gate_blockers, load_bulk, load_registry, load_states
+from tools.feature_matrix import (
+    TABLE_END, TABLE_START, Feature, Fixture, apply_bulk, check_table, compute_metrics, evaluate_pair, gate_blockers,
+    load_bulk, load_registry, load_states, render_table,
+)
 
 
 def feature(identifier, rules, subsystems=("ownership",), introduced="v0.16.0"):
@@ -108,6 +111,54 @@ class BulkDeferral(unittest.TestCase):
             path.write_text('[[bulk]]\nrelease = "v0.16.0"\ntier = "A"\nreason = "x"\n')
             with self.assertRaisesRegex(ValueError, "GitHub issue URL"):
                 load_bulk(path)
+
+
+class Metrics(unittest.TestCase):
+    def setUp(self):
+        self.new_a = feature("a", ["spec.ownership.a.legality-1", "spec.ownership.a.legality-2"])
+        self.new_b = feature("b", ["spec.ownership.b.legality-1"])
+        self.old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.15.0")
+        self.features = {f.id: f for f in (self.new_a, self.new_b, self.old)}
+        self.fixtures = [Fixture("one", frozenset({"spec.ownership.a.legality-1", "spec.ownership.b.legality-1"}))]
+
+    def metrics(self, bulk=()):
+        return compute_metrics("v0.16.0", self.features, self.fixtures, {}, set(), list(bulk))
+
+    def test_new_by_new_and_new_by_older_are_counted_apart(self):
+        m = self.metrics()
+        self.assertEqual(m["new_by_new"]["A"]["pairs"], 1)
+        self.assertEqual(m["new_by_new"]["A"]["partial"], 1)
+        self.assertEqual(m["new_by_older"]["A"]["pairs"], 2)
+        self.assertEqual(m["new_by_older"]["A"]["open"], 2)
+
+    def test_bulk_deferral_is_reported_apart_from_computed_evidence(self):
+        bulk = [{"release": "v0.16.0", "tier": "A", "reason": "r", "issue": "https://github.com/o/r/issues/1"}]
+        m = self.metrics(bulk)
+        self.assertEqual(m["new_by_older"]["A"]["open"], 2)
+        self.assertEqual(m["gate"]["tier_a_bulk_deferred"], 2)
+        self.assertEqual(m["gate"]["verdict"], "PASS")
+        self.assertEqual(self.metrics()["gate"]["verdict"], "BLOCKED")
+
+    def test_rule_coverage_counts_owned_and_cited_rules(self):
+        self.assertEqual(self.metrics()["rules"], {"owned": 3, "cited": 2})
+
+    def test_table_is_marked_and_lists_the_features_on_request(self):
+        table = render_table(self.metrics(), per_feature=True)
+        self.assertTrue(table.startswith(TABLE_START))
+        self.assertTrue(table.rstrip().endswith(TABLE_END))
+        self.assertIn("| A |", table.replace("A (same subsystem)", "A"))
+
+    def test_check_table_accepts_a_current_table_and_rejects_a_missing_or_stale_one(self):
+        expected = render_table(self.metrics())
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "changelog.md"
+            path.write_text(f"## v0.16.0 (unreleased)\n\ntext\n\n{expected}\n## v0.15.0\n\nolder\n")
+            self.assertIsNone(check_table(path, "v0.16.0", expected))
+            path.write_text("## v0.16.0 (unreleased)\n\ntext\n\n## v0.15.0\n")
+            self.assertIn("no feature-matrix table", check_table(path, "v0.16.0", expected))
+            path.write_text(f"## v0.16.0\n\n{expected.replace('1 (', '2 (')}\n## v0.15.0\n")
+            self.assertIn("stale", check_table(path, "v0.16.0", expected))
+            self.assertIn("no `## v0.17.0` section", check_table(path, "v0.17.0", expected))
 
 
 class RegistryValidation(unittest.TestCase):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import re
 import sys
 import tomllib
@@ -246,6 +247,129 @@ def gate_blockers(cells: list[Cell]) -> list[Cell]:
     return [c for c in cells if c.tier == "A" and c.status == "open"]
 
 
+TABLE_START = "<!-- feature-matrix:start -->"
+TABLE_END = "<!-- feature-matrix:end -->"
+TIERS = ("A", "B", "C")
+
+
+def _tier_row(cells: list[Cell]) -> dict:
+    scored = [c.score for c in cells if c.score is not None]
+    mean = sum(scored, Fraction()) / len(scored) if scored else Fraction()
+    return {
+        "pairs": len(cells),
+        "covered": sum(c.status == "covered" for c in cells),
+        "partial": sum(c.status == "partial" for c in cells),
+        "open": sum(c.status == "open" for c in cells),
+        "n/a": sum(c.status == "n/a" for c in cells),
+        "deferred": sum(c.status == "deferred" for c in cells),
+        "with_evidence": sum(c.status in {"covered", "partial"} for c in cells),
+        "mean_rule_coverage": round(float(mean), 4),
+    }
+
+
+def compute_metrics(
+    release: str,
+    features: dict[str, Feature],
+    fixtures: list[Fixture],
+    states: dict[tuple[str, str], dict[str, str]],
+    adjacent: set[tuple[str, str]],
+    bulk: list[dict[str, str]],
+) -> dict:
+    """The release's coverage metrics. Evidence is computed from fixtures; a bulk deferral is reported apart."""
+    raw, current = select_cells(release, features, fixtures, states, adjacent)
+    gated, _ = select_cells(release, features, fixtures, states, adjacent, bulk)
+    new_by_new = [c for c in raw if c.left.introduced == c.right.introduced == release]
+    new_by_older = [c for c in raw if not (c.left.introduced == c.right.introduced == release)]
+    owned = set().union(*(f.rules for f in current))
+    cited = set().union(*(fixture.rules for fixture in fixtures))
+    blockers = gate_blockers(gated)
+    per_feature = []
+    for feature in current:
+        tier_a = [c for c in raw if feature.id in {c.left.id, c.right.id} and c.tier == "A"]
+        per_feature.append({
+            "id": feature.id,
+            "name": feature.name,
+            "rules_owned": len(feature.rules),
+            "rules_cited": len(feature.rules & cited),
+            "tier_a_pairs": len(tier_a),
+            "tier_a_with_evidence": sum(c.status in {"covered", "partial"} for c in tier_a),
+        })
+    return {
+        "release": release,
+        "features": len(current),
+        "registry_features": len(features),
+        "fixtures": len(fixtures),
+        "new_by_new": {**{t: _tier_row([c for c in new_by_new if c.tier == t]) for t in TIERS},
+                       "all": _tier_row(new_by_new)},
+        "new_by_older": {**{t: _tier_row([c for c in new_by_older if c.tier == t]) for t in TIERS},
+                         "all": _tier_row(new_by_older)},
+        "rules": {"owned": len(owned), "cited": len(owned & cited)},
+        "gate": {
+            "verdict": "BLOCKED" if blockers else "PASS",
+            "tier_a_open": len(blockers),
+            "tier_a_partial": sum(c.tier == "A" and c.status == "partial" for c in gated),
+            "tier_a_bulk_deferred": sum(c.tier == "A" and c.bulk for c in gated),
+        },
+        "per_feature": per_feature,
+    }
+
+
+def render_table(metrics: dict, per_feature: bool = False) -> str:
+    """The markdown table published with a release, between the markers `--check-table` looks for."""
+    def pct(part: int, whole: int) -> str:
+        return f"{part / whole:.0%}" if whole else "n/a"
+
+    def rows(group: dict) -> list[str]:
+        out = []
+        for tier, label in (("A", "A (same subsystem)"), ("B", "B (adjacent)"), ("C", "C (other)"), ("all", "**All**")):
+            r = group[tier]
+            out.append(
+                f"| {label} | {r['pairs']} | {r['with_evidence']} ({pct(r['with_evidence'], r['pairs'])}) | "
+                f"{r['covered']} | {r['partial']} | {r['open']} | {r['mean_rule_coverage']:.1%} |"
+            )
+        return out
+
+    head = ("| Tier | Pairs | With evidence | Covered | Partial | Open | Mean rule coverage |\n"
+            "|---|---:|---:|---:|---:|---:|---:|")
+    gate = metrics["gate"]
+    rules = metrics["rules"]
+    lines = [
+        TABLE_START,
+        f"**Feature-interaction coverage for {metrics['release']}** "
+        f"({metrics['features']} new features, a registry of {metrics['registry_features']}). "
+        f"A pair has evidence when a fixture cites a rule of each feature.",
+        "",
+        "*New features against each other*", "", head, *rows(metrics["new_by_new"]), "",
+        "*New features against older ones*", "", head, *rows(metrics["new_by_older"]), "",
+        f"Rules owned by the new features: {rules['owned']}, cited by at least one fixture: "
+        f"{rules['cited']} ({pct(rules['cited'], rules['owned'])}).",
+        f"Release gate: **{gate['verdict']}**. Open Tier A cells: {gate['tier_a_open']}, "
+        f"partial: {gate['tier_a_partial']}, bulk-deferred: {gate['tier_a_bulk_deferred']}.",
+    ]
+    if per_feature:
+        lines += ["", "| Feature | Rules cited / owned | Tier A pairs with evidence |", "|---|---:|---:|"]
+        for f in metrics["per_feature"]:
+            lines.append(f"| {f['name']} | {f['rules_cited']}/{f['rules_owned']} | "
+                         f"{f['tier_a_with_evidence']}/{f['tier_a_pairs']} |")
+    lines.append(TABLE_END)
+    return "\n".join(lines) + "\n"
+
+
+def check_table(path: Path, release: str, expected: str) -> str | None:
+    """None when the file's `## <release>` section holds the table, else why it does not."""
+    text = path.read_text(encoding="utf-8")
+    match = re.search(rf"^## {re.escape(release)}\b.*?(?=^## v|\Z)", text, re.S | re.M)
+    if not match:
+        return f"{path}: no `## {release}` section"
+    section = match.group(0)
+    if TABLE_START not in section or TABLE_END not in section:
+        return f"{path}: the {release} section has no feature-matrix table (markers {TABLE_START} … {TABLE_END})"
+    published = section[section.index(TABLE_START): section.index(TABLE_END) + len(TABLE_END)]
+    if published.strip() != expected.strip():
+        return f"{path}: the {release} feature-matrix table is stale; regenerate it with `--table`"
+    return None
+
+
 def render(
     release: str,
     cells: list[Cell],
@@ -292,12 +416,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--details", action="store_true", help="print every new-feature pair")
     parser.add_argument("--blockers", action="store_true", help="print only the Tier A cells that block the gate (open)")
+    parser.add_argument("--json", action="store_true", help="print the release's metrics as JSON, for the per-release snapshot")
+    parser.add_argument("--table", action="store_true", help="print the markdown metrics table published with a release")
+    parser.add_argument("--per-feature", action="store_true", help="with --table, add the per-feature rows")
+    parser.add_argument("--check-table", type=Path, metavar="FILE",
+                        help="fail unless FILE's section for the release holds the current --table output")
     args = parser.parse_args(argv)
     try:
         features, adjacent = load_registry(args.registry)
         states = load_states(args.states, features)
         fixtures = load_fixtures(args.fixtures)
         validate_spec_rules(features, fixtures, args.spec)
+        bulk = load_bulk(args.states)
+        if args.json or args.table or args.check_table:
+            metrics = compute_metrics(args.release, features, fixtures, states, adjacent, bulk)
+            if args.json:
+                sys.stdout.write(json.dumps(metrics, indent=2) + "\n")
+            if args.table:
+                sys.stdout.write(render_table(metrics, args.per_feature))
+            if args.check_table:
+                problem = check_table(args.check_table, args.release, render_table(metrics))
+                if problem:
+                    print(f"feature-matrix: {problem}", file=sys.stderr)
+                    return 1
+                print(f"feature-matrix: {args.check_table} holds the current table for {args.release}")
+            return 0
         cells, current = select_cells(args.release, features, fixtures, states, adjacent, load_bulk(args.states))
         sys.stdout.write(render(args.release, cells, current, args.details, args.blockers))
         missing = sorted(feature.id for feature in features.values() if not feature.rules)
