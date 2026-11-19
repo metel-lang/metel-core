@@ -1,6 +1,6 @@
 [options]
 error = ["T0041"]
-spec = ["spec.functions.keyword-arguments.legality-5", "spec.functions.first-class-functions.legality-7"]
+spec = ["spec.functions.keyword-arguments.legality-3"]
 
 [expect]
 status = "typecheck_error"
