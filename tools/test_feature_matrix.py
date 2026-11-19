@@ -3,7 +3,7 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from tools.feature_matrix import Feature, Fixture, evaluate_pair, gate_blockers, load_registry, load_states
+from tools.feature_matrix import Feature, Fixture, apply_bulk, evaluate_pair, gate_blockers, load_bulk, load_registry, load_states
 
 
 def feature(identifier, rules, subsystems=("ownership",), introduced="v0.16.0"):
@@ -75,6 +75,39 @@ class Gate(unittest.TestCase):
         cell = evaluate_pair(self.a, far, [], {}, {("ownership", "types")})
         self.assertEqual(cell.tier, "B")
         self.assertEqual(gate_blockers([cell]), [])
+
+
+class BulkDeferral(unittest.TestCase):
+    ISSUE = "https://github.com/o/r/issues/9"
+
+    def setUp(self):
+        self.a = feature("a", ["spec.ownership.a.legality-1"])
+        self.old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.15.0")
+        self.bulk = [{"release": "v0.16.0", "tier": "A", "reason": "sweep", "issue": self.ISSUE}]
+
+    def test_open_tier_a_cell_of_the_release_is_deferred(self):
+        cell = apply_bulk(evaluate_pair(self.a, self.old, [], {}, set()), self.bulk)
+        self.assertEqual((cell.status, cell.bulk, cell.issue), ("deferred", True, self.ISSUE))
+        self.assertEqual(gate_blockers([cell]), [])
+
+    def test_fixture_evidence_wins_over_the_bulk_deferral(self):
+        fixtures = [Fixture("one", frozenset({"spec.ownership.a.legality-1", "spec.ownership.o.legality-1"}))]
+        cell = apply_bulk(evaluate_pair(self.a, self.old, fixtures, {}, set()), self.bulk)
+        self.assertEqual((cell.status, cell.bulk), ("covered", False))
+
+    def test_other_release_or_tier_is_not_deferred(self):
+        old2 = feature("old2", ["spec.ownership.p.legality-1"], introduced="v0.14.0")
+        cell = apply_bulk(evaluate_pair(old2, self.old, [], {}, set()), self.bulk)
+        self.assertEqual(cell.status, "open")
+        other_tier = [{**self.bulk[0], "tier": "B"}]
+        self.assertEqual(apply_bulk(evaluate_pair(self.a, self.old, [], {}, set()), other_tier).status, "open")
+
+    def test_bulk_entry_needs_an_issue_and_a_reason(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "states.toml"
+            path.write_text('[[bulk]]\nrelease = "v0.16.0"\ntier = "A"\nreason = "x"\n')
+            with self.assertRaisesRegex(ValueError, "GitHub issue URL"):
+                load_bulk(path)
 
 
 class RegistryValidation(unittest.TestCase):

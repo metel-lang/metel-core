@@ -8,7 +8,7 @@ import itertools
 import re
 import sys
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 
@@ -48,6 +48,7 @@ class Cell:
     cited_rules: frozenset[str]
     reason: str = ""
     issue: str = ""
+    bulk: bool = False
 
 
 def load_toml(path: Path) -> dict:
@@ -95,6 +96,30 @@ def load_registry(path: Path) -> tuple[dict[str, Feature], set[tuple[str, str]]]
     if unknown:
         raise ValueError(f"adjacency refers to unknown subsystem tag(s): {', '.join(unknown)}")
     return features, adjacency
+
+
+def load_bulk(path: Path) -> list[dict[str, str]]:
+    """Bulk deferrals: every still-open cell of a tier for a release goes to one tracking issue."""
+    bulk = []
+    for entry in load_toml(path).get("bulk", []):
+        release, tier = entry.get("release", ""), entry.get("tier", "")
+        reason, issue = entry.get("reason", "").strip(), entry.get("issue", "").strip()
+        if not re.fullmatch(r"v\d+\.\d+\.\d+", release) or tier not in {"A", "B", "C"}:
+            raise ValueError(f"bulk deferral needs a release version and a tier A, B or C: {entry!r}")
+        if not reason or not re.search(r"https://github\.com/.+/issues/\d+", issue):
+            raise ValueError(f"bulk deferral for {release} tier {tier} needs a reason and a GitHub issue URL")
+        bulk.append({"release": release, "tier": tier, "reason": reason, "issue": issue})
+    return bulk
+
+
+def apply_bulk(cell: Cell, bulk: list[dict[str, str]]) -> Cell:
+    """A bulk deferral covers only cells that are still open; fixture evidence always wins."""
+    if cell.status != "open":
+        return cell
+    for entry in bulk:
+        if entry["tier"] == cell.tier and entry["release"] in {cell.left.introduced, cell.right.introduced}:
+            return replace(cell, status="deferred", reason=entry["reason"], issue=entry["issue"], bulk=True)
+    return cell
 
 
 def load_states(path: Path, features: dict[str, Feature]) -> dict[tuple[str, str], dict[str, str]]:
@@ -204,12 +229,13 @@ def select_cells(
     fixtures: list[Fixture],
     states: dict[tuple[str, str], dict[str, str]],
     adjacent: set[tuple[str, str]],
+    bulk: list[dict[str, str]] | None = None,
 ) -> tuple[list[Cell], list[Feature]]:
     current = sorted((f for f in features.values() if f.introduced == release), key=lambda f: f.id)
     if not current:
         raise ValueError(f"registry has no features introduced in {release}")
     all_features = sorted(features.values(), key=lambda f: f.id)
-    cells = [evaluate_pair(a, b, fixtures, states, adjacent)
+    cells = [apply_bulk(evaluate_pair(a, b, fixtures, states, adjacent), bulk or [])
              for a, b in itertools.combinations(all_features, 2)
              if a.introduced == release or b.introduced == release]
     return cells, current
@@ -234,6 +260,7 @@ def render(
     high_risk_gaps = sum(c.tier in {"A", "B"} and c.status == "open" for c in within_release)
     blockers = gate_blockers(cells)
     partial_a = sum(c.tier == "A" and c.status == "partial" for c in cells)
+    bulk_a = sum(c.tier == "A" and c.bulk for c in cells)
     scored = [c.score for c in within_release if c.score is not None]
     mean_score = sum(scored, Fraction()) / len(scored) if scored else None
     lines = [
@@ -243,7 +270,7 @@ def render(
         f"no evidence: {counts['open']} · mean rule coverage: {float(mean_score):.1%}" if mean_score is not None else "no scoreable pairs",
         f"Baseline Tier A open gaps: {high_gaps} · Tier A/B open gaps: {high_risk_gaps}",
         f"Release gate scope: {len(cells)} new-vs-registry pairs · "
-        f"Tier A/B pairs: {len(risk)} · Tier A open (blocking): {len(blockers)} · Tier A partial (reported): {partial_a}",
+        f"Tier A/B pairs: {len(risk)} · Tier A open (blocking): {len(blockers)} · Tier A partial (reported): {partial_a} · Tier A bulk-deferred: {bulk_a}",
     ]
     if details or blockers_only:
         visible = cells if details else blockers
@@ -271,7 +298,7 @@ def main(argv: list[str] | None = None) -> int:
         states = load_states(args.states, features)
         fixtures = load_fixtures(args.fixtures)
         validate_spec_rules(features, fixtures, args.spec)
-        cells, current = select_cells(args.release, features, fixtures, states, adjacent)
+        cells, current = select_cells(args.release, features, fixtures, states, adjacent, load_bulk(args.states))
         sys.stdout.write(render(args.release, cells, current, args.details, args.blockers))
         missing = sorted(feature.id for feature in features.values() if not feature.rules)
         unresolved = sorted(feature.id for feature in features.values() if feature.introduced == "unresolved")

@@ -71,7 +71,8 @@ Tier A means a shared subsystem; Tier B means an explicitly configured adjacent-
 pair; Tier C is everything else. The gate passes only when no Tier A cell in a new
 feature's row is `open`: each is `covered`, `partial`, `n/a` or `deferred` (ADR-0069). A
 `partial` score is reported and does not block. Tier B/C remain visible as debt and do not
-block. Deferred Tier A cells must point to an issue.
+block. Deferred Tier A cells must point to an issue. A `[[bulk]]` entry in `states.toml` defers every
+still-open cell of a tier for a release to one tracking issue; fixture evidence always wins over it.
 
 The milestone-only baseline is reported separately for comparison with #2080. Old-by-old
 cells do not block this release.

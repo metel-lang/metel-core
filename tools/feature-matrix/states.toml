@@ -1,2 +1,10 @@
 # Hand-set cell states. Only n/a and deferred are stored here.
 # `deferred` requires an issue URL and both states require a reason.
+
+# Bootstrap: the registry was seeded at v0.16.0, so the new-versus-old Tier A pairs of that release have no fixture
+# yet. They are deferred as a group to one tracking issue (ADR-0069). Fixture evidence always wins over this entry.
+[[bulk]]
+release = "v0.16.0"
+tier = "A"
+reason = "Registry seeded at v0.16.0; new-versus-old Tier A pairs are swept in a follow-up."
+issue = "https://github.com/metel-lang/metel-core/issues/2086"
