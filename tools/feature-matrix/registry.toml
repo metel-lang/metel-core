@@ -778,7 +778,7 @@ name = "Closure contracts checked in generic bodies"
 introduced = "v0.16.0"
 source = ["RFC-0173", "changelog:v0.16.0"]
 subsystems = ["move", "closures"]
-rules = ["spec.types.generics.rigid-type-parameters.legality-1", "spec.types.generics.rigid-type-parameters.legality-3"]
+rules = ["spec.types.generics.rigid-type-parameters.legality-1", "spec.functions.closures.legality-1"]
 
 [[features]]
 id = "generic-record-patterns"
