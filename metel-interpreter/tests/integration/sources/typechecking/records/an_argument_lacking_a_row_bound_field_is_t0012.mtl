@@ -1,0 +1,8 @@
+// A row bound is satisfied only by a record that has every field it lists.
+fun needs_auth<record R: .{ .auth: String, .. }>(r: R) -> String {
+    r.auth
+}
+
+fun main() {
+    needs_auth(.{ .user = "a".to_string() }); // ERROR[T0012]
+}

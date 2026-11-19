@@ -1,5 +1,6 @@
 [options]
 error = ["T0003"]
+spec = ["spec.types.type-inference.legality-3"]
 
 [expect]
 status = "typecheck_error"
