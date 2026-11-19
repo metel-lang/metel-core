@@ -2,7 +2,7 @@ schema_version = 1
 subsystems = ["move", "inference", "closures", "patterns", "surface", "functions", "types", "records", "aspects", "declarations", "modules", "runtime", "syntax", "expressions", "ownership", "rows", "language-surface"]
 
 # Registry seeded from implemented RFC coverage and release changelog capabilities.
-# `introduced = "unresolved"` marks historical RFCs with no target/version evidence.
+# Introduction releases reflect first shipped behavior; RFCs for compiler internals are excluded.
 
 [[features]]
 id = "rfc-0006"
@@ -15,7 +15,7 @@ rules = ["spec.functions.closures.dynamics-1", "spec.functions.closures.dynamics
 [[features]]
 id = "rfc-0007"
 name = "Compiler-Compatible Primitive Type System"
-introduced = "unresolved"
+introduced = "v0.8.0"
 source = ["RFC-0007"]
 subsystems = ["types"]
 rules = ["spec.types.arrays.legality-2", "spec.types.char.legality-1", "spec.types.sized-numeric-types.dynamics-1", "spec.types.sized-numeric-types.legality-1", "spec.types.sized-numeric-types.legality-2", "spec.types.sized-numeric-types.legality-3"]
@@ -31,7 +31,7 @@ rules = ["spec.declarations.aspects.dyn-aspect.dynamics-1", "spec.declarations.a
 [[features]]
 id = "rfc-0010"
 name = "String Interpolation"
-introduced = "unresolved"
+introduced = "v0.7.0"
 source = ["RFC-0010"]
 subsystems = ["language-surface"]
 rules = ["spec.lexical.literals.dynamics-1", "spec.lexical.literals.dynamics-2", "spec.lexical.literals.dynamics-3", "spec.lexical.literals.dynamics-4"]
@@ -39,7 +39,7 @@ rules = ["spec.lexical.literals.dynamics-1", "spec.lexical.literals.dynamics-2",
 [[features]]
 id = "rfc-0018"
 name = "Match Arm Blocks"
-introduced = "unresolved"
+introduced = "v0.7.0"
 source = ["RFC-0018"]
 subsystems = ["patterns"]
 rules = ["spec.expressions.pattern-matching.dynamics-1", "spec.expressions.pattern-matching.legality-1", "spec.expressions.pattern-matching.legality-2"]
@@ -47,7 +47,7 @@ rules = ["spec.expressions.pattern-matching.dynamics-1", "spec.expressions.patte
 [[features]]
 id = "rfc-0019"
 name = "Return Context Type Propagation"
-introduced = "unresolved"
+introduced = "v0.3.0"
 source = ["RFC-0019"]
 subsystems = ["types"]
 rules = ["spec.types.type-inference.legality-1", "spec.types.type-inference.legality-2"]
@@ -55,7 +55,7 @@ rules = ["spec.types.type-inference.legality-1", "spec.types.type-inference.lega
 [[features]]
 id = "rfc-0020"
 name = "Language Keyword Rebranding"
-introduced = "unresolved"
+introduced = "v0.2.0"
 source = ["RFC-0020"]
 subsystems = ["aspects", "types"]
 rules = ["spec.declarations.aspects.legality-1", "spec.types.perhaps-t.legality-1"]
@@ -63,7 +63,7 @@ rules = ["spec.declarations.aspects.legality-1", "spec.types.perhaps-t.legality-
 [[features]]
 id = "rfc-0021"
 name = "Type Ascription Syntax"
-introduced = "unresolved"
+introduced = "v0.2.0"
 source = ["RFC-0021"]
 subsystems = ["types"]
 rules = ["spec.types.type-ascription.legality-1", "spec.types.type-ascription.legality-2", "spec.types.type-ascription.legality-3", "spec.types.type-casting.dynamics-1"]
@@ -71,7 +71,7 @@ rules = ["spec.types.type-ascription.legality-1", "spec.types.type-ascription.le
 [[features]]
 id = "rfc-0022"
 name = "Braceless if body syntax"
-introduced = "unresolved"
+introduced = "v0.3.0"
 source = ["RFC-0022"]
 subsystems = ["language-surface"]
 rules = ["spec.expressions.control-flow.if-else.legality-1", "spec.expressions.control-flow.if-else.legality-2", "spec.expressions.control-flow.if-else.legality-3", "spec.expressions.control-flow.if-else.legality-4", "spec.expressions.control-flow.if-else.legality-5"]
@@ -79,7 +79,7 @@ rules = ["spec.expressions.control-flow.if-else.legality-1", "spec.expressions.c
 [[features]]
 id = "rfc-0023"
 name = "Type Ascription vs Turbofish — Call-Site Type Annotation Review"
-introduced = "unresolved"
+introduced = "v0.8.0"
 source = ["RFC-0023"]
 subsystems = ["functions", "types"]
 rules = ["spec.functions.turbofish.legality-1", "spec.functions.turbofish.legality-2", "spec.types.type-ascription.legality-1"]
@@ -87,7 +87,7 @@ rules = ["spec.functions.turbofish.legality-1", "spec.functions.turbofish.legali
 [[features]]
 id = "rfc-0030"
 name = "Module System Redesign"
-introduced = "unresolved"
+introduced = "v0.5.0"
 source = ["RFC-0030"]
 subsystems = ["modules"]
 rules = ["spec.modules.file-header-ordering.legality-1", "spec.modules.file-to-module-mapping.legality-1", "spec.modules.import-conflicts.legality-4", "spec.modules.imports.legality-4", "spec.modules.module-graph-loading.legality-2", "spec.modules.paths.legality-1", "spec.modules.re-exports.legality-2", "spec.modules.removed-module-keywords.legality-1", "spec.modules.single-file-compatibility.legality-1", "spec.modules.std-core-auto-import.legality-1", "spec.modules.visibility.legality-1"]
@@ -95,7 +95,7 @@ rules = ["spec.modules.file-header-ordering.legality-1", "spec.modules.file-to-m
 [[features]]
 id = "rfc-0031"
 name = "Topological Per-Module Typechecking"
-introduced = "unresolved"
+introduced = "v0.6.0"
 source = ["RFC-0031"]
 subsystems = ["modules"]
 rules = ["spec.modules.import-conflicts.legality-4", "spec.modules.imports.legality-1", "spec.modules.imports.legality-2", "spec.modules.imports.legality-3", "spec.modules.module-graph-loading.legality-1", "spec.modules.re-exports.legality-1", "spec.modules.visibility.legality-1", "spec.modules.visibility.legality-2"]
@@ -143,7 +143,7 @@ rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.dy
 [[features]]
 id = "rfc-0040"
 name = "Aspect Bound Enforcement on Function Type Parameters"
-introduced = "unresolved"
+introduced = "v0.7.0"
 source = ["RFC-0040"]
 subsystems = ["aspects"]
 rules = ["spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-10", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-11", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-12", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-13", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-7", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-8", "spec.declarations.aspects.aspect-bounds-on-function-type-parameters.legality-9"]
@@ -159,7 +159,7 @@ rules = ["spec.functions.closures.legality-1", "spec.functions.closures.legality
 [[features]]
 id = "rfc-0042"
 name = "let mut for Mutable Bindings"
-introduced = "unresolved"
+introduced = "v0.7.0"
 source = ["RFC-0042"]
 subsystems = ["language-surface"]
 rules = ["spec.declarations.variables.immutable-bindings.legality-1", "spec.declarations.variables.mutable-bindings.legality-1", "spec.expressions.control-flow.for-in.dynamics-1", "spec.expressions.control-flow.for-in.legality-1", "spec.expressions.control-flow.for.legality-1"]
@@ -167,7 +167,7 @@ rules = ["spec.declarations.variables.immutable-bindings.legality-1", "spec.decl
 [[features]]
 id = "rfc-0044"
 name = "Explicit Receiver Semantics"
-introduced = "unresolved"
+introduced = "v0.7.0"
 source = ["RFC-0044"]
 subsystems = ["language-surface"]
 rules = ["spec.declarations.structs.receiver-forms.dynamics-1", "spec.declarations.structs.receiver-forms.legality-1", "spec.declarations.structs.receiver-forms.legality-2", "spec.declarations.structs.receiver-forms.legality-3", "spec.declarations.structs.receiver-forms.legality-4", "spec.declarations.structs.receiver-forms.legality-5", "spec.declarations.structs.receiver-forms.legality-6", "spec.declarations.structs.receiver-forms.legality-7"]
@@ -175,7 +175,7 @@ rules = ["spec.declarations.structs.receiver-forms.dynamics-1", "spec.declaratio
 [[features]]
 id = "rfc-0045"
 name = "Mutable Address-Of for Lvalue Paths"
-introduced = "unresolved"
+introduced = "v0.8.0"
 source = ["RFC-0045"]
 subsystems = ["language-surface"]
 rules = ["spec.expressions.references.dynamics-1", "spec.expressions.references.dynamics-2", "spec.expressions.references.dynamics-3", "spec.expressions.references.dynamics-4"]
@@ -199,7 +199,7 @@ rules = ["spec.types.fixed-size-arrays.dynamics-1", "spec.types.fixed-size-array
 [[features]]
 id = "rfc-0054"
 name = "Standard List<T> Type"
-introduced = "unresolved"
+introduced = "v0.8.0"
 source = ["RFC-0054"]
 subsystems = ["types"]
 rules = ["spec.runtime.list-t.dynamics-1", "spec.types.list-t.dynamics-1", "spec.types.list-t.dynamics-2", "spec.types.list-t.dynamics-3", "spec.types.list-t.dynamics-4", "spec.types.list-t.legality-1"]
@@ -207,26 +207,10 @@ rules = ["spec.runtime.list-t.dynamics-1", "spec.types.list-t.dynamics-1", "spec
 [[features]]
 id = "rfc-0057"
 name = "Standard Library Layering and Host Module Boundary"
-introduced = "unresolved"
+introduced = "v0.9.0"
 source = ["RFC-0057"]
 subsystems = ["modules"]
 rules = ["spec.modules.std-core-auto-import.legality-1", "spec.runtime.core-sum-types.dynamics-1", "spec.runtime.list-t.dynamics-2", "spec.runtime.oserror.legality-1", "spec.runtime.standard-library-modules.std-env.dynamics-1", "spec.runtime.standard-library-modules.std-fs.dynamics-1", "spec.runtime.string-methods.dynamics-1"]
-
-[[features]]
-id = "rfc-0058"
-name = "SourceProvider Abstraction for the Module Loader"
-introduced = "unresolved"
-source = ["RFC-0058"]
-subsystems = ["modules"]
-rules = []
-
-[[features]]
-id = "rfc-0059"
-name = "Symbol Definition Index in ResolvedNames"
-introduced = "unresolved"
-source = ["RFC-0059"]
-subsystems = ["language-surface"]
-rules = []
 
 [[features]]
 id = "rfc-0060"
@@ -538,7 +522,7 @@ name = "Generic bodies are checked against their declared bounds"
 introduced = "v0.14.0"
 source = ["RFC-0173"]
 subsystems = ["language-surface"]
-rules = []
+rules = ["spec.types.generics.rigid-type-parameters.dynamics-1", "spec.types.generics.rigid-type-parameters.legality-1", "spec.types.generics.rigid-type-parameters.legality-2", "spec.types.generics.rigid-type-parameters.legality-3"]
 
 [[features]]
 id = "rfc-0177"
@@ -802,7 +786,7 @@ name = "Named record patterns checked in generic bodies"
 introduced = "v0.16.0"
 source = ["metel-core#2056", "changelog:v0.16.0"]
 subsystems = ["move", "patterns"]
-rules = []
+rules = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]
 
 [[features]]
 id = "module-qualified-construction"

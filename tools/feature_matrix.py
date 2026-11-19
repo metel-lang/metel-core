@@ -215,6 +215,11 @@ def select_cells(
     return cells, current
 
 
+def gate_blockers(cells: list[Cell]) -> list[Cell]:
+    """Open Tier A cells fail the gate. Partial coverage is reported and never blocks (#2082 ADR)."""
+    return [c for c in cells if c.tier == "A" and c.status == "open"]
+
+
 def render(
     release: str,
     cells: list[Cell],
@@ -227,7 +232,8 @@ def render(
     risk = [c for c in cells if c.tier in {"A", "B"}]
     high_gaps = sum(c.tier == "A" and c.status == "open" for c in within_release)
     high_risk_gaps = sum(c.tier in {"A", "B"} and c.status == "open" for c in within_release)
-    blockers = [c for c in cells if c.tier == "A" and c.status in {"open", "partial"}]
+    blockers = gate_blockers(cells)
+    partial_a = sum(c.tier == "A" and c.status == "partial" for c in cells)
     scored = [c.score for c in within_release if c.score is not None]
     mean_score = sum(scored, Fraction()) / len(scored) if scored else None
     lines = [
@@ -237,7 +243,7 @@ def render(
         f"no evidence: {counts['open']} · mean rule coverage: {float(mean_score):.1%}" if mean_score is not None else "no scoreable pairs",
         f"Baseline Tier A open gaps: {high_gaps} · Tier A/B open gaps: {high_risk_gaps}",
         f"Release gate scope: {len(cells)} new-vs-registry pairs · "
-        f"Tier A/B pairs: {len(risk)} · Tier A blockers (open or partial): {len(blockers)}",
+        f"Tier A/B pairs: {len(risk)} · Tier A open (blocking): {len(blockers)} · Tier A partial (reported): {partial_a}",
     ]
     if details or blockers_only:
         visible = cells if details else blockers
@@ -258,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
     parser.add_argument("--details", action="store_true", help="print every new-feature pair")
-    parser.add_argument("--blockers", action="store_true", help="print only blocking Tier A cells")
+    parser.add_argument("--blockers", action="store_true", help="print only the Tier A cells that block the gate (open)")
     args = parser.parse_args(argv)
     try:
         features, adjacent = load_registry(args.registry)
@@ -274,8 +280,8 @@ def main(argv: list[str] | None = None) -> int:
             print("Features without spec rules: " + ", ".join(missing))
         if unresolved:
             print("Features with unresolved introductions: " + ", ".join(unresolved))
-        blockers = [c for c in cells if c.tier == "A" and c.status in {"open", "partial"}]
-        print(f"Gate: {'BLOCKED' if blockers else 'PASS'} ({len(blockers)} Tier A cells need full rule coverage)")
+        blockers = gate_blockers(cells)
+        print(f"Gate: {'BLOCKED' if blockers else 'PASS'} ({len(blockers)} open Tier A cells need a fixture, an n/a reason or a deferral issue)")
         return 1 if blockers else 0
     except ValueError as exc:
         print(f"feature-matrix: error: {exc}", file=sys.stderr)

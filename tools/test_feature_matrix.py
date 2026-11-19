@@ -3,7 +3,7 @@ import unittest
 from fractions import Fraction
 from pathlib import Path
 
-from tools.feature_matrix import Feature, Fixture, evaluate_pair, load_registry, load_states
+from tools.feature_matrix import Feature, Fixture, evaluate_pair, gate_blockers, load_registry, load_states
 
 
 def feature(identifier, rules, subsystems=("ownership",), introduced="v0.16.0"):
@@ -47,6 +47,34 @@ class PairScoring(unittest.TestCase):
         cell = evaluate_pair(self.a, self.b, [], state, set())
         self.assertEqual(cell.status, "deferred")
         self.assertEqual(cell.issue, "https://github.com/o/r/issues/1")
+
+
+class Gate(unittest.TestCase):
+    def setUp(self):
+        self.a = feature("a", ["spec.ownership.a.legality-1", "spec.ownership.a.legality-2"])
+        self.b = feature("b", ["spec.ownership.b.legality-1"])
+
+    def test_open_tier_a_cell_blocks(self):
+        cell = evaluate_pair(self.a, self.b, [], {}, set())
+        self.assertEqual(gate_blockers([cell]), [cell])
+
+    def test_partial_tier_a_cell_does_not_block(self):
+        fixtures = [Fixture("one", frozenset({"spec.ownership.a.legality-1", "spec.ownership.b.legality-1"}))]
+        cell = evaluate_pair(self.a, self.b, fixtures, {}, set())
+        self.assertEqual(cell.status, "partial")
+        self.assertEqual(gate_blockers([cell]), [])
+
+    def test_deferred_and_n_a_do_not_block(self):
+        for state in ("n/a", "deferred"):
+            manual = {("a", "b"): {"state": state, "reason": "r", "issue": "https://github.com/o/r/issues/1"}}
+            cell = evaluate_pair(self.a, self.b, [], manual, set())
+            self.assertEqual(gate_blockers([cell]), [])
+
+    def test_open_tier_b_cell_does_not_block(self):
+        far = feature("c", ["spec.types.c.legality-1"], subsystems=("types",))
+        cell = evaluate_pair(self.a, far, [], {}, {("ownership", "types")})
+        self.assertEqual(cell.tier, "B")
+        self.assertEqual(gate_blockers([cell]), [])
 
 
 class RegistryValidation(unittest.TestCase):
