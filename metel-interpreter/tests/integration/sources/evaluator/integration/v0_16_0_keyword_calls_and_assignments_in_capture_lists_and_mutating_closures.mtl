@@ -1,6 +1,7 @@
 // v0.16.0 integration: keyword arguments x assignment statements x capture lists x a mutating `var` closure x a `once` closure x
 // closure environments, and closure contracts in a generic body.
 fun add(base: i64, by: i64) -> i64 { base + by }
+fun sub(base: i64, by: i64) -> i64 { base - by }
 
 fun counted<T>(unused: T) -> i64 {
     var acc := 0;
@@ -24,4 +25,11 @@ fun main() {
     let once_f := [name] once || -> String { name };
     assert(once_f() == "n");
     assert(counted(0) == 2);
+    var seq := 0;
+    var tick := [seq] var || -> i64 {
+        seq = seq + 1;
+        seq
+    };
+    // Arguments are evaluated in the order written: `by` first, then `base`, whatever the parameter order.
+    assert(sub(by = tick(), base = tick()) == 1);
 }

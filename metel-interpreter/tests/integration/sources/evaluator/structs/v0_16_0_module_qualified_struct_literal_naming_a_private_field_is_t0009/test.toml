@@ -3,7 +3,7 @@ prelude = "default"
 
 [options]
 error = ["T0009"]
-spec = ["spec.modules.paths.legality-2", "spec.modules.visibility.legality-4"]
+spec = ["spec.modules.paths.legality-1", "spec.modules.visibility.legality-4"]
 
 [expect]
 status = "typecheck_error"
