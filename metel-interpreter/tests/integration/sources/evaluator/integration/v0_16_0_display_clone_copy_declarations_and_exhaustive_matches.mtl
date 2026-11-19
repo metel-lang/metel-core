@@ -19,6 +19,8 @@ fun twice<T>(c: Cell, f: copy |i64| -> i64, unused: T) -> i64 {
     h(g()) + k(c.pair.0)
 }
 
+fun dup<T: Copy>(x: T) -> T { x.clone() }
+
 fun unpack<T>(c: Cell, unused: T) -> i64 {
     let .{ .extra, .. } := c;
     match (c) {
@@ -36,6 +38,8 @@ fun main() {
     let b2 := b;
     let b3 := b;
     assert(b2.value + b3.value == 4);
+    let b4 := dup(b);
+    assert(b4.value == 2);
     let c := Cell { tag = Tag { n = 1 }, pair = (2, 3), extra = 4 };
     let inc: copy |i64| -> i64 := |x| { x + 1 };
     assert(classify(Mode::On, c) == 3);
