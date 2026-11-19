@@ -1,0 +1,21 @@
+// v0.16.0 integration: dotted row labels x negative row-bound entries x tuples as rows x a block-local impl x flow arguments
+// on Clone and Copy.
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
+aspect Describe { fun describe(&self) -> i64; }
+
+fun first<record R: .{ .0: i64, !.secret, .. }>(r: R) -> i64 { r.0 }
+fun named<record R: .{ .id: i64, !.secret, .. }>(r: R) -> i64 { r.id }
+
+fun main() {
+    copy struct Local { n: i64 }
+    extend Local: Describe { fun describe(&self) -> i64 { self.n } }
+    let w := Wrapper { value = Local { n = 1 }.n };
+    let w2 := w;
+    let w3 := w;
+    assert(w2.value + w3.value == 2);
+    let t := (4, "s");
+    assert(first(t) == 4);
+    let r := .{ .id = 5, .l = Local { n = 6 } };
+    assert(named(r) == 5);
+    assert(r.l.describe() == 6);
+}

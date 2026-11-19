@@ -1,0 +1,31 @@
+// v0.16.0 integration: closure contracts in generic bodies x Clone/Copy semantics and obligations x copy(T) arguments x copy
+// function values x keyword arguments x statement assignment x undecided-ownership checking x a named record pattern.
+copy(T) struct Boxed<T> { value: T }
+copy struct Tag { n: i64 }
+copy record Holder { tag: Tag, boxed: Boxed<i64> }
+
+fun scale(factor: i64, value: i64) -> i64 { factor * value }
+
+fun run<T: Clone>(seed: T, f: copy |i64| -> i64, h: Holder) -> i64 {
+    let spare := seed.clone();
+    var acc := 0;
+    acc = f(scale(factor = 2, value = 3));
+    let g := || { f(acc) };
+    let .{ .tag: Tag { n }, .boxed: Boxed { value } } := h;
+    let r: i64 := g();
+    acc = r + n + value;
+    acc
+}
+
+fun twice<T>(f: copy |i64| -> i64, unused: T) -> i64 {
+    let a := f;
+    let b := f;
+    a(1) + b(2)
+}
+
+fun main() {
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let h := Holder { tag = Tag { n = 1 }, boxed = Boxed { value = 2 } };
+    assert(run("s", inc, h) == 11);
+    assert(twice(inc, 0) == 5);
+}

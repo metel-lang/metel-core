@@ -1,0 +1,7 @@
+// metel-core#2085: in a generic body, the result of calling an inferred closure, bound by an unannotated `let`, is typed `()`.
+fun run<T>(unused: T) -> i64 {
+    let g := || { 3 };
+    let r := g();
+    r + 1
+}
+fun main() { assert(run(0) == 4); }

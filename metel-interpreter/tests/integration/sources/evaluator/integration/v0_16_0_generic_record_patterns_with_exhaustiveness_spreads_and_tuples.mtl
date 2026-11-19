@@ -1,0 +1,33 @@
+// v0.16.0 integration: a named record pattern in a generic body x match exhaustiveness over records and tuples x record
+// spread then replace x aspects on a residual x tuples as rows x record-rest and nested field patterns.
+copy struct Tag { n: i64 }
+copy record Cell { tag: Tag, pair: (i64, i64), extra: i64 }
+enum Mode { On, Off }
+
+fun pick<T>(c: Cell, unused: T) -> i64 {
+    let .{ .tag: Tag { n }, .pair: (a, b), .. } := c;
+    n + a + b
+}
+
+fun classify(m: Mode, c: Cell) -> i64 {
+    match ((m, c.pair)) {
+        (Mode::On, (a, _)) => a,
+        (Mode::Off, (_, b)) => b,
+    }
+}
+
+fun rest<T>(c: Cell, unused: T) -> i64 {
+    let r := .{ ..c, .extra = 9 };
+    let .{ .extra, .. } := r;
+    extra
+}
+
+fun main() {
+    let c := Cell { tag = Tag { n = 1 }, pair = (2, 3), extra = 4 };
+    assert(pick(c, 0) == 6);
+    assert(classify(Mode::On, c) == 2);
+    assert(classify(Mode::Off, c) == 3);
+    assert(rest(c, 0) == 9);
+    let again := c;
+    assert(again.extra == 4);
+}
