@@ -1,0 +1,8 @@
+// RFC-0032 x module-qualified construction: a struct literal written through its module path names a private field, which is
+// rejected outside the declaring module.
+import lib::Point;
+
+fun main() { // ERROR[T0009]
+    let p := lib::Point { x = 1, y = 2 };
+    assert(p.x == 1);
+}

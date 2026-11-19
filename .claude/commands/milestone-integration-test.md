@@ -68,11 +68,21 @@ Cell state is computed from the score unless the state file records a dispositio
 - **deferred** — reason and GitHub issue URL in `states.toml`.
 
 Tier A means a shared subsystem; Tier B means an explicitly configured adjacent-subsystem
-pair; Tier C is everything else. The gate passes only when no Tier A cell in a new
-feature's row is `open`: each is `covered`, `partial`, `n/a` or `deferred` (ADR-0069). A
-`partial` score is reported and does not block. Tier B/C remain visible as debt and do not
-block. Deferred Tier A cells must point to an issue. A `[[bulk]]` entry in `states.toml` defers every
-still-open cell of a tier for a release to one tracking issue; fixture evidence always wins over it.
+pair; Tier C is everything else. The gate (thresholds in the registry's `[gate]` table, ADR-0069) passes only when none of these holds:
+
+- **open-tier-a** — a Tier A cell in a new feature's row is `open` (not covered by a fixture, `n/a`,
+  `deferred` or bulk-deferred).
+- **joint-fixtures** — a Tier A pair among the release's own features has fewer than two joint fixtures.
+- **tier-b-evidence** — a Tier B pair among the release's own features is `open`.
+- **feature-floor** — a new feature has evidence in fewer than half of its Tier A pairs (an `n/a` pair
+  does not count against it; a bulk deferral is not evidence).
+- **expired-bulk** — a `[[bulk]]` deferral of an earlier minor release still has open cells.
+
+A `partial` score is reported and never blocks. A bulk deferral excuses only open-tier-a, and only for the
+release it names. Tier C remains visible as debt. Deferred Tier A cells must point to an issue. A `[[bulk]]` entry
+in `states.toml` defers every still-open cell of a tier for a release to one tracking issue; fixture evidence
+always wins over it. A fixture cites only the rules it exercises: the gate counts citations and cannot check them,
+so review them (a mis-tag is a finding).
 
 The milestone-only baseline is reported separately for comparison with #2080. Old-by-old
 cells do not block this release.

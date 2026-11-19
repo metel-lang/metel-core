@@ -1,0 +1,45 @@
+// v0.16.0 integration: Display of anonymous records and `()` x built-in and derived Clone x copy(T) and Copy declarations x
+// exhaustive matches over tuples, named records and nested patterns x a closure and a copy function in a generic body.
+copy(T) struct Boxed<T> { value: T }
+copy struct Tag { n: i64 }
+copy record Cell { tag: Tag, pair: (i64, i64), extra: i64 }
+enum Mode { On, Off }
+
+fun classify(m: Mode, c: Cell) -> i64 {
+    match ((m, c)) {
+        (Mode::On, .{ .tag: Tag { n }, .pair: (a, _), .. }) => n + a,
+        (Mode::Off, .{ .extra, .. }) => extra,
+    }
+}
+
+fun twice<T>(c: Cell, f: copy |i64| -> i64, unused: T) -> i64 {
+    let g := || { c.extra };
+    let h := f;
+    let k := f;
+    h(g()) + k(c.pair.0)
+}
+
+fun unpack<T>(c: Cell, unused: T) -> i64 {
+    let .{ .extra, .. } := c;
+    match (c) {
+        .{ .tag: Tag { n }, .. } => n + extra,
+    }
+}
+
+fun main() {
+    let d := .{ .a = 1, .b = 2 };
+    let copy_of := d.clone();
+    assert("${copy_of}" == "${d}");
+    assert("${d}" == ".{ .a: 1, .b: 2 }");
+    assert("${()}" == "()");
+    let b := Boxed { value = 2 };
+    let b2 := b;
+    let b3 := b;
+    assert(b2.value + b3.value == 4);
+    let c := Cell { tag = Tag { n = 1 }, pair = (2, 3), extra = 4 };
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    assert(classify(Mode::On, c) == 3);
+    assert(classify(Mode::Off, c) == 4);
+    assert(twice(c, inc, 0) == 8);
+    assert(unpack(c, 0) == 5);
+}

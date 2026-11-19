@@ -113,11 +113,15 @@ def load_bulk(path: Path) -> list[dict[str, str]]:
     return bulk
 
 
-def apply_bulk(cell: Cell, bulk: list[dict[str, str]]) -> Cell:
-    """A bulk deferral covers only cells that are still open; fixture evidence always wins."""
+def apply_bulk(cell: Cell, bulk: list[dict[str, str]], release: str | None = None) -> Cell:
+    """A bulk deferral covers only cells that are still open; fixture evidence always wins.
+
+    It applies to the release it names, never to a later one (a later release's gate has its own cells)."""
     if cell.status != "open":
         return cell
     for entry in bulk:
+        if release is not None and entry["release"] != release:
+            continue
         if entry["tier"] == cell.tier and entry["release"] in {cell.left.introduced, cell.right.introduced}:
             return replace(cell, status="deferred", reason=entry["reason"], issue=entry["issue"], bulk=True)
     return cell
@@ -236,10 +240,81 @@ def select_cells(
     if not current:
         raise ValueError(f"registry has no features introduced in {release}")
     all_features = sorted(features.values(), key=lambda f: f.id)
-    cells = [apply_bulk(evaluate_pair(a, b, fixtures, states, adjacent), bulk or [])
+    cells = [apply_bulk(evaluate_pair(a, b, fixtures, states, adjacent), bulk or [], release)
              for a, b in itertools.combinations(all_features, 2)
              if a.introduced == release or b.introduced == release]
     return cells, current
+
+
+GATE_DEFAULTS = {"min_joint_fixtures": 2, "feature_tier_a_floor": 0.5, "tier_b_open_fails": True}
+
+
+@dataclass(frozen=True)
+class Violation:
+    rule: str
+    detail: str
+
+
+def load_gate_config(path: Path) -> dict:
+    """The gate's thresholds, from the registry's `[gate]` table; a release can raise them."""
+    raw = load_toml(path).get("gate", {})
+    unknown = sorted(set(raw) - set(GATE_DEFAULTS))
+    if unknown:
+        raise ValueError(f"unknown [gate] setting(s): {', '.join(unknown)}")
+    return {**GATE_DEFAULTS, **raw}
+
+
+def _minor(version: str) -> tuple[int, int]:
+    major, minor, _ = (int(part) for part in version.lstrip("v").split("."))
+    return major, minor
+
+
+def gate_violations(
+    release: str,
+    features: dict[str, Feature],
+    fixtures: list[Fixture],
+    states: dict[tuple[str, str], dict[str, str]],
+    adjacent: set[tuple[str, str]],
+    bulk: list[dict[str, str]],
+    config: dict,
+) -> list[Violation]:
+    """Everything that fails the gate for `release` (ADR-0069). Computed evidence is judged without the bulk
+    deferral, which excuses only the open-Tier-A rule."""
+    raw, current = select_cells(release, features, fixtures, states, adjacent)
+    gated, _ = select_cells(release, features, fixtures, states, adjacent, bulk)
+    found: list[Violation] = []
+
+    def pair(c: Cell) -> str:
+        return f"{c.left.name} × {c.right.name}"
+
+    for c in gate_blockers(gated):
+        found.append(Violation("open-tier-a", f"{pair(c)}: no joint fixture, no n/a reason, no deferral issue"))
+    own = [c for c in raw if c.left.introduced == c.right.introduced == release]
+    for c in own:
+        if c.tier == "A" and c.status in {"covered", "partial", "open"} and len(c.evidence) < config["min_joint_fixtures"]:
+            found.append(Violation(
+                "joint-fixtures",
+                f"{pair(c)}: {len(c.evidence)} joint fixture(s), needs {config['min_joint_fixtures']}"))
+        if c.tier == "B" and c.status == "open" and config["tier_b_open_fails"]:
+            found.append(Violation("tier-b-evidence", f"{pair(c)}: no joint fixture and no n/a reason"))
+    floor = config["feature_tier_a_floor"]
+    for feature in current:
+        tier_a = [c for c in raw if feature.id in {c.left.id, c.right.id} and c.tier == "A" and c.status != "n/a"]
+        with_evidence = sum(c.status in {"covered", "partial"} for c in tier_a)
+        if tier_a and with_evidence / len(tier_a) < floor:
+            found.append(Violation(
+                "feature-floor",
+                f"{feature.name}: evidence in {with_evidence} of {len(tier_a)} Tier A pairs, needs {floor:.0%}"))
+    for entry in bulk:
+        if _minor(entry["release"]) < _minor(release):
+            older, _ = select_cells(entry["release"], features, fixtures, states, adjacent)
+            still_open = sum(c.tier == entry["tier"] and c.status == "open" for c in older)
+            if still_open:
+                found.append(Violation(
+                    "expired-bulk",
+                    f"the {entry['release']} tier {entry['tier']} bulk deferral ({entry['issue']}) expired: "
+                    f"{still_open} cell(s) are still open"))
+    return found
 
 
 def gate_blockers(cells: list[Cell]) -> list[Cell]:
@@ -274,6 +349,7 @@ def compute_metrics(
     states: dict[tuple[str, str], dict[str, str]],
     adjacent: set[tuple[str, str]],
     bulk: list[dict[str, str]],
+    config: dict | None = None,
 ) -> dict:
     """The release's coverage metrics. Evidence is computed from fixtures; a bulk deferral is reported apart."""
     raw, current = select_cells(release, features, fixtures, states, adjacent)
@@ -283,6 +359,10 @@ def compute_metrics(
     owned = set().union(*(f.rules for f in current))
     cited = set().union(*(fixture.rules for fixture in fixtures))
     blockers = gate_blockers(gated)
+    violations = gate_violations(release, features, fixtures, states, adjacent, bulk, config or GATE_DEFAULTS)
+    by_rule: dict[str, int] = {}
+    for violation in violations:
+        by_rule[violation.rule] = by_rule.get(violation.rule, 0) + 1
     per_feature = []
     for feature in current:
         tier_a = [c for c in raw if feature.id in {c.left.id, c.right.id} and c.tier == "A"]
@@ -305,7 +385,8 @@ def compute_metrics(
                          "all": _tier_row(new_by_older)},
         "rules": {"owned": len(owned), "cited": len(owned & cited)},
         "gate": {
-            "verdict": "BLOCKED" if blockers else "PASS",
+            "verdict": "BLOCKED" if violations else "PASS",
+            "violations": by_rule,
             "tier_a_open": len(blockers),
             "tier_a_partial": sum(c.tier == "A" and c.status == "partial" for c in gated),
             "tier_a_bulk_deferred": sum(c.tier == "A" and c.bulk for c in gated),
@@ -344,7 +425,9 @@ def render_table(metrics: dict, per_feature: bool = False) -> str:
         f"Rules owned by the new features: {rules['owned']}, cited by at least one fixture: "
         f"{rules['cited']} ({pct(rules['cited'], rules['owned'])}).",
         f"Release gate: **{gate['verdict']}**. Open Tier A cells: {gate['tier_a_open']}, "
-        f"partial: {gate['tier_a_partial']}, bulk-deferred: {gate['tier_a_bulk_deferred']}.",
+        f"partial: {gate['tier_a_partial']}, bulk-deferred: {gate['tier_a_bulk_deferred']}. "
+        + ("Violations: " + ", ".join(f"{rule} {n}" for rule, n in sorted(gate["violations"].items())) + "."
+           if gate["violations"] else "No gate violations."),
     ]
     if per_feature:
         lines += ["", "| Feature | Rules cited / owned | Tier A pairs with evidence |", "|---|---:|---:|"]
@@ -428,8 +511,9 @@ def main(argv: list[str] | None = None) -> int:
         fixtures = load_fixtures(args.fixtures)
         validate_spec_rules(features, fixtures, args.spec)
         bulk = load_bulk(args.states)
+        config = load_gate_config(args.registry)
         if args.json or args.table or args.check_table:
-            metrics = compute_metrics(args.release, features, fixtures, states, adjacent, bulk)
+            metrics = compute_metrics(args.release, features, fixtures, states, adjacent, bulk, config)
             if args.json:
                 sys.stdout.write(json.dumps(metrics, indent=2) + "\n")
             if args.table:
@@ -450,9 +534,17 @@ def main(argv: list[str] | None = None) -> int:
             print("Features without spec rules: " + ", ".join(missing))
         if unresolved:
             print("Features with unresolved introductions: " + ", ".join(unresolved))
-        blockers = gate_blockers(cells)
-        print(f"Gate: {'BLOCKED' if blockers else 'PASS'} ({len(blockers)} open Tier A cells need a fixture, an n/a reason or a deferral issue)")
-        return 1 if blockers else 0
+        violations = gate_violations(args.release, features, fixtures, states, adjacent, bulk, config)
+        by_rule: dict[str, int] = {}
+        for violation in violations:
+            by_rule[violation.rule] = by_rule.get(violation.rule, 0) + 1
+        if args.blockers:
+            print("\n| Rule | Detail |\n|---|---|")
+            for violation in violations:
+                print(f"| {violation.rule} | {violation.detail} |")
+        summary = ", ".join(f"{rule} {n}" for rule, n in sorted(by_rule.items()))
+        print(f"Gate: {'BLOCKED' if violations else 'PASS'} ({len(violations)} violation(s){': ' + summary if summary else ''})")
+        return 1 if violations else 0
     except ValueError as exc:
         print(f"feature-matrix: error: {exc}", file=sys.stderr)
         return 2

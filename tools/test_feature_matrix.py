@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tools.feature_matrix import (
     TABLE_END, TABLE_START, Feature, Fixture, apply_bulk, check_table, compute_metrics, evaluate_pair, gate_blockers,
-    load_bulk, load_registry, load_states, render_table,
+    gate_violations, load_bulk, load_gate_config, load_registry, load_states, render_table,
 )
 
 
@@ -136,8 +136,8 @@ class Metrics(unittest.TestCase):
         m = self.metrics(bulk)
         self.assertEqual(m["new_by_older"]["A"]["open"], 2)
         self.assertEqual(m["gate"]["tier_a_bulk_deferred"], 2)
-        self.assertEqual(m["gate"]["verdict"], "PASS")
-        self.assertEqual(self.metrics()["gate"]["verdict"], "BLOCKED")
+        self.assertNotIn("open-tier-a", m["gate"]["violations"])
+        self.assertIn("open-tier-a", self.metrics()["gate"]["violations"])
 
     def test_rule_coverage_counts_owned_and_cited_rules(self):
         self.assertEqual(self.metrics()["rules"], {"owned": 3, "cited": 2})
@@ -159,6 +159,78 @@ class Metrics(unittest.TestCase):
             path.write_text(f"## v0.16.0\n\n{expected.replace('1 (', '2 (')}\n## v0.15.0\n")
             self.assertIn("stale", check_table(path, "v0.16.0", expected))
             self.assertIn("no `## v0.17.0` section", check_table(path, "v0.17.0", expected))
+
+
+CONFIG = {"min_joint_fixtures": 2, "feature_tier_a_floor": 0.5, "tier_b_open_fails": True}
+
+
+class StricterGate(unittest.TestCase):
+    ISSUE = "https://github.com/o/r/issues/9"
+
+    def violations(self, features, fixtures, states=None, bulk=(), adjacent=(), release="v0.16.0"):
+        feats = {f.id: f for f in features}
+        return gate_violations(release, feats, fixtures, states or {}, set(adjacent), list(bulk), CONFIG)
+
+    def rules(self, found):
+        return sorted({v.rule for v in found})
+
+    def pair(self):
+        a = feature("a", ["spec.ownership.a.legality-1"])
+        b = feature("b", ["spec.ownership.b.legality-1"])
+        return a, b
+
+    def test_a_tier_a_pair_needs_two_joint_fixtures(self):
+        a, b = self.pair()
+        joint = frozenset({"spec.ownership.a.legality-1", "spec.ownership.b.legality-1"})
+        one = self.violations([a, b], [Fixture("one", joint)])
+        self.assertEqual(self.rules(one), ["joint-fixtures"])
+        two = self.violations([a, b], [Fixture("one", joint), Fixture("two", joint)])
+        self.assertEqual(two, [])
+
+    def test_an_open_tier_b_pair_among_new_features_fails_unless_it_has_a_reason(self):
+        a = feature("a", ["spec.ownership.a.legality-1"], subsystems=("ownership",))
+        b = feature("b", ["spec.types.b.legality-1"], subsystems=("types",))
+        adjacent = {("ownership", "types")}
+        self.assertEqual(self.rules(self.violations([a, b], [], adjacent=adjacent)), ["tier-b-evidence"])
+        na = {("a", "b"): {"state": "n/a", "reason": "no shared behaviour", "issue": ""}}
+        self.assertEqual(self.violations([a, b], [], states=na, adjacent=adjacent), [])
+
+    def test_a_new_feature_needs_evidence_in_half_of_its_tier_a_pairs(self):
+        new = feature("new", ["spec.ownership.n.legality-1"])
+        olds = [feature(f"old{i}", [f"spec.ownership.o{i}.legality-1"], introduced="v0.15.0") for i in range(4)]
+        none = self.violations([new, *olds], [], bulk=[
+            {"release": "v0.16.0", "tier": "A", "reason": "r", "issue": self.ISSUE}])
+        self.assertEqual(self.rules(none), ["feature-floor"])
+        fixtures = [Fixture(f"f{i}", frozenset({"spec.ownership.n.legality-1", f"spec.ownership.o{i}.legality-1"}))
+                    for i in range(2)]
+        half = self.violations([new, *olds], fixtures, bulk=[
+            {"release": "v0.16.0", "tier": "A", "reason": "r", "issue": self.ISSUE}])
+        self.assertEqual(half, [])
+
+    def test_a_bulk_deferral_expires_with_the_next_minor_release(self):
+        new = feature("new", ["spec.ownership.n.legality-1"])
+        old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.15.0")
+        newer = feature("newer", ["spec.ownership.w.legality-1"], introduced="v0.17.0")
+        bulk = [{"release": "v0.16.0", "tier": "A", "reason": "r", "issue": self.ISSUE}]
+        fixtures = [Fixture("f", frozenset({"spec.ownership.newer.legality-1"}))]
+        found = self.violations([new, old, newer], fixtures, bulk=bulk, release="v0.17.0")
+        self.assertIn("expired-bulk", self.rules(found))
+        in_release = self.violations([new, old], [], bulk=bulk, release="v0.16.0")
+        self.assertNotIn("expired-bulk", self.rules(in_release))
+
+    def test_a_deferral_does_not_leak_into_a_later_release_gate(self):
+        old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.16.0")
+        newer = feature("newer", ["spec.ownership.w.legality-1"], introduced="v0.17.0")
+        bulk = [{"release": "v0.16.0", "tier": "A", "reason": "r", "issue": self.ISSUE}]
+        found = self.violations([old, newer], [], bulk=bulk, release="v0.17.0")
+        self.assertIn("open-tier-a", self.rules(found))
+
+    def test_unknown_gate_settings_are_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registry.toml"
+            path.write_text("[gate]\nmin_joint_fixtures = 2\nmystery = 1\n")
+            with self.assertRaisesRegex(ValueError, "unknown \\[gate\\] setting"):
+                load_gate_config(path)
 
 
 class RegistryValidation(unittest.TestCase):

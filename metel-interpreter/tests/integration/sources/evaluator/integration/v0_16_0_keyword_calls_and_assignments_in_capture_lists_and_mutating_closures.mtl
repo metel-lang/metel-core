@@ -1,0 +1,27 @@
+// v0.16.0 integration: keyword arguments x assignment statements x capture lists x a mutating `var` closure x a `once` closure x
+// closure environments, and closure contracts in a generic body.
+fun add(base: i64, by: i64) -> i64 { base + by }
+
+fun counted<T>(unused: T) -> i64 {
+    var acc := 0;
+    let step := |n: i64| { add(base = n, by = 1) };
+    acc = step(acc);
+    acc = step(acc);
+    acc
+}
+
+fun main() {
+    var total := 0;
+    let step := 3;
+    var bump := [total, step] var || -> i64 {
+        total = add(base = total, by = step);
+        total
+    };
+    assert(bump() == 3);
+    assert(bump() == 6);
+    assert(total == 0);
+    let name := "n";
+    let once_f := [name] once || -> String { name };
+    assert(once_f() == "n");
+    assert(counted(0) == 2);
+}
