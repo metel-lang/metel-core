@@ -4,6 +4,12 @@ subsystems = ["move", "inference", "closures", "patterns", "surface", "functions
 # Registry seeded from implemented RFC coverage and release changelog capabilities.
 # Introduction releases reflect first shipped behavior; RFCs for compiler internals are excluded.
 
+# Gate thresholds (ADR-0069). A release may raise them, never lower them.
+[gate]
+min_joint_fixtures = 2        # Tier A pairs among a release's own features need this many joint fixtures
+feature_tier_a_floor = 0.5    # each new feature needs evidence in this share of its Tier A pairs
+tier_b_open_fails = true      # an open Tier B pair among a release's own features fails the gate
+
 [[features]]
 id = "rfc-0006"
 name = "Closure Capture Semantics and Cross-Closure Reference Sharing"
@@ -810,7 +816,7 @@ name = "Display for anonymous records and the empty row"
 introduced = "v0.16.0"
 source = ["RFC-0116", "RFC-0123", "RFC-0231", "changelog:v0.16.0"]
 subsystems = ["records"]
-rules = ["spec.ownership.narrowing.legality-4", "spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3", "spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.tuples.legality-2"]
+rules = ["spec.ownership.narrowing.legality-4", "spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3", "spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.tuples.legality-2", "spec.types.anonymous-records.dynamics-3", "spec.types.tuples.dynamics-1"]
 
 # Explicit adjacency for Tier B. Tier A is any shared subsystem tag.
 

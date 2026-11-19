@@ -1,0 +1,43 @@
+// v0.16.0 integration: dotted labels x negative row bounds over records and tuples x spread then replace x flow arguments and
+// copy(T) x derived Clone x a block-local impl x a copy function x keyword calls x a Copy residual x undecided ownership.
+aspect Describe { fun describe(&self) -> i64; }
+copy(T) struct Boxed<T> { value: T }
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
+copy struct Tagged<T> { n: i64, value: T }
+
+fun scale(by: i64, x: i64) -> i64 { by * x }
+fun apply<record R: .{ .f: copy |i64| -> i64, !.secret, .. }>(r: R, x: i64) -> i64 { (r.f)(x) }
+fun first<record R: .{ .0: i64, !.secret, .. }>(r: R) -> i64 { r.0 }
+fun regen<T: Copy>(b: Boxed<T>, r: .{ .k: i64 }) -> i64 {
+    let a := .{ ..r, .b = b };
+    let c := .{ ..r, .b = b };
+    a.k + c.k
+}
+
+fun main() {
+    struct Local { n: i64 }
+    extend Local: Describe { fun describe(&self) -> i64 { self.n } }
+    let inc: copy |i64| -> i64 := |x| { x + 1 };
+    let r := .{ .f = inc, .p = Boxed { value = 1 }, .w = Wrapper { value = 2 }, .k = 0 };
+    let s := .{ ..r, .k = 5 };
+    let t := .{ ..s, .w = Wrapper { value = 9 } };
+    assert(apply(t, scale(by = 2, x = 3)) == 7);
+    let c := t.w.clone();
+    assert(c.value == 9);
+    assert(first((4, "s")) == 4);
+    let u := .{ ..r, .l = Local { n = 3 } };
+    assert(u.l.describe() == 3);
+    assert(regen(Boxed { value = 1 }, .{ .k = 2 }) == 4);
+    let w2 := Tagged { n = 1, value = "s" };
+    let moved := w2.value;
+    let a := w2;
+    let b := w2;
+    assert(a.n + b.n == 2);
+    assert(moved == "s");
+    var w3 := Tagged { n = 1, value = "t" };
+    let taken := w3.value;
+    w3.n = 5;
+    let w4 := w3;
+    assert(w4.n + w3.n == 10);
+    assert(taken == "t");
+}

@@ -1,0 +1,3 @@
+[options]
+move_check = true
+spec = ["spec.functions.keyword-arguments.legality-1", "spec.functions.keyword-arguments.dynamics-1", "spec.expressions.assignment.legality-1", "spec.expressions.assignment.legality-3", "spec.functions.closures.legality-5", "spec.functions.closures.legality-6", "spec.functions.closures.legality-8", "spec.functions.closures.dynamics-1", "spec.functions.closures.dynamics-5", "spec.functions.closures.dynamics-7", "spec.functions.closures.legality-1", "spec.types.generics.rigid-type-parameters.legality-1"]

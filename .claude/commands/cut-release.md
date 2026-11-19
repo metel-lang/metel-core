@@ -93,6 +93,19 @@ release date. Cross-check with:
 tools/changelog-status.sh
 ```
 
+**1b. Feature-matrix table published** — the release publishes its coverage metrics. Generate the table on the
+frozen tree, put it in the `## $ARGUMENTS` changelog section (between its `<!-- feature-matrix:start -->` and
+`<!-- feature-matrix:end -->` markers), and verify it is current:
+
+```bash
+python3 tools/feature_matrix.py "$ARGUMENTS" --table
+python3 tools/feature_matrix.py "$ARGUMENTS" --check-table docs/release-notes/changelog.md
+```
+
+The GitHub Release body is sourced from that section, so the table ships with the release. A stale table
+(fixtures changed since it was generated) fails the check: regenerate it, in the same commit as the changelog
+finalization.
+
 **2. Version number chosen** — per the major/minor/patch rule in `metel-docs-internal/internal/versioning.md`:
 a spec change requires at least a minor bump; a patch must not touch language-visible
 behaviour at all. Bump `metel-interpreter/Cargo.toml`'s `version` to match, in the same
