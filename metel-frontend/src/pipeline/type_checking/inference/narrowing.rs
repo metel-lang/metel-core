@@ -14,7 +14,9 @@
 use crate::data::typed_ast::TypedExpr;
 use crate::ownership::flow_state::MoveCause;
 use crate::ownership::place::{Place, Projection, from_expr as place_from_expr};
-use crate::pipeline::type_checking::type_engine::{AspectAssumptions, InferContext, InferType};
+use crate::pipeline::type_checking::type_engine::{
+    AspectAssumptions, InferContext, InferType, Substitution, free_vars,
+};
 
 impl InferContext {
     pub(crate) fn prepare_residual_binding(&mut self, name: &str, ty: InferType) -> InferType {
@@ -122,11 +124,26 @@ impl InferContext {
         }
         // An unsuffixed numeric literal's var will default to a `Copy` primitive.
         if let InferType::Var(tv) = &resolved {
-            return self.is_numeric_literal_var(*tv);
+            return self.is_numeric_literal_representative(*tv);
         }
-        if infer_type_has_var(&resolved) {
-            return false;
-        }
+        // A type whose only unresolved variables are unsuffixed numeric literals (`Boxed<{integer}>`) is `Copy` or
+        // not exactly as it is for the literals' default type: every numeric type is `Copy` (metel-core#2079).
+        let resolved = if infer_type_has_var(&resolved) {
+            let free = free_vars(&resolved);
+            if !free
+                .iter()
+                .all(|tv| self.is_numeric_literal_representative(*tv))
+            {
+                return false;
+            }
+            let mut defaulted = Substitution::new();
+            for tv in free {
+                defaulted.bind(tv, InferType::int());
+            }
+            defaulted.apply(&resolved)
+        } else {
+            resolved
+        };
         self.registry().infer_type_is_copy(
             self.current_module_path(),
             &resolved,

@@ -9017,6 +9017,20 @@ impl InferContext {
         self.integer_literal_vars.contains(&tv) || self.float_literal_vars.contains(&tv)
     }
 
+    /// Whether `tv` is an unsuffixed numeric literal's variable, or the variable one such literal was solved
+    /// into (`Boxed { value = 1 }` unifies the literal's variable with the struct's `T`, and `T` can be the one
+    /// left standing). Either defaults to a `Copy` numeric primitive.
+    pub(crate) fn is_numeric_literal_representative(&self, tv: TypeVar) -> bool {
+        self.is_numeric_literal_var(tv)
+            || self
+                .integer_literal_vars
+                .iter()
+                .chain(&self.float_literal_vars)
+                .any(|&literal| {
+                    self.cached_subst.apply(&InferType::Var(literal)) == InferType::Var(tv)
+                })
+    }
+
     /// Install the module's free-function overload table (METEL-180).
     pub fn set_overloads(&mut self, overloads: OverloadTable) {
         self.overloads = overloads;

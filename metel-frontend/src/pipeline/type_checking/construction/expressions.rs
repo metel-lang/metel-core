@@ -2235,14 +2235,16 @@ pub(super) fn construct_expr(
                     )
                 })
                 .collect::<Result<_, _>>()?;
-            let ret_ty = if let Some(inferred) = ctx.resolved_facts.closure_return_type(span) {
-                inferred.clone()
+            // The return type Pass 1 solved, else the written annotation. Reconstructing a generic body at a call
+            // carries no Pass 1 facts, so an unannotated closure's return type is then read off its body
+            // (metel-core#2085): defaulting to `()` typed `let r := g();` as `()` and `r + 1` failed as I0010.
+            let known_ret = if let Some(inferred) = ctx.resolved_facts.closure_return_type(span) {
+                Some(inferred.clone())
             } else {
                 return_type
                     .as_ref()
                     .map(|ann| resolved_to_type(&ctx.type_expr_to_infer_ctx(ann), ctx.subst, span))
                     .transpose()?
-                    .unwrap_or(Type::unit())
             };
             let use_multiplicity = if captures.iter().all(|capture| match capture {
                 crate::data::ast::CaptureSpec::SharedRef { .. }
@@ -2276,16 +2278,22 @@ pub(super) fn construct_expr(
             }
             // Without this, unmentioned type params in variant literals (e.g. the
             // E in Result::Ok inside a ()->Result<T,E>) have no hint and fail T0002.
-            let body_expected = Some(&ret_ty);
+            let body_expected = known_ret.as_ref();
             // Push the closure's own return type so an explicit `return` inside its
             // body (constructed via `construct_stmt`'s `Stmt::Return` arm) compares
             // against the closure's declared type, not whatever enclosing function's
             // return type happened to be in scope (declared-type coercions
             // such as dyn erasure and singleton coercion at `return` rely on this being
             // correct).
-            let saved_return = ctx.push_return_type(Some(ret_ty.clone()));
+            let saved_return = ctx.push_return_type(known_ret.clone());
             let saved_loop_depth = ctx.push_loop_depth_reset();
             let typed_body = construct_block(body, body_expected, ctx)?;
+            let ret_ty = known_ret.unwrap_or_else(|| {
+                typed_body
+                    .tail
+                    .as_ref()
+                    .map_or_else(Type::unit, |tail| tail.ty().clone())
+            });
             ctx.pop_loop_depth(saved_loop_depth);
             ctx.pop_return_type(saved_return);
             ctx.exit_closure();
