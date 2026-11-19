@@ -229,7 +229,6 @@ fn retain_struct_match_pattern(
 }
 
 #[allow(clippy::too_many_lines)]
-// limit: ["LIMIT-TYPE-INFERENCE-003"]
 pub(super) fn infer_pattern(
     pattern: &Pattern,
     scrutinee_ty: &InferType,
