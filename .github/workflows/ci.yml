@@ -20,7 +20,10 @@ jobs:
     name: test / clippy / fmt
     runs-on: ubuntu-latest
     steps:
+      # `docs` (the public metel-docs submodule) is needed by the record-reproduction step below.
       - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: install pinned Rust toolchain (rust-toolchain.toml)
         run: rustup toolchain install
@@ -39,6 +42,15 @@ jobs:
 
       - name: cargo test
         run: cargo test --release --workspace
+
+      # Every active gap/limitation record's executable reproduction (docs/architecture) must still
+      # give its recorded result. A mismatch is a warning, not a failure: the record lives in
+      # metel-docs, so the pull request that fixes a limitation cannot also resolve its record.
+      # /cut-release runs this with --strict.
+      - name: record reproductions still reproduce
+        run: |
+          cargo build --release -p metel
+          python3 tools/check_record_repros.py
 
   rfc-check:
     name: rfc.py check
@@ -311,6 +323,9 @@ jobs:
 
       - name: push_scope.py self-test (pre-push skips the full suite for docs-only pushes)
         run: python3 tools/test_push_scope.py
+
+      - name: check_record_repros.py self-test (executable record reproductions)
+        run: python3 tools/test_check_record_repros.py
 
       - name: feature matrix self-test (metel-core#2082)
         run: python3 -m unittest tools.test_feature_matrix

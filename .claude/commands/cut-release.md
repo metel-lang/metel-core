@@ -148,6 +148,19 @@ it where `gh` is authenticated). For each: implement it (the marker leaves with 
 the issue to a later milestone, or convert the part to a `Gap`/`Limitation` record. Do not tag
 with a finding outstanding.
 
+**3c-bis. Record reproductions current** — a gap or limitation record's executable reproduction
+(`` ```metel repro=T0002 ``) says what its example does today. On a pull request a mismatch is only
+a warning (the record lives in metel-docs, so the fix that outdates it cannot resolve it in the
+same change), so the release is where it is enforced:
+
+```bash
+cargo build --release -p metel && python3 tools/check_record_repros.py --strict
+```
+
+Exits 0. A mismatch means the limitation was fixed or changed shape: resolve the record (with exit
+evidence, and remove its `// limit:` marker), or update the reproduction. Do not tag with one
+outstanding.
+
 **3d. Operations Specification current** — every requirement's cited assets exist and every
 process asset is mapped (metel-core#1507). On a pull request an asset in another repository is
 only a warning, so the release, with all four repositories checked out side by side, enforces it:
