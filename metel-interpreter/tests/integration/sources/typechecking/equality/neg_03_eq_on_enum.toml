@@ -1,0 +1,8 @@
+[options]
+error = ["T0005"]
+spec = ["spec.lexical.operators.legality-1"]
+
+[expect]
+status = "typecheck_error"
+code = "T0005"
+contains = "equality comparison requires a primitive operand"

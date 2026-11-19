@@ -1,0 +1,4 @@
+// Both operands must have one type: an integer is not a float.
+fun main() {
+    let same := 1 == 1.5; // ERROR[T0001]
+}
