@@ -1,0 +1,4 @@
+// A tuple is not a primitive operand either.
+fun main() {
+    let same := (1, 2) == (1, 2); // ERROR[T0005]
+}
