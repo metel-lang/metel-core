@@ -101,58 +101,72 @@ Bugs are not planned work, so they are not scheduled into themes.
 ## Order
 
 The numbered list is the priority order: each theme comes after the ones it lists in its
-milestone description (`After:`). The tag is its horizon, how near it is.
+milestone description (`After:`). The first tag is its horizon, how near it is.
+
+**Lanes.** The list is one priority order, but its themes are of two kinds. Most form the
+*implementation lane*, a chain in which each theme is built after the ones it lists in `After:`.
+A theme tagged `design lane` ends in accepted RFCs, not code; a theme tagged `settlement in design
+lane` ends in an implementation but its RFCs can be settled earlier. Design-lane settlement starts
+as soon as its *design* prerequisites are met and runs alongside the implementation chain; it does
+not wait for the implementation themes listed before it, and its implementation then joins the
+chain at its numbered position. Added 2026-11-19 (RFC-0241, #2095); until then the same overlap
+was written into individual milestone descriptions ("design settlement can start during ...").
 
 1. **v0.16.0** [now]: One release, staged. The shape of the Copy/Clone model is decided (RFC-0162: an explicit `Clone` and a sealed `Copy` that brings a provided `Clone`, specified in RFC-0206 and settled against RFC-0089's multiplicity lattice (the class keywords `copy`, `affine`, `linear`; `linear` reserved), with RFC-0207's `derives` clause, RFC-0212's aspect properties, RFC-0213's super-aspects and RFC-0158 `Share` settled alongside it; RFC-0135 is refused) and its follow-ups are built. The numbered milestone holds the decisions and reconciliation; the stages (milestones that say `Part of: v0.16.0`) are, in order: Call and record syntax (first, added 2026-11-07: the `pub` spelling, RFC-0218; keyword arguments at every call, RFC-0223, and the constructor-syntax review (RFC-0100 reopened and its call implementation rolled back under #1945; replacement design consolidated into RFC-0100, review #807; RFC-0226, #1944, superseded; RFC-0225, dot-prefixed anonymous records, #1943, implemented 2026-11-12 as the stage's last sweep (#1949); the stage has met its exit and closes with the release cut); dotted row labels, RFC-0221; initialization-only `:=`, RFC-0183; one-field record update, RFC-0191; per-label negative row bounds, RFC-0189), then Declarations and derivation (#1799 aspect identity, a behaviour-preserving refactor with no dependency, may start at once), Copy migration (structural kinds as std impls), and Copy and Clone in std. The surface stage goes first because it does not depend on the Copy/Clone model, so the model-defining stages that follow keep their review time (decided 2026-11-07). The Row machinery stage was emptied on 2026-11-06: RFC-0211 was split, its v0.16.0 rule is implemented in Declarations and derivation, and the row-template half (RFC-0217, with RFC-0209 and RFC-0210) moved to "Structural kinds after comptime".
 2. **v0.16.1** [next]: Defect fixes that make the implementation follow the unchanged spec: generic bodies are checked and run on the facts of their definition (#1704, #1751, #1752, #1770), module-qualified paths are order-independent (#1769), literals in generic bodies are typed and range-checked (#1774), and the website flow diagrams are fixed (#1760). A patch: the spec does not change. It is a patch that ships after v0.16.0 (decided 2026-11-06).
-3. **Linear types** [next]: The linear-type design (multiplicity, `Linear`, partial consumption) and its closure rules (RFC-0194: a closure that captures a linear value is linear) are settled, so exactly-once consumption is available to effects and capabilities.
+3. **Linear types** [next, design lane]: The linear-type design (multiplicity, `Linear`, partial consumption) and its closure rules (RFC-0194: a closure that captures a linear value is linear) are settled, so exactly-once consumption is available to effects and capabilities.
 4. **Drop and partial moves** [next]: Types with Drop run it in the right order and can be partially moved.
 5. **Move check default-on** [next]: The move check runs by default on every program.
-6. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
-7. **Structural kinds after comptime** [later]: Arrays, the native record `Clone` hook and the remaining structural kinds become std impls, so the compiler rules that v0.16.0 keeps for them are deleted.
-8. **Abstract ownership solver** [later]: The hybrid end state of the Copy and Clone design: nominal types get stored ownership interfaces (explicit conditions first, then computed once per declaration by the obligation solver), generic bodies consult only stored interfaces, witnesses are carried to elaboration, and the v0.16.0 limitation (an undecided abstract ownership is a diagnostic in generic bodies) is lifted for what is proven. Epic #1821.
-9. **Runtime value semantics** [next]: The evaluator stops deep-cloning and follows ownership.
-10. **Reference rules (B0)** [next]: References are second-class under a minimal safe rule set.
-11. **Borrow checking** [next]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
-12. **Effects design settlement** [next]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
-13. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
-14. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
-15. **Storage contract** [next]: The roles of `T[N]`, `T[]` and `List<T>` (inline fixed storage, borrowed contiguous view, owning runtime-sized buffer) are settled before the core surface freezes.
-16. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
-17. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
-18. **Instance preparation** [later]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction.
-19. **Core surface freeze** [later]: The core surface is frozen after effects validation and the storage contract, with user-declared `native`, the std API and slice validity rules not frozen; package design and a conformance corpus exist.
-20. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
-21. **Linear records** [later]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
-22. **Lifetimes and regions** [later]: Lifetime anchors / abstract regions allow stored references, including `T[]` slices (RFC-0124 slice half).
-23. **Storage identity** [later]: Storage identity and brand types are settled.
-24. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge.
-25. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
-26. **Allocator foundation** [later]: Allocator-selected handles and placement.
-27. **Views and projections** [later]: Views and open projections work in every type position.
-28. **Metel-backed List** [later]: A runtime-sized buffer.
-29. **Tracing GC (experimental)** [later]: Local tracing GC.
-30. **Compiler expansion** [later]: Broad end-to-end code generation.
-31. **Compiler MVP** [later]: Standalone multi-module compilation.
-32. **Standard library redesign** [later]: A usable, separately versioned std API.
-33. **Concurrency** [later]: The concurrency model (RFC-0003) is settled.
-34. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std. RFC-0151 (tuples as numeric-label rows, #1956) is under review in this stage: adopted, it shrinks the tuple half to confirming the row impls cover tuples (decision #1848).
-35. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
-36. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
-37. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
-38. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
-39. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
-40. **Playground and interactive docs** [parallel]: Run Metel in the browser.
-41. **Website content and experience** [parallel]: The website and tutorials are current.
-42. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
-43. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
+6. **Core representation** [next]: Metel-Core exists as the compiler's typed representation (L2 of RFC-0241 section 7): lowered from the typed AST, checked by a well-formedness lint, and run by a reference evaluator that agrees with the tree-walking interpreter on the whole fixture corpus and follows ownership instead of deep-cloning (#277, folded in from Runtime value semantics on 2026-11-19). The same evaluator is the execution model Comptime needs. The shape of generics in Core is left open (RFC-0241 open question 25); the first lowering emits monomorphic instances only. Tracker #2095.
+7. **Comptime** [next]: Comptime execution, comptime-known generic parameters and `comptime for` over a record's fields are settled and built, so fixed-size arrays and record `Clone` no longer need typechecker or native special cases.
+8. **Structural kinds after comptime** [later]: Arrays, the native record `Clone` hook and the remaining structural kinds become std impls, so the compiler rules that v0.16.0 keeps for them are deleted.
+9. **Ownership-explicit core** [next]: Moves, copies, clones and drops are explicit operations in Core (L4 of RFC-0241), with dynamic drop flags, and the move check runs over that layer instead of the surface-shaped typed AST.
+10. **Instance preparation** [next]: Frozen, monomorphized instances and an InstanceKey cache, with no run-time generic reconstruction. Pulled ahead of Borrow checking on 2026-11-19: instances are the Core-to-Core pass L3 of RFC-0241 section 7.1, so the theme follows Core representation.
+11. **Compiled kernel experiment** [next]: A deliberately small monomorphic kernel compiles and runs end to end, as an independently scoped experiment that does not constrain the core surface freeze. It is the thin backend of RFC-0241 section 7.6 step 4, pulled ahead of Borrow checking on 2026-11-19; Compiled profile v0 stays behind the freeze because its exit includes the Godot bridge.
+12. **Abstract ownership solver** [later]: The hybrid end state of the Copy and Clone design: nominal types get stored ownership interfaces (explicit conditions first, then computed once per declaration by the obligation solver), generic bodies consult only stored interfaces, witnesses are carried to elaboration, and the v0.16.0 limitation (an undecided abstract ownership is a diagnostic in generic bodies) is lifted for what is proven. Epic #1821.
+13. **Reference rules (B0)** [next, settlement in design lane]: References are second-class under a minimal safe rule set.
+14. **Borrow checking** [next, settlement in design lane]: Shared and exclusive borrowing, on by default from the first release, before the core surface freezes.
+15. **Effects design settlement** [next, design lane]: Effect rows, markers, capability objects and handler control behaviour are settled as RFCs that share one calculus.
+16. **Narrowed drop receivers** [next]: A `Drop` impl can take only the fields it needs (`&var self: Self.{ fd }`).
+17. **Spec and audit hygiene** [next]: The spec claims only what the implementation does, before it freezes.
+18. **Storage contract** [next, design lane]: The roles of `T[N]`, `T[]` and `List<T>` (inline fixed storage, borrowed contiguous view, owning runtime-sized buffer) are settled before the core surface freezes.
+19. **Usability** [next]: A newcomer can install Metel and finish the first tutorial without hand-rolled workarounds. (Added to this list 2026-11-19; the milestone already existed.)
+20. **Effect markers and capabilities** [later]: Effect rows are checked through functions, closures, generics and dispatch, native declarations in std carry checked effect metadata, and capability APIs pass authority explicitly.
+21. **Algebraic effects** [later]: Handlers run with specified resumption, abandonment, borrowing and cleanup.
+22. **Core surface freeze** [later]: The core surface is frozen after effects validation and the storage contract, with user-declared `native`, the std API and slice validity rules not frozen; package design and a conformance corpus exist.
+23. **Interop** [later]: User libraries declare native functions through a backend-neutral contract (which types cross, ownership at the call, errors, opaque handles, key checking), extending the effect metadata std natives already carry.
+24. **Linear records** [later, design lane]: Per-field multiplicity and automatic downgrade are settled against the borrow and drop rules.
+25. **Lifetimes and regions** [later, settlement in design lane]: Lifetime anchors / abstract regions allow stored references, including `T[]` slices (RFC-0124 slice half).
+26. **Storage identity** [later, design lane]: Storage identity and brand types are settled.
+27. **Compiled profile v0** [later]: A first program compiles end to end, including the compiled Godot bridge. Stays behind the freeze and Interop; the earlier compiled target is Compiled kernel experiment.
+28. **Godot integration** [later]: Godot embeds Metel through the Interop contract, after the freeze.
+29. **Allocator foundation** [later]: Allocator-selected handles and placement.
+30. **Views and projections** [later]: Views and open projections work in every type position.
+31. **Metel-backed List** [later]: A runtime-sized buffer.
+32. **Tracing GC (experimental)** [later]: Local tracing GC.
+33. **Compiler expansion** [later]: Broad end-to-end code generation.
+34. **Compiler MVP** [later]: Standalone multi-module compilation.
+35. **Standard library redesign** [later]: A usable, separately versioned std API.
+36. **Concurrency** [later, design lane]: The concurrency model (RFC-0003) is settled.
+37. **Copy migration** [stage of v0.16.0]: Hardcoded Copy/Clone rules for tuples and function types leave the typechecker and live in std. RFC-0151 (tuples as numeric-label rows, #1956) is under review in this stage: adopted, it shrinks the tuple half to confirming the row impls cover tuples (decision #1848).
+38. **Standard library additions** [parallel]: Small std additions that do not wait on the redesign.
+39. **Aspects and generics** [parallel]: Aspect system gaps: alias syntax, method constraints, where clauses, overlap, dyn Callable.
+40. **Metaprogramming and derive** [parallel]: Type-as-value reflection, derive, attributes and auto-impl aspects designed and built on the comptime core.
+41. **Records and surface syntax** [parallel]: Surface-syntax additions: conversions, unions, closure ergonomics, hoisting.
+42. **Patterns and receivers** [parallel]: Destructuring assignment, field renaming, mutable-by-value receivers.
+43. **Playground and interactive docs** [parallel]: Run Metel in the browser.
+44. **Website content and experience** [parallel]: The website and tutorials are current.
+45. **Docs and RFC tooling** [parallel]: The RFC and docs tooling is reliable.
+46. **Engineering hygiene** [parallel]: Small repo-hygiene and lint debt.
 
 Dependencies behind this order:
 
 - Move check default-on waits on the Copy decisions of #741, settled in v0.16.0, which stay on the critical path. Copy migration also waits on them and is a stage of v0.16.0, so it ships in the same release.
 - Comptime design settlement runs alongside the Copy decisions, Drop and Move check, and its implementation follows Move check default-on: RFC-0132 (execution model and comptime-known generic parameters) first, then RFC-0174 (`comptime for`). Structural kinds after comptime consumes it: `[T; N]: Copy` cannot leave the typechecker without RFC-0132 §3 (the array half of #263, now #1811), and the native record `Clone` hook (#1390) waits on RFC-0174. v0.16.0 keeps arrays and that hook as named compiler rules, which that theme deletes. The rest of metaprogramming (type-as-value, `typeinfo` and `emit`, derive, attributes, auto-impl) stays parallel.
 - Linear types follows the Copy decisions of v0.16.0. It is design settlement only (RFC-0089, then RFC-0194 on linear closures and captures, which needs RFC-0089 and function types satisfying `Linear` via the auto-impl mechanism, #739); implementation follows Drop and partial moves. Linear records (RFC-0091) also waits on Borrow checking (its open question is the type of a borrow taken before a downgrade) and on Narrowed drop receivers.
-- Runtime value semantics (#277) starts once move checking is default-on and coordinates with Drop; it does not wait behind Allocator foundation.
+- Core representation (RFC-0241 section 7, #2095) starts once move checking is default-on and coordinates with Drop; it does not wait behind Allocator foundation. It absorbed Runtime value semantics (#277, merged 2026-11-19): the evaluator that stops deep-cloning is the Core evaluator. Its first lowering emits monomorphic instances taken from today's per-instance reconstruction, so it does not wait on the shape of generics in Core (RFC-0241 open question 25).
+- Comptime runs on the Core evaluator, so it follows Core representation; its design settlement still runs alongside. Ownership-explicit core (the move check over a Core with explicit moves, copies and drops) follows Core representation and is ordered after Comptime by priority, not dependency.
+- Instance preparation is the Core-to-Core pass L3 and follows Core representation. Compiled kernel experiment is the thin backend over it: monomorphic, no borrow checker, drops tracked dynamically. Both were pulled ahead of Borrow checking on 2026-11-19, because a compiled path does not need the borrow checker (an accepted program means the same under the reference semantics) and a working backend gives the effects and storage settlements an implementation to validate against. Neither is gated on the freeze.
 - Borrow checking (RFC-0122) is before the core-surface freeze, and Lifetimes and regions follow it.
 - Effects design settlement draws on Linear types (exactly-once consumption, one-shot resumption) and the Copy decisions (callable multiplicity). It overlaps the ownership implementation themes; its exit is a set of accepted RFCs, and no effects implementation starts before them.
 - Effect markers and capabilities covers the `native` declarations std already has: each carries checked effect metadata, so a native cannot silently erase an effect. Interop extends that to user-declared natives after the freeze.
