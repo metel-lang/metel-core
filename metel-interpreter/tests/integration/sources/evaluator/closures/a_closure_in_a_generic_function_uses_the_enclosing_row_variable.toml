@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.functions.closures.legality-28"]
+
+[expect]
+status = "success"
