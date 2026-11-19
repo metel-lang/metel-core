@@ -786,7 +786,7 @@ name = "Named record patterns checked in generic bodies"
 introduced = "v0.16.0"
 source = ["metel-core#2056", "changelog:v0.16.0"]
 subsystems = ["move", "patterns"]
-rules = ["spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]
+rules = ["spec.declarations.variables.record-pattern-bindings.legality-1", "spec.ownership.partial-moves.which-constructs-support-partial-moves.legality-1"]
 
 [[features]]
 id = "module-qualified-construction"
