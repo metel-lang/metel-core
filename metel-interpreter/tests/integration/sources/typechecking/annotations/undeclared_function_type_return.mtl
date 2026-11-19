@@ -1,0 +1,4 @@
+// A function type validates its return type too.
+fun unused(f: |i64| -> Missing) { }
+
+fun main() { }

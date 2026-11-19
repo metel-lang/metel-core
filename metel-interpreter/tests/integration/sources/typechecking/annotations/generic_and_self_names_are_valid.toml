@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.types.type-inference.legality-3"]
+
+[expect]
+status = "success"

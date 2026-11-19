@@ -1,0 +1,4 @@
+// `std` is a keyword, so it cannot be a segment anywhere but the start of a path.
+import root::util::std::f;
+
+fun main() { }

@@ -1,0 +1,8 @@
+// The bound lists `.auth: String`: a record whose `auth` is an i64 does not satisfy it.
+fun needs_auth<record R: .{ .auth: String, .. }>(r: R) -> String {
+    r.auth
+}
+
+fun main() {
+    needs_auth(.{ .auth = 1 });
+}

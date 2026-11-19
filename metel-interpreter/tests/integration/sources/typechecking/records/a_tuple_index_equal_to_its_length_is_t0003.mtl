@@ -1,0 +1,5 @@
+// Indices are zero-based: the first index past the last element is out of bounds.
+fun main() {
+    let pair := (1, 2);
+    let _x := pair.2;
+}

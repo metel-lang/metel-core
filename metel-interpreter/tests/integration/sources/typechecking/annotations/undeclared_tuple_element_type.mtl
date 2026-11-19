@@ -1,0 +1,4 @@
+// A tuple type validates every element.
+fun unused(pair: (i64, Missing)) { }
+
+fun main() { }

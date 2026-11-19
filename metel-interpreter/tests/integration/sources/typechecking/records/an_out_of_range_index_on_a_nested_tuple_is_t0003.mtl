@@ -1,0 +1,5 @@
+// The bound is checked on the inner tuple too.
+fun main() {
+    let t := (1, (2, 3));
+    let _x := t.1.2;
+}

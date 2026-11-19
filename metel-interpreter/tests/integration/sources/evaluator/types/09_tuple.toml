@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.types.tuples.legality-1"]
+spec = ["spec.types.tuples.legality-1", "spec.types.tuples.legality-8"]

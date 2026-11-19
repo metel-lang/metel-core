@@ -1,0 +1,4 @@
+// `std` is a keyword: it cannot name a binding either.
+fun main() {
+    let std := 1;
+}

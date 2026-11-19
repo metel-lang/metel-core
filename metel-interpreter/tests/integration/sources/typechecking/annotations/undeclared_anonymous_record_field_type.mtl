@@ -1,0 +1,4 @@
+// A record type validates every field type.
+fun unused(r: .{ .x: Missing }) { }
+
+fun main() { }

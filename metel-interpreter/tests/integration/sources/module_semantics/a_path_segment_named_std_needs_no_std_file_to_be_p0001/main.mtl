@@ -1,0 +1,4 @@
+// With no std.mtl at all, `std` after the root is still not a module name.
+import root::std::f;
+
+fun main() { }
