@@ -1,0 +1,5 @@
+// `()` is the empty row: it has no labels at all.
+fun main() {
+    let u := ();
+    let _x := u.0;
+}

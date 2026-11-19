@@ -1,2 +1,2 @@
 [options]
-spec = ["spec.types.generics.row-bounds.legality-6"]
+spec = ["spec.types.generics.row-bounds.legality-6", "spec.types.generics.row-bounds.legality-10"]

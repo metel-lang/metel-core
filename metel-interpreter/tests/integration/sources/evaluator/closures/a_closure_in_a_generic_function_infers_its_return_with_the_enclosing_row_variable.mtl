@@ -1,0 +1,19 @@
+// The enclosing function's row variable in a closure whose return type is inferred, and in a
+// closure nested in another closure.
+fun param_only<record R>(r: .{ .x: i64, ..R }) -> i64 {
+    let g := |p: .{ .x: i64, ..R }| { p.x + 1 };
+    return g(r);
+}
+
+fun nested<record R>(r: .{ .x: i64, ..R }) -> i64 {
+    let outer := |p: .{ .x: i64, ..R }| {
+        let inner := |q: .{ .x: i64, ..R }| { q.x * 2 };
+        inner(p)
+    };
+    return outer(r);
+}
+
+fun main() {
+    assert(param_only(.{ .x = 1, .z = "z" }) == 2);
+    assert(nested(.{ .x = 3 }) == 6);
+}

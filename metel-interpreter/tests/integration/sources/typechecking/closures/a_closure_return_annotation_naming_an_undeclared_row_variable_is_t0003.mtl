@@ -1,0 +1,4 @@
+// The return annotation alone names a row variable no enclosing function declares.
+fun main() {
+    let f := |p: .{ .x: i64, .. }| -> .{ .x: i64, ..R } { p };
+}

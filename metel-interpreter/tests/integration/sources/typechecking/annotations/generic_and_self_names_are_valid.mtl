@@ -8,6 +8,13 @@ struct Box<T> {
 
 fun keep<T>(value: T) -> T { value }
 
+// A generic parameter in scope resolves in every nested position.
+fun nested<T>(items: [T], pair: (T, T), f: |T| -> T, r: .{ .x: T }) -> T {
+    f(pair.0)
+}
+
 fun main() {
     let value: i64 := keep(1);
+    let result: i64 := nested([1, 2], (3, 4), |n: i64| { n + 1 }, .{ .x = 5 });
+    assert(result == 4);
 }

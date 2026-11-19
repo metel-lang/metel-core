@@ -1,0 +1,8 @@
+[options]
+error = ["T0003"]
+spec = ["spec.types.tuples.legality-8"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "out of bounds"

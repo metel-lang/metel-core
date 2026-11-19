@@ -1,0 +1,9 @@
+[options]
+skip = "pending: #2105"
+error = ["T0003"]
+spec = ["spec.functions.closures.legality-28"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+contains = "undefined row variable"
