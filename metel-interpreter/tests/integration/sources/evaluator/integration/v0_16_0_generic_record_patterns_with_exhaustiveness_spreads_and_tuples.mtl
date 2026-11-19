@@ -12,7 +12,7 @@ fun pick<T>(c: Cell, unused: T) -> i64 {
 fun classify(m: Mode, c: Cell) -> i64 {
     match ((m, c.pair)) {
         (Mode::On, (a, _)) => a,
-        (Mode::Off, (_, b)) => b,
+        (Mode::Off, (_, b)) => { b },
     }
 }
 
