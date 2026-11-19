@@ -1,0 +1,6 @@
+// `std` is a keyword and the standard-library root: a user module named `std` cannot be named in a path.
+import root::std::f;
+
+fun main() {
+    assert(f() == 1);
+}

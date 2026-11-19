@@ -1,0 +1,9 @@
+// Inside a generic function a closure's annotations may name the enclosing function's row variable.
+fun keep<record R>(r: .{ .x: i64, ..R }) -> i64 {
+    let f := |p: .{ .x: i64, ..R }| -> .{ .x: i64, ..R } { p };
+    return f(r).x;
+}
+
+fun main() {
+    assert(keep(.{ .x = 1, .y = 2 }) == 1);
+}

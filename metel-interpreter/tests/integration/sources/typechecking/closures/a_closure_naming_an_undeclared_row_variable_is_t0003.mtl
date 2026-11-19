@@ -1,0 +1,5 @@
+// A stand-alone closure has no generics list: a row variable in its annotations must come from an
+// enclosing generic function.
+fun main() {
+    let f := |p: .{ .x: i64, ..R }| -> .{ .x: i64, ..R } { p };
+}
