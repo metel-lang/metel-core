@@ -161,6 +161,19 @@ Exits 0. A mismatch means the limitation was fixed or changed shape: resolve the
 evidence, and remove its `// limit:` marker), or update the reproduction. Do not tag with one
 outstanding.
 
+**3c-ter. Records do not overlap or contradict** — `record.py new` flags overlaps when a record is
+created, but records also drift against each other and against the world afterwards (a tracking
+issue closed, a pair acknowledged for a reason that no longer holds). On a pull request an
+unacknowledged pair is only a warning, so the release is where it is enforced (PROC-DOCS-014):
+
+```bash
+python3 docs/architecture/tools/record.py check --strict
+```
+
+Exits 0. Resolve each finding in `metel-docs`: close or merge the duplicate record, correct the
+one that contradicts a fact, or acknowledge the pair with a reason (`relates:`). Do not tag with
+one outstanding.
+
 **3d. Operations Specification current** — every requirement's cited assets exist and every
 process asset is mapped (metel-core#1507). On a pull request an asset in another repository is
 only a warning, so the release, with all four repositories checked out side by side, enforces it:
