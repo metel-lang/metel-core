@@ -91,6 +91,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 docs/rfcs/tools/rfc.py check
 
+      # docs/reference/spec/lexical.md's keyword list must name the words the parser reserves
+      # (the `keyword` rule of metel-frontend/src/grammar.pest). Run here, where grammar.pest sits
+      # beside the spec, so a parser change and its spec edit are checked together; metel-docs
+      # runs the same tool against metel-core develop. --require: a missing grammar.pest fails.
+      - name: lexical.md keyword list matches the parser
+        run: python3 docs/tools/check_keywords.py --grammar metel-frontend/src/grammar.pest --require
+
   architecture-evidence:
     name: Architecture evidence
     runs-on: ubuntu-latest
