@@ -229,7 +229,7 @@ The same constraints remain in `ctx.constraints` after the inline solve; the fin
 A few inference cases call `ctx.solve()` eagerly to determine structural type information before emitting further constraints:
 
 - `Expr::ForIn`: resolves the iterable type to decide Array vs Range
-- `Expr::FieldAccess`, `Expr::MethodCall`, `Expr::TupleAccess`: resolves the receiver type to look up fields/methods
+- `Expr::FieldAccess`, `Expr::MethodCall`: resolves the receiver type to look up fields/methods
 
 These partial solves are read-only (they produce a `Substitution` value but don't modify `ctx.constraints`). They are a pragmatic workaround for the fact that field/method lookup requires knowing the concrete type name — a fundamental limitation of constraint-only inference.
 
@@ -412,8 +412,9 @@ array-index casts. Generic and nonnumeric casts remain pending rather than erasi
 
 Unguarded matches retain definition-resolved literal, wildcard, whole-binding
 and enum-variant and named-struct patterns with declaration/field identities and
-solved binding types. Tuple patterns retain their recursive element shape and
-consume through individual tuple projections, preserving partial moves.
+solved binding types. A tuple is a record of integer labels, so a tuple pattern is a
+record pattern: it retains its recursive element shape and consumes through individual
+label projections, preserving partial moves.
 Bare variant resolution stays in inference. The consumer observes the scrutinee
 once, applies pattern moves to the saved place and scopes bindings per arm, then
 joins only continuing arms. Enum exhaustiveness uses the retained variant set;
@@ -657,7 +658,7 @@ checks, in order:
 
 1. **Orphan rule (`T0014`)** — an impl is rejected unless the aspect or the target
    type is local to the declaring module. Structural type constructors (`T[]`,
-   tuples, `fun` types) are treated as owned by `std::core`, never locally owned by
+   `fun` types) are treated as owned by `std::core`, never locally owned by
    a user module on their own (`outermost_id` returns `None` for them) — so a user
    module may only implement a *locally-declared* aspect for a structural target.
 2. **Overlap detection (`T0015`)** — a pairwise scan across every impl of a given
@@ -668,7 +669,7 @@ checks, in order:
    syntactic negation). This positional bound extraction
    (`scoped_type_param_bounds`) and the `TypeParam(i)` canonicalization it depends
    on (`canonicalize_impl_target`) apply identically to `Named` targets and to
-   structural targets (`T[]`'s element position, a tuple's element positions, a
+   structural targets (`T[]`'s element position, a
    `fun` type's parameter/return positions) — RFC-0061 §2 requires structural
    targets to follow the same rules "without special cases," and the two functions
    are written to share one code path rather than special-casing shape.
@@ -711,7 +712,7 @@ result that isn't sanctioned by the bound.
 
 ### Structural targets
 
-`Type::Array`/`Type::Tuple`/`Type::Fun` never resolve to a `SymbolId` the way a
+`Type::Array`/`Type::Fun` never resolve to a `SymbolId` the way a
 named type does, so they're handled as explicit match arms wherever bound
 satisfaction or diagnostics are produced, rather than falling through a generic
 `Type::Named` path. `check_type_satisfies_bounds` emits a distinct `T0012` hint per
@@ -769,7 +770,7 @@ recognises the tail of a literal row as a nominal row argument for `where all R:
 **Field visibility through residuals (#1488).** A residual keeps its brand, so the RFC-0032
 check (`check_field_visibility`) runs on field access to a residual (the field is looked up on the
 brand's struct), on the projection expression and on the projection type. Separately,
-`projections.rs` rejects a `public` function, inherent method or public field of a public struct
+`projections.rs` rejects a `pub` function, inherent method or `pub` field of a `pub` struct
 whose written type names a private field in a residual (`no_private_names`, `T0009`); aspect
 impl methods are exempt because their visibility comes from the aspect. Row conditions on a
 nominal receiver (`row_condition_fields`) resolve the type by its `NominalId` before falling

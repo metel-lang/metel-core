@@ -28,20 +28,27 @@ Source: `src/evaluator/` — split into `mod.rs` (core), `builtins.rs`, `call.rs
 
 ```rust
 pub enum Value {
-    Int(i64),
-    Float(f64),
-    Bool(bool),
-    Str(String),
-    Unit,
-    Tuple(Vec<Value>),
+    I64(i64), I8(i8), I16(i16), I32(i32), U8(u8), U16(u16), U32(u32), U64(u64),
+    F64(f64), F32(f32), Char(char), Boolean(bool), Str(String),
     Array(Rc<RefCell<Vec<Value>>>),
-    Struct { name: String, fields: HashMap<String, Value> },
-    Enum   { name: String, variant: String, fields: HashMap<String, Value> },
+    Record { fields: HashMap<String, Value>, type_id: Option<SymbolId> },
+    Struct { name: String, type_id: Option<SymbolId>, fields: HashMap<String, Value> },
+    Enum   { name: String, type_id: Option<SymbolId>, variant: String,
+             variant_id: Option<VariantId>, fields: HashMap<String, Value> },
     Callable(RuntimeCallable),
-    Pointer(Rc<RefCell<Value>>),        // shared immutable reference — &expr (RFC-0043)
-    MutPointer(Rc<RefCell<Value>>),     // shared mutable reference — &mut expr (RFC-0043)
+    Reference(Rc<RefCell<Value>>),
+    MutReference(Rc<RefCell<Value>>),
+    FieldReference { root: Rc<RefCell<Value>>, path: Vec<PathSegment> },
+    MutFieldReference { root: Rc<RefCell<Value>>, path: Vec<PathSegment> },
+    DynAspect { data: Rc<RefCell<Value>>, type_id: Option<SymbolId>, concrete_type: Type,
+                aspect_id: SymbolId, aspect_name: String, type_args: Vec<Type> },
 }
 ```
+
+There is no unit or tuple variant. The unit value `()` is the empty anonymous record, built by
+`Value::unit()` and recognised by `Value::is_unit()` (RFC-0231), and a tuple is a record whose labels are the
+integers `0..N` (RFC-0151, `Type::Tuple` and `Value::Tuple` were retired in v0.16.0). A closed record whose labels
+are exactly `0..N-1` prints as a tuple, `(A,)` for one element and `()` for none.
 
 `RuntimeCallable` distinguishes host-backed intrinsic callables from user
 closures without making either one a special namespace concept:
@@ -124,27 +131,31 @@ Lexical `Environment` storage is intentionally separate from runtime metadata. M
 
 ## Evaluation Entry Point
 
-`evaluate()` runs three passes over the top-level declarations:
+`evaluate()` runs these passes over the top-level declarations (`run_passes`):
 
-**Pass 1a — Define placeholders:**
-Every top-level `Fun` is bound to `Value::Unit` in the root environment. This ensures the names exist before any closure is created, so closures formed in Pass 1b can capture them via shared `Rc`s.
+**Pass 0 — Record let identities:**
+Every top-level `let`/`var` identity is recorded, so a later call whose callee identity is not yet registered can be
+told apart ("not evaluated yet") from an internal error (ADR-0042).
 
-**Pass 1b — Create closures:**
-Every top-level `Fun` clones the full current environment and creates a `Value::Callable(RuntimeCallable::Closure(...))`. The clone captures the `Rc`s from Pass 1a, not copies of `Value::Unit`. `env.set()` then mutates those `Rc`s in place.
+**Pass 1b — Register functions by identity:**
+Every top-level `Fun` becomes a `Value::Callable(RuntimeCallable::Closure(...))` registered in the shared
+`RuntimeRegistry` under its `symbol_id` (an overloaded definition) or `def_id` (an ordinary one); a `native` function
+binds to its host implementation. There is no placeholder pass: the registries are shared across the whole
+evaluation and a call looks its callee up by identity at call time, so it always sees the final value, and mutual
+recursion needs no fixpoint or separate reference-resolution step (metel-core#1054).
 
 Top-level `Impl` methods are registered into the shared `RuntimeRegistry` during this pass. Inherent impls with no receiver are stored as type-owned associated values for `Type::method(...)` path resolution; inherent impls with a receiver are stored as receiver methods under the owning type. Aspect impls are stored as explicit aspect records attached to the owning type, and each runtime method entry carries receiver/signature metadata.
 
-Because all function closures from Pass 1b share the same set of `Rc`s, after Pass 1b completes every closure's captured environment already contains references to every other function closure — including those defined after it. This "ties the knot" for mutual recursion without a fixpoint pass or separate reference-resolution step.
-
 **Pass 2 — Evaluate bindings:**
-Top-level `let`/`mut` bindings and statements are evaluated in order. `Fun` and `Impl` declarations are skipped (already handled in 1a/1b).
+Top-level `let`/`var` bindings and statements are evaluated in order. `Fun` and `Impl` declarations are skipped
+(already registered).
 
 **Call `main()`:**
-`main`'s body is executed directly in the root environment so that top-level `let`/`mut` bindings from Pass 2 are visible. `Signal::Return` from `main` is treated as a normal exit.
+`main`'s body is executed directly in the root environment so that top-level `let`/`var` bindings from Pass 2 are visible. `Signal::Return` from `main` is treated as a normal exit.
 
 ### Self-recursion inside blocks
 
-`eval_decl` for `Fun` uses the same define-placeholder / clone / set pattern as the top-level pass so that functions defined inside a block can call themselves recursively.
+A block's nested `fun`s are hoisted by `hoist_nested_funs`: each gets a placeholder (the unit value) before any statement runs, so sibling functions and the function itself can name each other, and a function is built the first time it is needed (`pending_funs`, metel-core#712). That is how a function defined inside a block calls itself recursively.
 
 ---
 
