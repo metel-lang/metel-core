@@ -19,25 +19,38 @@ changes the language. Until then nothing refers to a future number.
   issue rewriting, RFC lifecycle changes, and branches and draft pull requests. When the patch
   is tagged the minor becomes the release in progress and its held pull requests merge.
 - **A release may be staged.** A large release can be built from several stage milestones and still
-  be one release. A stage is a theme (no version number) whose description has the line
-  `Part of: vX.Y.Z` after its `Horizon:` line, then its outcome and exit test. The numbered milestone
-  holds the release-level issues (decisions, reconciliation, tracking); the stages hold the
-  implementation. The release in progress is the numbered milestone together with its stages:
-  `/gap-analysis`, the integration session and `/cut-release` read the whole set, and the tag waits
-  for all of it. A stage's title carries its release as a bracket tag, `[vX.Y.Z] Theme name`, so the
-  milestone list shows which stage belongs to which release; the `Part of:` line stays the source of
-  truth, and a stage that slips leaves the release when its `Part of:` line is deleted and the tag
-  dropped from the title; it stays
-  a theme. At the cut the stages are closed. Stages do not count toward the limit on numbered
-  milestones. To list a release's open issues:
+  be one release. A stage is a theme (no version number) with a `[vX.Y.Z] Theme name` title. The
+  numbered milestone holds the release-level issues (decisions, reconciliation, tracking); the stages
+  hold the work. The release in progress is the numbered milestone together with its stages, and the
+  tag waits for all of them. Stages do not count toward the limit on numbered milestones.
+- **A stage is linked to its release in both directions.** The stage's description has the line
+  `Part of: vX.Y.Z` after its `Horizon:` line, then its outcome and exit test. The release's
+  description has a `Stages:` block after its outcome, one `- [vX.Y.Z] Theme name` per line, in the order
+  the stages are meant to finish. A registry feature a stage delivers carries that stage's name in its
+  `stage` field (`tools/feature-matrix/registry.toml`). `tools/release_stages.py` is the one reader of
+  all this, and `/gap-analysis`, `/stage-gate`, the integration session and `/cut-release` call it:
 
-```bash
-# the release milestone, then every stage that declares `Part of: vX.Y.Z` (ROADMAP.md)
-gh issue list --milestone "vX.Y.Z" --state open
-gh api repos/metel-lang/metel-core/milestones --paginate \
-  | jq -r --arg v "vX.Y.Z" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
-  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
-```
+  ```bash
+  tools/release_stages.py list  vX.Y.Z           # the stages in order: state, open issues, gate report
+  tools/release_stages.py open  vX.Y.Z           # the open issues of the release and of every stage
+  tools/release_stages.py check vX.Y.Z           # the two links agree, titles are tagged, due dates are in order
+  ```
+
+- **A stage is gated when it completes.** The gates are not saved for the end. When a stage's issues
+  are closed, `/stage-gate vX.Y.Z "<stage>"` checks its exit test, repository-wide bugs, the feature
+  matrix for the stage together with the stages already gated (a stage gate is cumulative, so a later
+  stage's unfinished features never block it), the full test suite on `develop`, and the lifecycle of
+  its RFCs, and commits a report. A stage that passes is closed, and a closed stage is a gated stage;
+  one that does not stays open, and the release does not move past it. Stages are gated in the order
+  they finish, not the order they were planned. `/gap-analysis` runs at the start of a stage the same
+  way it runs at the start of a release.
+- **The cut then has little left to find.** `/cut-release` requires every stage closed with a passing
+  report (`tools/release_stages.py check vX.Y.Z --gated`), then runs the integration session once more
+  over the whole release on the frozen tree. That run is the only place the pairs that span two
+  stages are first exercised together, so a stage gate does not replace it. A stage that has not
+  been gated can slip: delete its `Part of:` line, remove it from the `Stages:` list, drop the tag from
+  its title, and move its registry features to the release they will ship in; it stays a theme. A gated
+  stage's work is already on `develop`, so it stays in the release.
 
 - **Milestone order.** GitHub lists milestones by due date, so every milestone carries a placeholder
   due date that encodes only the order of this file: a release, then its stages, then the next

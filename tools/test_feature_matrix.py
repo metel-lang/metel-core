@@ -5,14 +5,14 @@ from pathlib import Path
 
 from tools.feature_matrix import (
     TABLE_END, TABLE_START, Feature, Fixture, apply_bulk, check_table, compute_metrics, evaluate_pair, gate_blockers,
-    gate_violations, load_bulk, load_gate_config, load_registry, load_states, render_table,
+    gate_violations, load_bulk, load_gate_config, load_registry, load_states, render_table, scope_to_stages,
 )
 
 
-def feature(identifier, rules, subsystems=("ownership",), introduced="v0.16.0"):
+def feature(identifier, rules, subsystems=("ownership",), introduced="v0.16.0", stage=""):
     return Feature(
         identifier, identifier.title(), introduced, ("test source",),
-        frozenset(subsystems), frozenset(rules),
+        frozenset(subsystems), frozenset(rules), stage,
     )
 
 
@@ -248,6 +248,57 @@ class RegistryValidation(unittest.TestCase):
             features = {"a": feature("a", []), "b": feature("b", [])}
             with self.assertRaisesRegex(ValueError, "GitHub issue URL"):
                 load_states(path, features)
+
+
+class StageScope(unittest.TestCase):
+    """A stage gate is cumulative: the stages gated so far, never the stages still open."""
+    RELEASE = "v0.17.0"
+
+    def registry(self):
+        done = feature("done", ["spec.ownership.d.legality-1"], introduced=self.RELEASE, stage="One")
+        this = feature("this", ["spec.ownership.t.legality-1"], introduced=self.RELEASE, stage="Two")
+        later = feature("later", ["spec.ownership.l.legality-1"], introduced=self.RELEASE, stage="Three")
+        old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.16.0")
+        return {f.id: f for f in (done, this, later, old)}
+
+    def test_no_stages_is_the_whole_release(self):
+        features = self.registry()
+        self.assertIs(scope_to_stages(features, self.RELEASE, None), features)
+
+    def test_a_stage_gate_keeps_the_gated_stages_and_other_releases_and_drops_later_stages(self):
+        scoped = scope_to_stages(self.registry(), self.RELEASE, ["One", "Two"])
+        self.assertEqual(sorted(scoped), ["done", "old", "this"])
+
+    def test_an_unstaged_feature_of_the_release_is_an_error_not_an_omission(self):
+        features = self.registry()
+        features["loose"] = feature("loose", [], introduced=self.RELEASE)
+        with self.assertRaisesRegex(ValueError, "without a stage: loose"):
+            scope_to_stages(features, self.RELEASE, ["One"])
+
+    def test_a_feature_of_another_release_needs_no_stage(self):
+        features = {
+            "old": feature("old", [], introduced="v0.16.0"),
+            "new": feature("new", [], introduced=self.RELEASE, stage="One"),
+        }
+        self.assertEqual(sorted(scope_to_stages(features, self.RELEASE, ["One"])), ["new", "old"])
+
+    def test_a_later_stage_blocks_the_whole_release_gate_but_not_an_earlier_stage_gate(self):
+        features = self.registry()
+        whole = gate_violations(self.RELEASE, features, [], {}, set(), [], CONFIG)
+        scoped_features = scope_to_stages(features, self.RELEASE, ["One"])
+        scoped = gate_violations(self.RELEASE, scoped_features, [], {}, set(), [], CONFIG)
+        self.assertTrue([v for v in whole if "Later" in v.detail], "the whole release sees the later stage's open pairs")
+        self.assertFalse([v for v in scoped if "Later" in v.detail or "This" in v.detail])
+
+    def test_the_registry_reads_a_stage_and_rejects_one_without_a_release(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "registry.toml"
+            base = '[[features]]\nid = "x"\nname = "X"\nsource = ["t"]\nsubsystems = ["ownership"]\n'
+            path.write_text(base + 'introduced = "v0.17.0"\nstage = "Linear types"\n')
+            self.assertEqual(load_registry(path)[0]["x"].stage, "Linear types")
+            path.write_text(base + 'introduced = "unresolved"\nstage = "Linear types"\n')
+            with self.assertRaisesRegex(ValueError, "must name the release"):
+                load_registry(path)
 
 
 if __name__ == "__main__":

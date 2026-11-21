@@ -18,11 +18,17 @@ analyse, and no cycle object anywhere.
 ## Step 1 — Load milestone context
 
 ```bash
-# the release milestone, then every stage that declares `Part of: $ARGUMENTS` (ROADMAP.md)
+# the release milestone, then each of its stages (ROADMAP.md)
+python3 tools/release_stages.py open "$ARGUMENTS"
+```
+
+For a staged release the argument is either the numbered release, which reads the release milestone and
+every stage, or a single stage by its title (`"[v0.17.0] Linear types"`), which reads that stage alone. Run
+it on the release when the release starts and on each stage when work on it starts: a stage's entry
+analysis is not repeated by the release's, and its exit is `/stage-gate`. For a single stage:
+
+```bash
 gh issue list --milestone "$ARGUMENTS" --state open
-gh api repos/metel-lang/metel-core/milestones --paginate \
-  | jq -r --arg v "$ARGUMENTS" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
-  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
 ```
 
 Bugs live in the `Backlog` milestone, not in themes (`ROADMAP.md` § Bugs). Also list
