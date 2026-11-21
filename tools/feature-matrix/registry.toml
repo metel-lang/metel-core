@@ -3,6 +3,10 @@ subsystems = ["move", "inference", "closures", "patterns", "surface", "functions
 
 # Registry seeded from implemented RFC coverage and release changelog capabilities.
 # Introduction releases reflect first shipped behavior; RFCs for compiler internals are excluded.
+#
+# A feature of a staged release also carries `stage = "<stage name>"`, the stage's title without its `[vX.Y.Z] `
+# tag (ROADMAP.md, "How milestones work"). `/stage-gate` gates a stage with `feature_matrix.py <release> --stage ...`
+# over the stages gated so far, and that scoped run is an error if any feature of the release has no stage.
 
 # Gate thresholds (ADR-0069). A release may raise them, never lower them.
 [gate]

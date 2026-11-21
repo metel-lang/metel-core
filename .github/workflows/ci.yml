@@ -337,6 +337,9 @@ jobs:
       - name: feature matrix self-test (metel-core#2082)
         run: python3 -m unittest tools.test_feature_matrix
 
+      - name: release stages self-test (metel-core#2130)
+        run: python3 -m unittest tools.test_release_stages
+
   clippy-allow-ratchet:
     name: clippy-allow ratchet
     runs-on: ubuntu-latest

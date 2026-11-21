@@ -39,15 +39,22 @@ That range is what this release ships. Read it — it is the input to every gate
 ## Step 1 — Milestone is actually complete
 
 ```bash
-# the release milestone, then every stage that declares `Part of: $ARGUMENTS` (ROADMAP.md)
-gh issue list --milestone "$ARGUMENTS" --state open
-gh api repos/metel-lang/metel-core/milestones --paginate \
-  | jq -r --arg v "$ARGUMENTS" '.[] | select((.description // "") | split("\n") | map(rtrimstr("\r")) | any(. == "Part of: " + $v)) | .title' \
-  | while IFS= read -r stage; do echo "== $stage"; gh issue list --milestone "$stage" --state open; done
+# the release milestone, then each of its stages (ROADMAP.md)
+python3 tools/release_stages.py open "$ARGUMENTS"
 ```
 
-A staged release is complete when the numbered milestone and every stage have no open issue.
-After the tag, close the stage milestones.
+A staged release is complete when the numbered milestone has no open issue and **every stage has
+been gated**: closed, with no open issue and a passing report from `/stage-gate`. The stages were
+closed at their own gates, so nothing is closed here:
+
+```bash
+python3 tools/release_stages.py check "$ARGUMENTS" --gated
+```
+
+A stage that is still open, or has no passing report at
+`docs/release-notes/integration/$ARGUMENTS/stage-<slug>.md`, is not done: run `/stage-gate` for it, or
+slip it (`ROADMAP.md`) before the cut. The links must also agree; `check` reports a stage the release
+does not list or whose title lacks its tag.
 
 Every remaining open issue is either genuinely done and needs closing, or is deferred and
 must be **re-milestoned to a later version** — not left silently attached to this one.
@@ -81,6 +88,11 @@ If the report is missing, stop and run `/milestone-integration-test $ARGUMENTS` 
 The computed gate must also print `Gate: PASS` on the frozen tree. It checks the new
 features' Tier A cells against the full registry; partial scores block until they reach
 100% or have an explicit `n/a` or deferred disposition.
+
+For a staged release this is the whole-release run, with no `--stage` scope: it is the only gate
+that sees the pairs spanning two stages, which no stage gate did (each stage gate saw only the stages
+gated before it). Expect it to find little; a finding here that a stage gate should have caught is itself
+a finding about that gate.
 
 ## Step 2 — Release gate
 
