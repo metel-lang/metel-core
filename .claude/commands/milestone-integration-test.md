@@ -5,7 +5,11 @@ Exercise a completed milestone's features **in combination**, before `/cut-relea
 **Arguments:** `$ARGUMENTS` — the version, e.g. `v0.13.0` (the numbered release milestone; a
 release built from a theme is renamed to its version before this session, see `ROADMAP.md`).
 For a staged release the features under test are those of the numbered milestone and of every
-milestone whose description says `Part of: $ARGUMENTS`.
+stage it lists (`tools/release_stages.py list $ARGUMENTS`). Each stage has already passed `/stage-gate`
+over itself and the stages before it, so this session is the whole-release run: no `--stage` scope, so
+it is the one that sees the pairs spanning two stages. Start from the stage reports in
+`docs/release-notes/integration/$ARGUMENTS/` and do not redo what they cover; fixtures they added count.
+Every feature of a staged release carries its stage in the registry (`stage = "<name>"`).
 
 The per-PR gate (AGENTS.md § Verification tiers) proves each diff in isolation.
 `/cut-release`'s Step 2 sweeps repository-wide hygiene. Neither exercises what happens

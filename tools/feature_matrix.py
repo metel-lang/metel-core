@@ -30,6 +30,7 @@ class Feature:
     source: tuple[str, ...]
     subsystems: frozenset[str]
     rules: frozenset[str]
+    stage: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,7 @@ def load_registry(path: Path) -> tuple[dict[str, Feature], set[tuple[str, str]]]
             source=tuple(entry.get("source", [])),
             subsystems=frozenset(entry.get("subsystems", [])),
             rules=frozenset(entry.get("rules", [])),
+            stage=entry.get("stage", ""),
         )
         if not feature.id or feature.id in features:
             raise ValueError(f"missing or duplicate feature id: {feature.id!r}")
@@ -81,6 +83,10 @@ def load_registry(path: Path) -> tuple[dict[str, Feature], set[tuple[str, str]]]
             raise ValueError(f"{feature.id}: introduced must be a version or 'unresolved'")
         if not feature.subsystems:
             raise ValueError(f"{feature.id}: at least one subsystem tag is required")
+        if not isinstance(feature.stage, str):
+            raise ValueError(f"{feature.id}: stage must be a string")
+        if feature.stage and feature.introduced == "unresolved":
+            raise ValueError(f"{feature.id}: a feature with a stage must name the release it is introduced in")
         if declared_subsystems and not feature.subsystems <= declared_subsystems:
             unknown = sorted(feature.subsystems - declared_subsystems)
             raise ValueError(f"{feature.id}: unknown subsystem tag(s): {', '.join(unknown)}")
@@ -253,6 +259,25 @@ GATE_DEFAULTS = {"min_joint_fixtures": 2, "feature_tier_a_floor": 0.5, "tier_b_o
 class Violation:
     rule: str
     detail: str
+
+
+def scope_to_stages(features: dict[str, Feature], release: str, stages: list[str] | None) -> dict[str, Feature]:
+    """The registry as a stage gate sees it (`/stage-gate`): the features introduced in `release` whose stage is in
+    `stages`, together with every feature of any other release. A stage gate is cumulative: `stages` names the stage
+    being gated and every stage already gated, so a later stage's features, which are not done, are left out and
+    cannot block it. `stages` of None is the whole release, which is the final gate.
+
+    A staged release needs every one of its features to name its stage; one that does not has no place in a scoped
+    gate, which is an error rather than a silent omission."""
+    if stages is None:
+        return features
+    wanted = set(stages)
+    unstaged = sorted(f.id for f in features.values() if f.introduced == release and not f.stage)
+    if unstaged:
+        raise ValueError(
+            f"{release} features without a stage: {', '.join(unstaged)} "
+            "(a scoped gate needs every feature of the release to name its stage)")
+    return {i: f for i, f in features.items() if f.introduced != release or f.stage in wanted}
 
 
 def load_gate_config(path: Path) -> dict:
@@ -497,6 +522,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--states", type=Path, default=DEFAULT_STATES)
     parser.add_argument("--fixtures", type=Path, default=DEFAULT_FIXTURES)
     parser.add_argument("--spec", type=Path, default=DEFAULT_SPEC)
+    parser.add_argument("--stage", action="append", metavar="NAME",
+                        help="gate only the features of this stage of the release, and of every other --stage given "
+                             "(a stage gate is cumulative); omit for the whole release")
     parser.add_argument("--details", action="store_true", help="print every new-feature pair")
     parser.add_argument("--blockers", action="store_true", help="print only the Tier A cells that block the gate (open)")
     parser.add_argument("--json", action="store_true", help="print the release's metrics as JSON, for the per-release snapshot")
@@ -510,6 +538,11 @@ def main(argv: list[str] | None = None) -> int:
         states = load_states(args.states, features)
         fixtures = load_fixtures(args.fixtures)
         validate_spec_rules(features, fixtures, args.spec)
+        features = scope_to_stages(features, args.release, args.stage)
+        for name in args.stage or []:
+            if not any(f.stage == name and f.introduced == args.release for f in features.values()):
+                print(f"feature-matrix: note: no feature of {args.release} carries stage {name!r} "
+                      "(a design-only stage has none)", file=sys.stderr)
         bulk = load_bulk(args.states)
         config = load_gate_config(args.registry)
         if args.json or args.table or args.check_table:
