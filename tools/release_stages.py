@@ -5,7 +5,9 @@ A staged release is a numbered milestone plus theme milestones called stages. Th
 script is the one place that reads it:
 
   * a stage says `Part of: vX.Y.Z` on its own line in its description, and carries the tag `[vX.Y.Z] ` in its title;
-  * the release milestone lists its stages in a `Stages:` block, one `- <exact stage title>` per line.
+  * the release milestone lists its stages in a `Stages:` block, one `- <exact stage title>` per line;
+  * a stage that cannot finish before another says so on a `Needs: <stage name>; <stage name>` line after `Part of:`
+    (names without the `[vX.Y.Z] ` tag), and the `Stages:` order must respect it: a stage comes after the stages it needs.
 
 A stage is gated when it completes (`/stage-gate`): its milestone is then closed, and its report in
 `docs/release-notes/integration/vX.Y.Z/stage-<slug>.md` reads `**Result:** PASS`.
@@ -72,6 +74,14 @@ def listed_stages(description: str) -> list[str]:
     return titles
 
 
+def needs(description: str) -> list[str]:
+    """The stage names a stage needs, from its `Needs: A; B` line: stages that must come earlier in `Stages:`."""
+    for line in description_lines(description):
+        if line.startswith("Needs: "):
+            return [name.strip() for name in line[len("Needs: "):].split(";") if name.strip()]
+    return []
+
+
 def stage_name(title: str) -> str:
     """A stage's title without its `[vX.Y.Z] ` tag: the name the registry's `stage` field uses."""
     match = TAG_RE.match(title)
@@ -129,6 +139,16 @@ def problems(version: str, milestones: list[Milestone], gated: bool = False, rep
     if [d for _, d in dated] != sorted(d for _, d in dated):
         found.append("milestone due dates do not follow the release-then-stages order: "
                      + ", ".join(f"{t} ({d[:10]})" for t, d in dated))
+    names = [stage_name(m.title) for m in stages]
+    for position, stage in enumerate(stages):
+        for need in needs(stage.description):
+            if need == names[position]:
+                found.append(f"{stage.title!r} needs itself")
+            elif need not in names:
+                found.append(f"{stage.title!r} needs {need!r}, which is not a stage of {version}")
+            elif names.index(need) > position:
+                found.append(f"{stage.title!r} needs {need!r}, which comes later under `Stages:`: reorder the stages "
+                             "(and re-date them)")
     if gated:
         for stage in stages:
             name = stage_name(stage.title)
@@ -218,6 +238,8 @@ def main(argv: list[str] | None = None) -> int:
         for number, stage in enumerate(stages, 1):
             gate = "PASS" if report_passes(args.reports, args.version, stage_name(stage.title)) else "-"
             print(f"  {number}. {stage_name(stage.title):<36} {stage.state:<6} {stage.open_issues:>3} open   gate: {gate}")
+            if needs(stage.description):
+                print(f"       needs: {'; '.join(needs(stage.description))}")
         return 0
     except ValueError as exc:
         print(f"release-stages: error: {exc}", file=sys.stderr)

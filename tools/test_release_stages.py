@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from tools.release_stages import (
-    Milestone, declared_stages, gated_stage_names, listed_stages, part_of, problems, report_path, scope, slug,
+    Milestone, declared_stages, gated_stage_names, listed_stages, needs, part_of, problems, report_path, scope, slug,
     stage_name,
 )
 
@@ -80,6 +80,43 @@ class Links(unittest.TestCase):
         a, b, c = stage("A"), stage("B"), stage("C")
         self.assertEqual([m.title for m in declared_stages(V, [release(b.title, a.title), a, b, c])],
                          [b.title, a.title, c.title])
+
+
+def needing(name, *needed, **kw):
+    """A stage whose description carries a `Needs:` line."""
+    line = "Needs: " + "; ".join(needed) + "\n" if needed else ""
+    return stage(name, description=f"Horizon: now.\nPart of: {V}\n{line}\nOutcome. Exit: x.", **kw)
+
+
+class Needs(unittest.TestCase):
+    def test_the_needs_line_is_names_separated_by_semicolons(self):
+        self.assertEqual(needs("Horizon: now.\nPart of: v0.17.0\nNeeds: Drop and partial moves; Function types\n\nx"),
+                         ["Drop and partial moves", "Function types"])
+        self.assertEqual(needs("Horizon: now.\nPart of: v0.17.0\n\nx"), [])
+        self.assertEqual(needs("a sentence that says Needs: A in the middle"), [])
+
+    def test_a_stage_after_the_stages_it_needs_is_in_order(self):
+        a, b = needing("Function types"), needing("Linear types", "Function types")
+        self.assertEqual(problems(V, [release(a.title, b.title), a, b]), [])
+
+    def test_a_stage_before_a_stage_it_needs_is_found(self):
+        a, b = needing("Function types"), needing("Linear types", "Function types")
+        found = problems(V, [release(b.title, a.title), a, b])
+        self.assertTrue(any("needs 'Function types', which comes later" in p for p in found), found)
+
+    def test_a_need_that_is_not_a_stage_of_the_release_is_found(self):
+        b = needing("Linear types", "Ghost stage")
+        found = problems(V, [release(b.title), b])
+        self.assertTrue(any("'Ghost stage', which is not a stage" in p for p in found), found)
+
+    def test_a_stage_that_needs_itself_is_found(self):
+        a = needing("Linear types", "Linear types")
+        self.assertTrue(any("needs itself" in p for p in problems(V, [release(a.title), a])))
+
+    def test_a_cycle_cannot_pass_because_one_of_the_two_is_later(self):
+        a, b = needing("A", "B"), needing("B", "A")
+        self.assertTrue(problems(V, [release(a.title, b.title), a, b]))
+        self.assertTrue(problems(V, [release(b.title, a.title), a, b]))
 
 
 class Gates(unittest.TestCase):
