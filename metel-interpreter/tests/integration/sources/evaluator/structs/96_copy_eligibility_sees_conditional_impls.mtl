@@ -7,21 +7,21 @@
 // `T` is assumed `Copy`, which discharges the bound on `Inner`'s conditional
 // impl. The eligibility check used to give up here and reject the program.
 
-copy? struct Inner<T> {
+struct Inner<T> derives Clone(..), Copy(..) {
     value: T,
 }
 
-copy? struct Outer<T> {
+struct Outer<T> derives Clone(..), Copy(..) {
     inner: Inner<T>,
 }
 
 // The same shape with the field through a conditional `Copy` type, written with the class keyword.
-copy? struct Wrapped<T> {
+struct Wrapped<T> derives Clone(..), Copy(..) {
     held: Inner<T>,
 }
 
 // And through an enum payload, which takes the other branch of the check.
-copy? enum Held<T> {
+enum Held<T> derives Clone(..), Copy(..) {
     One { value: Inner<T> },
     None,
 }

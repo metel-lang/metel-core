@@ -475,7 +475,7 @@ pub struct ClauseEntry {
 pub enum DeriveMark {
     /// `derives A`, `copy`: no condition on the type parameters (an empty flow).
     Bare,
-    /// `derives A(..)`, `copy?`: the compiler computes the flow from the fields.
+    /// `derives A(..)`: the compiler computes the flow from the fields. The `copy` keyword has no such form.
     Query,
     /// `derives A(P, Q)`: the flow is stated.
     Args,

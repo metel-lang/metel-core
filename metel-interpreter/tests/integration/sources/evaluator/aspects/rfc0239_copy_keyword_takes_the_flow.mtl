@@ -2,7 +2,7 @@
 // beside a bare keyword replaces the keyword's own.
 pub struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 copy struct Id<T> { n: i64 }
-pub copy? struct W<T> derives Clone(T), Copy(T) { value: T }
+pub struct W<T> derives Clone(T), Copy(T) { value: T }
 
 fun main() {
     let b := Boxed { value = 3 };
