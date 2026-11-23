@@ -1,0 +1,25 @@
+// RFC-0219 rule 8 (metel-core#2175): `copy` in a closure literal's prefix asserts the closure is copyable, which holds when every
+// capture is `Copy`. It changes no type; a closure without it is copyable by the same rule.
+fun main() {
+    let f := copy |x: i64| -> i64 { x + 1 };                         // no captures
+    let g := f;
+    let h := f;                                                      // f is copyable, so both copies are fine
+    assert(g(1) + h(2) == 5);
+
+    let n := 10;
+    let k := [n] copy |x: i64| -> i64 { x + n };                     // an owned Copy capture
+    let k2 := k;
+    assert(k(1) + k2(2) == 23);
+
+    let label := "kept";
+    let r := [&label] copy || -> i64 { 1 };                          // a shared reference is Copy
+    let r2 := r;
+    assert(r() + r2() == 2);
+
+    let once_copy := [n] copy once |x: i64| -> i64 { x + n };        // combines with `once`
+    assert(once_copy(1) == 11);
+
+    let plain := [n] |x: i64| -> i64 { x + n };                      // the same closure without the prefix
+    let plain2 := plain;
+    assert(plain(1) + plain2(2) == 23);
+}

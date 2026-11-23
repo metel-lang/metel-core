@@ -772,6 +772,7 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             captures,
             call_multiplicity,
             call_mutation,
+            asserts_copy,
             params,
             return_type,
             body,
@@ -780,6 +781,7 @@ fn lower_projections_in_expr(expr: &Expr, generics: &std::collections::HashSet<S
             captures: captures.clone(),
             call_multiplicity: *call_multiplicity,
             call_mutation: *call_mutation,
+            asserts_copy: *asserts_copy,
             params: params
                 .iter()
                 .map(|p| Param {

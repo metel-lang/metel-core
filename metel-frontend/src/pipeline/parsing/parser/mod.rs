@@ -2381,20 +2381,14 @@ fn parse_closure_expr(
     let mut captures = vec![];
     let mut call_multiplicity = CallMultiplicity::Many;
     let mut call_mutation = CallMutation::Reading;
+    let mut asserts_copy = false;
     let mut params = vec![];
     let mut return_type = None;
     let mut body = None;
     for p in pair.into_inner() {
         match p.as_rule() {
             Rule::capture_list => captures = parse_capture_list(p, filename)?,
-            Rule::copy_kw => {
-                return Err(MetelError::parse(
-                    ParseErrorCode::P0001,
-                    "`copy` is not a closure qualifier: whether a closure is copyable is derived from its \
-                     captures; write `copy` on a function type (`copy |T| -> U`) to require it",
-                    &Span::of(&p, filename),
-                ));
-            }
+            Rule::copy_kw => asserts_copy = true,
             Rule::once_kw => call_multiplicity = CallMultiplicity::Once,
             Rule::mut_kw => call_mutation = CallMutation::Mutating,
             Rule::param_list => params = parse_param_list(p, filename)?,
@@ -2407,6 +2401,7 @@ fn parse_closure_expr(
         captures,
         call_multiplicity,
         call_mutation,
+        asserts_copy,
         params,
         return_type,
         body: body.ok_or_else(|| MetelError::internal("closure: missing body block"))?,

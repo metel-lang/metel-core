@@ -1,0 +1,5 @@
+// RFC-0219 rule 8: an exclusive reference `[&var x]` is never `Copy`, so a closure holding one cannot be written `copy`.
+fun main() {
+    var n := 0;
+    let c := [&var n] copy var || { n = 1; }; // ERROR[T0001]
+}

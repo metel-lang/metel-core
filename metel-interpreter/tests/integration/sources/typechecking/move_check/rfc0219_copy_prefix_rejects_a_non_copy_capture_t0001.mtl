@@ -1,0 +1,5 @@
+// RFC-0219 rule 8 (metel-core#2175): `copy` asserts every capture is `Copy`; an owned `String` capture is not, and the error names it.
+fun main() {
+    let name := "x";
+    let c := [name] copy || -> i64 { 1 }; // ERROR[T0001]
+}

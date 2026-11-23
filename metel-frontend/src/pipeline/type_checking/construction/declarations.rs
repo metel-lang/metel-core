@@ -117,6 +117,7 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 captures,
                 call_multiplicity,
                 call_mutation,
+                asserts_copy,
                 params,
                 return_type,
                 body,
@@ -125,6 +126,11 @@ pub(super) fn construct_decl(decl: &Decl, ctx: &mut ConstructCtx) -> Result<Type
                 && let Some(scheme) = ctx.scheme_at(&ld.span)
                 && !scheme.quantified_vars.is_empty()
             {
+                if *asserts_copy
+                    && let Some(err) = super::closure_copy_assertion_error(captures, ctx)
+                {
+                    return Err(err);
+                }
                 let definition =
                     closure_definition(ld, params, return_type.as_ref(), body, cls_span, ctx)?;
                 return Ok(TypedDecl::Let(TypedLetDecl {
