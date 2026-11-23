@@ -3,7 +3,7 @@
 import lib::Wrapper;
 import lib::View;
 
-struct Local<A, B> derives Clone?, Copy? { w: Wrapper<A>, v: View<B> }
+struct Local<A, B> derives Clone(..), Copy(..) { w: Wrapper<A>, v: View<B> }
 
 fun ok<A: Copy, B>(l: Local<A, B>) -> (Local<A, B>, Local<A, B>) { (l, l) }
 

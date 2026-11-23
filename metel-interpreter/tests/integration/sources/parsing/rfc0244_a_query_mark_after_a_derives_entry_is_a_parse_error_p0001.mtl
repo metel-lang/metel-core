@@ -1,0 +1,3 @@
+// RFC-0244: the computed flow of an entry is `(..)`; the postfix `?` belongs to the `copy?` keyword.
+struct W<T> derives Clone? { value: T }
+fun main() {}

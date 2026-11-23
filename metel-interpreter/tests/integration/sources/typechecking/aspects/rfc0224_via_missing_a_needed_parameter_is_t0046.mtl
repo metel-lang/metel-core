@@ -1,3 +1,3 @@
-struct Pair<A, B> derives Clone?, Copy(A) { a: A, b: B }
+struct Pair<A, B> derives Clone(..), Copy(A) { a: A, b: B }
 
 fun main() {}

@@ -1,3 +1,0 @@
-// RFC-0244 section 1: `?` computes the condition and `(..)` states it; write one.
-struct W<T> derives Clone?(T) { value: T }
-fun main() {}
