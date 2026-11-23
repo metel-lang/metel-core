@@ -146,7 +146,9 @@ than sharing one writable target directory concurrently.
 
 GitHub Issues are the task source of truth (`PROC-WORK-001`). The lowest numbered milestone is
 the release in progress; while it is a patch the next minor may also be numbered, but its
-language-visible work does not merge to `develop` until the patch is tagged. A release may be staged: theme milestones whose description says `Part of: vX.Y.Z`, and which the
+language-visible work does not merge to `develop` until the patch is tagged, and while it is a
+minor the patch that follows it may be numbered (a fix that lands on `develop` before the minor's
+tag ships in the minor). A release may be staged: theme milestones whose description says `Part of: vX.Y.Z`, and which the
 release lists under `Stages:`, belong to that release and are read with it
 (`tools/release_stages.py`, `ROADMAP.md`). Each stage is gated when it completes
 (`/stage-gate`), not only at the release cut. Later work sits in
