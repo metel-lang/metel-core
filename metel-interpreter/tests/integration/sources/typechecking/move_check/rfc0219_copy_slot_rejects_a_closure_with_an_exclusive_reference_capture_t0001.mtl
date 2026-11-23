@@ -1,0 +1,5 @@
+// RFC-0219 rule 2: a closure holding `[&var x]` is not copyable, so a `copy` slot rejects it.
+fun main() {
+    var n := 0;
+    let f: copy var || -> () := [&var n] var || { n = 1; }; // ERROR[T0001]
+}

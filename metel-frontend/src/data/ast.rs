@@ -892,6 +892,9 @@ pub enum Expr {
         captures: Vec<CaptureSpec>,
         call_multiplicity: CallMultiplicity,
         call_mutation: CallMutation,
+        /// `copy` written in the prefix (RFC-0219, metel-core#2175): the closure is checked to be copyable, which holds
+        /// exactly when every capture is `Copy`. It changes no type, and a closure without it is copyable by the same rule.
+        asserts_copy: bool,
         params: Vec<Param>,
         return_type: Option<TypeExpr>,
         body: Block,

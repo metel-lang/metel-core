@@ -1,7 +1,3 @@
 [options]
-error = ["P0001"]
+move_check = true
 spec = ["spec.functions.first-class-functions.legality-8"]
-
-[expect]
-status = "parse_error"
-code = "P0001"

@@ -2180,11 +2180,15 @@ pub(super) fn construct_expr(
             captures,
             call_multiplicity,
             call_mutation,
+            asserts_copy,
             params,
             return_type,
             body,
             span,
         } => {
+            if *asserts_copy && let Some(err) = super::closure_copy_assertion_error(captures, ctx) {
+                return Err(err);
+            }
             let (effective_multiplicity, effective_mutation) = match expected_ty {
                 Some(Type::Fun(_, _, expected_multiplicity, _, expected_mutation)) => {
                     (*expected_multiplicity, *expected_mutation)
@@ -2247,8 +2251,8 @@ pub(super) fn construct_expr(
                     .transpose()?
             };
             let use_multiplicity = if captures.iter().all(|capture| match capture {
-                crate::data::ast::CaptureSpec::SharedRef { .. }
-                | crate::data::ast::CaptureSpec::MutRef { .. } => true,
+                crate::data::ast::CaptureSpec::SharedRef { .. } => true,
+                crate::data::ast::CaptureSpec::MutRef { .. } => false,
                 crate::data::ast::CaptureSpec::Owned { span, .. }
                 | crate::data::ast::CaptureSpec::Clone { span, .. } => ctx
                     .lookup_at(span)
