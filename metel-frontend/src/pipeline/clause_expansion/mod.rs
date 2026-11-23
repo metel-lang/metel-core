@@ -570,7 +570,7 @@ fn check_public_flow_stated(
         )
     } else {
         format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `?` computes it; write `derives {aspect}({})` (RFC-0244)",
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `(..)` computes it; write `derives {aspect}({})` (RFC-0244)",
             flow_args(&set)
         )
     };
@@ -588,7 +588,7 @@ fn bare_entry_error(entry: &ClauseEntry, needed: &str, fixed: &[&str]) -> MetelE
     let spelling = if entry.from_class_keyword {
         "`copy?`".to_string()
     } else {
-        format!("`derives {aspect}?`")
+        format!("`derives {aspect}(..)`")
     };
     MetelError::type_error(
         TypeErrorCode::T0046,
@@ -620,7 +620,7 @@ fn check_flow(
     if entry.mark == DeriveMark::Query && kind.is_none() && !entry.from_class_keyword {
         return Err(invalid(
             format!(
-                "`{}` has no flow to compute: only the field-wise derivations `Copy` and `Clone` take `?` (RFC-0244)",
+                "`{}` has no flow to compute: only the field-wise derivations `Copy` and `Clone` take `(..)` (RFC-0244)",
                 entry.name
             ),
             &entry.span,

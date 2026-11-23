@@ -2,8 +2,8 @@
 // of an enum, and is Clone for a generic type when its owned parameters are (a parameter behind a shared
 // reference is not bounded).
 struct Doc derives Clone { title: String, pages: i64 }
-struct View<T> derives Clone? { r: &T }
-struct Wrapper<T> derives Clone? { v: T }
+struct View<T> derives Clone(..) { r: &T }
+struct Wrapper<T> derives Clone(..) { v: T }
 enum Shape derives Clone { Circle { r: i64 }, Rect { w: i64, h: i64 }, Empty }
 fun twice<T: Clone>(x: &T) -> T { x.clone() }
 fun main() {

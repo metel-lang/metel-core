@@ -94,8 +94,11 @@ colon_list     = { ":" ~ clause_entry ~ ("," ~ clause_entry)* }
 // parses so that it can be rejected with a message naming the new form.
 via_kw         = @{ "via" ~ !(ASCII_ALPHANUMERIC | "_") }
 via_clause     = { via_kw ~ ident ~ ("+" ~ ident)* }
-derive_args    = { "(" ~ (ident ~ ("," ~ ident)* ~ ","?)? ~ ")" }
-// RFC-0244: `?` asks the compiler to compute the flow; an entry with neither mark states an empty flow.
+derive_args    = { "(" ~ (derive_rest | (ident ~ ("," ~ ident)* ~ ","?)?) ~ ")" }
+// RFC-0244: `(..)` is the flow the compiler computes from the fields; an entry with no argument list states an empty flow.
+// `copy?` is the keyword's one-character form of `derives Clone(..), Copy(..)`. A `?` after a `derives` entry still parses so
+// that it can be rejected with a message naming `(..)`.
+derive_rest    = { ".." }
 derive_query   = { "?" }
 derives_clause = { derives_kw ~ clause_entry ~ (derive_query | derive_args | via_clause)? ~ ("," ~ clause_entry ~ (derive_query | derive_args | via_clause)?)* }
 // `bang?` so a negative entry parses and is rejected with its own message (the colon list has none).

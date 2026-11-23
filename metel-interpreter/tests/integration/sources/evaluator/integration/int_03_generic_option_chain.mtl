@@ -61,7 +61,7 @@ fun option_is_some<T>(opt: Option<T>) -> boolean {
 
 // ── Generic Pair<A,B> ─────────────────────────────────────────────────────────
 
-struct Pair<A, B> derives Clone? {
+struct Pair<A, B> derives Clone(..) {
     first: A,
     second: B,
 }
