@@ -2514,6 +2514,50 @@ fn maybe_fn_move_coerce(
     Ok(actual)
 }
 
+/// RFC-0219 (metel-core#2175): `copy` written in the prefix of a closure literal asserts that the closure is copyable, which
+/// holds exactly when every capture is `Copy`. A shared reference is `Copy`; an exclusive reference `[&var x]` is not; an owned
+/// or cloned capture is `Copy` when its type is. Returns the error for the first capture that is not, naming it.
+fn closure_copy_assertion_error(
+    captures: &[crate::data::ast::CaptureSpec],
+    ctx: &ConstructCtx<'_>,
+) -> Option<MetelError> {
+    use crate::data::ast::CaptureSpec;
+    for capture in captures {
+        let (name, span, why) = match capture {
+            CaptureSpec::SharedRef { .. } => continue,
+            CaptureSpec::MutRef { name, span } => (
+                name,
+                span,
+                "an exclusive reference `&var` is never `Copy`".to_string(),
+            ),
+            CaptureSpec::Owned { name, span } | CaptureSpec::Clone { name, span } => {
+                match ctx.lookup_at(span) {
+                    Some(ty) if ctx.registry.type_is_copy(ctx.current_module, ty) => continue,
+                    Some(ty) => (
+                        name,
+                        span,
+                        format!("`{name}` has type `{ty}`, which is not `Copy`"),
+                    ),
+                    None => (
+                        name,
+                        span,
+                        format!("the type of `{name}` is not known to be `Copy`"),
+                    ),
+                }
+            }
+        };
+        return Some(MetelError::type_error(
+            TypeErrorCode::T0001,
+            format!(
+                "this closure is written `copy`, but its capture `{name}` is not copyable: {why}. A `copy` closure's captures \
+                 must all be `Copy`; drop `copy` to let the closure be move-only"
+            ),
+            span,
+        ));
+    }
+    None
+}
+
 /// RFC-0219: the error for a function value that is not copyable where a `copy` function type is required.
 pub(super) fn copy_requirement_error(
     expected: impl std::fmt::Display,

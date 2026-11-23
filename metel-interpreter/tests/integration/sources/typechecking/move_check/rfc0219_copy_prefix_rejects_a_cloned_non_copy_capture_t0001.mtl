@@ -1,0 +1,5 @@
+// RFC-0219 rule 8: a `.clone()` capture holds the clone, which is a `String` here and so not `Copy`.
+fun main() {
+    let name := "x";
+    let c := [name.clone()] copy || -> i64 { 1 }; // ERROR[T0001]
+}
