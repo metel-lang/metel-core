@@ -6,7 +6,7 @@
 //
 // Two ways the two impls can coexist:
 
-copy struct Disjoint<T> {
+copy? struct Disjoint<T> {
     val: T,
 }
 
@@ -17,7 +17,7 @@ extend<T: !Copy> Disjoint<T>: Drop {
     fun drop(&var self) {}
 }
 
-copy struct Reach<T> {
+copy? struct Reach<T> {
     val: T,
 }
 

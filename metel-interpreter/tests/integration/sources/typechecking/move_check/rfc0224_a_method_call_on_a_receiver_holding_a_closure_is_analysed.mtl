@@ -1,5 +1,5 @@
 // metel-core#2013: the receiver's type carries the closure's contract where the method's own type writes a function type.
-copy struct Holder<T> { inner: T }
+copy? struct Holder<T> { inner: T }
 extend Holder<T> {
     fun get(self) -> T { self.inner }
     fun identity(self, x: T) -> T { x }

@@ -1,2 +1,2 @@
-pub copy struct View<T> { r: &T }
+pub copy? struct View<T> { r: &T }
 pub struct Wrapper<T> derives Clone(T), Copy(T) { value: T }

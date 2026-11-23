@@ -1,6 +1,6 @@
 // metel-core#2079: a field of a tuple or record is not moved by a by-value read when its type is a generic Copy struct whose
 // type argument is still an unsuffixed literal (`Boxed<{integer}>`): every numeric type is Copy.
-copy(T) struct Boxed<T> { value: T }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 fun main() {
     let t := (Boxed { value = 1 }, "s");

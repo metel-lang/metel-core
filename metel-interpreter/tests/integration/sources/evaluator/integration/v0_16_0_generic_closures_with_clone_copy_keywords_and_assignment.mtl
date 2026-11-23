@@ -1,6 +1,6 @@
 // v0.16.0 integration: closure contracts in generic bodies x Clone/Copy semantics and obligations x copy(T) arguments x copy
 // function values x keyword arguments x statement assignment x undecided-ownership checking x a named record pattern.
-copy(T) struct Boxed<T> { value: T }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 copy struct Tag { n: i64 }
 copy record Holder { tag: Tag, boxed: Boxed<i64> }
 
