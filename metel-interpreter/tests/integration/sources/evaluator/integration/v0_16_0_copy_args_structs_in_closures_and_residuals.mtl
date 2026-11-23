@@ -1,5 +1,5 @@
 // v0.16.0 integration: copy(T) structs x a closure in a generic body x a residual of a record.
-copy(T) struct Boxed<T> { value: T }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 fun twice<T: Copy>(b: Boxed<T>) -> (Boxed<T>, Boxed<T>) {
     let g := || { b };
     let first := b;

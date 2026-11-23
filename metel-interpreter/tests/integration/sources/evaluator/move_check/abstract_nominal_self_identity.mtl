@@ -4,7 +4,7 @@ extend<T> Box<T> {
     fun pair<U>(self, other: U) -> (Box<T>, U) { (self, other) }
 }
 
-copy struct Repeatable<T> { value: T }
+copy? struct Repeatable<T> { value: T }
 extend<T: Copy> Repeatable<T> {
     fun twice(self) -> T {
         let first := self;

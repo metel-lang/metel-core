@@ -11,7 +11,7 @@ struct T {
     s: String,
 }
 
-copy struct Holder<U> {
+copy? struct Holder<U> {
     marker: U,
 }
 

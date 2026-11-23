@@ -1,3 +1,0 @@
-// RFC-0239: the keyword's list holds type parameters of the declaration, as a `derives` list does.
-copy(U) struct W<T> { value: T } // ERROR[T0046]
-fun main() {}

@@ -462,9 +462,35 @@ pub struct ClauseEntry {
     /// The `copy` class keyword stands for `derives Clone, Copy`; its entry is marked so a diagnostic can say so.
     pub from_class_keyword: bool,
     /// RFC-0227: the type parameters a `derives Clone, Copy(A, B)` entry states its flow from (empty for `derives Clone()`);
-    /// `None` when the entry states no argument list (the compiler then computes the flow).
+    /// `None` when the entry has no argument list. Read it through [`ClauseEntry::stated_flow`], which also
+    /// answers for a bare entry.
     pub flow: Option<Vec<FlowParam>>,
+    /// RFC-0244: how the entry's flow was written.
+    pub mark: DeriveMark,
     pub span: Span,
+}
+
+/// How a `derives` entry or the `copy` class keyword writes its flow (RFC-0244).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeriveMark {
+    /// `derives A`, `copy`: no condition on the type parameters (an empty flow).
+    Bare,
+    /// `derives A?`, `copy?`: the compiler computes the flow from the fields.
+    Query,
+    /// `derives A(P, Q)`: the flow is stated.
+    Args,
+}
+
+impl ClauseEntry {
+    /// The flow the entry states, or `None` when the compiler computes it. A bare entry states an empty flow.
+    #[must_use]
+    pub fn stated_flow(&self) -> Option<&[FlowParam]> {
+        match self.mark {
+            DeriveMark::Query => None,
+            DeriveMark::Bare => Some(&[]),
+            DeriveMark::Args => self.flow.as_deref(),
+        }
+    }
 }
 
 /// A type parameter named in the argument list of a `derives` entry (RFC-0227).

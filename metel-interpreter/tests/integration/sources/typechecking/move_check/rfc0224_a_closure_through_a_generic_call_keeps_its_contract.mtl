@@ -1,6 +1,6 @@
 // metel-core#2000: a closure passed through a generic call keeps the contract it had, so a result that is the argument
 // (`T`, or a tuple or a type argument of it) is `Copy` exactly when the closure's own captures are.
-copy struct Wrap<T> { inner: T }
+copy? struct Wrap<T> { inner: T }
 fun id<T>(x: T) -> T { x }
 fun pair<T>(x: T) -> (T, i64) { (x, 1) }
 fun wrap<T>(x: T) -> Wrap<T> { Wrap { inner = x } }

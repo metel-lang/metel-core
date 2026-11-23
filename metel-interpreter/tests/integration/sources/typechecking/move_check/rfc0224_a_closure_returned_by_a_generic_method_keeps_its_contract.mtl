@@ -1,5 +1,5 @@
 // metel-core#2013: a method returning its receiver's type argument, or its argument of that type, returns the closure with the captures it owns.
-copy struct Holder<T> { inner: T }
+copy? struct Holder<T> { inner: T }
 extend Holder<T> {
     fun get(self) -> T { self.inner }
     fun pass(self, x: T) -> T { x }

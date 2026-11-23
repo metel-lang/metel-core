@@ -1,7 +1,7 @@
 // v0.16.0 integration: a named record pattern in a generic body x nested struct, copy(T) and tuple patterns x match
 // exhaustiveness x derived Clone x a closure x a copy function field.
 copy struct Tag { n: i64 }
-copy(T) struct Boxed<T> { value: T }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 copy record Holder { tag: Tag, boxed: Boxed<i64>, pair: (i64, i64), f: copy |i64| -> i64 }
 
 fun total<T>(h: Holder, unused: T) -> i64 {

@@ -1,0 +1,3 @@
+// RFC-0227: a flow lists type parameters of the declaration.
+struct W<T> derives Clone(U), Copy(U) { value: T } // ERROR[T0046]
+fun main() {}
