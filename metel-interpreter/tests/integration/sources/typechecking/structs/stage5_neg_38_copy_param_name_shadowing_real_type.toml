@@ -4,4 +4,4 @@ error = ["T0001"]
 [expect]
 status = "typecheck_error"
 code = "T0001"
-contains = "field `inner` has type `T` which is not `Copy`"
+contains = "field `inner` has type `T` which is not `Clone`"

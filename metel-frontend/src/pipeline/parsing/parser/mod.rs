@@ -672,7 +672,7 @@ fn parse_struct_decl(
     })
 }
 
-/// A class keyword before `struct` or `enum` (RFC-0207): `copy` is `derives Clone, Copy`, `copy?` computes the flow of
+/// A class keyword before `struct` or `enum` (RFC-0207): `copy` is `derives Clone, Copy` with no condition (RFC-0244); the flow of
 /// both entries (RFC-0244), and `linear` is reserved.
 fn parse_class_keyword(
     pair: &pest::iterators::Pair<Rule>,
@@ -686,30 +686,22 @@ fn parse_class_keyword(
             span,
         ));
     }
-    // RFC-0244: `copy?` computes the flow of both entries; a bare `copy` states none. The argument
-    // list of RFC-0239 is gone.
+    // RFC-0244: the `copy` keyword is unconditional and has no conditional form. The argument list of RFC-0239 and
+    // the former `copy?` are rejected with the replacement.
     if pair
         .clone()
         .into_inner()
-        .any(|p| p.as_rule() == Rule::derive_args)
+        .any(|p| matches!(p.as_rule(), Rule::derive_args | Rule::derive_query))
     {
         return Err(MetelError::parse(
             ParseErrorCode::P0001,
-            "`copy` takes no argument list: write `copy?` to compute the condition, or \
-                 `derives Clone(T), Copy(T)` to state it (RFC-0244)"
+            "the `copy` keyword has no conditional form: write `derives Clone(..), Copy(..)` to compute the condition \
+             from the fields, or `derives Clone(T), Copy(T)` to state it (RFC-0244)"
                 .to_string(),
             span,
         ));
     }
-    let mark = if pair
-        .clone()
-        .into_inner()
-        .any(|p| p.as_rule() == Rule::derive_query)
-    {
-        DeriveMark::Query
-    } else {
-        DeriveMark::Bare
-    };
+    let mark = DeriveMark::Bare;
     clauses.derives.push(ClauseEntry {
         // The aspect the `copy` keyword names is the one with the `implicit` property; the clause
         // expansion fills the name in once names resolve.

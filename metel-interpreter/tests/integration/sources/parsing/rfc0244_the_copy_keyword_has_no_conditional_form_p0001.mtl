@@ -1,0 +1,3 @@
+// RFC-0244: the `copy` keyword is unconditional; a conditional type writes `derives Clone(..), Copy(..)`.
+copy? struct W<T> { value: T }
+fun main() {}

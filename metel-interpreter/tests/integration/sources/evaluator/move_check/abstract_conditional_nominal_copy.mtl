@@ -1,4 +1,4 @@
-copy? struct Wrapper<T> { value: T }
+struct Wrapper<T> derives Clone(..), Copy(..) { value: T }
 
 fun copied<T: Copy>(value: Wrapper<T>) -> T {
     let first := value;

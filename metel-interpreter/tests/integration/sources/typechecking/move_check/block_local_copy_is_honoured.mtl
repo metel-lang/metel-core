@@ -1,7 +1,7 @@
 // metel-core#1908: a type declared in a function body that is granted `Copy` is `Copy` in the scope that declares it:
 // by `copy struct`, by `derives Clone, Copy`, and with a computed flow (a parameter held only through
 // a view is not bounded, RFC-0224).
-copy? struct View<T> { r: &T }
+struct View<T> derives Clone(..), Copy(..) { r: &T }
 
 fun main() {
     copy struct K { n: i64 }

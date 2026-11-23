@@ -6,7 +6,7 @@
 // `i64` is both `Copy` and `Display`, so `Overlap<i64>` would have both
 // aspects, which §4 forbids.
 
-copy? struct Overlap<T> {
+struct Overlap<T> derives Clone(..), Copy(..) {
     val: T,
 }
 

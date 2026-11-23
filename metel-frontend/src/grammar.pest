@@ -82,8 +82,9 @@ native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 struct_decl = { pub_kw? ~ class_kw? ~ "struct" ~ ident ~ generic_params? ~ colon_list? ~ derives_clause? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 // RFC-0207: the class keywords and the two declaration clauses. All three words are contextual.
-// RFC-0244: `copy?` computes the flow of the two entries it stands for; a bare `copy` states none. The former
-// argument list (RFC-0239) still parses so that it can be rejected with a message naming the replacement.
+// RFC-0244: the `copy` keyword is `derives Clone, Copy` with no condition on the type parameters, and it has no
+// conditional form: a conditional type writes `derives Clone(..), Copy(..)`. The former argument list (RFC-0239) and
+// the former `copy?` still parse so that they can be rejected with a message naming the replacement.
 class_kw       = { copy_kw ~ (derive_query | derive_args)? | linear_kw }
 copy_kw        = @{ "copy" ~ !(ASCII_ALPHANUMERIC | "_") }
 linear_kw      = @{ "linear" ~ !(ASCII_ALPHANUMERIC | "_") }
