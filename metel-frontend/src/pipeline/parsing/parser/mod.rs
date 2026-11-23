@@ -4,11 +4,11 @@ use pest_derive::Parser;
 
 use crate::data::ast::{
     AspectDecl, AspectMethod, AssignOp, AssignTarget, AssocTypeDecl, AssocTypeDef, BinOp, Block,
-    Bound, BoundHead, BreakExpr, CaptureSpec, ClauseEntry, Decl, DeclClauses, EnumDecl, ExportDecl,
-    Expr, FieldDef, FieldWiseConstraint, FlowParam, ForInStmt, ForInit, ForStmt, FunDecl,
-    GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl, Literal,
-    MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity, Program,
-    ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt,
+    Bound, BoundHead, BreakExpr, CaptureSpec, ClauseEntry, Decl, DeclClauses, DeriveMark, EnumDecl,
+    ExportDecl, Expr, FieldDef, FieldWiseConstraint, FlowParam, ForInStmt, ForInit, ForStmt,
+    FunDecl, GenericParam, ImplBlock, ImportDecl, ImportPath, ImportTree, LetDecl, LetPatternDecl,
+    Literal, MatchArm, MatchExpr, MutDecl, NativeBinding, Param, PathRoot, Pattern, Polarity,
+    Program, ReceiverKind, ReturnExpr, RowBound, RowBoundField, RowEquation, RowTail, Span, Stmt,
     StructDecl, StructKind, TypeExpr, UnaryOp, VariantDef, Visibility, WhereClause,
     WhereConstraint, WhileStmt,
 };
@@ -672,6 +672,56 @@ fn parse_struct_decl(
     })
 }
 
+/// A class keyword before `struct` or `enum` (RFC-0207): `copy` is `derives Clone, Copy`, `copy?` computes the flow of
+/// both entries (RFC-0244), and `linear` is reserved.
+fn parse_class_keyword(
+    pair: &pest::iterators::Pair<Rule>,
+    span: &Span,
+    clauses: &mut DeclClauses,
+) -> Result<(), MetelError> {
+    if pair.as_str().trim() == "linear" {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "`linear` is reserved: linear types are not implemented yet (RFC-0089)".to_string(),
+            span,
+        ));
+    }
+    // RFC-0244: `copy?` computes the flow of both entries; a bare `copy` states none. The argument
+    // list of RFC-0239 is gone.
+    if pair
+        .clone()
+        .into_inner()
+        .any(|p| p.as_rule() == Rule::derive_args)
+    {
+        return Err(MetelError::parse(
+            ParseErrorCode::P0001,
+            "`copy` takes no argument list: write `copy?` to compute the condition, or \
+                 `derives Clone(T), Copy(T)` to state it (RFC-0244)"
+                .to_string(),
+            span,
+        ));
+    }
+    let mark = if pair
+        .clone()
+        .into_inner()
+        .any(|p| p.as_rule() == Rule::derive_query)
+    {
+        DeriveMark::Query
+    } else {
+        DeriveMark::Bare
+    };
+    clauses.derives.push(ClauseEntry {
+        // The aspect the `copy` keyword names is the one with the `implicit` property; the clause
+        // expansion fills the name in once names resolve.
+        name: String::new(),
+        from_class_keyword: true,
+        flow: None,
+        mark,
+        span: span.clone(),
+    });
+    Ok(())
+}
+
 /// One piece of a struct or enum header after the name: the colon list, the `derives` clause, or a
 /// class keyword (RFC-0207). The `copy` keyword is sugar for `derives Clone, Copy`; `linear` is reserved.
 fn parse_clause_part(
@@ -681,41 +731,17 @@ fn parse_clause_part(
 ) -> Result<(), MetelError> {
     let span = Span::of(&pair, filename);
     match pair.as_rule() {
-        Rule::class_kw => {
-            if pair.as_str().trim() == "linear" {
-                return Err(MetelError::parse(
-                    ParseErrorCode::P0001,
-                    "`linear` is reserved: linear types are not implemented yet (RFC-0089)"
-                        .to_string(),
-                    &span,
-                ));
-            }
-            // RFC-0239: an argument list after `copy` is the flow of both entries the keyword stands for.
-            let flow = pair
-                .clone()
-                .into_inner()
-                .find(|p| p.as_rule() == Rule::derive_args)
-                .map(|args| {
-                    args.into_inner()
-                        .filter(|p| p.as_rule() == Rule::ident)
-                        .map(|p| FlowParam {
-                            name: p.as_str().to_string(),
-                            span: Span::of(&p, filename),
-                        })
-                        .collect::<Vec<_>>()
-                });
-            clauses.derives.push(ClauseEntry {
-                // The aspect the `copy` keyword names is the one with the `implicit` property; the clause
-                // expansion fills the name in once names resolve.
-                name: String::new(),
-                from_class_keyword: true,
-                flow,
-                span,
-            });
-        }
+        Rule::class_kw => parse_class_keyword(&pair, &span, clauses)?,
         Rule::colon_list | Rule::derives_clause => {
             let is_colon = pair.as_rule() == Rule::colon_list;
             for entry in pair.into_inner() {
+                // RFC-0244: `?` belongs to the entry just before it and asks for the computed flow.
+                if entry.as_rule() == Rule::derive_query {
+                    if let Some(last) = clauses.derives.last_mut() {
+                        last.mark = DeriveMark::Query;
+                    }
+                    continue;
+                }
                 // RFC-0227: an argument list belongs to the entry just before it.
                 if entry.as_rule() == Rule::derive_args {
                     let flow = entry
@@ -728,6 +754,7 @@ fn parse_clause_part(
                         .collect::<Vec<_>>();
                     if let Some(last) = clauses.derives.last_mut() {
                         last.flow = Some(flow);
+                        last.mark = DeriveMark::Args;
                     }
                     continue;
                 }
@@ -770,6 +797,7 @@ fn parse_clause_part(
                     name,
                     from_class_keyword: false,
                     flow: None,
+                    mark: DeriveMark::Bare,
                     span: entry_span,
                 };
                 if is_colon {

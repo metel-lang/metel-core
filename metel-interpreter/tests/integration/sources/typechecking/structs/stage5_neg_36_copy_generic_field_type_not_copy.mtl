@@ -11,7 +11,7 @@ struct Inner<T> {
     value: T,
 }
 
-copy struct Outer<T> {
+copy? struct Outer<T> {
     inner: Inner<T>,
 }
 

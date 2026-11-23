@@ -1,6 +1,6 @@
 // v0.16.0 integration: Display of anonymous records and `()` x built-in and derived Clone x copy(T) and Copy declarations x
 // exhaustive matches over tuples, named records and nested patterns x a closure and a copy function in a generic body.
-copy(T) struct Boxed<T> { value: T }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 copy struct Tag { n: i64 }
 copy record Cell { tag: Tag, pair: (i64, i64), extra: i64 }
 enum Mode { On, Off }

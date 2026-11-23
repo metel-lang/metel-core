@@ -82,8 +82,9 @@ native_seg  = @{ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
 
 struct_decl = { pub_kw? ~ class_kw? ~ "struct" ~ ident ~ generic_params? ~ colon_list? ~ derives_clause? ~ where_clause? ~ "{" ~ struct_fields ~ "}" }
 // RFC-0207: the class keywords and the two declaration clauses. All three words are contextual.
-// RFC-0239: `copy` may carry the flow of the declaration it stands for, `copy(T) struct W<T>`; `linear` takes none.
-class_kw       = { copy_kw ~ derive_args? | linear_kw }
+// RFC-0244: `copy?` computes the flow of the two entries it stands for; a bare `copy` states none. The former
+// argument list (RFC-0239) still parses so that it can be rejected with a message naming the replacement.
+class_kw       = { copy_kw ~ (derive_query | derive_args)? | linear_kw }
 copy_kw        = @{ "copy" ~ !(ASCII_ALPHANUMERIC | "_") }
 linear_kw      = @{ "linear" ~ !(ASCII_ALPHANUMERIC | "_") }
 derives_kw     = @{ "derives" ~ !(ASCII_ALPHANUMERIC | "_") }
@@ -94,7 +95,9 @@ colon_list     = { ":" ~ clause_entry ~ ("," ~ clause_entry)* }
 via_kw         = @{ "via" ~ !(ASCII_ALPHANUMERIC | "_") }
 via_clause     = { via_kw ~ ident ~ ("+" ~ ident)* }
 derive_args    = { "(" ~ (ident ~ ("," ~ ident)* ~ ","?)? ~ ")" }
-derives_clause = { derives_kw ~ clause_entry ~ (derive_args | via_clause)? ~ ("," ~ clause_entry ~ (derive_args | via_clause)?)* }
+// RFC-0244: `?` asks the compiler to compute the flow; an entry with neither mark states an empty flow.
+derive_query   = { "?" }
+derives_clause = { derives_kw ~ clause_entry ~ (derive_query | derive_args | via_clause)? ~ ("," ~ clause_entry ~ (derive_query | derive_args | via_clause)?)* }
 // `bang?` so a negative entry parses and is rejected with its own message (the colon list has none).
 clause_entry   = { bang? ~ type_path }
 struct_fields = { (struct_field ~ ",")* ~ struct_field? }

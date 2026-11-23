@@ -19,8 +19,8 @@ mod flows;
 use flows::{Aspects, Kind, Scope, Table};
 
 use crate::data::ast::{
-    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, FunDecl, GenericParam, ImplBlock,
-    NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
+    AspectProperty, Block, Bound, BoundHead, ClauseEntry, Decl, DeriveMark, FunDecl, GenericParam,
+    ImplBlock, NameSpan, NativeBinding, Param, Polarity, ReceiverKind, Span, TypeExpr, Visibility,
 };
 use crate::data::error::{MetelError, TypeErrorCode};
 use crate::identity::symbols::{Namespace, SymbolId};
@@ -320,15 +320,16 @@ fn name_class_keywords(
                     added.push(ClauseEntry {
                         name: sup,
                         from_class_keyword: true,
-                        // An argument list on the keyword is the flow of both entries (RFC-0239).
-                        flow: entry.flow.clone(),
+                        // `copy?` computes the flow of both entries, a bare `copy` states none (RFC-0244).
+                        flow: None,
+                        mark: entry.mark,
                         span: entry.span.clone(),
                     });
                 }
             }
         }
     }
-    check_keyword_against_entries(clauses, module, ctx)?;
+    replace_keyword_by_explicit_entry(clauses, module, ctx);
     for entry in added {
         let present = clauses.derives.iter().any(|e| {
             super::coherence::resolve_id(ctx.names, module, &e.name)
@@ -341,56 +342,29 @@ fn name_class_keywords(
     Ok(())
 }
 
-/// RFC-0239 section 3: an explicit `derives` entry beside the `copy` class keyword restates an entry the keyword
-/// stands for. With a list on the keyword the flow would be stated twice, which is an error; without one the explicit
-/// entry replaces the keyword's own entry, keeping its list.
-fn check_keyword_against_entries(
+/// RFC-0239 section 3, kept by RFC-0244: an explicit `derives` entry beside the `copy` class keyword restates an
+/// entry the keyword stands for, and replaces the keyword's own entry together with its mark.
+fn replace_keyword_by_explicit_entry(
     clauses: &mut crate::data::ast::DeclClauses,
     module: &[String],
     ctx: &Ctx<'_>,
-) -> Result<(), MetelError> {
+) {
     let Some(keyword) = clauses
         .derives
         .iter()
         .find(|e| e.from_class_keyword)
         .cloned()
     else {
-        return Ok(());
+        return;
     };
     let keyword_id = super::coherence::resolve_id(ctx.names, module, &keyword.name);
-    let mut restated: Vec<Option<SymbolId>> = vec![keyword_id];
-    if let Some(id) = keyword_id {
-        restated.extend(
-            derived_supers(id, ctx)
-                .into_iter()
-                .map(|(_, sup)| Some(sup)),
-        );
-    }
     let explicit_copy = clauses.derives.iter().any(|e| {
         !e.from_class_keyword
             && super::coherence::resolve_id(ctx.names, module, &e.name) == keyword_id
     });
-    if let Some(list) = &keyword.flow
-        && let Some(entry) = clauses.derives.iter().find(|e| {
-            !e.from_class_keyword
-                && restated.contains(&super::coherence::resolve_id(ctx.names, module, &e.name))
-        })
-    {
-        let stated = list.iter().map(|p| p.name.as_str()).collect::<Vec<_>>();
-        return Err(MetelError::type_error(
-            TypeErrorCode::T0046,
-            format!(
-                "`{}` is stated both by the `copy({})` keyword and by this entry: write `copy(..)` or the `derives` entries, not both (RFC-0239)",
-                entry.name,
-                stated.join(", ")
-            ),
-            &entry.span,
-        ));
-    }
     if explicit_copy {
         clauses.derives.retain(|e| !e.from_class_keyword);
     }
-    Ok(())
 }
 
 /// RFC-0234: `derives A` requires an entry of its own for every super-aspect `A` marks `derived`. Nothing is
@@ -487,7 +461,7 @@ fn clause_impls(
             let implied = entry.from_class_keyword && kind == Some(Kind::Clone);
             if let Some(kind) = kind
                 && decl.public
-                && entry.flow.is_none()
+                && entry.mark == DeriveMark::Query
                 && !implied
             {
                 check_public_flow_stated(decl, entry, kind, module, ctx, scope)?;
@@ -555,7 +529,7 @@ fn entry_flow(
     scope: &Scope<'_>,
 ) -> Option<Vec<String>> {
     let kind = kind?;
-    if let Some(stated) = &entry.flow {
+    if let Some(stated) = entry.stated_flow() {
         return Some(stated.iter().map(|p| p.name.clone()).collect());
     }
     scope
@@ -569,8 +543,8 @@ fn flow_args(set: &[&str]) -> String {
 }
 
 /// RFC-0224 section 2 rule 3, widened to every field-wise derivation by RFC-0227: a `pub` generic type that
-/// derives `Copy` or `Clone` without an argument list has a computed flow, which is its published interface, so
-/// it may omit the list only when that flow is empty. Otherwise the error shows the computed set as the fix-it.
+/// derives `Copy` or `Clone` with `?` has a computed flow, which is its published interface, so it may use `?`
+/// only when that flow is empty (RFC-0244 section 4). Otherwise the error shows the computed set as the fix-it.
 /// Non-`pub` and non-generic types are unaffected.
 fn check_public_flow_stated(
     decl: &Declaration<'_>,
@@ -590,12 +564,13 @@ fn check_public_flow_stated(
     let aspect = entry.name.as_str();
     let message = if entry.from_class_keyword {
         format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and a bare `copy` states none; write `copy({})` (RFC-0239)",
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `copy?` computes it; write `derives Clone({}), Copy({})` (RFC-0244)",
+            flow_args(&set),
             flow_args(&set)
         )
     } else {
         format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty; write `derives {aspect}({})` (RFC-0227)",
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `?` computes it; write `derives {aspect}({})` (RFC-0244)",
             flow_args(&set)
         )
     };
@@ -604,6 +579,25 @@ fn check_public_flow_stated(
         message,
         &entry.span,
     ))
+}
+
+/// RFC-0244 section 2: a bare entry states no condition on a type parameter, so a field that needs one is an error
+/// whose fix-it is `?` (compute the flow) or an argument list (state it).
+fn bare_entry_error(entry: &ClauseEntry, needed: &str, fixed: &[&str]) -> MetelError {
+    let aspect = entry.name.as_str();
+    let spelling = if entry.from_class_keyword {
+        "`copy?`".to_string()
+    } else {
+        format!("`derives {aspect}?`")
+    };
+    MetelError::type_error(
+        TypeErrorCode::T0046,
+        format!(
+            "a field's `{aspect}` depends on `{needed}`, and a bare entry states no condition on a type parameter; write {spelling} to compute it, or `derives {aspect}({})` to state it (RFC-0244)",
+            flow_args(fixed)
+        ),
+        &entry.span,
+    )
 }
 
 /// RFC-0224 section 2 and RFC-0227: the checks on a `derives` entry's arguments, stated or computed. An argument
@@ -623,6 +617,15 @@ fn check_flow(
 ) -> Result<(), MetelError> {
     let invalid =
         |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
+    if entry.mark == DeriveMark::Query && kind.is_none() && !entry.from_class_keyword {
+        return Err(invalid(
+            format!(
+                "`{}` has no flow to compute: only the field-wise derivations `Copy` and `Clone` take `?` (RFC-0244)",
+                entry.name
+            ),
+            &entry.span,
+        ));
+    }
     if let Some(flow) = &entry.flow {
         let Some(_) = kind else {
             return Err(invalid(
@@ -674,7 +677,7 @@ fn check_flow(
             }
         }
     }
-    if let Some(flow) = &entry.flow {
+    if let Some(flow) = entry.stated_flow() {
         let aspect = entry.name.as_str();
         let params: Vec<String> = generics
             .iter()
@@ -688,6 +691,9 @@ fn check_flow(
                 let stated: Vec<&str> = flow.iter().map(|p| p.name.as_str()).collect();
                 let mut fixed = stated.clone();
                 fixed.push(&g.name);
+                if entry.mark == DeriveMark::Bare {
+                    return Err(bare_entry_error(entry, &g.name, &fixed));
+                }
                 return Err(invalid(
                     format!(
                         "a field's `{aspect}` depends on `{}`, which `{aspect}({})` does not cover; write `{aspect}({})` (RFC-0224 rule 1)",

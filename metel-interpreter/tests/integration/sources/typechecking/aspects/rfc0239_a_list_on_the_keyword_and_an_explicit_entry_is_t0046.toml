@@ -1,8 +1,0 @@
-[options]
-error = ["T0046"]
-spec = ["spec.declarations.aspects.declaration-clauses.legality-18"]
-
-[expect]
-status = "typecheck_error"
-code = "T0046"
-contains = "not both"

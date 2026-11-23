@@ -180,7 +180,7 @@ pub(super) fn flow_decl(
         return None;
     }
     let stated = |e: &crate::data::ast::ClauseEntry| {
-        e.flow.as_ref().map_or(Copying::Computed, |flow| {
+        e.stated_flow().map_or(Copying::Computed, |flow| {
             Copying::Stated(flow.iter().map(|p| p.name.clone()).collect())
         })
     };

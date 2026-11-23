@@ -1,4 +1,4 @@
-copy struct Wrapper<T> { v: T }
+copy? struct Wrapper<T> { v: T }
 struct Token { id: i64 }
 
 fun main() {
