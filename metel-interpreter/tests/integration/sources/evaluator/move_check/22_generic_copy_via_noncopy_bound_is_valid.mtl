@@ -1,6 +1,6 @@
 aspect Marker { }
 
-copy? struct Witness<T> { }
+struct Witness<T> derives Clone(..), Copy(..) { }
 
 fun duplicate<T: Marker>(value: Witness<T>) -> Witness<T> {
     let copied := value;

@@ -8,7 +8,7 @@
 // whether the concrete argument satisfies the blanket's bound, not on the
 // two impls merely sharing a target constructor.
 
-copy? struct Reach<T> {
+struct Reach<T> derives Clone(..), Copy(..) {
     val: T,
 }
 

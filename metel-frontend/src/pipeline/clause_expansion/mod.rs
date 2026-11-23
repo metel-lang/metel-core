@@ -320,7 +320,7 @@ fn name_class_keywords(
                     added.push(ClauseEntry {
                         name: sup,
                         from_class_keyword: true,
-                        // `copy?` computes the flow of both entries, a bare `copy` states none (RFC-0244).
+                        // The keyword states no condition, so both entries are bare (RFC-0244).
                         flow: None,
                         mark: entry.mark,
                         span: entry.span.clone(),
@@ -564,7 +564,7 @@ fn check_public_flow_stated(
     let aspect = entry.name.as_str();
     let message = if entry.from_class_keyword {
         format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `copy?` computes it; write `derives Clone({}), Copy({})` (RFC-0244)",
+            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `derives Clone(..), Copy(..)` computes it; write `derives Clone({}), Copy({})` (RFC-0244)",
             flow_args(&set),
             flow_args(&set)
         )
@@ -586,15 +586,19 @@ fn check_public_flow_stated(
 fn bare_entry_error(entry: &ClauseEntry, needed: &str, fixed: &[&str]) -> MetelError {
     let aspect = entry.name.as_str();
     let spelling = if entry.from_class_keyword {
-        "`copy?`".to_string()
+        "`derives Clone(..), Copy(..)` in place of `copy`".to_string()
     } else {
         format!("`derives {aspect}(..)`")
+    };
+    let stated = if entry.from_class_keyword {
+        format!("`derives Clone({0}), Copy({0})`", flow_args(fixed))
+    } else {
+        format!("`derives {aspect}({})`", flow_args(fixed))
     };
     MetelError::type_error(
         TypeErrorCode::T0046,
         format!(
-            "a field's `{aspect}` depends on `{needed}`, and a bare entry states no condition on a type parameter; write {spelling} to compute it, or `derives {aspect}({})` to state it (RFC-0244)",
-            flow_args(fixed)
+            "a field's `{aspect}` depends on `{needed}`, and a bare entry states no condition on a type parameter; write {spelling} to compute it, or {stated} to state it (RFC-0244)"
         ),
         &entry.span,
     )

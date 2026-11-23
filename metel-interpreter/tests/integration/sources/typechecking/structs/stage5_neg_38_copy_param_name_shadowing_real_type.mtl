@@ -18,7 +18,7 @@ struct T {
     s: String,
 }
 
-copy? struct Holder<U> {
+struct Holder<U> derives Clone(..), Copy(..) {
     inner: T,
     marker: U,
 }

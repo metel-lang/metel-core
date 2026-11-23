@@ -1,6 +1,6 @@
 // RFC-0239 (metel-core#2070): with a bare keyword the explicit entry replaces the keyword's, so its stated flow
 // makes `H<String>` move.
-copy? struct H<T> derives Copy(T) { n: i64 }
+struct H<T> derives Copy(T), Clone(..) { n: i64 }
 
 fun main() {
     let h: H<String> := H { n = 1 };
