@@ -1,4 +1,4 @@
-// RFC-0224 rule 3, RFC-0244 section 4: `copy?` is `derives Clone?, Copy?`, so a public generic type may use it only when the
+// RFC-0224 rule 3, RFC-0244 section 4: `copy?` is `derives Clone(..), Copy(..)`, so a public generic type may use it only when the
 // computed flow is empty; the fix-it states the flow, naming every parameter of the computed set.
 pub copy? struct Pair<A, B> { a: A, b: B }
 

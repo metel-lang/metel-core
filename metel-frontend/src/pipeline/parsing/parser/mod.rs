@@ -735,15 +735,29 @@ fn parse_clause_part(
         Rule::colon_list | Rule::derives_clause => {
             let is_colon = pair.as_rule() == Rule::colon_list;
             for entry in pair.into_inner() {
-                // RFC-0244: `?` belongs to the entry just before it and asks for the computed flow.
+                // RFC-0244: the computed flow of an entry is `(..)`; the postfix `?` is the class keyword's.
                 if entry.as_rule() == Rule::derive_query {
-                    if let Some(last) = clauses.derives.last_mut() {
-                        last.mark = DeriveMark::Query;
-                    }
-                    continue;
+                    let aspect = clauses.derives.last().map_or("Aspect", |e| e.name.as_str());
+                    return Err(MetelError::parse(
+                        ParseErrorCode::P0001,
+                        format!(
+                            "`?` is not written after a `derives` entry: write `derives {aspect}(..)` to compute the flow (RFC-0244)"
+                        ),
+                        &Span::of(&entry, filename),
+                    ));
                 }
-                // RFC-0227: an argument list belongs to the entry just before it.
+                // RFC-0227: an argument list belongs to the entry just before it; `(..)` asks for the computed flow.
                 if entry.as_rule() == Rule::derive_args {
+                    if entry
+                        .clone()
+                        .into_inner()
+                        .any(|p| p.as_rule() == Rule::derive_rest)
+                    {
+                        if let Some(last) = clauses.derives.last_mut() {
+                            last.mark = DeriveMark::Query;
+                        }
+                        continue;
+                    }
                     let flow = entry
                         .into_inner()
                         .filter(|p| p.as_rule() == Rule::ident)

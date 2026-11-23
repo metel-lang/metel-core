@@ -11,7 +11,7 @@ fun by_derive<T>(x: T) -> i64 {
 }
 
 fun by_flow<T>(x: T) -> i64 {
-    struct Hold<U> derives Clone?, Copy? { v: View<U> }
+    struct Hold<U> derives Clone(..), Copy(..) { v: View<U> }
     let h: Hold<T> := Hold { v = View { r = &x } };
     let a := h;
     let b := h;
