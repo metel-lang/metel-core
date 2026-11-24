@@ -1,3 +1,3 @@
-// RFC-0244: the `copy` keyword is unconditional; a conditional type writes `derives Clone(..), Copy(..)`.
+// RFC-0244: the `copy` keyword is unconditional; a conditional type states its flow, `derives Clone(T), Copy(T)`.
 copy? struct W<T> { value: T }
 fun main() {}

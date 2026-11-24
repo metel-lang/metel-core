@@ -5,4 +5,4 @@ spec = ["spec.declarations.aspects.declaration-clauses.legality-11"]
 [expect]
 status = "parse_error"
 code = "P0001"
-contains = "derives Clone(..)"
+contains = "state the flow"

@@ -261,11 +261,6 @@ mode = "named"
 name = "DeriveArgs"
 section = "Declarations"
 [[rule]]
-pest = "derive_rest"
-mode = "named"
-name = "DeriveRest"
-section = "Declarations"
-[[rule]]
 pest = "derive_query"
 mode = "named"
 name = "DeriveQuery"

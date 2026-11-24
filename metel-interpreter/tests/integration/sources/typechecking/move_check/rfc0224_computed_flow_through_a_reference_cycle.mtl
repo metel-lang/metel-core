@@ -1,7 +1,7 @@
 // RFC-0224 section 2 (recursion): a declaration that names itself through a reference reaches a fixed point; the
 // reference depends on nothing, so the cycle adds no parameter.
-struct Node<T> derives Clone(..), Copy(..) { v: T, parent: &Node<T> }
-struct Ring<T> derives Clone(..), Copy(..) { head: Node<T> }
+struct Node<T> derives Clone(T), Copy(T) { v: T, parent: &Node<T> }
+struct Ring<T> derives Clone(T), Copy(T) { head: Node<T> }
 
 fun ok<T: Copy>(r: Ring<T>) -> (Ring<T>, Ring<T>) { (r, r) }
 

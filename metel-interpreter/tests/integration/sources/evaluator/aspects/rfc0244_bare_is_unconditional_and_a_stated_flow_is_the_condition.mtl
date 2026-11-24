@@ -1,8 +1,8 @@
-// RFC-0244: a bare `derives` and `copy` state no condition, so the type is Copy for every argument; `derives Clone(..), Copy(..)` computes the
-// condition from the fields, so `Boxed<String>` is Clone but not Copy.
+// RFC-0244: a bare `derives` and `copy` state no condition, so the type is Copy for every argument; a stated flow,
+// `derives Clone(T), Copy(T)`, is the condition, so `Boxed<String>` is Clone but not Copy.
 copy struct Id<T> { n: i64 }
-struct Boxed<T> derives Clone(..), Copy(..) { value: T }
-struct Pair<A, B> derives Clone(..) { a: A, b: B }
+struct Boxed<T> derives Clone(T), Copy(T) { value: T }
+struct Pair<A, B> derives Clone(A, B) { a: A, b: B }
 struct Tag<T> derives Clone { n: i64 }
 
 fun main() {

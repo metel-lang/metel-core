@@ -3,7 +3,7 @@
 // proves `T: Clone`.
 copy struct Point { x: i64, y: i64 }
 struct Pixel derives Clone, Copy { v: i64 }
-struct Wrapper<T> derives Clone(..), Copy(..) { v: T }
+struct Wrapper<T> derives Clone(T), Copy(T) { v: T }
 copy enum Dir { Up, Down }
 
 fun dup<T: Copy>(x: &T) -> T { x.clone() }

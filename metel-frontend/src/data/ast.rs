@@ -470,25 +470,22 @@ pub struct ClauseEntry {
     pub span: Span,
 }
 
-/// How a `derives` entry or the `copy` class keyword writes its flow (RFC-0244).
+/// How a `derives` entry or the `copy` class keyword writes its flow (RFC-0244). A flow is stated or empty, never computed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeriveMark {
     /// `derives A`, `copy`: no condition on the type parameters (an empty flow).
     Bare,
-    /// `derives A(..)`: the compiler computes the flow from the fields. The `copy` keyword has no such form.
-    Query,
     /// `derives A(P, Q)`: the flow is stated.
     Args,
 }
 
 impl ClauseEntry {
-    /// The flow the entry states, or `None` when the compiler computes it. A bare entry states an empty flow.
+    /// The flow the entry states. A bare entry states an empty flow.
     #[must_use]
-    pub fn stated_flow(&self) -> Option<&[FlowParam]> {
+    pub fn stated_flow(&self) -> &[FlowParam] {
         match self.mark {
-            DeriveMark::Query => None,
-            DeriveMark::Bare => Some(&[]),
-            DeriveMark::Args => self.flow.as_deref(),
+            DeriveMark::Bare => &[],
+            DeriveMark::Args => self.flow.as_deref().unwrap_or(&[]),
         }
     }
 }

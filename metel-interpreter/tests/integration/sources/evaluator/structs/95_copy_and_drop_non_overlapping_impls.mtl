@@ -6,7 +6,7 @@
 //
 // Two ways the two impls can coexist:
 
-struct Disjoint<T> derives Clone(..), Copy(..) {
+struct Disjoint<T> derives Clone(T), Copy(T) {
     val: T,
 }
 
@@ -17,7 +17,7 @@ extend<T: !Copy> Disjoint<T>: Drop {
     fun drop(&var self) {}
 }
 
-struct Reach<T> derives Clone(..), Copy(..) {
+struct Reach<T> derives Clone(T), Copy(T) {
     val: T,
 }
 

@@ -1,6 +1,6 @@
 // metel-core#1969: a generic body that declares a type with a clause-derived `Copy` impl is analysed,
 // not refused with `I0011`, and the local type is `Copy` in it.
-struct View<T> derives Clone(..), Copy(..) { r: &T }
+struct View<T> derives Clone, Copy { r: &T }
 
 fun by_derive<T>(x: T) -> i64 {
     struct D derives Clone, Copy { n: i64 }
@@ -11,7 +11,7 @@ fun by_derive<T>(x: T) -> i64 {
 }
 
 fun by_flow<T>(x: T) -> i64 {
-    struct Hold<U> derives Clone(..), Copy(..) { v: View<U> }
+    struct Hold<U> derives Clone, Copy { v: View<U> }
     let h: Hold<T> := Hold { v = View { r = &x } };
     let a := h;
     let b := h;

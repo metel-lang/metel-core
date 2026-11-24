@@ -3,7 +3,7 @@
 aspect Describe { fun describe(&self) -> i64; }
 struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
-struct Tagged<T> derives Clone(..), Copy(..) { n: i64, value: T }
+struct Tagged<T> derives Clone(T), Copy(T) { n: i64, value: T }
 
 fun scale(by: i64, x: i64) -> i64 { by * x }
 fun apply<record R: .{ .f: copy |i64| -> i64, !.secret, .. }>(r: R, x: i64) -> i64 { (r.f)(x) }

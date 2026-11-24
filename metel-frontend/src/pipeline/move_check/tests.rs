@@ -1567,7 +1567,7 @@ aspect Marker {}
 aspect Other {}
 struct Guard<A, B> { name: String }
 extend<A, B> Guard<A, B>: Drop where A: Marker, B: Other { fun drop(&var self) {} }
-struct Token<T> derives Clone(..), Copy(..) { value: T }
+struct Token<T> derives Clone(T), Copy(T) { value: T }
 fun extract<A: !Marker, B>(value: Guard<A, B>) -> String { value.name }
 fun unknown_drop<A: Marker, B>(value: Guard<A, B>) -> String { value.name }
 fun token<T: Copy>(value: Token<T>) { let first := value; let again := value; }
@@ -1593,7 +1593,7 @@ fn abstract_ownership_proves_where_conditions_and_destructor_disjointness() {
     let report = move_report_for_source_with(
         r#"
 aspect Marker {}
-struct Wrapper<T> derives Clone(..), Copy(..) { value: T }
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 struct Guard<T> { name: String, tag: T }
 extend<T> Guard<T>: Drop where T: Marker { fun drop(&var self) {} }
 fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
@@ -1623,8 +1623,8 @@ fun main() {}
 fn abstract_ownership_proves_declared_conditional_copy() {
     let report = move_report_for_source_with(
         r#"
-struct Wrapper<T> derives Clone(..), Copy(..) { value: T }
-struct Swapped<X, Y> derives Clone(..), Copy(..) { right: Y }
+struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
+struct Swapped<X, Y> derives Clone(Y), Copy(Y) { right: Y }
 fun copied<T: Copy>(value: Wrapper<T>) { let first := value; let again := value; }
 fun swapped<T, U: Copy>(value: Swapped<T, U>) { let first := value; let again := value; }
 fun main() {}

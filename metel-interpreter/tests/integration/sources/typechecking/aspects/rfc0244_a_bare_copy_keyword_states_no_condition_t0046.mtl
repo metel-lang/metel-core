@@ -1,4 +1,4 @@
 // RFC-0244 section 3: a bare `copy` is `derives Clone, Copy` with no condition; a field that needs the parameter is an error
-// whose fix-it is `derives Clone(..), Copy(..)`: the keyword has no conditional form.
+// whose fix-it states the flow in place of the keyword, `derives Clone(T), Copy(T)`.
 copy struct Boxed<T> { value: T } // ERROR[T0046]
 fun main() {}

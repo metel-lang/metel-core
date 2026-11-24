@@ -11,7 +11,7 @@ struct Inner<T> {
     value: T,
 }
 
-struct Outer<T> derives Clone(..), Copy(..) {
+struct Outer<T> derives Clone(T), Copy(T) {
     inner: Inner<T>,
 }
 

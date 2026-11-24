@@ -167,7 +167,6 @@ fn expand_decls(
                         generics: &sd.generics,
                         fields: &fields,
                         span: &sd.span,
-                        public: sd.visibility == Visibility::Public,
                     },
                     &mut sd.clauses,
                     module,
@@ -187,7 +186,6 @@ fn expand_decls(
                         generics: &ed.generics,
                         fields: &fields,
                         span: &ed.span,
-                        public: ed.visibility == Visibility::Public,
                     },
                     &mut ed.clauses,
                     module,
@@ -265,7 +263,6 @@ struct Declaration<'a> {
     generics: &'a [GenericParam],
     fields: &'a [TypeExpr],
     span: &'a Span,
-    public: bool,
 }
 
 /// The positive `derived` super-aspects of an aspect, transitively: the aspects a type that derives it must also
@@ -456,19 +453,9 @@ fn clause_impls(
         let kind = entry_kind(entry, module, ctx);
         if bound.is_some() {
             check_flow(entry, kind, decl.generics, decl.fields, module, ctx, scope)?;
-            // The `Clone` entry a class keyword stands for has no argument list to write, so the type's `Copy`
-            // entry is the one that must state the flow.
-            let implied = entry.from_class_keyword && kind == Some(Kind::Clone);
-            if let Some(kind) = kind
-                && decl.public
-                && entry.mark == DeriveMark::Query
-                && !implied
-            {
-                check_public_flow_stated(decl, entry, kind, module, ctx, scope)?;
-            }
         }
         let flow = if bound.is_some() {
-            entry_flow(entry, kind, decl.name, module, ctx, scope)
+            entry_flow(entry, kind)
         } else {
             None
         };
@@ -517,24 +504,11 @@ fn check_clone_flow_within_copy(flows: &[(Kind, Vec<String>, Span)]) -> Result<(
     Ok(())
 }
 
-/// The flow an entry's impl is generated with (RFC-0224, RFC-0227): the argument list the entry states, or the
-/// flow the compiler computes from the fields for a `Copy` or `Clone` entry; any other entry has none (its
-/// parameters are bounded by the per-parameter rule).
-fn entry_flow(
-    entry: &ClauseEntry,
-    kind: Option<Kind>,
-    type_name: &str,
-    module: &[String],
-    ctx: &Ctx<'_>,
-    scope: &Scope<'_>,
-) -> Option<Vec<String>> {
-    let kind = kind?;
-    if let Some(stated) = entry.stated_flow() {
-        return Some(stated.iter().map(|p| p.name.clone()).collect());
-    }
-    scope
-        .own(type_name, module, ctx.names, kind)
-        .map(|e| e.set().iter().cloned().collect())
+/// The flow an entry's impl is generated with (RFC-0224, RFC-0227, RFC-0244): the argument list the entry states, empty for
+/// a bare entry, for a `Copy` or `Clone` entry; any other entry has none (its parameters are bounded by the per-parameter rule).
+fn entry_flow(entry: &ClauseEntry, kind: Option<Kind>) -> Option<Vec<String>> {
+    kind?;
+    Some(entry.stated_flow().iter().map(|p| p.name.clone()).collect())
 }
 
 /// The spelling of a flow argument list, for the fix-its.
@@ -542,63 +516,22 @@ fn flow_args(set: &[&str]) -> String {
     set.join(", ")
 }
 
-/// RFC-0224 section 2 rule 3, widened to every field-wise derivation by RFC-0227: a `pub` generic type that
-/// derives `Copy` or `Clone` with `?` has a computed flow, which is its published interface, so it may use `?`
-/// only when that flow is empty (RFC-0244 section 4). Otherwise the error shows the computed set as the fix-it.
-/// Non-`pub` and non-generic types are unaffected.
-fn check_public_flow_stated(
-    decl: &Declaration<'_>,
-    entry: &ClauseEntry,
-    kind: Kind,
-    module: &[String],
-    ctx: &Ctx<'_>,
-    scope: &Scope<'_>,
-) -> Result<(), MetelError> {
-    let Some(computed) = scope.own(decl.name, module, ctx.names, kind) else {
-        return Ok(());
-    };
-    let set: Vec<&str> = computed.set().iter().map(String::as_str).collect();
-    if set.is_empty() {
-        return Ok(());
-    }
-    let aspect = entry.name.as_str();
-    let message = if entry.from_class_keyword {
-        format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `derives Clone(..), Copy(..)` computes it; write `derives Clone({}), Copy({})` (RFC-0244)",
-            flow_args(&set),
-            flow_args(&set)
-        )
-    } else {
-        format!(
-            "a public generic type must state the flow of its `{aspect}` when it is not empty, and `(..)` computes it; write `derives {aspect}({})` (RFC-0244)",
-            flow_args(&set)
-        )
-    };
-    Err(MetelError::type_error(
-        TypeErrorCode::T0046,
-        message,
-        &entry.span,
-    ))
-}
-
 /// RFC-0244 section 2: a bare entry states no condition on a type parameter, so a field that needs one is an error
-/// whose fix-it is `?` (compute the flow) or an argument list (state it).
+/// whose fix-it states the flow: every parameter the fields need.
 fn bare_entry_error(entry: &ClauseEntry, needed: &str, fixed: &[&str]) -> MetelError {
     let aspect = entry.name.as_str();
-    let spelling = if entry.from_class_keyword {
-        "`derives Clone(..), Copy(..)` in place of `copy`".to_string()
-    } else {
-        format!("`derives {aspect}(..)`")
-    };
     let stated = if entry.from_class_keyword {
-        format!("`derives Clone({0}), Copy({0})`", flow_args(fixed))
+        format!(
+            "`derives Clone({0}), Copy({0})` in place of `copy`",
+            flow_args(fixed)
+        )
     } else {
         format!("`derives {aspect}({})`", flow_args(fixed))
     };
     MetelError::type_error(
         TypeErrorCode::T0046,
         format!(
-            "a field's `{aspect}` depends on `{needed}`, and a bare entry states no condition on a type parameter; write {spelling} to compute it, or {stated} to state it (RFC-0244)"
+            "a field's `{aspect}` depends on `{needed}`, and a bare entry states no condition on a type parameter; write {stated} (RFC-0244)"
         ),
         &entry.span,
     )
@@ -621,15 +554,6 @@ fn check_flow(
 ) -> Result<(), MetelError> {
     let invalid =
         |message: String, span: &Span| MetelError::type_error(TypeErrorCode::T0046, message, span);
-    if entry.mark == DeriveMark::Query && kind.is_none() && !entry.from_class_keyword {
-        return Err(invalid(
-            format!(
-                "`{}` has no flow to compute: only the field-wise derivations `Copy` and `Clone` take `(..)` (RFC-0244)",
-                entry.name
-            ),
-            &entry.span,
-        ));
-    }
     if let Some(flow) = &entry.flow {
         let Some(_) = kind else {
             return Err(invalid(
@@ -681,34 +605,41 @@ fn check_flow(
             }
         }
     }
-    if let Some(flow) = entry.stated_flow() {
-        let aspect = entry.name.as_str();
-        let params: Vec<String> = generics
+    let aspect = entry.name.as_str();
+    let params: Vec<String> = generics
+        .iter()
+        .filter(|g| !g.is_record && !g.is_row)
+        .map(|g| g.name.clone())
+        .collect();
+    let needs = flows::dependence(field_types, &params, module, ctx.names, scope, kind);
+    let stated: Vec<&str> = entry
+        .stated_flow()
+        .iter()
+        .map(|p| p.name.as_str())
+        .collect();
+    let missing: Vec<&str> = params
+        .iter()
+        .map(String::as_str)
+        .filter(|p| needs.contains(*p) && !stated.contains(p))
+        .collect();
+    if let Some(first) = missing.first() {
+        // The fix-it states every parameter at once, in declaration order, so one edit is always enough.
+        let fixed: Vec<&str> = params
             .iter()
-            .filter(|g| !g.is_record && !g.is_row)
-            .map(|g| g.name.clone())
+            .map(String::as_str)
+            .filter(|p| stated.contains(p) || missing.contains(p))
             .collect();
-        let needs = flows::dependence(field_types, &params, module, ctx.names, scope, kind);
-        for g in generics.iter().filter(|g| !g.is_record && !g.is_row) {
-            let needed = needs.contains(&g.name);
-            if needed && !flow.iter().any(|p| p.name == g.name) {
-                let stated: Vec<&str> = flow.iter().map(|p| p.name.as_str()).collect();
-                let mut fixed = stated.clone();
-                fixed.push(&g.name);
-                if entry.mark == DeriveMark::Bare {
-                    return Err(bare_entry_error(entry, &g.name, &fixed));
-                }
-                return Err(invalid(
-                    format!(
-                        "a field's `{aspect}` depends on `{}`, which `{aspect}({})` does not cover; write `{aspect}({})` (RFC-0224 rule 1)",
-                        g.name,
-                        flow_args(&stated),
-                        flow_args(&fixed)
-                    ),
-                    &entry.span,
-                ));
-            }
+        if entry.mark == DeriveMark::Bare {
+            return Err(bare_entry_error(entry, first, &fixed));
         }
+        return Err(invalid(
+            format!(
+                "a field's `{aspect}` depends on `{first}`, which `{aspect}({})` does not cover; write `{aspect}({})` (RFC-0224 rule 1)",
+                flow_args(&stated),
+                flow_args(&fixed)
+            ),
+            &entry.span,
+        ));
     }
     Ok(())
 }

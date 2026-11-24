@@ -3,7 +3,7 @@
 // through its own flow, and a type whose flow is empty is always `Copy`.
 struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 struct Pair<A, B> derives Clone(A, B), Copy(A, B) { a: A, b: B }
-struct View<T> derives Clone(..), Copy(..) { r: &T }
+struct View<T> derives Clone, Copy { r: &T }
 
 fun twice<T: Copy>(w: Wrapper<T>) -> (Wrapper<T>, Wrapper<T>) { (w, w) }
 fun nested<T: Copy>(p: Pair<Wrapper<T>, i64>) -> (Pair<Wrapper<T>, i64>, Pair<Wrapper<T>, i64>) { (p, p) }

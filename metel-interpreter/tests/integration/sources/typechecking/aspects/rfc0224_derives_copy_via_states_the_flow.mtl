@@ -1,7 +1,7 @@
 // RFC-0224 section 1: `via` states the type parameters a `derives Clone, Copy` entry's copy-ness flows from. A set larger
 // than the fields need is accepted; the type is then `Copy` only when those arguments are.
 struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
-struct Pair<A, B> derives Clone(..), Copy(A, B) { a: A, b: B }
+struct Pair<A, B> derives Clone(A, B), Copy(A, B) { a: A, b: B }
 struct Handle<T> derives Clone(T), Copy(T) { id: i64 }
 enum Maybe<T> derives Clone(T), Copy(T) { None, Some { value: T } }
 

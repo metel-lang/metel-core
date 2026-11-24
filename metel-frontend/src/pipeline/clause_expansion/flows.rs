@@ -42,12 +42,6 @@ pub(super) struct Entry {
     set: BTreeSet<String>,
 }
 
-impl Entry {
-    pub(super) fn set(&self) -> &BTreeSet<String> {
-        &self.set
-    }
-}
-
 /// The flows of one scope: the module's declarations, or the declarations of one function body.
 #[derive(Default)]
 pub(super) struct Table {
@@ -96,17 +90,6 @@ impl<'a> Scope<'a> {
             }
         }
         None
-    }
-
-    /// The entry of the declaration being expanded, in the innermost scope that declares it.
-    pub(super) fn own(
-        &self,
-        name: &str,
-        module: &[String],
-        names: &ResolvedNames,
-        kind: Kind,
-    ) -> Option<&'a Entry> {
-        self.entry(name, module, names, kind)
     }
 }
 
@@ -180,9 +163,7 @@ pub(super) fn flow_decl(
         return None;
     }
     let stated = |e: &crate::data::ast::ClauseEntry| {
-        e.stated_flow().map_or(Copying::Computed, |flow| {
-            Copying::Stated(flow.iter().map(|p| p.name.clone()).collect())
-        })
+        Copying::Stated(e.stated_flow().iter().map(|p| p.name.clone()).collect())
     };
     let copy = copy_entry.map_or(Copying::No, stated);
     let clone = match (clone_entry, keyword) {

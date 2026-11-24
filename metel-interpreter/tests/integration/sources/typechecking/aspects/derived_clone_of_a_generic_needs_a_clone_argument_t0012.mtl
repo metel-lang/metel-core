@@ -1,4 +1,4 @@
-struct Wrapper<T> derives Clone(..) { v: T }
+struct Wrapper<T> derives Clone(T) { v: T }
 struct NoClone { n: i64 }
 
 fun main() {

@@ -1,6 +1,7 @@
-//! The flow computation reaches declarations inside function bodies (metel-core#1964): the clause expansion
-//! writes `extend<T> W<T>: Copy` for a local `struct W<T> derives Clone(..), Copy(..) { v: View<T> }`, with no bound on `T`
-//! because a view holds it by reference, and shadows a module-level type of the same name.
+//! The flow check reaches declarations inside function bodies (metel-core#1964): a local
+//! `struct W<T> derives Clone, Copy { v: View<T> }` is accepted with no bound on `T`, because a view holds it by
+//! reference, and a local declaration shadows a module-level type of the same name. Flows are stated (RFC-0244); the
+//! dependence analysis checks them.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -50,17 +51,17 @@ fn local_impls(source: &str) -> Vec<(String, Vec<String>)> {
 }
 
 #[test]
-fn a_local_copy_declaration_gets_its_computed_flow() {
+fn a_local_declaration_flow_is_checked_with_its_block() {
     let impls = local_impls(
         "copy struct View<T> { r: &T }
          fun main() {
-             struct W<T> derives Clone(..), Copy(..) { v: View<T> }
-             struct Plain<T> derives Clone(..), Copy(..) { v: T }
-             struct Outer<A, B> derives Clone(..), Copy(..) { w: Plain<A>, n: B }
+             struct W<T> derives Clone, Copy { v: View<T> }
+             struct Plain<T> derives Clone(T), Copy(T) { v: T }
+             struct Outer<A, B> derives Clone(A, B), Copy(A, B) { w: Plain<A>, n: B }
          }",
     );
-    // W<T> holds T only through a view: no bound. Plain<T> holds it: bounded. Outer reads the flow of the
-    // local `Plain` declared in the same block.
+    // W<T> holds T only through a view, so a bare entry is accepted: no bound. Plain<T> holds it: bounded. Outer's
+    // stated flow is checked against the flow of the local `Plain` declared in the same block.
     assert!(impls.contains(&("Copy".to_string(), vec![])), "{impls:?}");
     assert!(
         impls.contains(&("Copy".to_string(), vec!["T".to_string()])),
@@ -75,13 +76,13 @@ fn a_local_copy_declaration_gets_its_computed_flow() {
 #[test]
 fn a_local_declaration_shadows_a_module_level_type_of_the_same_name() {
     // The module-level `Hold<T>` holds `T`; the local one holds it only through a view. `W` names `Hold` and
-    // must read the local flow, so it bounds nothing.
+    // must read the local flow: its bare entry is accepted only if it does, and it bounds nothing.
     let impls = local_impls(
         "copy struct View<T> { r: &T }
-         struct Hold<T> derives Clone(..), Copy(..) { v: T }
+         struct Hold<T> derives Clone(T), Copy(T) { v: T }
          fun main() {
-             struct Hold<T> derives Clone(..), Copy(..) { v: View<T> }
-             struct W<T> derives Clone(..), Copy(..) { h: Hold<T> }
+             struct Hold<T> derives Clone, Copy { v: View<T> }
+             struct W<T> derives Clone, Copy { h: Hold<T> }
          }",
     );
     let unbounded = impls

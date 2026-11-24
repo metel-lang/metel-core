@@ -695,8 +695,8 @@ fn parse_class_keyword(
     {
         return Err(MetelError::parse(
             ParseErrorCode::P0001,
-            "the `copy` keyword has no conditional form: write `derives Clone(..), Copy(..)` to compute the condition \
-             from the fields, or `derives Clone(T), Copy(T)` to state it (RFC-0244)"
+            "the `copy` keyword has no conditional form: state the condition with `derives Clone(T), Copy(T)`, \
+             naming the type parameters the fields need (RFC-0244)"
                 .to_string(),
             span,
         ));
@@ -733,23 +733,13 @@ fn parse_clause_part(
                     return Err(MetelError::parse(
                         ParseErrorCode::P0001,
                         format!(
-                            "`?` is not written after a `derives` entry: write `derives {aspect}(..)` to compute the flow (RFC-0244)"
+                            "`?` is not written after a `derives` entry: state the flow, `derives {aspect}(T)`, naming the type parameters the fields need (RFC-0244)"
                         ),
                         &Span::of(&entry, filename),
                     ));
                 }
-                // RFC-0227: an argument list belongs to the entry just before it; `(..)` asks for the computed flow.
+                // RFC-0227: an argument list belongs to the entry just before it.
                 if entry.as_rule() == Rule::derive_args {
-                    if entry
-                        .clone()
-                        .into_inner()
-                        .any(|p| p.as_rule() == Rule::derive_rest)
-                    {
-                        if let Some(last) = clauses.derives.last_mut() {
-                            last.mark = DeriveMark::Query;
-                        }
-                        continue;
-                    }
                     let flow = entry
                         .into_inner()
                         .filter(|p| p.as_rule() == Rule::ident)
