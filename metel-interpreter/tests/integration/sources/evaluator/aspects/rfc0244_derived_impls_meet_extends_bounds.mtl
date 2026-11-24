@@ -1,0 +1,35 @@
+// RFC-0244 with `extends` bounds: a derived impl, unconditional or computed, satisfies an `extends Copy` or
+// `extends Clone` bound in parameter position (each occurrence its own anonymous type parameter) and in return
+// position (one concrete type on every path, and the bound's methods dispatch on the opaque value).
+struct Boxed<T> derives Clone(..), Copy(..) { value: T }
+struct Tag derives Clone, Copy { n: i64 }
+
+fun use_twice(x: extends Copy, y: extends Copy) -> i64 {
+    let a := x;
+    let b := x;
+    let c := y;
+    let d := y;
+    4
+}
+
+fun cloned(x: extends Clone) -> extends Clone {
+    x.clone()
+}
+
+fun pick(flag: boolean) -> extends Copy {
+    if (flag) { Boxed { value = 1 } } else { Boxed { value = 2 } }
+}
+
+fun main() {
+    // Two independent anonymous parameters: Boxed<i64> (computed flow, T = i64 is Copy) and Tag (bare).
+    assert(use_twice(Boxed { value = 3 }, Tag { n = 1 }) == 4);
+
+    // Boxed<String> is Clone by the computed flow, so it meets `extends Clone`, and the result clones again.
+    let s := cloned(Boxed { value = "s" });
+    let t := s.clone();
+
+    // The opaque `extends Copy` value is copied, not moved.
+    let p := pick(true);
+    let q := p;
+    let r := p;
+}
