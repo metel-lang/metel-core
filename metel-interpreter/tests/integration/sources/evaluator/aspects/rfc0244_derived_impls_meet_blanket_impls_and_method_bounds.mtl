@@ -1,0 +1,37 @@
+// RFC-0244 with aspect implementations: a local aspect's bare-parameter blanket impl over `Copy` applies to a
+// type whose `Copy` is derived, bare or computed, so the type meets a `Weight` bound; and an implementation method
+// whose own generic parameter is bounded by `Copy` (named differently from the aspect's) accepts a derived Copy type.
+// The blanket method itself is not called: that fails at run time for every type (#2185).
+struct Boxed<T> derives Clone(..), Copy(..) { value: T }
+struct Tag derives Clone, Copy { n: i64 }
+
+aspect Weight {
+    fun weight(&self) -> i64;
+}
+
+extend<T: Copy> T: Weight {
+    fun weight(&self) -> i64 { 1 }
+}
+
+fun weigh<W: Weight>(w: W) -> i64 {
+    1
+}
+
+aspect Keep {
+    fun keep<U: Copy>(&self, u: U) -> U;
+}
+
+extend Tag: Keep {
+    fun keep<V: Copy>(&self, u: V) -> V { u }
+}
+
+fun main() {
+    let t := Tag { n = 2 };
+    assert(weigh(t) == 1);
+    let b: Boxed<i64> := Boxed { value = 5 };
+    assert(weigh(b) == 1);
+
+    let kept := t.keep(b);
+    assert(kept.value == 5);
+    assert(b.value == 5);
+}
