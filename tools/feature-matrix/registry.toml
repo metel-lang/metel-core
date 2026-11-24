@@ -822,6 +822,15 @@ source = ["RFC-0116", "RFC-0123", "RFC-0231", "changelog:v0.16.0"]
 subsystems = ["records"]
 rules = ["spec.ownership.narrowing.legality-4", "spec.types.anonymous-records.dynamics-1", "spec.types.anonymous-records.dynamics-2", "spec.types.anonymous-records.legality-1", "spec.types.anonymous-records.legality-3", "spec.types.generics.field-wise-row-constraints.legality-1", "spec.types.tuples.legality-2", "spec.types.anonymous-records.dynamics-3", "spec.types.tuples.dynamics-1"]
 
+[[features]]
+id = "rfc-0244"
+name = "Unconditional derivation and the computed flow"
+introduced = "v0.17.0"
+stage = "Unconditional derivation"
+source = ["RFC-0244"]
+subsystems = ["aspects", "declarations"]
+rules = ["spec.declarations.aspects.declaration-clauses.legality-5", "spec.declarations.aspects.declaration-clauses.legality-6", "spec.declarations.aspects.declaration-clauses.legality-11", "spec.declarations.aspects.declaration-clauses.legality-13"]
+
 # Explicit adjacency for Tier B. Tier A is any shared subsystem tag.
 
 [[adjacent_subsystems]]
