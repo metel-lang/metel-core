@@ -218,6 +218,29 @@ class StricterGate(unittest.TestCase):
         in_release = self.violations([new, old], [], bulk=bulk, release="v0.16.0")
         self.assertNotIn("expired-bulk", self.rules(in_release))
 
+    def test_a_bulk_deferral_with_until_lasts_until_that_release(self):
+        new = feature("new", ["spec.ownership.n.legality-1"])
+        old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.15.0")
+        newer = feature("newer", ["spec.ownership.w.legality-1"], introduced="v0.17.0")
+        bulk = [{"release": "v0.16.0", "tier": "A", "reason": "r", "issue": self.ISSUE, "until": "v0.17.1"}]
+        fixtures = [Fixture("f", frozenset({"spec.ownership.newer.legality-1"}))]
+        before = self.violations([new, old, newer], fixtures, bulk=bulk, release="v0.17.0")
+        self.assertNotIn("expired-bulk", self.rules(before))
+        patch = feature("patch", ["spec.ownership.p.legality-1"], introduced="v0.17.1")
+        at = self.violations([new, old, newer, patch], fixtures, bulk=bulk, release="v0.17.1")
+        self.assertIn("expired-bulk", self.rules(at))
+
+    def test_until_must_be_a_later_release(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "states.toml"
+            path.write_text('[[bulk]]\nrelease = "v0.16.0"\ntier = "A"\nreason = "x"\n'
+                            'issue = "https://github.com/o/r/issues/1"\nuntil = "v0.16.0"\n')
+            with self.assertRaises(ValueError):
+                load_bulk(path)
+            path.write_text('[[bulk]]\nrelease = "v0.16.0"\ntier = "A"\nreason = "x"\n'
+                            'issue = "https://github.com/o/r/issues/1"\nuntil = "v0.17.1"\n')
+            self.assertEqual(load_bulk(path)[0]["until"], "v0.17.1")
+
     def test_a_deferral_does_not_leak_into_a_later_release_gate(self):
         old = feature("old", ["spec.ownership.o.legality-1"], introduced="v0.16.0")
         newer = feature("newer", ["spec.ownership.w.legality-1"], introduced="v0.17.0")
