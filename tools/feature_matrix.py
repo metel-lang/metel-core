@@ -106,16 +106,25 @@ def load_registry(path: Path) -> tuple[dict[str, Feature], set[tuple[str, str]]]
 
 
 def load_bulk(path: Path) -> list[dict[str, str]]:
-    """Bulk deferrals: every still-open cell of a tier for a release goes to one tracking issue."""
+    """Bulk deferrals: every still-open cell of a tier for a release goes to one tracking issue.
+
+    An entry may name `until`, the release at which it expires; without it, it expires at the next minor release
+    (see `gate_violations`)."""
     bulk = []
     for entry in load_toml(path).get("bulk", []):
         release, tier = entry.get("release", ""), entry.get("tier", "")
         reason, issue = entry.get("reason", "").strip(), entry.get("issue", "").strip()
+        until = entry.get("until", "")
         if not re.fullmatch(r"v\d+\.\d+\.\d+", release) or tier not in {"A", "B", "C"}:
             raise ValueError(f"bulk deferral needs a release version and a tier A, B or C: {entry!r}")
         if not reason or not re.search(r"https://github\.com/.+/issues/\d+", issue):
             raise ValueError(f"bulk deferral for {release} tier {tier} needs a reason and a GitHub issue URL")
-        bulk.append({"release": release, "tier": tier, "reason": reason, "issue": issue})
+        if until and (not re.fullmatch(r"v\d+\.\d+\.\d+", until) or _version(until) <= _version(release)):
+            raise ValueError(f"bulk deferral for {release} tier {tier}: `until` must be a later release version")
+        item = {"release": release, "tier": tier, "reason": reason, "issue": issue}
+        if until:
+            item["until"] = until
+        bulk.append(item)
     return bulk
 
 
@@ -290,8 +299,20 @@ def load_gate_config(path: Path) -> dict:
 
 
 def _minor(version: str) -> tuple[int, int]:
-    major, minor, _ = (int(part) for part in version.lstrip("v").split("."))
+    major, minor, _ = _version(version)
     return major, minor
+
+
+def _version(version: str) -> tuple[int, int, int]:
+    major, minor, patch = (int(part) for part in version.lstrip("v").split("."))
+    return major, minor, patch
+
+
+def _bulk_expired(entry: dict[str, str], release: str) -> bool:
+    """A bulk deferral expires at its `until` release, or else at the next minor release after its own."""
+    if "until" in entry:
+        return _version(release) >= _version(entry["until"])
+    return _minor(entry["release"]) < _minor(release)
 
 
 def gate_violations(
@@ -331,7 +352,7 @@ def gate_violations(
                 "feature-floor",
                 f"{feature.name}: evidence in {with_evidence} of {len(tier_a)} Tier A pairs, needs {floor:.0%}"))
     for entry in bulk:
-        if _minor(entry["release"]) < _minor(release):
+        if _bulk_expired(entry, release):
             older, _ = select_cells(entry["release"], features, fixtures, states, adjacent)
             still_open = sum(c.tier == entry["tier"] and c.status == "open" for c in older)
             if still_open:
