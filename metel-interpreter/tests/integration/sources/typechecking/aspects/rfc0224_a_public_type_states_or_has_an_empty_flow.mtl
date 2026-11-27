@@ -8,16 +8,16 @@ pub copy struct Plain { id: i64 }
 struct Local<T> derives Clone(..), Copy(..) { value: T }
 
 fun main() {
-    let h: Handle<i64> := Handle { id = 1 };
+    let h: Handle<i64> := Handle(id = 1);
     let h2 := h;
     let s := "x".to_string();
-    let v: Seen<String> := Seen { r = &s };
+    let v: Seen<String> := Seen(r = &s);
     let v2 := v;
-    let t: Tagged<String> := Tagged { id = 2 };
+    let t: Tagged<String> := Tagged(id = 2);
     let t2 := t;
-    let p := Plain { id = 3 };
+    let p := Plain(id = 3);
     let p2 := p;
-    let l := Local { value = 4 };
+    let l := Local(value = 4);
     let l2 := l;
     assert(h.id + h2.id + t.id + t2.id + p.id + p2.id + l.value + l2.value == 18);
 }

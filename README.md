@@ -54,11 +54,11 @@ fun greet_all<T: Greet>(people: [T]) {
 }
 
 fun main() -> i64 {
-    var ada := Person { name = "Ada" };
+    var ada := Person(name = "Ada");
     let ada_ref: &var Person := &var ada;
     ada_ref.rename("Ada Lovelace");   // auto-deref through &var — writes back to ada
 
-    greet_all([ada, Person { name = "Grace" }]);
+    greet_all([ada, Person(name = "Grace")]);
     return 0;
 }
 ```
@@ -108,12 +108,12 @@ extend AppError: From<IoError> {
 }
 
 fun load() -> Result<String, IoError> {
-    return Result::Err { error = IoError { msg = "disk full" } };
+    return Result::Err(error = IoError(msg = "disk full"));
 }
 
 fun load_config() -> Result<String, AppError> {
     let data := load()?;   // IoError coerced to AppError via From
-    return Result::Ok { value = data };
+    return Result::Ok(value = data);
 }
 ```
 

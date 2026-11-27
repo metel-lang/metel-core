@@ -14,5 +14,5 @@ struct Clean { x: i64 }
 // Clean does NOT implement Drop.
 
 fun make_arena(c: Clean) -> Arena<Clean> {
-    Arena { items = [c] }
+    Arena(items = [c])
 }

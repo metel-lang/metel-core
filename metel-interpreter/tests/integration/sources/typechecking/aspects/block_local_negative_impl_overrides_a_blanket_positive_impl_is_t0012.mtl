@@ -6,6 +6,6 @@ fun main() {
     struct K { n: i64 }
     struct L { n: i64 }
     extend L: !Marker;
-    need(&K { n = 1 });
-    need(&L { n = 1 });
+    need(&K(n = 1));
+    need(&L(n = 1));
 }

@@ -9,7 +9,7 @@ extend<record R: !{ .host }> Req<..R> {
 }
 
 fun main() {
-    let r := Req { data = .{} }.host("a".to_string());
+    let r := Req(data = .{}).host("a".to_string());
     let c := r.clone();
     assert(c.data.host == "a");
     assert(r.data.host == "a");

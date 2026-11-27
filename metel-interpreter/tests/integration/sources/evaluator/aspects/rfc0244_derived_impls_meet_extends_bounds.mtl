@@ -17,15 +17,15 @@ fun cloned(x: extends Clone) -> extends Clone {
 }
 
 fun pick(flag: boolean) -> extends Copy {
-    if (flag) { Boxed { value = 1 } } else { Boxed { value = 2 } }
+    if (flag) { Boxed(value = 1) } else { Boxed(value = 2) }
 }
 
 fun main() {
     // Two independent anonymous parameters: Boxed<i64> (computed flow, T = i64 is Copy) and Tag (bare).
-    assert(use_twice(Boxed { value = 3 }, Tag { n = 1 }) == 4);
+    assert(use_twice(Boxed(value = 3), Tag(n = 1)) == 4);
 
     // Boxed<String> is Clone by the computed flow, so it meets `extends Clone`, and the result clones again.
-    let s := cloned(Boxed { value = "s" });
+    let s := cloned(Boxed(value = "s"));
     let t := s.clone();
 
     // The opaque `extends Copy` value is copied, not moved.

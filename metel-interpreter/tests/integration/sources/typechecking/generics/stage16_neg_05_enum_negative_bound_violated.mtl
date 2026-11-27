@@ -17,5 +17,5 @@ extend Resource: Drop {
 }
 
 fun bad(r: Resource) -> Opt<Resource> {
-    Opt::Some { value = r } // ERROR[T0012]
+    Opt::Some(value = r) // ERROR[T0012]
 }

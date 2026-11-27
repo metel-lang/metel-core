@@ -5,6 +5,6 @@ struct Point {
 }
 
 fun main() {
-    let point := Point { x = 1 };
+    let point := Point(x = 1);
     let msg := "point=${point}"; // ERROR[T0003]
 }

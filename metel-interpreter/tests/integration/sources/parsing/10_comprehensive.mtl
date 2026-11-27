@@ -160,11 +160,11 @@ fun main() {
 
     // --- Tokens ---
     let tokens: [Token] := [
-        Token::Number { value = 3 },
+        Token::Number(value = 3),
         Token::Times,
-        Token::Number { value = 4 },
+        Token::Number(value = 4),
         Token::Plus,
-        Token::Number { value = 5 },
+        Token::Number(value = 5),
     ];
 
     var token_str := "";

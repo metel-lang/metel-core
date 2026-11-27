@@ -10,8 +10,8 @@ enum Either<L, R> {
 
 fun either_map_left<L, R, M>(e: Either<L, R>, f: |L| -> M) -> Either<M, R> {
     match (e) {
-        Either::Left  { val } => Either::Left  { val = f(val) },
-        Either::Right { val } => Either::Right { val = val },
+        Either::Left  { val } => Either::Left(val = f(val)),
+        Either::Right { val } => Either::Right(val = val),
     }
 }
 
@@ -37,24 +37,24 @@ fun either_right_or<L, R>(e: Either<L, R>, default: R) -> R {
 }
 
 fun classify(n: i64) -> Either<i64, String> {
-    if (n > 0) { Either::Left { val = n } }
-    else       { Either::Right { val = "non-positive" } }
+    if (n > 0) { Either::Left(val = n) }
+    else       { Either::Right(val = "non-positive") }
 }
 
 fun main() {
     // Explicit annotation provides the missing type param
-    let l: Either<i64, String> := Either::Left  { val = 42 };
-    let r: Either<i64, String> := Either::Right { val = "hello" };
+    let l: Either<i64, String> := Either::Left(val = 42);
+    let r: Either<i64, String> := Either::Right(val = "hello");
 
     assert(either_is_left(l));
     assert(!either_is_left(r));
-    let l_again: Either<i64, String> := Either::Left  { val = 42 };
-    let r_again: Either<i64, String> := Either::Right { val = "hello" };
+    let l_again: Either<i64, String> := Either::Left(val = 42);
+    let r_again: Either<i64, String> := Either::Right(val = "hello");
     assert(either_left_or(l_again, 0)   == 42);
     assert(either_right_or(r_again, "") == "hello");
 
     // map_left: Left(42) → Left(84)
-    let doubled_input: Either<i64, String> := Either::Left { val = 42 };
+    let doubled_input: Either<i64, String> := Either::Left(val = 42);
     let doubled := either_map_left(doubled_input, |x: i64| -> i64 { x * 2 });
     match (doubled) {
         Either::Left { val } => assert(val == 84),
@@ -62,7 +62,7 @@ fun main() {
     };
 
     // map_left on Right: Right passes through unchanged
-    let pass_input: Either<i64, String> := Either::Right { val = "hello" };
+    let pass_input: Either<i64, String> := Either::Right(val = "hello");
     let pass := either_map_left(pass_input, |x: i64| -> i64 { x + 1 });
     assert(!either_is_left(pass));
 
@@ -75,12 +75,12 @@ fun main() {
     assert(either_right_or(classify(-3), "") == "non-positive");
 
     // Either<boolean, i64>
-    let b: Either<boolean, i64> := Either::Left  { val = true };
-    let n: Either<boolean, i64> := Either::Right { val = 99 };
+    let b: Either<boolean, i64> := Either::Left(val = true);
+    let n: Either<boolean, i64> := Either::Right(val = 99);
     assert(either_is_left(b));
     assert(!either_is_left(n));
-    let b_again: Either<boolean, i64> := Either::Left { val = true };
-    let n_again: Either<boolean, i64> := Either::Right { val = 99 };
+    let b_again: Either<boolean, i64> := Either::Left(val = true);
+    let n_again: Either<boolean, i64> := Either::Right(val = 99);
     assert(either_left_or(b_again, false));
     assert(either_right_or(n_again, 0) == 99);
 }

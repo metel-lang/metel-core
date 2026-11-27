@@ -1,0 +1,44 @@
+// RFC-0100 section 3 (metel-core#2200): a brace literal builds its type anywhere inside that type's own
+// `extend` blocks -- an inherent block, an aspect impl, a generic block and a block-local one -- written
+// with the type's name or `Self`, for a struct or an enum variant.
+aspect Origin { fun origin() -> Self; }
+
+struct Point { x: i64, y: i64 }
+extend Point {
+    fun at(x: i64, y: i64) -> Point { Point { x, y } }
+    fun shifted(self, dx: i64) -> Self { Self { x = self.x + dx, y = self.y } }
+}
+extend Point: Origin {
+    fun origin() -> Self { Self(x = 0, y = 0) }
+}
+
+struct Pair<T> { a: T, b: T }
+extend<T> Pair<T> {
+    fun both(v: T) -> Self where T: Copy { Self { a = v, b = v } }
+}
+
+enum Shape { Dot, Line { length: i64 } }
+extend Shape {
+    fun unit() -> Shape { Shape::Line { length = 1 } }
+    fun doubled(self) -> Self {
+        match (self) {
+            Shape::Line { length } => Self::Line { length = length * 2 },
+            Shape::Dot => Shape::Dot,
+        }
+    }
+}
+
+fun main() {
+    struct Local { n: i64 }
+    extend Local {
+        fun make() -> Self { Self { n = 7 } }
+    }
+    assert(Point::at(1, 2).shifted(2).x == 3);
+    assert(Point::origin().y == 0);
+    assert(Pair::both(3).b == 3);
+    match (Shape::unit().doubled()) {
+        Shape::Line { length } => assert(length == 2),
+        Shape::Dot => assert(false),
+    }
+    assert(Local::make().n == 7);
+}

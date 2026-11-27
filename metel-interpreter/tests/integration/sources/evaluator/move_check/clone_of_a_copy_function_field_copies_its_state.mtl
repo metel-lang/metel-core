@@ -3,7 +3,7 @@
 copy struct Counter { next: copy var || -> i64 }
 
 fun run(c: copy var || -> i64) -> i64 {
-    let h := Counter { next = c };
+    let h := Counter(next = c);
     var a := h.clone();
     var b := h.clone();
     (a.next)() + (a.next)() + (b.next)()

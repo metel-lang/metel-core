@@ -9,7 +9,7 @@ extend<record R: !{ .host }> Req<..R> {
 }
 
 fun main() {
-    let build := |h: String| { Req { data = .{} }.host(h) };
+    let build := |h: String| { Req(data = .{}).host(h) };
     let r := build("z".to_string());
     match (r.data.host.len()) {
         1 => { assert(r.data.host == "z"); },

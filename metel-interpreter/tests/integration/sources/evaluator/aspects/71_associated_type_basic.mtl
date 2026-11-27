@@ -22,6 +22,6 @@ extend IntBox: Container {
 }
 
 fun main() {
-    let b := IntBox { value = 42 };
+    let b := IntBox(value = 42);
     assert(b.get() == 42);
 }

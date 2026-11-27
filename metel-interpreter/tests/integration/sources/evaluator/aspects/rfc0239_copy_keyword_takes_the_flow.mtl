@@ -5,16 +5,16 @@ copy struct Id<T> { n: i64 }
 pub struct W<T> derives Clone(T), Copy(T) { value: T }
 
 fun main() {
-    let b := Boxed { value = 3 };
+    let b := Boxed(value = 3);
     let c := b;
     assert(b.value + c.value == 6);
-    let s := Boxed { value = "s" };
+    let s := Boxed(value = "s");
     let t := s.clone();
-    let i: Id<String> := Id { n = 2 };
+    let i: Id<String> := Id(n = 2);
     let j := i;
     let k := i;
     assert(j.n + k.n == 4);
-    let w := W { value = 5 };
+    let w := W(value = 5);
     let x := w;
     assert(w.value + x.value == 10);
 }

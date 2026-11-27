@@ -6,14 +6,14 @@ struct Free<T> derives Clone() { n: i64 }
 copy struct Plain { n: i64 }
 
 fun main() {
-    let w := Wrapper { value = 3 };
+    let w := Wrapper(value = 3);
     let v := w;
     assert(w.value + v.value == 6);
-    let s := Wrapper { value = "s" };
+    let s := Wrapper(value = "s");
     let t := s.clone();
-    let f: Free<String> := Free { n = 5 };
+    let f: Free<String> := Free(n = 5);
     assert(f.clone().n == 5);
-    let p := Plain { n = 4 };
+    let p := Plain(n = 4);
     let q := p.clone();
     let r := p;
     assert(q.n + r.n == 8);

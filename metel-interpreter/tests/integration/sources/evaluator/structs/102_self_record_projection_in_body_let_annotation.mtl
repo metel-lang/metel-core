@@ -15,6 +15,6 @@ extend Handle {
 }
 
 fun main() {
-    let h := Handle { fd = 3, name = "stdin" };
+    let h := Handle(fd = 3, name = "stdin");
     assert(h.narrow_let() == 3);
 }

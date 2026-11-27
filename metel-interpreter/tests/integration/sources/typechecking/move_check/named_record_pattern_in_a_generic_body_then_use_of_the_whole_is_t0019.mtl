@@ -8,5 +8,5 @@ fun f<T>(p: Pair, unused: T) -> String {
 }
 
 fun main() {
-    println(f(Pair { first = 1, second = "s" }, 0));
+    println(f(Pair(first = 1, second = "s"), 0));
 }

@@ -41,8 +41,8 @@ extend Plain: Farewell {
 }
 
 fun main() {
-    let a := Box1 { value = 5 };
-    let p := Plain { x = 1 };
+    let a := Box1(value = 5);
+    let p := Plain(x = 1);
     assert(a.greet() == "hello, 5");
     assert(p.farewell() == "bye");
 }

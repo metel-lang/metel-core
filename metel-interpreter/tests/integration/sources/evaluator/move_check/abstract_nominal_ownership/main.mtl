@@ -8,6 +8,6 @@ fun local<T>(value: Token, unused: T) -> i64 {
 }
 
 fun main() {
-    assert(copied(Token { count = 2 }, "dependency") == 4);
-    assert(local(Token { count = 3 }, "importer") == 6);
+    assert(copied(Token(count = 2), "dependency") == 4);
+    assert(local(Token(count = 3), "importer") == 6);
 }

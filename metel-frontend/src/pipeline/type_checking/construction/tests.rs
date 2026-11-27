@@ -494,7 +494,7 @@ fn abstract_body_retains_nominal_construction_with_instantiated_identity() {
         "abstract_nominal_construction.mtl",
         r#"
 struct Packet<T> { payload: T }
-fun wrap<T>(value: T) -> Packet<T> { Packet { payload = value } }
+fun wrap<T>(value: T) -> Packet<T> { Packet(payload = value) }
 fun main() {}
 "#,
     )
@@ -1067,7 +1067,7 @@ fn owned_capture_type_is_snapshotted_before_body_restoration() {
         r#"
 struct Pair { left: String, right: String }
 fun make() -> once var || -> Pair {
-    var pair := Pair { left = "old", right = "gone" };
+    var pair := Pair(left = "old", right = "gone");
     let left := pair.left;
     let right := pair.right;
     [pair] once var || -> Pair {
@@ -1152,9 +1152,9 @@ fn an_annotation_naming_a_block_local_type_carries_its_declaration() {
             record Box<T> { v: T }
             enum Mode { A, B }
             struct Plain { x: i64 }
-            let b: Box<i64> := Box { v = 1 };
+            let b: Box<i64> := Box(v = 1);
             let m: Mode := Mode::A;
-            let p: Plain := Plain { x = 1 };
+            let p: Plain := Plain(x = 1);
             let again_b := b;
             let again_m := m;
             let again_p := p;
@@ -1496,10 +1496,10 @@ fn propagate_error_desugar_shares_one_local_id_between_arms() {
     use crate::data::typed_ast::{FunBody, TypedExpr, TypedPattern};
 
     let root = "prop.mtl";
-    let source = "fun get_id() -> Result<i64, i64> { Result::Ok { value = 5 } }\n\
+    let source = "fun get_id() -> Result<i64, i64> { Result::Ok(value = 5) }\n\
                        fun use_it() -> Result<i64, i64> {\n\
                        \tlet v := get_id()?;\n\
-                       \tResult::Ok { value = v }\n\
+                       \tResult::Ok(value = v)\n\
                        }\n";
     let typed_report = typecheck_source(root, source).report;
 
@@ -1933,7 +1933,7 @@ fn record_projection_base_carries_its_binding_id() {
                        \t}\n\
                        }\n\
                        fun main() -> i64 {\n\
-                       \tHandle { fd = 5 }.narrow()\n\
+                       \tHandle(fd = 5).narrow()\n\
                        }\n";
     let typed_report = typecheck_source(root, source).report;
 
@@ -2006,7 +2006,7 @@ fn toplevel_bare_statement_reference_carries_a_symbol_id() {
                        \t\tself.n\n\
                        \t}\n\
                        }\n\
-                       let w := Wrapper { n = 5 };\n\
+                       let w := Wrapper(n = 5);\n\
                        w.get();\n";
     let typed_report = typecheck_source(root, source).report;
 

@@ -17,7 +17,7 @@ extend<record R: !{ .host }> Req<..R> {
 }
 
 fun main() {
-    let r := Req { data = .{} }.host("n".to_string());
+    let r := Req(data = .{}).host("n".to_string());
     let d: dyn Named := r;
     assert(d.name() == "n");
 }

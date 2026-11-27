@@ -3,7 +3,7 @@
 fun main() {
     struct Pt { x: i64 }
     enum Opt<T> { Some { value: T }, None }
-    let o := Opt::Some { value = Pt { x = 4 } };
+    let o := Opt::Some(value = Pt(x = 4));
     var got := 0;
     match (o) {
         Opt::Some { value } => { got = value.x; },

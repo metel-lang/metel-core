@@ -32,7 +32,7 @@ fun main() {
     let var .{ .token: _, ..tail } := data;
     tail.payload = "restored";
     assert(Courier {}.pass(tail).payload == "restored");
-    let owned := Owned { text = "removed" };
+    let owned := Owned(text = "removed");
     let text := owned.text;
     let forwarded_nominal: Owned.{} := Courier {}.pass(forward(owned));
     assert(text == "removed");

@@ -12,7 +12,7 @@ extend Box: Describe {
 }
 
 fun main() {
-    assert(Box { v = 1 }.pick(5) == 5);
-    assert(Box { v = 1 }.pick("s") == "s");
+    assert(Box(v = 1).pick(5) == 5);
+    assert(Box(v = 1).pick("s") == "s");
     println("ok");
 }

@@ -18,6 +18,6 @@ extend IntBox: Container { // ERROR[T0017]
 }
 
 fun main() {
-    let b := IntBox { value = 42 };
+    let b := IntBox(value = 42);
     assert(b.get() == 42);
 }

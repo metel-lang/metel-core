@@ -15,5 +15,5 @@ struct Plain { x: i64 }
 // Plain does not implement Printable.
 
 fun bad(p: Plain) -> Container<Plain> {
-    Container::Some { value = p } // ERROR[T0012]
+    Container::Some(value = p) // ERROR[T0012]
 }

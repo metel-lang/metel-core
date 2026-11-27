@@ -3,7 +3,7 @@
 record Handle { fd: i64, name: String }
 
 fun main() {
-    let handle := Handle { fd = 3, name = "residual" };
+    let handle := Handle(fd = 3, name = "residual");
     let moved := handle.fd;
     let copied := handle.clone();
     assert(moved == 3);

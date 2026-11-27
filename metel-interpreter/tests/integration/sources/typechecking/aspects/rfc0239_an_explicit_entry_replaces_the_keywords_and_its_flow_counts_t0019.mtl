@@ -3,7 +3,7 @@
 struct H<T> derives Copy(T), Clone(..) { n: i64 }
 
 fun main() {
-    let h: H<String> := H { n = 1 };
+    let h: H<String> := H(n = 1);
     let a := h;
     let b := h; // ERROR[T0019]
 }

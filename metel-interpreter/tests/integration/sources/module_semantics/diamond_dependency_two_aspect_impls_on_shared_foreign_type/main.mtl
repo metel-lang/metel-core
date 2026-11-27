@@ -5,8 +5,8 @@ import debugger::Debugger;
 // show/dbg take `self` by value (RFC-0067a SS3a: a value can never be moved
 // out of a reference), so each gets its own Point rather than reusing `p`.
 fun main() {
-    let p := Point { x = 1, y = 2 };
+    let p := Point(x = 1, y = 2);
     assert(p.show() == "point");
-    let p2 := Point { x = 1, y = 2 };
+    let p2 := Point(x = 1, y = 2);
     assert(p2.dbg() == "point-debug");
 }

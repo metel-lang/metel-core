@@ -5,6 +5,6 @@ fun main() {
     struct M { n: i64 }
     extend M: Conv<i64> { fun conv(&self) -> i64 { self.n } }
     extend M: Conv<String> { fun conv(&self) -> String { "m" } }
-    let m := M { n = 7 };
+    let m := M(n = 7);
     assert(use_i(&m) == 7);
 }

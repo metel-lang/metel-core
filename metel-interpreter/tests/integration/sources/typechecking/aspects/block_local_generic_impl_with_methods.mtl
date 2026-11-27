@@ -12,9 +12,9 @@ fun main() {
     struct Box<T> { v: T }
     extend<T: Show> Box<T>: Show { fun show(&self) -> String { "Box(" + self.v.show() + ")" } }
 
-    let w: W<i64> := W { v = 1 };
+    let w: W<i64> := W(v = 1);
     assert(render(&w) == "W");
     assert(w.show() == "W");
-    let b := Box { v = L { n = 7 } };
+    let b := Box(v = L(n = 7));
     assert(render(&b) == "Box(L7)");
 }

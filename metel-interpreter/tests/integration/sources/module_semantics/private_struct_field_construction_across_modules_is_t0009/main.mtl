@@ -1,2 +1,2 @@
 import token::Token;
-fun main() { let t := Token { kind = 1, offset = 7 }; print(t.kind); }
+fun main() { let t := Token(kind = 1, offset = 7); print(t.kind); }

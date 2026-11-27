@@ -10,7 +10,7 @@ struct Handle { fd: i64, name: String }
 fun wants_full(h: Handle) -> i64 { h.fd }
 
 fun main() {
-    var h := Handle { fd = 5, name = "x" };
+    var h := Handle(fd = 5, name = "x");
     let taken := h.name;               // h : Handle.{ fd }
     h.name = "y";                     // widens back: h : Handle
     assert(h.name == "y");             // sibling readable at the widened type

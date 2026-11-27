@@ -11,7 +11,7 @@ extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
 extend L: Conv<String> { fun conv(&self) -> String { "s" } }
 
 fun main() {
-    let l := L { n = 4 };
+    let l := L(n = 4);
     needs_i64(&l);
     needs_string(&l);
     needs_any(&l);

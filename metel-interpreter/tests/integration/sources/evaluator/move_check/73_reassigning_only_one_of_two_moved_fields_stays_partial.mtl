@@ -8,7 +8,7 @@ fun take(t: Two) -> i64 {
 }
 
 fun main() {
-    var t := Two { left = "a", right = "b" };
+    var t := Two(left = "a", right = "b");
     let taken_left := t.left;
     let taken_right := t.right;
     t.left = "c";

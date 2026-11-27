@@ -143,6 +143,7 @@ pub fn expand(graph: &mut ModuleGraph) -> Result<(), MetelError> {
             local_type_names: &local_type_names,
             synthetic_imports: Vec::new(),
             synthetic_type_names: HashMap::new(),
+            self_target: None,
         };
         ex.walk_program(&mut m.program)?;
         prune_erased_alias_paths(
@@ -572,6 +573,7 @@ pub(crate) fn substitute_type_names_in_block(
         local_type_names: &local_type_names,
         synthetic_imports: Vec::new(),
         synthetic_type_names: HashMap::new(),
+        self_target: None,
     };
     ex.walk_block(block)
 }
@@ -588,6 +590,9 @@ struct Expander<'a> {
     local_type_names: &'a HashMap<ModKey, HashSet<String>>,
     synthetic_imports: Vec<ImportDecl>,
     synthetic_type_names: HashMap<(ModKey, String), String>,
+    /// The written type of the innermost `extend` block whose methods are being walked: what `Self`
+    /// names at the head of a brace literal or as a constructor callee (RFC-0100 section 3).
+    self_target: Option<Vec<String>>,
 }
 
 impl Expander<'_> {
@@ -705,6 +710,17 @@ impl Expander<'_> {
     /// type. A parameterised alias, or one whose target is a tuple / function /
     /// reference type, is left untouched — it is meaningless in value position and
     /// the later passes will say so.
+    /// `Self` at the head of a brace literal's path or a constructor callee, inside an `extend`
+    /// block, is the type that block extends (RFC-0100 section 3): `Self { .. }`, `Self::V { .. }`
+    /// and `Self(..)` construct it as its written name would.
+    fn rewrite_self_head(&self, segs: &mut Vec<String>) {
+        if segs.first().is_some_and(|head| head == "Self")
+            && let Some(target) = &self.self_target
+        {
+            segs.splice(0..1, target.iter().cloned());
+        }
+    }
+
     fn rewrite_value_path(&self, segs: &mut Vec<String>) -> Result<(), MetelError> {
         let Some(head) = segs.first() else {
             return Ok(());
@@ -801,6 +817,13 @@ impl Expander<'_> {
                 if let Some(wc) = &mut ib.where_clause {
                     self.walk_where(wc)?;
                 }
+                let target = match &ib.target_type {
+                    TypeExpr::Named(name, _, _) => {
+                        Some(name.split("::").map(str::to_string).collect())
+                    }
+                    _ => None,
+                };
+                let outer = std::mem::replace(&mut self.self_target, target);
                 for m in &mut ib.methods {
                     self.walk_generics(&mut m.generics)?;
                     if let Some(wc) = &mut m.where_clause {
@@ -812,6 +835,7 @@ impl Expander<'_> {
                     }
                     self.walk_block(&mut m.body)?;
                 }
+                self.self_target = outer;
             }
             Decl::Aspect(ad) => {
                 for m in &mut ad.methods {
@@ -1063,6 +1087,7 @@ impl Expander<'_> {
                 }
             }
             Expr::StructLiteral { path, fields, .. } => {
+                self.rewrite_self_head(path);
                 self.rewrite_value_path(path)?;
                 for (_, e) in fields {
                     self.walk_expr(e)?;
@@ -1090,6 +1115,7 @@ impl Expander<'_> {
                 let rewritten = match callee.as_ref() {
                     Expr::Ident(name, span) => {
                         let mut segs = vec![name.clone()];
+                        self.rewrite_self_head(&mut segs);
                         self.rewrite_value_path(&mut segs)?;
                         match segs.as_slice() {
                             [same] if same == name => None,

@@ -4,7 +4,7 @@ struct View<T> derives Clone(..), Copy(..) { r: &T }
 
 fun by_derive<T>(x: T) -> i64 {
     struct D derives Clone, Copy { n: i64 }
-    let d := D { n = 1 };
+    let d := D(n = 1);
     let a := d;
     let b := d;
     a.n + b.n
@@ -12,7 +12,7 @@ fun by_derive<T>(x: T) -> i64 {
 
 fun by_flow<T>(x: T) -> i64 {
     struct Hold<U> derives Clone(..), Copy(..) { v: View<U> }
-    let h: Hold<T> := Hold { v = View { r = &x } };
+    let h: Hold<T> := Hold(v = View(r = &x));
     let a := h;
     let b := h;
     1

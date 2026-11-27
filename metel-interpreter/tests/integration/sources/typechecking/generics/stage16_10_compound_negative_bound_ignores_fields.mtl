@@ -10,5 +10,5 @@ struct Wrapper { inner: Handle }
 fun needs_no_drop<T: !Drop>(value: T) {}
 
 fun main() {
-    needs_no_drop(Wrapper { inner = Handle { fd = 3 } });
+    needs_no_drop(Wrapper(inner = Handle(fd = 3)));
 }

@@ -5,6 +5,6 @@ fun render<T: Show>(x: &T) -> String { x.show() }
 fun main() {
     struct Box<T> { v: T }
     extend<T: Show> Box<T>: Show { fun show(&self) -> String { "Box" } }
-    let b := Box { v = 1 };
+    let b := Box(v = 1);
     render(&b);
 }

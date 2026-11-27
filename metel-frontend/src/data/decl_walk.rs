@@ -18,6 +18,18 @@ pub fn for_each_block<'a>(block: &'a Block, visit: &mut impl FnMut(&'a Block)) {
     in_block(block, &mut Blocks(visit));
 }
 
+/// Call `visit` on every expression written inside `block`, outer before inner -- through nested
+/// blocks, closures and nested functions, but not into the methods of an `extend` block declared
+/// inside it, which are not part of the enclosing body.
+pub fn for_each_expression<'a>(block: &'a Block, visit: &mut impl FnMut(&'a Expr)) {
+    in_block(block, &mut Expressions(visit));
+}
+
+/// As [`for_each_expression`], for `expr` and the expressions inside it.
+pub fn for_each_expression_in_expr<'a>(expr: &'a Expr, visit: &mut impl FnMut(&'a Expr)) {
+    in_expr(expr, &mut Expressions(visit));
+}
+
 /// As [`for_each_declaration`], for the declarations inside an expression.
 pub fn for_each_declaration_in_expr<'a>(expr: &'a Expr, visit: &mut impl FnMut(&'a Decl)) {
     in_expr(expr, &mut Declarations(visit));
@@ -26,6 +38,15 @@ pub fn for_each_declaration_in_expr<'a>(expr: &'a Expr, visit: &mut impl FnMut(&
 trait Visitor<'a> {
     fn declaration(&mut self, _declaration: &'a Decl) {}
     fn block(&mut self, _block: &'a Block) {}
+    fn expression(&mut self, _expression: &'a Expr) {}
+}
+
+struct Expressions<'f, F>(&'f mut F);
+
+impl<'a, F: FnMut(&'a Expr)> Visitor<'a> for Expressions<'_, F> {
+    fn expression(&mut self, expression: &'a Expr) {
+        (self.0)(expression);
+    }
 }
 
 struct Declarations<'f, F>(&'f mut F);
@@ -100,6 +121,7 @@ fn in_statement<'a>(statement: &'a Stmt, found: &mut impl Visitor<'a>) {
 // Exhaustive on purpose: an expression form added later that holds a block must be handled here, or
 // a nested function inside it would silently go unanalysed.
 fn in_expr<'a>(expression: &'a Expr, found: &mut impl Visitor<'a>) {
+    found.expression(expression);
     match expression {
         Expr::Literal(..)
         | Expr::Ident(..)

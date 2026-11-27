@@ -3,22 +3,22 @@
 struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 fun main() {
-    let t := (Boxed { value = 1 }, "s");
+    let t := (Boxed(value = 1), "s");
     let u := t.0;
     let v := t.0;
     assert(u.value + v.value == 2);
 
-    let r := .{ .a = Boxed { value = 2 }, .b = "s" };
+    let r := .{ .a = Boxed(value = 2), .b = "s" };
     let x := r.a;
     let y := r.a;
     assert(x.value + y.value == 4);
 
-    let w := (Wrapper { value = 3 }, "s");
+    let w := (Wrapper(value = 3), "s");
     let w1 := w.0;
     let w2 := w.0;
     assert(w1.value + w2.value == 6);
 
-    let f := (Boxed { value = 1.5 }, "s");
+    let f := (Boxed(value = 1.5), "s");
     let f1 := f.0;
     let f2 := f.0;
     assert(f1.value + f2.value == 3.0);

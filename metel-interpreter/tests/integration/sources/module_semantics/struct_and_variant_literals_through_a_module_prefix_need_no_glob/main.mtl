@@ -4,11 +4,11 @@ import lib::double;
 import lib::payload;
 
 fun main() {
-    let c := lib::Counter { n = 2 };
+    let c := lib::Counter(n = 2);
     assert(double(c.n) == 4);
-    let b := lib::Kind::B { n = 5 };
+    let b := lib::Kind::B(n = 5);
     assert(payload(b) == 5);
-    let r := root::lib::Counter { n = 7 };
+    let r := root::lib::Counter(n = 7);
     assert(r.n == 7);
     assert(payload(lib::Kind::A) == 0);
 }

@@ -4,12 +4,12 @@ import utils::*;
 
 pub fun validate_task(title: String, priority: Priority, status: Status, effort: i64) -> Result<Task, ValidationError> {
     if ((&title).len() == 0) {
-        return Result::Err { error = ValidationError { message = "title cannot be empty" } };
+        return Result::Err(error = ValidationError(message = "title cannot be empty"));
     }
     if (effort < 0) {
-        return Result::Err { error = ValidationError { message = "effort cannot be negative" } };
+        return Result::Err(error = ValidationError(message = "effort cannot be negative"));
     }
-    Result::Ok { value = Task { title = title, priority = priority, status = status, effort = effort } }
+    Result::Ok(value = Task(title = title, priority = priority, status = status, effort = effort))
 }
 
 pub fun total_effort(tasks: [Task]) -> i64 {

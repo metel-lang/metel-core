@@ -12,7 +12,7 @@ fun apply_keyed<T>(unused: T) -> i64 {
 fun main() {
     assert(total((1, 2), 0) == 3);
     assert(apply_keyed(0) == 12);
-    let id := Id { n = 2 };
+    let id := Id(n = 2);
     var h := || { scale(factor = id.n, value = 5) };
     assert(h() == 10);
 }

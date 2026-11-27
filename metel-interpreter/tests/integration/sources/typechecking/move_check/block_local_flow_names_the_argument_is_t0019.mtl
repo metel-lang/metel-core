@@ -5,7 +5,7 @@ struct View<T> derives Clone(..), Copy(..) { r: &T }
 fun main() {
     struct Hold<T> derives Clone(T), Copy(T) { v: View<T> }
     let s := "x".to_string();
-    let h: Hold<String> := Hold { v = View { r = &s } };
+    let h: Hold<String> := Hold(v = View(r = &s));
     let a := h;
     let b := h; // ERROR[T0019]
 }

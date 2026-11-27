@@ -6,6 +6,6 @@
 struct Pair<A, B> { first: A, second: B }
 
 fun main() {
-    let p := Pair { first = 1, second = "x" };
+    let p := Pair(first = 1, second = "x");
     let _bad := p.first + "y"; // ERROR[T0005]
 }

@@ -67,6 +67,7 @@ pub enum TypeErrorCode {
     T0047, // Ownership the abstract analysis cannot decide in a generic body: reuse of a value whose copy-or-move status depends on an undecided condition (RFC-0206 section 2 rule 3, #1814)
     T0046, // A declaration-clause entry the language rejects: not an aspect, not `declared`, has methods, or not derivable (RFC-0207, #1800)
     T0045, // A misused aspect declaration property: `implicit`/`auto` outside std, a bad `implicit` aspect, or an `extend` of a `declared` aspect (RFC-0212, #1803)
+    T0048, // A nominal brace literal outside an `extend` block of its own type; construct with the call form instead (RFC-0100 section 3, #2200)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

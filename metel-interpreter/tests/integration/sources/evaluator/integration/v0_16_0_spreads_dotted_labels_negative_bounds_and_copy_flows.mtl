@@ -18,23 +18,23 @@ fun main() {
     struct Local { n: i64 }
     extend Local: Describe { fun describe(&self) -> i64 { self.n } }
     let inc: copy |i64| -> i64 := |x| { x + 1 };
-    let r := .{ .f = inc, .p = Boxed { value = 1 }, .w = Wrapper { value = 2 }, .k = 0 };
+    let r := .{ .f = inc, .p = Boxed(value = 1), .w = Wrapper(value = 2), .k = 0 };
     let s := .{ ..r, .k = 5 };
-    let t := .{ ..s, .w = Wrapper { value = 9 } };
+    let t := .{ ..s, .w = Wrapper(value = 9) };
     assert(apply(t, scale(by = 2, x = 3)) == 7);
     let c := t.w.clone();
     assert(c.value == 9);
     assert(first((4, "s")) == 4);
-    let u := .{ ..r, .l = Local { n = 3 } };
+    let u := .{ ..r, .l = Local(n = 3) };
     assert(u.l.describe() == 3);
-    assert(regen(Boxed { value = 1 }, .{ .k = 2 }) == 4);
-    let w2 := Tagged { n = 1, value = "s" };
+    assert(regen(Boxed(value = 1), .{ .k = 2 }) == 4);
+    let w2 := Tagged(n = 1, value = "s");
     let moved := w2.value;
     let a := w2;
     let b := w2;
     assert(a.n + b.n == 2);
     assert(moved == "s");
-    var w3 := Tagged { n = 1, value = "t" };
+    var w3 := Tagged(n = 1, value = "t");
     let taken := w3.value;
     w3.n = 5;
     let w4 := w3;

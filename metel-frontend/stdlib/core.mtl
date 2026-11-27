@@ -77,8 +77,8 @@ extend Option<T> {
     // becomes `Err { error }`.
     pub fun ok_or<E>(self, error: E) -> Result<T, E> {
         match (self) {
-            Option::Some { value } => Result::Ok { value = value },
-            _ => Result::Err { error = error },
+            Option::Some { value } => Result::Ok(value = value),
+            _ => Result::Err(error = error),
         }
     }
 }
@@ -152,7 +152,7 @@ extend Result<T, E> {
     // becomes `None`. The error value is discarded.
     pub fun ok(self) -> Option<T> {
         match (self) {
-            Result::Ok { value } => Option::Some { value = value },
+            Result::Ok { value } => Option::Some(value = value),
             _ => Option::None,
         }
     }
@@ -286,7 +286,7 @@ extend List<T> {
     pub fun find(&self, pred: |T| -> boolean) -> Option<T> {
         for (x in self.as_slice()) {
             if (pred(x)) {
-                return Option::Some { value = x };
+                return Option::Some(value = x);
             }
         }
         Option::None

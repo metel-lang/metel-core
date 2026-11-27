@@ -10,5 +10,5 @@ extend Counter {
     }
 }
 
-let c := Counter { value = 5 };
+let c := Counter(value = 5);
 let total := c.add(42); // ERROR[T0001]

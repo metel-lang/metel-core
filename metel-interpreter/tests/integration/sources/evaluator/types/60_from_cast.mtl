@@ -19,7 +19,7 @@ extend Fahrenheit: From<Celsius> {
 }
 
 fun main() {
-    let c := Celsius { degrees = 100.0 };
+    let c := Celsius(degrees = 100.0);
     let f := c as Fahrenheit;
     assert(f.degrees == 212.0);
 

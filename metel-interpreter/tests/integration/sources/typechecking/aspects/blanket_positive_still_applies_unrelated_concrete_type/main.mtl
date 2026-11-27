@@ -19,6 +19,6 @@ extend Foo<i64>: !Marker;
 fun needs_marker<U: Marker>(x: U) {}
 
 fun main() {
-    let f := Foo { value = true };
+    let f := Foo(value = true);
     needs_marker(f);
 }

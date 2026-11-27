@@ -34,13 +34,13 @@ fun main() {
     assert("${copy_of}" == "${d}");
     assert("${d}" == ".{ .a: 1, .b: 2 }");
     assert("${()}" == "()");
-    let b := Boxed { value = 2 };
+    let b := Boxed(value = 2);
     let b2 := b;
     let b3 := b;
     assert(b2.value + b3.value == 4);
     let b4 := dup(b);
     assert(b4.value == 2);
-    let c := Cell { tag = Tag { n = 1 }, pair = (2, 3), extra = 4 };
+    let c := Cell(tag = Tag(n = 1), pair = (2, 3), extra = 4);
     let inc: copy |i64| -> i64 := |x| { x + 1 };
     assert(classify(Mode::On, c) == 3);
     assert(classify(Mode::Off, c) == 4);

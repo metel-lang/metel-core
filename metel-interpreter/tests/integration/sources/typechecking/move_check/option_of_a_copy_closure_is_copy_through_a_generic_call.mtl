@@ -2,7 +2,7 @@
 fun id<T>(x: T) -> T { x }
 fun main() {
     let k := 3;
-    let c := Option::Some { value = [k] |x: i64| -> i64 { x + k } };
+    let c := Option::Some(value = [k] |x: i64| -> i64 { x + k });
     let d := id(c);
     let e := d;
     let f := d;

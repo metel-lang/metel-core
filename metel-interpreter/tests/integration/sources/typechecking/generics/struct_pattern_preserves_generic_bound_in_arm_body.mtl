@@ -15,6 +15,6 @@ fun describe<T: Show>(w: Wrapper<T>) -> String {
 }
 
 fun main() {
-    let w := Wrapper { value = 5 };
+    let w := Wrapper(value = 5);
     println(describe(w));
 }

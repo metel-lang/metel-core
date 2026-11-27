@@ -2,7 +2,7 @@
 struct Token { value: String }
 fun take(x: ()) {}
 fun main() {
-    let t := Token { value = "x" };
+    let t := Token(value = "x");
     let v := t.value;
     take(t);
 }

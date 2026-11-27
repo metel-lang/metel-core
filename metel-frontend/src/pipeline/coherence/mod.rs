@@ -11,8 +11,12 @@
 //! impl-scoped type variables during overlap detection. §3.1 (negation
 //! disjointness) and §3.2 (unconditional vs. conditional conflict) are
 //! handled via `provably_disjoint` checks on `scoped_type_param_bounds`.
+//!
+//! Also checked here, because it is a rule about which `extend` block may build a type: privileged
+//! representation construction (`T0048`, RFC-0100 section 3) -- see [`construction`].
 
 mod clauses;
+mod construction;
 mod properties;
 mod supers;
 
@@ -1120,6 +1124,7 @@ fn collect_impl<'a>(
 #[allow(clippy::too_many_lines)]
 // arch-implements: ["arch.coherence.requirement-1"]
 pub fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
+    construction::check(graph)?;
     let names = &graph.names;
     let declaring = declaring_modules(names);
 

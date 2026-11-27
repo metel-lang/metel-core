@@ -5,5 +5,5 @@ fun get<S: Source<Item = i64>>(s: &S) -> i64 { s.take() }
 fun main() {
     struct L { n: i64 }
     extend L: Source { type Item := String; fun take(&self) -> String { "x" } }
-    get(&L { n = 4 });
+    get(&L(n = 4));
 }

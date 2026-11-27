@@ -62,7 +62,7 @@ fun main() {
     assert(r4 == 1000i16);
 
     // ── Struct field coercion ─────────────────────────────────────────────────
-    let px := Pixel { r = 255, g = 128, b = 0 };
+    let px := Pixel(r = 255, g = 128, b = 0);
     assert(px.r == 255u8);
     assert(px.g == 128u8);
     assert(px.b == 0u8);

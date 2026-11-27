@@ -7,6 +7,6 @@ fun main() {
     assert(s == 1);
     let c: std::core::Option<i64> := None;
     assert(c.is_none());
-    let d: std::core::Option<i64> := Some { value = 4 };
+    let d: std::core::Option<i64> := Some(value = 4);
     assert(d.unwrap_or(0) == 4);
 }

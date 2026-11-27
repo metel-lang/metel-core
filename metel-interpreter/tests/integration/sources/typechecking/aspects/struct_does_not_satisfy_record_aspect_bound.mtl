@@ -7,6 +7,6 @@ struct V { pub v: i64 }
 fun show<T: Mark>(x: &T) -> i64 { x.mark() }
 
 fun main() {
-    let v := V { v = 1 };
+    let v := V(v = 1);
     let _ := show(&v);
 }

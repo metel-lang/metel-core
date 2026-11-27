@@ -10,12 +10,12 @@ fun narrow(p: Point) -> i64 {
 }
 
 fun add<record R: !{ .tag }>(r: Req<..R>) -> Req<..{ .tag: i64, ..R }> {
-    Req { data = .{ .tag = 1, ..r.data } }
+    Req(data = .{ .tag = 1, ..r.data })
 }
 
 fun main() {
-    let p := Point { x = 3, y = 4 };
-    let r := add(Req { data = .{ .id = 7 } });
+    let p := Point(x = 3, y = 4);
+    let r := add(Req(data = .{ .id = 7 }));
     let q := .{ .x = narrow(p) };
     assert(q.x == 3);
     println("ok");

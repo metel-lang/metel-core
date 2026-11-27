@@ -25,7 +25,7 @@ extend Counter: Iterable<i64> {
         if (self.current < self.limit) {
             let v := self.current;
             self.current = self.current + 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }
@@ -44,7 +44,7 @@ extend Countdown: Iterable<i64> {
         if (self.current > 0) {
             let v := self.current;
             self.current = self.current - 1;
-            Option::Some { value = v }
+            Option::Some(value = v)
         } else {
             None
         }

@@ -26,6 +26,6 @@ fun describe<T: Printable>(x: T) -> String {
 }
 
 fun main() {
-    let p := Pair { first = NoPrint { value = 1 }, second = NoPrint { value = 2 } };
+    let p := Pair(first = NoPrint(value = 1), second = NoPrint(value = 2));
     let s: String := describe(p); // ERROR[T0012]
 }

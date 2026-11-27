@@ -15,5 +15,5 @@ extend MyString: Display {
 }
 
 pub fun make_string() -> extends Display {
-	MyString { value = "hello".to_string() }
+	MyString(value = "hello".to_string())
 }

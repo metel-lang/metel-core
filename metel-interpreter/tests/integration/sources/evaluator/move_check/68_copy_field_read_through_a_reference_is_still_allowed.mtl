@@ -9,6 +9,6 @@ fun peek(item: &Item) -> i64 {
 }
 
 fun main() {
-    let item := Item { count = 5, name = "n" };
+    let item := Item(count = 5, name = "n");
     assert(peek(&item) == 5);
 }

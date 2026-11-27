@@ -4,7 +4,7 @@ struct Pair {
 }
 
 fun main() {
-    let pair := Pair { left = "a", right = 1 };
+    let pair := Pair(left = "a", right = 1);
     let moved: String := pair.left;
     let still_live: i64 := pair.right;
     assert(still_live == 1);

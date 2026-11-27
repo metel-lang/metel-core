@@ -6,7 +6,7 @@ import decoy::marker;
 
 fun main() {
     let _unused := marker();
-    let b: dyn Box<i64> := IntBox { n = 42 };
+    let b: dyn Box<i64> := IntBox(n = 42);
     assert(b.get() == 42);
     println("ok");
 }

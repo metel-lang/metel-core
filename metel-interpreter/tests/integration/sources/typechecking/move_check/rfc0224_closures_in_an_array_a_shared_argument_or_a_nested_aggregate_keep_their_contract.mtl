@@ -21,14 +21,14 @@ fun repeated<T: Copy>(x: T) {
 fun two_closures_one_argument<T: Copy>(x: T) {
     let c1 := [x]|k: i64| -> i64 { k };
     let c2 := |k: i64| -> i64 { k };
-    let w := Pair { a = c1, b = c2 };
+    let w := Pair(a = c1, b = c2);
     let p := w;
     let q := w;
 }
 
 fun nested<T: Copy>(x: T) {
     let c := [x]|k: i64| -> i64 { k };
-    let h := Holder { items = (c, 1) };
+    let h := Holder(items = (c, 1));
     let a := h;
     let b := h;
 }

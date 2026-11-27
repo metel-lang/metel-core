@@ -7,7 +7,7 @@ fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
 fun forward<Y: Conv<i64>>(y: &Y) -> i64 { use_conv(y) }
 fun generic_arg<T, X: Conv<T>>(x: &X) -> T { x.conv() }
 fun main() {
-    let l := L { n = 4 };
+    let l := L(n = 4);
     assert(forward(&l) == 4);
     let s: String := generic_arg(&l);
     assert(s == "s");

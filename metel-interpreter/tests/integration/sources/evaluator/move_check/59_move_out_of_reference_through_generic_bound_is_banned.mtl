@@ -21,6 +21,6 @@ fun twice<T: Consume>(x: &T) -> String {
 }
 
 fun main() {
-    let b := B { v = "owned" };
+    let b := B(v = "owned");
     let result := twice(&b);
 }

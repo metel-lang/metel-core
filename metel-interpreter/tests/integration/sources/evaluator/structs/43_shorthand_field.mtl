@@ -1,36 +1,39 @@
-// Shorthand field initialisation: `Point { x, y }` desugars to `Point { x = x, y = y }`.
+// Shorthand field initialisation: `Point { x, y }` desugars to `Point { x = x, y = y }`. The brace
+// literal is written in its type's own `extend` blocks, the only place it is legal (RFC-0100 section 3).
 
 struct Point { x: i64, y: i64 }
 
 struct Named { name: String, value: i64 }
 
-fun make_point(x: i64, y: i64) -> Point {
-    Point { x, y }
+extend Point {
+    // Basic shorthand: both fields.
+    fun from_parts(x: i64, y: i64) -> Point {
+        Point { x, y }
+    }
+
+    // Mixed: shorthand and explicit.
+    fun mixed(x: i64) -> Point {
+        Point { x, y = 20 }
+    }
+}
+
+extend Named {
+    // String field.
+    fun of(name: String, value: i64) -> Named {
+        Named { name, value }
+    }
 }
 
 fun main() {
-    // Basic shorthand: both fields.
-    let x := 3;
-    let y := 7;
-    let p := Point { x, y };
+    let p := Point::from_parts(3, 7);
     assert(p.x == 3);
     assert(p.y == 7);
 
-    // Mixed: shorthand and explicit.
-    let x2 := 10;
-    let p2 := Point { x = x2, y = 20 };
+    let p2 := Point::mixed(10);
     assert(p2.x == 10);
     assert(p2.y == 20);
 
-    // Shorthand via function that uses it internally.
-    let p3 := make_point(5, 6);
-    assert(p3.x == 5);
-    assert(p3.y == 6);
-
-    // String field.
-    let name := "hello";
-    let value := 42;
-    let n := Named { name, value };
+    let n := Named::of("hello".to_string(), 42);
     assert(n.value == 42);
     assert(n.name.len() == 5);
 }

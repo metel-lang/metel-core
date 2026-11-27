@@ -3,7 +3,7 @@
 fun again<T>(a: Option<T>) -> Option<T> {
     let x := a?;
     let y := a;
-    return Option::Some { value = x };
+    return Option::Some(value = x);
 }
 
 fun main() {}

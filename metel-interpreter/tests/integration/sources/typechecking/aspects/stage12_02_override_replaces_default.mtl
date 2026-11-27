@@ -23,7 +23,7 @@ extend Circle: Shape {
 }
 
 fun main() {
-    let c := Circle { radius = 5 };
+    let c := Circle(radius = 5);
     let _: i64 := c.area_estimate();
     let _: String := c.describe();
 }

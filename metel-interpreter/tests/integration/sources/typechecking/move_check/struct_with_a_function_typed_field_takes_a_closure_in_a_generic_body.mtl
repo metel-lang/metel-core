@@ -2,7 +2,7 @@
 // declared type is the contract.
 struct Holder { f: |i64| -> i64 }
 fun f<T: Copy>(x: T, y: i64) {
-    let h := Holder { f = [y]|k: i64| -> i64 { k + y } };
+    let h := Holder(f = [y]|k: i64| -> i64 { k + y });
     let g := h.f;
 }
 fun main() {}

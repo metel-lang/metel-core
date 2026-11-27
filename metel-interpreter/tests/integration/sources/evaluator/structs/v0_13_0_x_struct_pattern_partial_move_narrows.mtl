@@ -7,7 +7,7 @@
 struct Handle { id: i64, name: String }
 
 fun main() {
-    var h := Handle { id = 7, name = "fd".to_string() };
+    var h := Handle(id = 7, name = "fd".to_string());
 
     // bind and consume `name` via a struct pattern; `h` is now `Handle.{ id }`
     let taken := match (h) { Handle { name, .. } => name };

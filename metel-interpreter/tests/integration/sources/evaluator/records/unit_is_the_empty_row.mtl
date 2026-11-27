@@ -15,6 +15,6 @@ fun main() {
     println(.{});
     println(());
     assert("${.{ .x = 1 }}" == ".{ .x: 1 }");
-    let r: Result<(), String> := Result::Ok { value = .{} };
+    let r: Result<(), String> := Result::Ok(value = .{});
     match (r) { Result::Ok { value } => assert("${value}" == "()"), Result::Err { error } => println(error) }
 }

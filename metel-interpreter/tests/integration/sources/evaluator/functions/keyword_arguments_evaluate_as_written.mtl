@@ -18,12 +18,12 @@ extend Counter {
 }
 
 fun main() {
-    var c := Counter { n = 0 };
+    var c := Counter(n = 0);
     // b is written first, so it is 1 and a is 2.
     assert(pair(b = c.next(), a = c.next()) == 21);
 
-    var d := Counter { n = 0 };
-    let probe := Counter { n = 0 };
+    var d := Counter(n = 0);
+    let probe := Counter(n = 0);
     assert(probe.both(second = d.next(), first = d.next()) == 21);
 
     // One non-literal argument among literals has no observable order.

@@ -1,0 +1,7 @@
+// RFC-0100 section 3 (metel-core#2200): outside its type's own `extend` blocks, a value is built with the
+// call form; a brace literal there is rejected.
+struct Point { x: i64, y: i64 }
+
+fun main() {
+    let p := Point { x = 1, y = 2 };
+}

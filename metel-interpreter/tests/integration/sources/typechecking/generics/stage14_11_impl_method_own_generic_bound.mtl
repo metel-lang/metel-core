@@ -48,10 +48,10 @@ extend Foo {
 }
 
 fun main() {
-    let list := SortedList { items = [Num { value = 1 }] };
-    let n := Num { value = 42 };
-    assert(list.describe(Num { value = 1 }, Num { value = 2 }, n) == "num");
+    let list := SortedList(items = [Num(value = 1)]);
+    let n := Num(value = 42);
+    assert(list.describe(Num(value = 1), Num(value = 2), n) == "num");
 
-    let f := Foo { x = 1 };
-    assert(f.describe(Num { value = 42 }) == "num");
+    let f := Foo(x = 1);
+    assert(f.describe(Num(value = 42)) == "num");
 }

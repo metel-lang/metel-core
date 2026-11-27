@@ -21,7 +21,7 @@ extend Point {
 }
 
 // Struct instantiation
-let p := Point { x = 1.0, y = 2.0 };
+let p := Point(x = 1.0, y = 2.0);
 
 // Field access
 let x: f64 := p.x;
@@ -52,6 +52,6 @@ extend Counter {
     }
 }
 
-let c := Counter { value = 5 };
+let c := Counter(value = 5);
 let v: i64 := c.get();
-let total: i64 := c.add(Counter { value = 10 });
+let total: i64 := c.add(Counter(value = 10));

@@ -23,7 +23,7 @@ fun cloned<T>(h: Holder, unused: T) -> i64 {
 
 fun main() {
     let inc: copy |i64| -> i64 := |x| { x + 1 };
-    let h := Holder { tag = Tag { n = 1 }, boxed = Boxed { value = 2 }, pair = (3, 4), f = inc };
+    let h := Holder(tag = Tag(n = 1), boxed = Boxed(value = 2), pair = (3, 4), f = inc);
     assert(total(h, 0) == 11);
     assert(tag_of(h, 0) == 1);
     assert(cloned(h, 0) == 4);

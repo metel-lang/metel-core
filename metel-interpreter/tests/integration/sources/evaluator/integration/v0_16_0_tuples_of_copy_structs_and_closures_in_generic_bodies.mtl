@@ -10,13 +10,13 @@ fun sum<T>(t: (i64, i64), unused: T) -> i64 {
     f()
 }
 fun main() {
-    let t: (Boxed<i64>, String) := (Boxed { value = 1 }, "s");
+    let t: (Boxed<i64>, String) := (Boxed(value = 1), "s");
     let u := t.0;
     let v := t.0;
     assert(u.value + v.value == 2);
     assert(take_first(t, 0) == "s");
     assert(sum((3, 4), 0) == 7);
-    let p := (Pair { name = "a", n = 1 }, 5);
+    let p := (Pair(name = "a", n = 1), 5);
     let name := p.0.name;
     assert(p.1 == 5);
     assert(name == "a");

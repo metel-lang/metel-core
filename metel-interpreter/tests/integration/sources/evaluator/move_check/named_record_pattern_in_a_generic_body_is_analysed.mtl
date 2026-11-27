@@ -21,7 +21,7 @@ fun tag_and_other<T>(h: Holder, unused: T) -> i64 {
 }
 
 fun main() {
-    assert(first(Pair { first = 1, second = 2 }, 0) == 1);
-    assert(count(Wrap { v = 1, n = 9 }) == 9);
-    assert(tag_and_other(Holder { tag = Tag { n = 2 }, other = 3 }, 0) == 5);
+    assert(first(Pair(first = 1, second = 2), 0) == 1);
+    assert(count(Wrap(v = 1, n = 9)) == 9);
+    assert(tag_and_other(Holder(tag = Tag(n = 2), other = 3), 0) == 5);
 }

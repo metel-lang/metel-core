@@ -3,7 +3,7 @@ struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 
 fun f<T>(x: T) {
     let c := [x]|k: i64| -> i64 { k };
-    let w := Wrapper { value = c };
+    let w := Wrapper(value = c);
     let a := w;
     let b := w;
 }

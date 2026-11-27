@@ -13,7 +13,7 @@ fun keep(rows: [(String, i64)]) -> [(String, i64)] {
 fun main() {
     let rows: [(String, i64)] := [("alpha", 1), ("beta", 2)];
     let echoed := keep(rows);
-    let table := PairTable { rows = echoed };
+    let table := PairTable(rows = echoed);
 
     assert(table.rows[0].0 == "alpha");
     assert(table.rows[0].1 == 1);

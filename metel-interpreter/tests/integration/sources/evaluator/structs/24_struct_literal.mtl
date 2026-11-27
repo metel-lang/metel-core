@@ -3,11 +3,11 @@ struct Color { r: i64, g: i64, b: i64 }
 
 fun main() {
     // Basic struct construction.
-    let p := Point { x = 3, y = 4 };
+    let p := Point(x = 3, y = 4);
     assert(p.x == 3);
     assert(p.y == 4);
     // Multiple fields, different types.
-    let c := Color { r = 255, g = 128, b = 0 };
+    let c := Color(r = 255, g = 128, b = 0);
     assert(c.r == 255);
     assert(c.g == 128);
     assert(c.b == 0);

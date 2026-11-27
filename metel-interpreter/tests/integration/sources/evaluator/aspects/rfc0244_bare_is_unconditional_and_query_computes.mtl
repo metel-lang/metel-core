@@ -6,22 +6,22 @@ struct Pair<A, B> derives Clone(..) { a: A, b: B }
 struct Tag<T> derives Clone { n: i64 }
 
 fun main() {
-    let i: Id<String> := Id { n = 2 };
+    let i: Id<String> := Id(n = 2);
     let j := i;
     let k := i;
     assert(j.n + k.n == 4);
 
-    let b := Boxed { value = 3 };
+    let b := Boxed(value = 3);
     let c := b;
     assert(b.value + c.value == 6);
-    let s := Boxed { value = "s" };
+    let s := Boxed(value = "s");
     let t := s.clone();
     assert(t.value == "s");
 
-    let p := Pair { a = 1, b = "x" };
+    let p := Pair(a = 1, b = "x");
     let q := p.clone();
     assert(q.a == 1);
 
-    let g: Tag<String> := Tag { n = 7 };
+    let g: Tag<String> := Tag(n = 7);
     assert(g.clone().n == 7);
 }
