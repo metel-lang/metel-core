@@ -1,0 +1,8 @@
+// metel-core#2198 (RFC-0100): `a` provides a type `Foo` and `b` a value `Foo`. Both imports
+// bind the same local name; since a type and a value may no longer coexist under one name,
+// this conflicts exactly as two imports of the same namespace already did (metel-core#1577's
+// prior behavior, reversed).
+import a::Foo;
+import b::Foo;
+
+fun main() {}

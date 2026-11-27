@@ -1,9 +1,0 @@
-// metel-core#1571: a module exporting a struct and a function of one name. Each has its own
-// SymbolId, so a single `import lib::Foo;` brings both into scope and each use finds its own.
-pub struct Foo {
-    pub x: i64,
-}
-
-pub fun Foo() -> i64 {
-    5
-}

@@ -1,0 +1,6 @@
+// metel-core#2198 (RFC-0100): a type and a value may no longer share a name, reversing
+// metel-core#1560's prior policy (pinned by this fixture's own former content).
+struct Foo { x: i64 }
+fun Foo() -> i64 { 5 }
+
+fun main() {}

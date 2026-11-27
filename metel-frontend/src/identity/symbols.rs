@@ -339,7 +339,9 @@ impl BlockLocalAllocator {
 
 /// Which of a module's two top-level namespaces a name lives in (metel-core#1560, #1571).
 /// Structs, enums, aspects and type aliases are `Type`; functions, `let` and `var` are `Value`.
-/// A type and a value may share a name; each gets its own `SymbolId`.
+/// A type and a value may not share a name (metel-core#2198, RFC-0100) — the two namespace
+/// values stay distinct throughout the resolver so the existing duplicate check can span
+/// both, not because coexistence is admitted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Namespace {
     Type,
