@@ -555,29 +555,6 @@ fn infer_expr_inner(
             if let Some(ty) = ctx.lookup(name) {
                 return Ok(ty);
             }
-            if let Some(fields) = ctx.get_struct_fields(name)
-                && fields.is_empty()
-            {
-                let type_args: Vec<InferType> = ctx
-                    .get_struct_type_params(name)
-                    .cloned()
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|_| ctx.fresh_var())
-                    .collect();
-                // metel-core#1137: `name` is a bare identifier written right
-                // here in this module's own source, so it's always resolvable
-                // from this module's own scope -- the same reasoning #1129
-                // uses for a written type annotation.
-                let type_id = ctx
-                    .registry()
-                    .resolve_type_id(ctx.current_module_path(), name);
-                return Ok(InferType::Named(
-                    name.clone(),
-                    type_args,
-                    crate::data::types::NominalId(type_id),
-                ));
-            }
             if ctx.registry().has_variant_named(name) {
                 // RFC-0111 §3.1: defer to pass 2, which resolves against the expected
                 // type. Recorded so a deferral that never resolves is reported after
@@ -596,6 +573,8 @@ fn infer_expr_inner(
                         "`{name}` is overloaded, so it cannot be used as a function value; \
                          call it, or use a function that has a single definition"
                     )
+                } else if let Some(fields) = ctx.get_struct_fields(name) {
+                    struct_name_as_value(name, fields.is_empty())
                 } else {
                     format!("undefined name `{name}`")
                 };
@@ -3792,4 +3771,16 @@ fn infer_row_extend_field(
             span,
         )),
     })
+}
+
+/// The `T0003` message for a struct's name written where a value is expected. A struct is built by
+/// call (RFC-0100 sections 2 and 7): a bare name constructs nothing, even for a zero-field struct,
+/// whose bare-name construction (RFC-0106) is retired.
+pub(crate) fn struct_name_as_value(name: &str, zero_field: bool) -> String {
+    let call = if zero_field {
+        format!("{name}()")
+    } else {
+        format!("{name}(..)")
+    };
+    format!("`{name}` names a struct, not a value; construct it by call, `{call}`")
 }

@@ -1,0 +1,11 @@
+// A bare `Red` is not the zero-field struct `Red` (built by call, `Red()`, RFC-0100 section 7), so
+// where the expected type is `Colour` it is that enum's variant (RFC-0111). Before bare
+// zero-field struct construction was retired, the struct won and this was T0001.
+struct Red {}
+enum Colour { Red }
+
+fun main() {
+    let s := Red();
+    let c: Colour := Red;
+    assert(match (c) { Colour::Red => true });
+}

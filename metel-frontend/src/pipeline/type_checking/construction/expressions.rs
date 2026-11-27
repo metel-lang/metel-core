@@ -446,30 +446,6 @@ pub(super) fn construct_expr(
                     span.clone(),
                 ));
             }
-            if let Some(fields) = ctx.get_struct_fields(name)
-                && fields.is_empty()
-            {
-                let ty = if let Some(Type::Named(expected_name, ..)) = expected_ty {
-                    if expected_name == name {
-                        expected_ty.cloned().unwrap_or_else(|| {
-                            Type::Named(name.clone(), vec![], crate::data::types::NominalId::NONE)
-                        })
-                    } else {
-                        Type::Named(name.clone(), vec![], crate::data::types::NominalId::NONE)
-                    }
-                } else {
-                    Type::Named(name.clone(), vec![], crate::data::types::NominalId::NONE)
-                };
-                return Ok(TypedExpr::StructLiteral {
-                    path: vec![name.clone()],
-                    fields: vec![],
-                    ty,
-                    type_id: ctx.type_symbol_id(name),
-                    // A field-less *struct*, not an enum variant.
-                    variant_id: None,
-                    span: span.clone(),
-                });
-            }
             if ctx.can_be_unqualified_variant(name) {
                 return resolve_unqualified_variant_expr(name, expected_ty, span, ctx);
             }
@@ -591,11 +567,16 @@ pub(super) fn construct_expr(
                     span,
                 ));
             }
-            Err(MetelError::type_error(
-                TypeErrorCode::T0003,
-                format!("undefined name `{name}`"),
-                span,
-            ))
+            let message = match ctx.get_struct_fields(name) {
+                Some(fields) => {
+                    crate::pipeline::type_checking::inference::expressions::struct_name_as_value(
+                        name,
+                        fields.is_empty(),
+                    )
+                }
+                None => format!("undefined name `{name}`"),
+            };
+            Err(MetelError::type_error(TypeErrorCode::T0003, message, span))
         }
         Expr::ResolvedPath {
             resolved,
