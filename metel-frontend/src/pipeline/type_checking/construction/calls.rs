@@ -78,6 +78,56 @@ fn construct_call_as_struct_literal(
     }
 }
 
+/// RFC-0100 section 7a (metel-core#2201): a qualified call `Enum::Variant(args)` constructs
+/// that variant, the same way `T(args)` constructs a struct (metel-core#2199) -- binds the
+/// call's arguments to the variant's declared field names and dispatches through a synthesized
+/// two-segment `Expr::StructLiteral`, exactly the AST node `Enum::Variant { field = value }`
+/// already produces and the construction pass already knows how to type.
+fn construct_call_as_enum_variant_literal(
+    enum_name: &str,
+    variant_name: &str,
+    type_args: &[TypeExpr],
+    args: &[Expr],
+    span: &Span,
+    expected_ty: Option<&Type>,
+    ctx: &mut ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    let field_names: Vec<String> = ctx
+        .get_variant_fields(enum_name, variant_name)
+        .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+        .unwrap_or_default();
+    let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
+        .iter()
+        .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
+        .collect();
+    let binding = super::super::keyword_binding::bind_arguments(variant_name, &params, args, span)?;
+    let fields: Vec<(String, Expr)> = binding
+        .arg_for_param
+        .iter()
+        .enumerate()
+        .map(|(field_index, &arg_index)| {
+            (field_names[field_index].clone(), args[arg_index].clone())
+        })
+        .collect();
+    let synthetic = Expr::StructLiteral {
+        path: vec![enum_name.to_string(), variant_name.to_string()],
+        fields,
+        symbol_id: None,
+        span: span.clone(),
+    };
+    if type_args.is_empty() {
+        construct_expr(&synthetic, expected_ty, ctx)
+    } else {
+        let resolved_args: Vec<Type> = type_args
+            .iter()
+            .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
+            .collect::<Result<_, _>>()?;
+        let nominal = crate::data::types::NominalId(ctx.type_symbol_id(enum_name));
+        let turbofish_ty = Type::Named(enum_name.to_string(), resolved_args, nominal);
+        construct_expr(&synthetic, Some(&turbofish_ty), ctx)
+    }
+}
+
 /// Build a typed Call expression.
 ///
 /// For polymorphic callees (Idents in `scheme_ids` whose type still contains free
@@ -105,6 +155,26 @@ pub(super) fn construct_call(
         && ctx.has_struct_named(name)
     {
         return construct_call_as_struct_literal(name, type_args, args, span, expected_ty, ctx);
+    }
+    // RFC-0100 section 7a (metel-core#2201): a qualified call naming an enum variant
+    // constructs it. The path normalizer leaves a local `Enum::Variant` path as an
+    // unresolved two-segment `Expr::Path` (it only rewrites module-qualified paths), so this
+    // checks the raw path directly rather than going through `callee_name`, which only
+    // handles `Ident`/`ResolvedPath`. Checked ahead of `type_member_scheme` below so a real
+    // variant call can never be shadowed by a same-named static method.
+    if let Expr::Path(segments, _, _) = callee
+        && let [enum_name, variant_name] = segments.as_slice()
+        && ctx.has_enum_variant_named(enum_name, variant_name)
+    {
+        return construct_call_as_enum_variant_literal(
+            enum_name,
+            variant_name,
+            type_args,
+            args,
+            span,
+            expected_ty,
+            ctx,
+        );
     }
     // Overloaded free-function call (METEL-180): select the candidate whose
     // parameter types exactly match the argument types and stamp its SymbolId
