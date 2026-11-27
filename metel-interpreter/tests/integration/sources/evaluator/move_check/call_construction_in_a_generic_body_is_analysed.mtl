@@ -1,0 +1,23 @@
+// metel-core#2199: move checking analyses a generic body that constructs by call -- a block-local
+// struct, a module-level named record, and a variant -- the same as one that uses brace literals.
+record Point { x: i64, y: i64 }
+enum Shape { Line { length: i64 }, Dot }
+
+fun keep<T>(value: T) -> T {
+    struct Pair { name: String, count: i64 }
+    let pair := Pair(name = "a".to_string(), count = 2);
+    let name := pair.name;
+    assert(name == "a");
+    let point := Point(y = 2, x = 1);
+    assert(point.x + point.y == 3);
+    let shape := Shape::Line(length = 4);
+    match (shape) {
+        Shape::Line { length } => { assert(length == 4); },
+        Shape::Dot => { assert(false); },
+    }
+    value
+}
+
+fun main() {
+    assert(keep(3) == 3);
+}

@@ -1,6 +1,8 @@
-// RFC-0100 (metel-core#2199): construction arguments evaluate left to right, then the
-// canonical construction operation runs on the complete, ordered field row.
+// RFC-0100 (metel-core#2199): construction arguments evaluate left to right as written, then the
+// canonical construction operation runs on the complete, ordered field row -- including when keyword
+// arguments are written out of declaration order, for a struct and for an enum variant.
 struct Pair { a: i64, b: i64 }
+enum Shape { Span { from: i64, to: i64 } }
 fun next(counter: &var i64) -> i64 {
     *counter += 1;
     *counter
@@ -10,4 +12,16 @@ fun main() {
     let pair := Pair(a = next(&var counter), b = next(&var counter));
     assert(pair.a == 1);
     assert(pair.b == 2);
+
+    let swapped := Pair(b = next(&var counter), a = next(&var counter));
+    assert(swapped.b == 3);
+    assert(swapped.a == 4);
+
+    let shape := Shape::Span(to = next(&var counter), from = next(&var counter));
+    match (shape) {
+        Shape::Span { from, to } => {
+            assert(to == 5);
+            assert(from == 6);
+        },
+    }
 }

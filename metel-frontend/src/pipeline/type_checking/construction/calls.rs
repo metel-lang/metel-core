@@ -43,19 +43,8 @@ fn construct_call_as_struct_literal(
                 .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
         })
         .unwrap_or_default();
-    let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
-        .iter()
-        .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
-        .collect();
-    let binding = super::super::keyword_binding::bind_arguments(name, &params, args, span)?;
-    let fields: Vec<(String, Expr)> = binding
-        .arg_for_param
-        .iter()
-        .enumerate()
-        .map(|(field_index, &arg_index)| {
-            (field_names[field_index].clone(), args[arg_index].clone())
-        })
-        .collect();
+    let fields =
+        super::super::keyword_binding::construction_fields(name, &field_names, args, span)?;
     let synthetic = Expr::StructLiteral {
         path: vec![name.to_string()],
         fields,
@@ -96,19 +85,8 @@ fn construct_call_as_enum_variant_literal(
         .get_variant_fields(enum_name, variant_name)
         .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
         .unwrap_or_default();
-    let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
-        .iter()
-        .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
-        .collect();
-    let binding = super::super::keyword_binding::bind_arguments(variant_name, &params, args, span)?;
-    let fields: Vec<(String, Expr)> = binding
-        .arg_for_param
-        .iter()
-        .enumerate()
-        .map(|(field_index, &arg_index)| {
-            (field_names[field_index].clone(), args[arg_index].clone())
-        })
-        .collect();
+    let fields =
+        super::super::keyword_binding::construction_fields(variant_name, &field_names, args, span)?;
     let synthetic = Expr::StructLiteral {
         path: vec![enum_name.to_string(), variant_name.to_string()],
         fields,
