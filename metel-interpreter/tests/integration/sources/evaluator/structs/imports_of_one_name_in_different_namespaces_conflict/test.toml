@@ -2,7 +2,10 @@ runner = "full_pipeline"
 prelude = "default"
 
 [options]
-spec = ["spec.modules.unified-type-and-value-namespace.legality-2"]
+spec = [
+    "spec.modules.unified-type-and-value-namespace.legality-2",
+    "spec.modules.import-conflicts.legality-5",
+]
 error = ["T0011"]
 
 [expect]

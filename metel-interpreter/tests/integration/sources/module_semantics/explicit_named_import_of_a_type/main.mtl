@@ -1,0 +1,6 @@
+import lib::Point;
+
+fun main() {
+    let p := Point { x = 1 };
+    assert(p.x == 1);
+}
