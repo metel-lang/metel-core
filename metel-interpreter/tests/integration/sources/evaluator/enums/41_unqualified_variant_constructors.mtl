@@ -33,7 +33,7 @@ fun unwrap_result(r: Result<i64, String>) -> i64 {
 
 fun main() {
     let c: Colour := Red;
-    let c2: Colour := Red {};
+    let c2: Colour := Red();
     assert(paint(c) == 1);
     assert(paint(c2) == 1);
     assert(paint(Blue) == 3);

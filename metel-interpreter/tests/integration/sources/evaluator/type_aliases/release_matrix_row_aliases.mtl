@@ -26,6 +26,6 @@ fun main() {
     let stripped := strip(Packet(data = .{ .token = "gone", .text = "kept" }));
     assert(stripped.data.text == "kept");
     let stripped_empty: EmptyPacket := strip(Packet(data = .{ .token = "gone" }));
-    let envelope := Courier {}.pass(identity((stripped_empty, 9)));
+    let envelope := Courier().pass(identity((stripped_empty, 9)));
     assert(envelope.1 == 9);
 }

@@ -26,7 +26,7 @@ fun main() {
         acc = acc + f();
     }
     assert(acc == 3);
-    let dogs: [dyn Speak] := [Dog {}, Dog {}];
+    let dogs: [dyn Speak] := [Dog(), Dog()];
     var barks := 0;
     for (d in dogs) { if (d.speak() == "woof") { barks = barks + 1; } }
     assert(barks == 2);

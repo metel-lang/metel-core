@@ -9,7 +9,7 @@ extend Doubler: Transform<i64, i64> {
 }
 type Transformer<A, B> := dyn Transform<A, B>;
 fun main() {
-    let concrete := Doubler {};
+    let concrete := Doubler();
     assert(concrete.again(6) == 12);
     assert(concrete.identity("static generic") == "static generic");
     let object: Transformer<i64, i64> := concrete;

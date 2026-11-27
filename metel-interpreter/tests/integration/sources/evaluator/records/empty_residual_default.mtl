@@ -31,7 +31,7 @@ fun main() {
     let copied := .{ .text = "gone", .count = 7 };
     let text := copied.text;
     assert(copied.count == 7);
-    let zero: Zero := Zero {};
+    let zero: Zero := Zero();
     let normalized: Zero.{} := zero;
     println("ok");
 }

@@ -9,5 +9,5 @@ struct Unit {}
 
 fun main() {
     let u := Unit;
-    let v := Unit {};
+    let v := Unit();
 }
