@@ -1,0 +1,8 @@
+[options]
+spec = ["spec.modules.unified-type-and-value-namespace.legality-1"]
+error = ["T0037"]
+
+[expect]
+status = "typecheck_error"
+code = "T0037"
+contains = "duplicate declaration of value `Foo`"

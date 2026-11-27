@@ -48,7 +48,9 @@ pub enum BindingKind {
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
     /// Explicit bindings: `(namespace, local_name)` → `ImportBinding`.
-    /// Two explicit bindings with the same namespace and `local_name` are a compile error.
+    /// Two explicit bindings with the same `local_name`, in either namespace, are a compile
+    /// error (metel-core#2198, RFC-0100): a type and a value may no longer coexist under one
+    /// local name, so an import of one conflicts with an import of the other already present.
     pub explicit: HashMap<(Namespace, String), ImportBinding>,
     /// Glob-imported module paths (`import path::*`), tagged with their priority tier.
     /// Names from these modules are in scope at lower priority than explicit imports.
@@ -575,14 +577,16 @@ pub(crate) fn reserved_type_name_error(name: &str, span: &Span) -> MetelError {
     )
 }
 
-/// T0037 (metel-core#1560): a name declared twice in one namespace of one module. Before this
-/// check the second declaration silently shared the first one's `SymbolId` and one of the two was
-/// invisible to everything keyed by it. Two `fun`s of one name are an overload set, whose
+/// T0037 (metel-core#1560, namespace unified metel-core#2198/RFC-0100): a name declared
+/// twice in one module, in either namespace. Before metel-core#1560 the second declaration
+/// silently shared the first one's `SymbolId` and one of the two was invisible to everything
+/// keyed by it; before metel-core#2198 a type and a value could still share a name, since the
+/// check ran only within one namespace. Two `fun`s of one name are an overload set, whose
 /// duplicates (same parameter types) are `T0011`'s, so they are not reported here.
 fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
     for loaded in &graph.modules {
         check_reserved_type_names(loaded)?;
-        let mut seen: HashMap<(Namespace, &str), (&Decl, &Span)> = HashMap::new();
+        let mut seen: HashMap<&str, (&Decl, Namespace, &Span)> = HashMap::new();
         for decl in &loaded.program.decls {
             let Some((namespace, name, span)) = namespaced_decl(decl) else {
                 continue;
@@ -591,7 +595,9 @@ fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
             if name == "_" {
                 continue;
             }
-            let Some((first_decl, first)) = seen.insert((namespace, name), (decl, span)) else {
+            let Some((first_decl, first_namespace, first)) =
+                seen.insert(name, (decl, namespace, span))
+            else {
                 continue;
             };
             if matches!((first_decl, decl), (Decl::Fun(_), Decl::Fun(_))) {
@@ -601,10 +607,19 @@ fn check_duplicate_declarations(graph: &ModuleGraph) -> Result<(), MetelError> {
                 Namespace::Type => "type",
                 Namespace::Value => "value",
             };
+            let as_clause = if first_namespace == namespace {
+                String::new()
+            } else {
+                let first_what = match first_namespace {
+                    Namespace::Type => "type",
+                    Namespace::Value => "value",
+                };
+                format!(" as a {first_what}")
+            };
             return Err(MetelError::type_error(
                 TypeErrorCode::T0037,
                 format!(
-                    "duplicate declaration of {what} `{name}`: already declared at {}:{}:{}",
+                    "duplicate declaration of {what} `{name}`: already declared{as_clause} at {}:{}:{}",
                     first.filename, first.line, first.col
                 ),
                 span,
@@ -1016,7 +1031,19 @@ fn add_explicit(
     binding: ImportBinding,
     import_span: &Span,
 ) -> Result<(), MetelError> {
-    if let Some(existing) = scope.explicit.get(&key) {
+    // metel-core#2198 (RFC-0100): an explicit import conflicts with one already present in
+    // either namespace, not only its own -- a type and a value may no longer coexist under one
+    // local name, so importing one must collide with the other already imported under it.
+    let other_namespace = match key.0 {
+        Namespace::Type => Namespace::Value,
+        Namespace::Value => Namespace::Type,
+    };
+    let other_key = (other_namespace, key.1.clone());
+    if let Some(existing) = scope
+        .explicit
+        .get(&key)
+        .or_else(|| scope.explicit.get(&other_key))
+    {
         let local_name = &key.1;
         return Err(MetelError::type_error(
             TypeErrorCode::T0011,

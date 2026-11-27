@@ -1,0 +1,6 @@
+// metel-core#2198 (RFC-0100): a type and a value may no longer share a name, in any pairing
+// of declaration kinds -- an enum and a `let` collide exactly as a struct and a function do.
+enum Bar { A }
+let Bar := 7;
+
+fun main() {}
