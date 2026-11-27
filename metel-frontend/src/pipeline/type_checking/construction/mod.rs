@@ -447,27 +447,6 @@ impl<'a> ConstructCtx<'a> {
                 .is_some_and(|id| self.registry.raw_struct_env().contains_key(&id))
     }
 
-    /// The concrete fields of `variant_name` on the enum a *written* name refers to.
-    fn get_variant_fields(
-        &self,
-        enum_name: &str,
-        variant_name: &str,
-    ) -> Option<&Vec<type_engine::FieldEntry>> {
-        let id = self.written_type_id(enum_name)?;
-        self.registry
-            .enum_info_by_id(id)?
-            .variants
-            .iter()
-            .find(|v| v.name == variant_name)
-            .map(|v| &v.fields)
-    }
-
-    fn has_enum_variant_named(&self, enum_name: &str, variant_name: &str) -> bool {
-        self.written_type_id(enum_name)
-            .and_then(|id| self.registry.enum_info_by_id(id))
-            .is_some_and(|info| info.variants.iter().any(|v| v.name == variant_name))
-    }
-
     /// Bind `name` at the binding site `span`. At module level (scope 0) the value goes in
     /// `module_values` under the binding's identity; anywhere deeper it is keyed by its lexical
     /// identity.

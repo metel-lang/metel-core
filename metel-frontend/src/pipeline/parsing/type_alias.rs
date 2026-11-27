@@ -1079,6 +1079,36 @@ impl Expander<'_> {
                 self.walk_assign_target(target)?;
                 self.walk_expr(value)?;
             }
+            // RFC-0100 section 2: `Alias(args)` constructs the type the alias names, so a call's
+            // bare-name callee is rewritten as a struct literal's path is.
+            Expr::Call {
+                callee,
+                type_args,
+                args,
+                ..
+            } if matches!(callee.as_ref(), Expr::Ident(..)) => {
+                let rewritten = match callee.as_ref() {
+                    Expr::Ident(name, span) => {
+                        let mut segs = vec![name.clone()];
+                        self.rewrite_value_path(&mut segs)?;
+                        match segs.as_slice() {
+                            [same] if same == name => None,
+                            [single] => Some(Expr::Ident(single.clone(), span.clone())),
+                            _ => Some(Expr::Path(segs, Vec::new(), span.clone())),
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(rewritten) = rewritten {
+                    **callee = rewritten;
+                }
+                for t in type_args {
+                    self.subst_type(t)?;
+                }
+                for a in args {
+                    self.walk_expr(a)?;
+                }
+            }
             Expr::Call {
                 callee,
                 type_args,

@@ -118,30 +118,75 @@ pub(super) fn bind_arguments(
     })
 }
 
+/// The field names a construction call's positional arguments bind to.
+pub(super) enum ConstructionFields<'a> {
+    /// The struct's or variant's declared fields, in declaration order.
+    Declared(&'a [String]),
+    /// The call names no variant the enum has: the equivalent brace literal reports that, so a
+    /// positional argument only needs a placeholder name.
+    Unknown,
+    /// An unqualified variant, whose enum is known only once the expected type is: there is no
+    /// declaration order yet, so every argument must name its field.
+    Unqualified,
+}
+
 /// A construction call's arguments as the brace literal they are equivalent to (RFC-0100): each
-/// written argument paired with the field it binds, keyword wrapper removed, in *written* order —
+/// written argument paired with the field it names, keyword wrapper removed, in *written* order —
 /// a brace literal evaluates its fields as written, which is the order construction arguments must
 /// evaluate in (`spec.declarations.structs.call-syntax-construction.dynamics-1`).
 ///
+/// Positional arguments take the leading declared fields; a keyword argument keeps the name it was
+/// written with, known or not. Whether every field is supplied exactly once is left to the brace
+/// literal, which reports an unknown, missing or duplicate field exactly as it would for the brace
+/// form, so the two forms cannot disagree about them.
+///
 /// # Errors
-/// The binder's errors, with `callee` naming the type or variant in messages.
+/// T0040 for a positional argument after a keyword, T0004 for more positional arguments than
+/// fields, and T0002 for a positional argument to an unqualified variant.
 pub(super) fn construction_fields(
     callee: &str,
-    field_names: &[String],
+    fields: &ConstructionFields<'_>,
     args: &[Expr],
     call_span: &Span,
 ) -> Result<Vec<(String, Expr)>, MetelError> {
-    let params: Vec<ParamSlot<'_>> = field_names.iter().map(|name| ParamSlot { name }).collect();
-    let binding = bind_arguments(callee, &params, args, call_span)?;
-    let mut field_for_arg = vec![0; args.len()];
-    for (field, &arg) in binding.arg_for_param.iter().enumerate() {
-        field_for_arg[arg] = field;
+    let mut seen_keyword: Option<&str> = None;
+    let mut bound = Vec::with_capacity(args.len());
+    for (index, arg) in args.iter().enumerate() {
+        if let Expr::NamedArg { name, value, .. } = arg {
+            seen_keyword = Some(name);
+            bound.push((name.clone(), (**value).clone()));
+            continue;
+        }
+        if let Some(keyword) = seen_keyword {
+            return Err(MetelError::type_error(
+                TypeErrorCode::T0040,
+                format!(
+                    "a positional argument cannot follow the keyword argument `{keyword}`; \
+                     write every positional argument before the first keyword argument"
+                ),
+                arg.span(),
+            ));
+        }
+        let name = match fields {
+            ConstructionFields::Declared(names) => names
+                .get(index)
+                .ok_or_else(|| arity(callee, names.len(), args.len(), &[], call_span))?
+                .clone(),
+            ConstructionFields::Unknown => index.to_string(),
+            ConstructionFields::Unqualified => {
+                return Err(MetelError::type_error(
+                    TypeErrorCode::T0002,
+                    format!(
+                        "an unqualified variant call names each field (`{callee}(field = ...)`); \
+                         to pass fields by position, qualify the variant (`Enum::{callee}(...)`)"
+                    ),
+                    arg.span(),
+                ));
+            }
+        };
+        bound.push((name, arg.clone()));
     }
-    Ok(args
-        .iter()
-        .zip(field_for_arg)
-        .map(|(arg, field)| (field_names[field].clone(), unwrap_keyword(arg).clone()))
-        .collect())
+    Ok(bound)
 }
 
 /// What a keyword-argument call's callee tells the binder.

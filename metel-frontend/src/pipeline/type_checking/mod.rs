@@ -19,6 +19,7 @@ use crate::pipeline::type_checking::type_engine::{
 
 mod closure_uses;
 mod construction;
+mod construction_call;
 mod conversions;
 mod handoff;
 mod inference;

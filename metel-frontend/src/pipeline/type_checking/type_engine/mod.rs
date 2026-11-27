@@ -7925,20 +7925,6 @@ impl InferContext {
     }
 
     #[must_use]
-    pub fn get_variant_fields(
-        &self,
-        enum_name: &str,
-        variant_name: &str,
-    ) -> Option<&Vec<crate::pipeline::type_checking::type_engine::FieldEntry>> {
-        self.registry
-            .enum_info(&self.current_module_path, enum_name)?
-            .variants
-            .iter()
-            .find(|v| v.name == variant_name)
-            .map(|v| &v.fields)
-    }
-
-    #[must_use]
     pub fn get_method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
         self.registry
             .method_type(&self.current_module_path, type_name, method_name)
@@ -9352,6 +9338,14 @@ impl InferContext {
             }
         }
         None
+    }
+
+    /// Whether `name` is bound as a value at this point — a local, a parameter or a function —
+    /// without instantiating it as [`lookup`](Self::lookup) would.
+    #[must_use]
+    pub fn binds_value(&self, name: &str) -> bool {
+        self.poly_env.iter().any(|scope| scope.contains_key(name))
+            || self.mono_env.iter().any(|scope| scope.contains_key(name))
     }
 
     /// Look up a polymorphic scheme by name without instantiation.

@@ -819,31 +819,11 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
-        } if super::super::overload::callee_name(callee)
-            .is_some_and(|name| ctx.has_struct_named(name)) =>
-        {
-            // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
-            // constructs it instead of invoking a function -- checked ahead of the
-            // keyword-call arm below, which otherwise assumes any callee it sees is a function
-            // value with declared parameter names. `construct_call`'s own struct-construction
-            // branch binds positional/keyword arguments to the struct's field names directly,
-            // so the raw, unrewritten arguments pass straight through.
-            construct_call(callee, type_args, args, span, expected_ty, ctx)
-        }
-        Expr::Call {
-            callee,
-            type_args,
-            args,
-            span,
-        } if let Expr::Path(segments, _, _) = callee.as_ref()
-            && let [enum_name, variant_name] = segments.as_slice()
-            && ctx.has_enum_variant_named(enum_name, variant_name) =>
-        {
-            // RFC-0100 section 7a (metel-core#2201): a qualified call naming an enum variant
-            // constructs it -- checked ahead of the keyword-call arm below for the same
-            // reason as the struct arm above. `construct_call`'s own variant-construction
-            // branch binds positional/keyword arguments to the variant's field names
-            // directly, so the raw, unrewritten arguments pass straight through.
+        } if super::calls::construction_of(callee, ctx).is_some() => {
+            // RFC-0100 (metel-core#2199/#2201): a call that constructs is checked ahead of the
+            // keyword-call arm below, which assumes any callee it sees is a function value with
+            // declared parameter names. `construct_call` builds the brace literal it is
+            // equivalent to, so the raw, unrewritten arguments pass straight through.
             construct_call(callee, type_args, args, span, expected_ty, ctx)
         }
         Expr::Call {

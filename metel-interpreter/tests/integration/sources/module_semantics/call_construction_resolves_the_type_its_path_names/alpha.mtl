@@ -1,0 +1,5 @@
+pub struct Widget { pub id: i64 }
+extend Widget {
+    pub fun kind(self) -> String { "alpha" }
+}
+pub struct Counter { pub n: i64 }

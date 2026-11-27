@@ -458,7 +458,28 @@ fn normalize_expr(
             normalize_expr(value, scope, current_module, module_names, symbols)
         }
         Expr::Call { callee, args, .. } => {
-            normalize_expr(callee, scope, current_module, module_names, symbols)?;
+            // RFC-0100 section 2: `m::T(args)` constructs the struct the module prefix names. It is a
+            // type, not a value, so the value-path resolution below would find no identity for it;
+            // resolve it the way a module-qualified struct literal's path is (metel-core#1772).
+            if let Expr::Path(segments, _, span) = callee.as_ref()
+                && let Some((local, Some(type_id))) = try_normalize_struct_path(
+                    segments,
+                    scope,
+                    current_module,
+                    module_names,
+                    symbols,
+                )
+                && let [name] = local.as_slice()
+            {
+                **callee = Expr::ResolvedPath {
+                    resolved: name.clone(),
+                    symbol_id: Some(type_id),
+                    original: segments.clone(),
+                    span: span.clone(),
+                };
+            } else {
+                normalize_expr(callee, scope, current_module, module_names, symbols)?;
+            }
             for a in args {
                 normalize_expr(a, scope, current_module, module_names, symbols)?;
             }
