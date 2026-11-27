@@ -168,13 +168,9 @@ fn walk(
             return;
         }
         Rule::struct_literal => {
-            // A literal that initializes no field (`Empty {}`, `Flag::On {}`) is the bare form's
-            // value and stays legal anywhere (RFC-0106), so it is left as written.
-            let initializes_fields = pair
-                .clone()
-                .into_inner()
-                .any(|p| p.as_rule() == Rule::struct_field_init);
-            if initializes_fields && !is_own_type_literal(&pair, target) {
+            // A field-less literal (`Empty {}`, `Flag::On {}`) is privileged like any other and
+            // becomes `Empty()` / `Flag::On()`.
+            if !is_own_type_literal(&pair, target) {
                 rewrite_literal(&pair, src, edits);
                 *count += 1;
             }

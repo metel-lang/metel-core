@@ -37,6 +37,11 @@ use crate::pipeline::parsing::module_loader::{LoadedModule, ModuleGraph};
 pub struct NormalizedModuleGraph {
     pub(crate) graph: ModuleGraph,
     pub(crate) names: Rc<ResolvedNames>,
+    /// Where a bare module-qualified unit-variant path (`lib::Kind::A`) was rewritten to the
+    /// field-less literal it stands for, as `(filename, start, end)`. That literal was not written,
+    /// so the privileged-construction check (`coherence::construction`) does not hold it to the
+    /// brace-literal rule.
+    pub(crate) unit_variant_values: HashSet<(String, usize, usize)>,
 }
 
 impl NormalizedModuleGraph {
@@ -61,6 +66,9 @@ struct PathSymbols<'a> {
     /// The `module::Type::member` paths rewritten so far, per module, for the type checker
     /// (`ModuleScope::qualified_paths`).
     qualified: std::cell::RefCell<Vec<(Vec<String>, Span, QualifiedPath)>>,
+    /// The spans of the unit-variant paths rewritten to field-less literals
+    /// (`NormalizedModuleGraph::unit_variant_values`).
+    unit_variant_values: std::cell::RefCell<HashSet<(String, usize, usize)>>,
     /// Items a `root::` or `super::` path names without an import, per module: the path as
     /// written is the local name the item is bound under (metel-core#1221).
     implicit_imports: std::cell::RefCell<Vec<ImplicitImport>>,
@@ -156,6 +164,7 @@ pub fn normalize(
             unit_variants,
             public_types,
             qualified: std::cell::RefCell::new(Vec::new()),
+            unit_variant_values: std::cell::RefCell::new(HashSet::new()),
             implicit_imports: std::cell::RefCell::new(Vec::new()),
             deps: names
                 .scopes
@@ -187,9 +196,10 @@ pub fn normalize(
         (
             symbols.qualified.into_inner(),
             symbols.implicit_imports.into_inner(),
+            symbols.unit_variant_values.into_inner(),
         )
     };
-    let (qualified, implicit_imports) = qualified;
+    let (qualified, implicit_imports, unit_variant_values) = qualified;
     if !qualified.is_empty() || !implicit_imports.is_empty() {
         let names_mut = Rc::make_mut(&mut names);
         for (module, span, path) in qualified {
@@ -203,7 +213,11 @@ pub fn normalize(
             }
         }
     }
-    Ok(NormalizedModuleGraph { graph, names })
+    Ok(NormalizedModuleGraph {
+        graph,
+        names,
+        unit_variant_values,
+    })
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -381,6 +395,11 @@ fn normalize_expr(
             if let Some((path, type_id)) =
                 try_normalize_unit_variant_path(segments, current_module, symbols)
             {
+                symbols.unit_variant_values.borrow_mut().insert((
+                    span.filename.clone(),
+                    span.start,
+                    span.end,
+                ));
                 *expr = Expr::StructLiteral {
                     path,
                     fields: Vec::new(),

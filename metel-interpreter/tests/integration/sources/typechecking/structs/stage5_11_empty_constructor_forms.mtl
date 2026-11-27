@@ -4,7 +4,15 @@ enum Flag {
     On {},
 }
 
+extend Empty {
+    fun by_brace() -> Empty { Empty {} }
+}
+
+extend Flag {
+    fun by_brace() -> Flag { Flag::On {} }
+}
+
 let _: Empty := Empty;
-let _: Empty := Empty {};
+let _: Empty := Empty();
 let _: Flag := Flag::On;
-let _: Flag := Flag::On {};
+let _: Flag := Flag::On();

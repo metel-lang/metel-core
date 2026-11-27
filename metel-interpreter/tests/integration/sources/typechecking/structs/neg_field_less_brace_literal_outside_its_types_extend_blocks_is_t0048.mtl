@@ -1,0 +1,9 @@
+// RFC-0100 section 3 (metel-core#2200): a brace literal that initializes no field is privileged
+// like any other; outside its type's `extend` blocks the value is written bare or by call.
+struct Empty {}
+
+fun main() {
+    let a := Empty;
+    let b := Empty();
+    let c := Empty {};
+}
