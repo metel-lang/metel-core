@@ -761,6 +761,68 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
+        } if super::super::overload::callee_name(callee)
+            .is_some_and(|name| ctx.get_struct_fields(name).is_some()) =>
+        {
+            // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
+            // constructs it instead of invoking a function. The unified namespace
+            // (metel-core#2198) guarantees a name is never both, so this check alone decides
+            // which -- checked ahead of the keyword-call and overload arms below, which
+            // otherwise assume any callee they see is a function value. Bind the call's
+            // positional/keyword arguments to the struct's declared field names (the same rule
+            // RFC-0223 uses for function parameters, `keyword_binding::bind_arguments`) and
+            // infer a synthesized `Expr::StructLiteral` -- exactly the AST node a user writing
+            // `T { field = value, .. }` would produce -- instead of duplicating struct-literal
+            // inference here.
+            let name = super::super::overload::callee_name(callee).unwrap();
+            let field_names: Vec<String> = ctx
+                .get_struct_fields(name)
+                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+                .unwrap_or_default();
+            let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
+                .iter()
+                .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
+                .collect();
+            let binding = super::super::keyword_binding::bind_arguments(name, &params, args, span)?;
+            let fields: Vec<(String, Expr)> = binding
+                .arg_for_param
+                .iter()
+                .enumerate()
+                .map(|(field_index, &arg_index)| {
+                    (field_names[field_index].clone(), args[arg_index].clone())
+                })
+                .collect();
+            let synthetic = Expr::StructLiteral {
+                path: vec![name.to_string()],
+                fields,
+                symbol_id: None,
+                span: span.clone(),
+            };
+            // `Pair::<i64>(1, 2)`: explicit type arguments have no struct-literal equivalent;
+            // threaded through as a direct constraint on the inferred type instead.
+            let result = infer_expr(&synthetic, ctx, fun_generalizations)?;
+            if !type_args.is_empty() {
+                let resolved_args: Vec<InferType> = type_args
+                    .iter()
+                    .map(crate::pipeline::type_checking::conversions::type_expr_to_infer)
+                    .collect();
+                let type_id = ctx
+                    .registry()
+                    .resolve_type_id(ctx.current_module_path(), name);
+                let expected = InferType::Named(
+                    name.to_string(),
+                    resolved_args,
+                    crate::data::types::NominalId(type_id),
+                );
+                ctx.add_constraint(result.clone(), expected, span.clone());
+            }
+            Ok(result)
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } if super::super::keyword_binding::has_keyword(args)
             && keyword_callee_is_defined(callee, ctx)
             && !super::super::overload::callee_name(callee)
