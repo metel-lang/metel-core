@@ -21,7 +21,6 @@ fun main() {
     assert(h.fd == 3);
     assert(h.name == "x");
 
-    let e := Empty;
     let e2 := Empty();
 
     let fd := 5;

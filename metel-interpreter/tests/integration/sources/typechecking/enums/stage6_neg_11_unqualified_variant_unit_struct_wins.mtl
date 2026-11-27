@@ -1,7 +1,0 @@
-struct Red {}
-enum Colour { Red }
-
-fun main() {
-    let s := Red;
-    let c: Colour := Red; // ERROR[T0001]
-}

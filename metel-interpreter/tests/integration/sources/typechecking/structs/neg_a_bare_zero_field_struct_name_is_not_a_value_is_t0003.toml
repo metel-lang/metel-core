@@ -1,0 +1,8 @@
+[options]
+spec = ["spec.declarations.structs.instantiation-and-field-access.legality-2"]
+
+[expect]
+status = "typecheck_error"
+code = "T0003"
+line = 11
+contains = "`Unit` names a struct, not a value; construct it by call, `Unit()`"

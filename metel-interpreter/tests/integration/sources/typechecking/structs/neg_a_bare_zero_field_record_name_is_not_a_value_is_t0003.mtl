@@ -1,0 +1,10 @@
+// RFC-0100 section 7: a zero-field named record is built by call, `Empty()`, like a zero-field
+// struct; its bare name constructs nothing.
+record Empty {}
+
+fun take(e: Empty) -> i64 { 1 }
+
+fun main() {
+    assert(take(Empty()) == 1);
+    assert(take(Empty) == 1);
+}

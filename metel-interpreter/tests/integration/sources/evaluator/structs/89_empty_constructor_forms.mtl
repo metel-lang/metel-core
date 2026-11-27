@@ -1,5 +1,5 @@
-// A zero-field struct or variant is the same value whether written bare, by call, or (inside its
-// own type's `extend` block, RFC-0100 section 3) as a field-less brace literal.
+// A zero-field struct is the same value by call or (inside its own `extend` block, RFC-0100
+// section 3) as a field-less brace literal; a zero-field variant also bare (`Flag::On`).
 struct Empty {}
 
 enum Flag {
@@ -25,14 +25,12 @@ fun use_flag(f: Flag) -> i64 {
 }
 
 fun main() {
-    let a := Empty;
     let b := Empty();
     let c := Empty::by_brace();
     let x := Flag::On;
     let y := Flag::On();
     let z := Flag::by_brace();
 
-    assert(use_empty(a) == 1);
     assert(use_empty(b) == 1);
     assert(use_empty(c) == 1);
     assert(use_flag(x) == 7);
