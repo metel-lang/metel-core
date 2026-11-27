@@ -819,6 +819,22 @@ pub(super) fn construct_expr(
             type_args,
             args,
             span,
+        } if super::super::overload::callee_name(callee)
+            .is_some_and(|name| ctx.has_struct_named(name)) =>
+        {
+            // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
+            // constructs it instead of invoking a function -- checked ahead of the
+            // keyword-call arm below, which otherwise assumes any callee it sees is a function
+            // value with declared parameter names. `construct_call`'s own struct-construction
+            // branch binds positional/keyword arguments to the struct's field names directly,
+            // so the raw, unrewritten arguments pass straight through.
+            construct_call(callee, type_args, args, span, expected_ty, ctx)
+        }
+        Expr::Call {
+            callee,
+            type_args,
+            args,
+            span,
         } if super::super::keyword_binding::has_keyword(args)
             && keyword_callee_is_defined(callee, ctx)
             && !super::super::overload::callee_name(callee)

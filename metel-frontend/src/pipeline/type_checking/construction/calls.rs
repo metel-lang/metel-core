@@ -17,6 +17,67 @@ fn is_through_shared_reference(expr: &TypedExpr) -> bool {
     }
 }
 
+/// RFC-0100 sections 2/5/6 (metel-core#2199): `T(args)` where `T` names a struct constructs
+/// it, reusing the existing struct-literal construction logic (generic field hints, exact-row
+/// checking, visibility) rather than duplicating it. Binds the call's positional/keyword
+/// arguments to the struct's declared field names using the same rule RFC-0223 uses for
+/// function parameters (`keyword_binding::bind_arguments`), then dispatches through
+/// `construct_expr` on a synthesized `Expr::StructLiteral` -- exactly the AST node a user
+/// writing `T { field = value, .. }` directly would produce.
+fn construct_call_as_struct_literal(
+    name: &str,
+    type_args: &[TypeExpr],
+    args: &[Expr],
+    span: &Span,
+    expected_ty: Option<&Type>,
+    ctx: &mut ConstructCtx,
+) -> Result<TypedExpr, MetelError> {
+    // A generic struct has no concrete field list in `get_struct_fields`; its fields live in
+    // `raw_struct_env` instead (the same fallback `has_struct_named` already uses to detect it).
+    let field_names: Vec<String> = ctx
+        .get_struct_fields(name)
+        .map(|fields| fields.iter().map(|(n, _, _)| n.clone()).collect())
+        .or_else(|| {
+            ctx.written_type_id(name)
+                .and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
+        })
+        .unwrap_or_default();
+    let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
+        .iter()
+        .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
+        .collect();
+    let binding = super::super::keyword_binding::bind_arguments(name, &params, args, span)?;
+    let fields: Vec<(String, Expr)> = binding
+        .arg_for_param
+        .iter()
+        .enumerate()
+        .map(|(field_index, &arg_index)| {
+            (field_names[field_index].clone(), args[arg_index].clone())
+        })
+        .collect();
+    let synthetic = Expr::StructLiteral {
+        path: vec![name.to_string()],
+        fields,
+        symbol_id: None,
+        span: span.clone(),
+    };
+    // `Pair::<i64>(1, 2)`: explicit type arguments have no struct-literal equivalent to carry
+    // them, so thread them through as an expected type instead -- exactly what an explicit
+    // `let p: Pair<i64> := Pair { .. };` annotation would give the literal.
+    if type_args.is_empty() {
+        construct_expr(&synthetic, expected_ty, ctx)
+    } else {
+        let resolved_args: Vec<Type> = type_args
+            .iter()
+            .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
+            .collect::<Result<_, _>>()?;
+        let nominal = crate::data::types::NominalId(ctx.type_symbol_id(name));
+        let turbofish_ty = Type::Named(name.to_string(), resolved_args, nominal);
+        construct_expr(&synthetic, Some(&turbofish_ty), ctx)
+    }
+}
+
 /// Build a typed Call expression.
 ///
 /// For polymorphic callees (Idents in `scheme_ids` whose type still contains free
@@ -36,6 +97,15 @@ pub(super) fn construct_call(
     expected_ty: Option<&Type>,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
+    // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
+    // constructs it instead of invoking a function. The unified namespace
+    // (metel-core#2198) guarantees a name is never both a struct and a function, so
+    // this check alone decides which -- no argument-shape heuristic participates.
+    if let Some(name) = super::super::overload::callee_name(callee)
+        && ctx.has_struct_named(name)
+    {
+        return construct_call_as_struct_literal(name, type_args, args, span, expected_ty, ctx);
+    }
     // Overloaded free-function call (METEL-180): select the candidate whose
     // parameter types exactly match the argument types and stamp its SymbolId
     // into the call; the evaluator dispatches through its symbol registry.

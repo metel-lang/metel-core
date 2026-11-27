@@ -1,0 +1,8 @@
+// metel-core#2199 (RFC-0100): a call now constructs a fieldful struct named by its callee,
+// reversing metel-core#1945's rollback -- the unified namespace (metel-core#2198) means the
+// original argument-dependent-lookup bug that rollback fixed cannot recur.
+struct Ticket { value: i64 }
+fun main() {
+    let ticket := Ticket(1);
+    assert(ticket.value == 1);
+}
