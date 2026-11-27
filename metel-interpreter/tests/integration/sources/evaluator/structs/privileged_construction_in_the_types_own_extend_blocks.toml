@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.declarations.structs.privileged-representation-construction.legality-1"]
+
+[expect]
+status = "success"

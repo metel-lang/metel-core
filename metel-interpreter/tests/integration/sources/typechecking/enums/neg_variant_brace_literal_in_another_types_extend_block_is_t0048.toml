@@ -1,0 +1,8 @@
+[options]
+spec = ["spec.declarations.structs.privileged-representation-construction.legality-1"]
+error = ["T0048"]
+
+[expect]
+status = "typecheck_error"
+code = "T0048"
+contains = "`Shape::Line(..)`"

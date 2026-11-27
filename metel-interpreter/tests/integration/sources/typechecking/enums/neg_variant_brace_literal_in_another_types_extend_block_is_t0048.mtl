@@ -1,0 +1,10 @@
+// RFC-0100 section 3 (metel-core#2200): an `extend` block may build only its own type with a brace
+// literal; another type's variant is built with the call form even there.
+enum Shape { Line { length: i64 } }
+struct Ruler { length: i64 }
+
+extend Ruler {
+    fun as_line(self) -> Shape { Shape::Line { length = self.length } }
+}
+
+fun main() {}
