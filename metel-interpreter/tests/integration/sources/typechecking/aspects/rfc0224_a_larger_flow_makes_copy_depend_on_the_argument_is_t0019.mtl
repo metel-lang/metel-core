@@ -2,7 +2,7 @@
 struct Handle<T> derives Clone(T), Copy(T) { id: i64 }
 
 fun main() {
-    let h: Handle<String> := Handle { id = 1 };
+    let h: Handle<String> := Handle(id = 1);
     let first := h;
     let again := h; // ERROR[T0019]
 }

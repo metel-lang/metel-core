@@ -6,7 +6,7 @@ extend Holder<T> {
 }
 fun f<T: Copy>(x: T, y: T) {
     let c := [x]|k: i64| -> i64 { k };
-    let h := Holder { inner = c };
+    let h := Holder(inner = c);
     let d := h.get();
     let e := h.pass([y]|k: i64| -> i64 { k });
     let a := d; let b := d;

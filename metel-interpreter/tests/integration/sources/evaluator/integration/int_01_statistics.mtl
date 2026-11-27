@@ -73,7 +73,7 @@ fun binary_search(sorted: [f64], target: f64) -> Option<i64> {
     while (lo <= hi) {
         let mid := (lo + hi) / 2;
         if (float_eq(sorted[mid as u64], target)) {
-            return Option::Some { value = mid };
+            return Option::Some(value = mid);
         } else if (sorted[mid as u64] < target) {
             lo = mid + 1;
         } else {
@@ -115,7 +115,7 @@ extend Stats {
 fun compute_stats(data: [f64]) -> Result<Stats, String> {
     let n := data.len();
     if (n == 0) {
-        return Result::Err { error = "empty dataset" };
+        return Result::Err(error = "empty dataset");
     }
     var total := 0.0;
     var mn := data[0];
@@ -138,7 +138,7 @@ fun compute_stats(data: [f64]) -> Result<Stats, String> {
         j += 1;
     }
     let variance := var_sum / (n as f64);
-    Result::Ok { value = Stats { count = n, sum = total, mean = mean, variance = variance, min = mn, max = mx } }
+    Result::Ok(value = Stats(count = n, sum = total, mean = mean, variance = variance, min = mn, max = mx))
 }
 
 // Median of a [f64].  Returns None for empty input (RFC-0019: types None as
@@ -150,10 +150,10 @@ fun median(data: [f64]) -> Option<f64> {
     let sorted_view := sorted.as_slice();
     let mid := n / 2;
     if (n % 2 == 1) {
-        Option::Some { value = sorted_view[mid as u64] }
+        Option::Some(value = sorted_view[mid as u64])
     } else {
         let mid1 := mid - 1;
-        Option::Some { value = (sorted_view[mid1 as u64] + sorted_view[mid as u64]) / 2.0 }
+        Option::Some(value = (sorted_view[mid1 as u64] + sorted_view[mid as u64]) / 2.0)
     }
 }
 
@@ -165,9 +165,9 @@ fun z_score(data: [f64], value: f64) -> Result<f64, String> {
     let stats := compute_stats(data)?;
     let sd := stats.std_dev();
     if (float_eq(sd, 0.0)) {
-        return Result::Err { error = "zero standard deviation" };
+        return Result::Err(error = "zero standard deviation");
     }
-    Result::Ok { value = (value - stats.mean) / sd }
+    Result::Ok(value = (value - stats.mean) / sd)
 }
 
 // ── Higher-order functions ────────────────────────────────────────────────────

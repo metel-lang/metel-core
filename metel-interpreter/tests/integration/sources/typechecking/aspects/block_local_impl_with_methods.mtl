@@ -9,7 +9,7 @@ fun label(n: i64) -> String {
     extend L { fun get(&self) -> i64 { self.n } }
     extend L: Show { fun show(&self) -> String { "L" + self.get().to_string() } }
     extend L: Display { fun to_string(&self) -> String { "<" + self.show() + ">" } }
-    let l := L { n = n };
+    let l := L(n = n);
     assert("${l}" == "<L${n}>");
     render(&l)
 }
@@ -17,8 +17,8 @@ fun label(n: i64) -> String {
 fun main() {
     struct K { n: i64 }
     extend K: Show { fun show(&self) -> String { "K" } }
-    assert(K { n = 1 }.show() == "K");
-    assert(render(&K { n = 2 }) == "K");
+    assert(K(n = 1).show() == "K");
+    assert(render(&K(n = 2)) == "K");
     assert(label(1) == "L1");
     assert(label(2) == "L2");
 }

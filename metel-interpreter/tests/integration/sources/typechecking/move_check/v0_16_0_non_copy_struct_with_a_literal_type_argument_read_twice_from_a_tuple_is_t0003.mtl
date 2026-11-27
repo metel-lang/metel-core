@@ -2,7 +2,7 @@
 // generic struct still moves out of the tuple, so a second read of the element is rejected.
 struct Plain<T> { value: T }
 fun main() {
-    let t := (Plain { value = 1 }, "s");
+    let t := (Plain(value = 1), "s");
     let u := t.0;
     let v := t.0; // ERROR[T0003]
 }

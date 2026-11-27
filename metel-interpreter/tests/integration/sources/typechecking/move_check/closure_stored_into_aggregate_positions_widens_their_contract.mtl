@@ -14,7 +14,7 @@ fun f<T: Copy>(x: T, y: i64) {
     pair.0 = [y]|k: i64| -> i64 { k + y };
     let e := pair;
     let g := pair;
-    var holder := Holder { f = |k: i64| -> i64 { k } };
+    var holder := Holder(f = |k: i64| -> i64 { k });
     holder.f = [y]|k: i64| -> i64 { k + y };
 }
 fun main() {}

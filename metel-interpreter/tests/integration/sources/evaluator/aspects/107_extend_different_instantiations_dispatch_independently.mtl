@@ -24,8 +24,8 @@ extend W<String> {
 fun show<X: Tag>(x: &X) -> i64 { x.t() }
 
 fun main() {
-    let a := W { v = 1 };
-    let b := W { v = "s" };
+    let a := W(v = 1);
+    let b := W(v = "s");
 
     assert(a.t() == 1);
     assert(b.t() == 2);

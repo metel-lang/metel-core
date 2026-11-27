@@ -2,5 +2,5 @@
 struct Holder { f: copy |i64| -> i64 }
 fun main() {
     let name := "x";
-    let h := Holder { f = [name] |x: i64| -> i64 { x } }; // ERROR[T0001]
+    let h := Holder(f = [name] |x: i64| -> i64 { x }); // ERROR[T0001]
 }

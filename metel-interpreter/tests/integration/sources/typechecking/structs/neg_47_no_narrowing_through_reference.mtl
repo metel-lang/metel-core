@@ -14,6 +14,6 @@ fun consume_name(h: &var Handle) -> String {
 }
 
 fun main() {
-    var h := Handle { fd = 1, name = "x" };
+    var h := Handle(fd = 1, name = "x");
     println(consume_name(&var h));
 }

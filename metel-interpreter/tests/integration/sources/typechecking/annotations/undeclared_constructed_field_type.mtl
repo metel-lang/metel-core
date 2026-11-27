@@ -3,5 +3,5 @@ struct Holder {
 }
 
 fun main() {
-    let holder := Holder { value = 1 };
+    let holder := Holder(value = 1);
 }

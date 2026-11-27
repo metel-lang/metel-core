@@ -8,16 +8,16 @@ fun area(r: &Rect) -> i64 {
 }
 
 fun translate_rect(r: &Rect, dx: i64, dy: i64) -> Rect {
-    Rect {
-        top_left =     Point { x = r.top_left.x     + dx, y = r.top_left.y     + dy },
-        bottom_right = Point { x = r.bottom_right.x + dx, y = r.bottom_right.y + dy },
-    }
+    Rect(
+        top_left =     Point(x = r.top_left.x     + dx, y = r.top_left.y     + dy),
+        bottom_right = Point(x = r.bottom_right.x + dx, y = r.bottom_right.y + dy),
+    )
 }
 
 fun main() {
-    let tl := Point { x = 1, y = 2 };
-    let br := Point { x = 5, y = 6 };
-    let r := Rect { top_left = tl, bottom_right = br };
+    let tl := Point(x = 1, y = 2);
+    let br := Point(x = 5, y = 6);
+    let r := Rect(top_left = tl, bottom_right = br);
     // Nested field access: two levels deep.
     assert(r.top_left.x     == 1);
     assert(r.top_left.y     == 2);
@@ -37,9 +37,9 @@ fun main() {
     // Original rect is unchanged (value semantics).
     assert(r.top_left.x == 1);
     // Inline nested struct construction.
-    let r3 := Rect {
-        top_left =     Point { x = 0, y = 0 },
-        bottom_right = Point { x = 3, y = 4 },
-    };
+    let r3 := Rect(
+        top_left =     Point(x = 0, y = 0),
+        bottom_right = Point(x = 3, y = 4),
+    );
     assert(area(&r3) == 12);
 }

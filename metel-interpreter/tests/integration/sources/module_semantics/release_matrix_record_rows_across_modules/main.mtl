@@ -1,6 +1,6 @@
 import shapes::{Frame, Weigh, strip_label, total, empty_after};
 fun main() {
-    let f := Frame { public_rows = [1, 2, 3], label = "x" };
+    let f := Frame(public_rows = [1, 2, 3], label = "x");
     let stripped := strip_label(f);
     assert(stripped.public_rows[2] == 3);
     assert(total(stripped) == 6);

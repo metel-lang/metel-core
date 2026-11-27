@@ -17,9 +17,9 @@ fun main() {
     struct IntBox { value: i64 }
     extend IntBox: Container { type Item := i64; fun get(self) -> i64 { return self.value; } }
 
-    let l := L { n = 4 };
+    let l := L(n = 4);
     assert(use_conv(&l) == 4);
     assert(get(&l) == 4);
-    let v: i64 := peek(IntBox { value = 42 });
+    let v: i64 := peek(IntBox(value = 42));
     assert(v == 42);
 }

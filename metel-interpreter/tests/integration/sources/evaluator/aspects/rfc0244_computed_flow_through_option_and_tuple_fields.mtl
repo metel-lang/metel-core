@@ -5,18 +5,18 @@ struct Slot<T> derives Clone(..), Copy(..) { v: Option<T> }
 struct Both<A> derives Clone(..), Copy(..) { pair: (A, i64) }
 
 fun main() {
-    let s: Slot<i64> := Slot { v = None };
+    let s: Slot<i64> := Slot(v = None);
     let s2 := s;
     let s3 := s;
-    let full := Slot { v = Option::Some { value = 4 } };
+    let full := Slot(v = Option::Some(value = 4));
     let full2 := full;
-    let named: Slot<String> := Slot { v = Option::Some { value = "x" } };
+    let named: Slot<String> := Slot(v = Option::Some(value = "x"));
     let named2 := named.clone();
 
-    let b := Both { pair = (1, 2) };
+    let b := Both(pair = (1, 2));
     let b2 := b;
     assert(b.pair.0 + b2.pair.1 == 3);
-    let w := Both { pair = ("w", 3) };
+    let w := Both(pair = ("w", 3));
     let w2 := w.clone();
     assert(w2.pair.1 == 3);
 }

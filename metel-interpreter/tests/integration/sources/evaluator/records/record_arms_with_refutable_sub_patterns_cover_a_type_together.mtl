@@ -2,7 +2,7 @@
 // field, as arms of an enum do; no catch-all arm is needed.
 enum Shape { Dot, Disc { radius: i64 } }
 fun main() {
-    let s := .{ .shape = Shape::Disc { radius = 4 }, .tag = 9 };
+    let s := .{ .shape = Shape::Disc(radius = 4), .tag = 9 };
     match (s) {
         .{ .shape: Shape::Dot, .tag: _ } => assert(false),
         .{ .shape: Shape::Disc { radius }, .tag } => {

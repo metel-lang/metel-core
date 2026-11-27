@@ -15,5 +15,5 @@ struct Item { name: String }
 extend Item: Printable { fun print(self) {} }
 
 fun wrap(item: Item) -> Container<Item> {
-    Container::Some { value = item }
+    Container::Some(value = item)
 }

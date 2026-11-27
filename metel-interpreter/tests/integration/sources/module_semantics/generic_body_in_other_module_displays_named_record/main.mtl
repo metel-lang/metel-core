@@ -5,6 +5,6 @@ import helper::show;
 record P { x: i64, y: i64 }
 
 fun main() {
-    let r := P { x = 1, y = 2 };
+    let r := P(x = 1, y = 2);
     assert(show(r) == "P { x: 1, y: 2 }");
 }

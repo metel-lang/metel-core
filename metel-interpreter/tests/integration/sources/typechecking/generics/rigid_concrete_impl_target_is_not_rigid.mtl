@@ -6,4 +6,4 @@ extend Box<i64> {
     fun value_as_i64(self) -> i64 { self.value }
 }
 
-fun main() { assert(Box { value = 1 }.value_as_i64() == 1); }
+fun main() { assert(Box(value = 1).value_as_i64() == 1); }

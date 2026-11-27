@@ -5,5 +5,5 @@ fun f<T: Copy>(t: .{ .0: Tag, .1: T }) -> i64 {
     n
 }
 fun main() {
-    assert(f(.{ .0 = Tag { n = 4 }, .1 = 1 }) == 4);
+    assert(f(.{ .0 = Tag(n = 4), .1 = 1 }) == 4);
 }

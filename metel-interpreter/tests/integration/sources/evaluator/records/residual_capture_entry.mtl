@@ -2,7 +2,7 @@ struct Pair { left: String, right: String }
 type Callback := once var || -> Pair;
 
 fun main() {
-    var pair := Pair { left = "old", right = "gone" };
+    var pair := Pair(left = "old", right = "gone");
     let left := pair.left;
     let right := pair.right;
     let callback: Callback := [pair] once var || -> Pair {
@@ -12,7 +12,7 @@ fun main() {
     };
     assert(callback().left == "new");
 
-    var partial := Pair { left = "gone", right = "kept" };
+    var partial := Pair(left = "gone", right = "kept");
     let removed := partial.left;
     let restore := [partial] once var || -> Pair {
         partial.left = "restored";

@@ -1,6 +1,6 @@
 record S { a: String, b: String }
 fun main() {
-    let s := S { a = "a", b = "b" };
+    let s := S(a = "a", b = "b");
     let x := s.a;
     let y := s.b;
     println(s.a); // ERROR[T0019]

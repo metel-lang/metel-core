@@ -6,6 +6,6 @@ fun declare_it() {
 }
 
 fun use_it() -> i64 {
-    let v := Local { x = 1 };  // ERROR[T0003]
+    let v := Local(x = 1);  // ERROR[T0003]
     v.x
 }

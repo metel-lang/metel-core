@@ -26,9 +26,9 @@ extend Tag: Keep {
 }
 
 fun main() {
-    let t := Tag { n = 2 };
+    let t := Tag(n = 2);
     assert(weigh(t) == 1);
-    let b: Boxed<i64> := Boxed { value = 5 };
+    let b: Boxed<i64> := Boxed(value = 5);
     assert(weigh(b) == 1);
 
     let kept := t.keep(b);

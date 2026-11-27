@@ -30,8 +30,8 @@ extend Cat: Named {
 }
 
 fun main() {
-    let d := Dog { name = "Rex" };
-    let c := Cat { name = "Whiskers" };
+    let d := Dog(name = "Rex");
+    let c := Cat(name = "Whiskers");
     assert(d.greeting() == "Hi, I'm Rex");
     assert(c.greeting() == "Hi, I'm Whiskers");
     assert(d.name() == "Rex");

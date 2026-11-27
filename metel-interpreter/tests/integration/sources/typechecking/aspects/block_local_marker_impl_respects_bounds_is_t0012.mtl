@@ -5,6 +5,6 @@ fun need<T: Marker>(x: &T) {}
 fun main() {
     struct W<T> { v: T }
     extend<T: Marker> W<T>: Marker;
-    let w := W { v = 1 };
+    let w := W(v = 1);
     need(&w);
 }

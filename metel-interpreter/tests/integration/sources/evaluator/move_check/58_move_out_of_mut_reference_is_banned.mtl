@@ -17,7 +17,7 @@ extend B: Consume {
 // is not `Copy`, unlike `&T`). Rejected at the first call now, for the actual
 // reason: a by-value method cannot be called through any reference.
 fun main() {
-    var b := B { v = "owned" };
+    var b := B(v = "owned");
     let r := &var b;
     let first := r.eat();
 }

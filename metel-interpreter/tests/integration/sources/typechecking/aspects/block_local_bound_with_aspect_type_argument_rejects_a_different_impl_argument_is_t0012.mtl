@@ -4,5 +4,5 @@ fun use_conv<X: Conv<i64>>(x: &X) -> i64 { x.conv() }
 fun main() {
     struct L { n: i64 }
     extend L: Conv<String> { fun conv(&self) -> String { "x" } }
-    use_conv(&L { n = 4 });
+    use_conv(&L(n = 4));
 }

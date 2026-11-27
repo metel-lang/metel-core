@@ -8,7 +8,7 @@ fun scale(factor: i64, value: i64) -> i64 { factor * value }
 
 fun run<T: Clone>(seed: T, f: copy |i64| -> i64, h: Holder) -> i64 {
     let spare := seed.clone();
-    let boxed := Option::Some { value = seed.clone() };
+    let boxed := Option::Some(value = seed.clone());
     let again := boxed.clone();
     var acc := 0;
     acc = f(scale(factor = 2, value = 3));
@@ -27,7 +27,7 @@ fun twice<T>(f: copy |i64| -> i64, unused: T) -> i64 {
 
 fun main() {
     let inc: copy |i64| -> i64 := |x| { x + 1 };
-    let h := Holder { tag = Tag { n = 1 }, boxed = Boxed { value = 2 } };
+    let h := Holder(tag = Tag(n = 1), boxed = Boxed(value = 2));
     assert(run("s", inc, h) == 11);
     assert(twice(inc, 0) == 5);
 }

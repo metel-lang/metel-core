@@ -6,7 +6,7 @@ fun main() {
     enum Mode { A, B }
     struct P { a: i64 }
     let o := Mode::B;
-    let po := P { a = 7 };
+    let po := P(a = 7);
     var seen := 0;
     if (true) {
         enum Mode { Z }

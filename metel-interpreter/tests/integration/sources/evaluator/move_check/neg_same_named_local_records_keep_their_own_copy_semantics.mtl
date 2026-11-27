@@ -4,7 +4,7 @@
 // the checker judged it by `a`'s field types and accepted the move.
 fun a() -> i64 {
     record P { x: i64 }
-    let p := P { x = 1 };
+    let p := P(x = 1);
     let u := p;
     let v := p;
     u.x + v.x
@@ -12,7 +12,7 @@ fun a() -> i64 {
 
 fun b() -> i64 {
     record P { x: String }
-    let p := P { x = "s" };
+    let p := P(x = "s");
     let u := p;
     let v := p;
     0

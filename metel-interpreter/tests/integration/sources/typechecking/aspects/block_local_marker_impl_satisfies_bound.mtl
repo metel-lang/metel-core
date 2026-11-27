@@ -8,8 +8,8 @@ fun main() {
     extend L: Marker;
     struct W<T> { v: T }
     extend<T: Marker> W<T>: Marker;
-    let l := L { n = 1 };
+    let l := L(n = 1);
     need(&l);
-    let w := W { v = L { n = 2 } };
+    let w := W(v = L(n = 2));
     need(&w);
 }

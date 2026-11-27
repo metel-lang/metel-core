@@ -16,7 +16,7 @@ extend Widget: Shape {
 
 fun main() {
     let _unused := marker();
-    let w: dyn Shape := Widget { name = "a" };
+    let w: dyn Shape := Widget(name = "a");
     assert(w.describe() == "widget:a");
     println("ok");
 }

@@ -1,6 +1,6 @@
 import std::core::Option;         
 fun main() {         
-    let p := Option::Some { value = 42 };         
+    let p := Option::Some(value = 42);         
     match (p) {         
         Option::Some { value } => assert(value == 42),         
         None => assert(false),         

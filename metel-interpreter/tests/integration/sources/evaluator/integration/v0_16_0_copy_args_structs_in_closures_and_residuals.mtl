@@ -7,9 +7,9 @@ fun twice<T: Copy>(b: Boxed<T>) -> (Boxed<T>, Boxed<T>) {
     (first, second)
 }
 fun main() {
-    let (x, y) := twice(Boxed { value = 4i64 });
+    let (x, y) := twice(Boxed(value = 4i64));
     assert(x.value + y.value == 8);
-    let r := .{ .b = Boxed { value = 1i64 }, .s = "s" };
+    let r := .{ .b = Boxed(value = 1i64), .s = "s" };
     let s := r.s;
     let a := r.b;
     let c := r.b;

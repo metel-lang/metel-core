@@ -17,7 +17,7 @@ extend B: Consume {
 // checking only the receiver's static type and missing an explicit `Deref`
 // projection would leave this spelling as an unguarded sibling.
 fun main() {
-    let b := B { v = "owned" };
+    let b := B(v = "owned");
     let r := &b;
     let first := (*r).eat();
 }

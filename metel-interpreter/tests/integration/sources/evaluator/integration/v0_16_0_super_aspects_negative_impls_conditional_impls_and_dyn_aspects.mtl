@@ -27,17 +27,17 @@ fun both<T: Named + Marker>(t: T) -> String { t.name() }
 fun greet_through<T: Greeter>(t: T) -> String { "${t.greet()}/${t.name()}" }
 
 fun main() {
-    let d := Dog { n = 1 };
-    let c := Cat { n = 2 };
+    let d := Dog(n = 1);
+    let c := Cat(n = 2);
     let d2 := d.clone();
     assert(only_marked(d) == 1);
-    assert(only_unmarked(Cat { n = 7 }) == 2);
+    assert(only_unmarked(Cat(n = 7)) == 2);
     assert(both(d2) == "dog");
-    assert(greet_through(Dog { n = 3 }) == "hi dog/dog");
-    let h := Holder { inner = Dog { n = 4 } };
+    assert(greet_through(Dog(n = 3)) == "hi dog/dog");
+    let h := Holder(inner = Dog(n = 4));
     assert(h.name() == "dog");
     assert(h.tag() == "marked dog");
     assert(c.area() == 4);
-    let g: dyn Greeter := Dog { n = 5 };
+    let g: dyn Greeter := Dog(n = 5);
     assert(g.greet() == "hi dog");
 }

@@ -1,9 +1,15 @@
 // metel-core#2201 (RFC-0100 section 7a): Enum::Variant(args) and the existing struct-style
-// brace construction of the same variant with the same arguments produce the same value.
+// brace construction of the same variant with the same arguments produce the same value. The brace
+// form is written in the enum's own `extend` block, the only place it is legal (RFC-0100 section 3).
 enum Message { Text { body: String }, Empty }
+
+extend Message {
+    fun text_by_brace(body: String) -> Message { Message::Text { body = body } }
+}
+
 fun main() {
-    let via_call := Message::Text(body = "hello");
-    let via_brace := Message::Text { body = "hello" };
+    let via_call := Message::Text(body = "hello".to_string());
+    let via_brace := Message::text_by_brace("hello".to_string());
     let body_from_call := match (via_call) {
         Message::Text { body } => body,
         _ => "".to_string(),

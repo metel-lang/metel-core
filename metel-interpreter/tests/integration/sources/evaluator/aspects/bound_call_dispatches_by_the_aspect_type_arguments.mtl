@@ -5,4 +5,4 @@ fun use_str<X: Conv<String>>(x: &X) -> String { x.conv() }
 struct L { n: i64 }
 extend L: Conv<i64> { fun conv(&self) -> i64 { self.n } }
 extend L: Conv<String> { fun conv(&self) -> String { "s" } }
-fun main() { assert(use_conv(&L { n = 4 }) == 4); assert(use_str(&L { n = 4 }) == "s"); }
+fun main() { assert(use_conv(&L(n = 4)) == 4); assert(use_str(&L(n = 4)) == "s"); }

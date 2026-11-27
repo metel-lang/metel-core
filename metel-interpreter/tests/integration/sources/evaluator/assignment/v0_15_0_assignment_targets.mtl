@@ -3,7 +3,7 @@ struct Point { x: i64, y: i64 }
 
 fun main() {
     var n := 1;
-    var p := Point { x = 1, y = 2 };
+    var p := Point(x = 1, y = 2);
     var t := (1, 2);
     var a := [1, 2, 3];
 

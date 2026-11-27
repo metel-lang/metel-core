@@ -7,7 +7,7 @@ extend<T> Box1<T> {
 }
 
 fun main() {
-    let b := Box1 { v = 1 };
+    let b := Box1(v = 1);
     let mapped := b.map(|x: i64| -> String { x.to_string() });
     let n: boolean := mapped; // ERROR[T0001]
 }

@@ -3,4 +3,4 @@ aspect Conv<T> { fun conv(&self) -> T; }
 fun use_conv<X>(x: &X) -> i64 where X: Conv<i64> { x.conv() }
 struct L { n: i64 }
 extend L: Conv<String> { fun conv(&self) -> String { "x" } }
-fun main() { use_conv(&L { n = 4 }); }
+fun main() { use_conv(&L(n = 4)); }

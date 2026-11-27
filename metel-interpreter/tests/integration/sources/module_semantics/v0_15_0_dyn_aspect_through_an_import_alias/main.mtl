@@ -4,7 +4,7 @@ import root::shapes::Shape as Sh;
 import root::shapes::Sq;
 fun total(x: &dyn Sh) -> i64 { x.area() }
 fun main() {
-    let s := Sq { s = 3 };
+    let s := Sq(s = 3);
     let d: &dyn Sh := &s;
     assert(total(&s) == 9);
     assert(d.area() == 9);

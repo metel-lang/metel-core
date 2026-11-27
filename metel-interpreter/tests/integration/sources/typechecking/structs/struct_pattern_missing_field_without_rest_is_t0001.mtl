@@ -1,7 +1,7 @@
 struct Token { kind: i64, span: i64, offset: i64 }
 
 fun main() {
-    let t := Token { kind = 1, span = 2, offset = 3 };
+    let t := Token(kind = 1, span = 2, offset = 3);
     match (t) {
         Token { kind, span } => println(kind + span),
     }

@@ -11,7 +11,7 @@ fun main() {
     let a := f;
     let b := f;
     assert(a(1) + b(2) + id(f)(3) == 9);
-    let h := Holder { f = make() };
+    let h := Holder(f = make());
     let g := h.f;
     assert(g(5) == 6);
     let items: [copy |i64| -> i64] := [make(), make()];

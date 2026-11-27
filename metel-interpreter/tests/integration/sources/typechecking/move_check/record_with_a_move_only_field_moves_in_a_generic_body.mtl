@@ -1,7 +1,7 @@
 // metel-core#1752: a record with a field that is not `Copy` still moves in a generic body.
 record Q { name: String, b: i64 }
 fun f<T>(x: T) -> T {
-    let p := Q { name = "x", b = 2 };
+    let p := Q(name = "x", b = 2);
     let q := p;
     let r := p; // ERROR[T0019]
     x

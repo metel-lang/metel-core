@@ -5,10 +5,10 @@ enum Shape { Dot, Disc { radius: i64 } }
 record Pair { first: Tag, second: i64 }
 record Scene { shape: Shape, count: i64 }
 fun main() {
-    let p := Pair { first = Tag { n = 1 }, second = 2 };
+    let p := Pair(first = Tag(n = 1), second = 2);
     let .{ .first: Tag { n }, .second: _ } := p;
     assert(n == 1);
-    let sc := Scene { shape = Shape::Disc { radius = 6 }, count = 2 };
+    let sc := Scene(shape = Shape::Disc(radius = 6), count = 2);
     match (sc) {
         .{ .shape: Disc { radius }, .count: _ } => assert(radius == 6),
         .{ .shape: Dot, .count: _ } => assert(false),

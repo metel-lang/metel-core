@@ -4,11 +4,11 @@ struct Wrapper<T> derives Clone(T), Copy(T) { value: T }
 fun describe<record R: .{ .id: Id, .name: String, !.secret, .. }>(r: R) -> i64 { r.id.n }
 fun bump<record R: .{ .f: copy |i64| -> i64, !.secret, .. }>(r: R, x: i64) -> i64 { (r.f)(x) }
 fun main() {
-    let w := Wrapper { value = 3 };
+    let w := Wrapper(value = 3);
     let w2 := w;
     let w3 := w;
     assert(w2.value + w3.value == 6);
-    let r := .{ .id = Id { n = 7 }, .name = "n" };
+    let r := .{ .id = Id(n = 7), .name = "n" };
     assert(describe(r) == 7);
     let inc: copy |i64| -> i64 := |x| { x + 1 };
     let s := .{ .f = inc, .k = 1 };

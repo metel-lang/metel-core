@@ -2,12 +2,12 @@
 
 fun main() {
     struct S { v: String }
-    let s := S { v = "a" };
+    let s := S(v = "a");
     let f := [s] || -> String { s.v };
     assert(f() == "a");
 
     record Box<T> { x: T }
-    let mk := || -> Box<i64> { Box { x = 3 } };
+    let mk := || -> Box<i64> { Box(x = 3) };
     let b := mk();
     assert(b.x == 3);
 

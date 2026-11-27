@@ -23,7 +23,7 @@ fun rest<T>(c: Cell, unused: T) -> i64 {
 }
 
 fun main() {
-    let c := Cell { tag = Tag { n = 1 }, pair = (2, 3), extra = 4 };
+    let c := Cell(tag = Tag(n = 1), pair = (2, 3), extra = 4);
     assert(pick(c, 0) == 6);
     assert(classify(Mode::On, c) == 2);
     assert(classify(Mode::Off, c) == 3);

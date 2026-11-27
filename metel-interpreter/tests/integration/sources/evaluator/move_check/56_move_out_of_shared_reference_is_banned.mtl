@@ -17,7 +17,7 @@ extend B: Consume {
 // is rejected at the *first* call, not the second (#348) — moving out of a
 // reference is illegal regardless of how many times it is attempted.
 fun main() {
-    let b := B { v = "owned" };
+    let b := B(v = "owned");
     let r := &b;
     let first := r.eat();
 }

@@ -2,5 +2,5 @@
 struct Pixel { r: u8 }
 
 fun main() {
-    let p := Pixel { r = 256 };
+    let p := Pixel(r = 256);
 }

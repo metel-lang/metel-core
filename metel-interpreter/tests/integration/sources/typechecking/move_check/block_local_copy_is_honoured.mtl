@@ -8,12 +8,12 @@ fun main() {
     struct D derives Clone, Copy { n: i64 }
     struct Hold<T> derives Clone(..), Copy(..) { v: View<T> }
 
-    let k := K { n = 2 };
+    let k := K(n = 2);
     let k2 := k;
-    let d := D { n = 3 };
+    let d := D(n = 3);
     let d2 := d;
     let s := "x".to_string();
-    let h: Hold<String> := Hold { v = View { r = &s } };
+    let h: Hold<String> := Hold(v = View(r = &s));
     let h2 := h;
     let h3 := h;
     assert(k.n + k2.n + d.n + d2.n == 10);

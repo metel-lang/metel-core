@@ -5,6 +5,6 @@ fun auth_of<record R>(b: Builder<..R>) -> String where R = .{ .auth: String, .. 
 }
 
 fun main() {
-    let bare := Builder { name = "bare", data = .{ .retries = 1 } };
+    let bare := Builder(name = "bare", data = .{ .retries = 1 });
     let _ := auth_of(bare);
 }

@@ -16,5 +16,5 @@ struct Plain {
 // Plain does not implement Printable.
 
 fun bad(p: Plain) -> Wrapper<Plain> {
-    Wrapper { value = p } // ERROR[T0012]
+    Wrapper(value = p) // ERROR[T0012]
 }

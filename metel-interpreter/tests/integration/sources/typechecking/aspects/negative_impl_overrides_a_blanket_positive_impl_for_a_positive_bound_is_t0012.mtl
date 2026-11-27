@@ -4,4 +4,4 @@ extend<T> T: Show { fun show(&self) -> String { "blanket" } }
 struct L { n: i64 }
 extend L: !Show;
 fun render<T: Show>(x: &T) -> String { x.show() }
-fun main() { render(&L { n = 1 }); }
+fun main() { render(&L(n = 1)); }

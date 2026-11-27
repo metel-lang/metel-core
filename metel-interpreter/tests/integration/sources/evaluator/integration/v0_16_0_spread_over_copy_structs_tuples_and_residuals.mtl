@@ -4,7 +4,7 @@ copy struct P { x: i64 }
 struct Boxed<T> derives Clone(T), Copy(T) { value: T }
 struct Pair<A, B> derives Clone(A, B), Copy(A, B) { a: A, b: B }
 fun main() {
-    let r := .{ .p = P { x = 1 }, .t = (1, 2), .b = Boxed { value = 3 }, .q = Pair { a = 1, b = 2 }, .n = 0 };
+    let r := .{ .p = P(x = 1), .t = (1, 2), .b = Boxed(value = 3), .q = Pair(a = 1, b = 2), .n = 0 };
     let s := .{ ..r, .n = 9 };
     let c := s.clone();
     assert(s.p.x == 1);
@@ -13,7 +13,7 @@ fun main() {
     assert(s.q.b == 2);
     assert(s.n == 9);
     assert(c.n == 9);
-    let w := .{ .label = "w", .p = P { x = 2 }, .k = 1 };
+    let w := .{ .label = "w", .p = P(x = 2), .k = 1 };
     let l := w.label;
     let z := .{ ..w, .k = 5 };
     assert(z.p.x == 2);

@@ -17,5 +17,5 @@ struct RawKey {
 // RawKey does not implement Serializable.
 
 fun bad(k: RawKey, v: i64) -> Cache<RawKey, i64> {
-    Cache { key = k, value = v } // ERROR[T0012]
+    Cache(key = k, value = v) // ERROR[T0012]
 }

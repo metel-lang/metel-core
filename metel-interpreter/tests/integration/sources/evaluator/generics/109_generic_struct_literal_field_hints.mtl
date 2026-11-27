@@ -10,16 +10,16 @@ struct Ratio<T> { n: f32, v: T }
 struct Pair<A, B> { first: A, second: B, tag: u16 }
 
 fun make<T>(value: T) -> Counter<T> {
-    Counter { n = 7, v = value }
+    Counter(n = 7, v = value)
 }
 
 fun main() {
-    let a := Counter { n = 1, v = 2 };
-    let b: Counter<i64> := Counter { n = 3, v = 4 };
-    let c := Small { n = 5, v = "five" };
-    let d := Wide { n = -6, v = true };
-    let e := Ratio { n = 1.5, v = 'e' };
-    let f := Pair { first = "x", second = 2.5, tag = 9 };
+    let a := Counter(n = 1, v = 2);
+    let b: Counter<i64> := Counter(n = 3, v = 4);
+    let c := Small(n = 5, v = "five");
+    let d := Wide(n = -6, v = true);
+    let e := Ratio(n = 1.5, v = 'e');
+    let f := Pair(first = "x", second = 2.5, tag = 9);
     assert(a.n + b.n == 4);
     assert(c.n == 5);
     assert(d.n == -6);

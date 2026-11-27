@@ -21,7 +21,7 @@ fun main() {
     assert(k() == 2);
 
     struct P { x: i64 }
-    let p := P { x = 4 };
+    let p := P(x = 4);
     var got := 0;
     match (p) { P { x } => { got = x; }, }
     assert(got == 4);

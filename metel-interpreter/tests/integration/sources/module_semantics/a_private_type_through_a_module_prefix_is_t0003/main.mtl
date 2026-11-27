@@ -1,6 +1,6 @@
 // metel-core#1772: the type must be `pub` unless the prefix names the current module.
 import lib::f;
 fun main() {
-    let h := lib::Hidden { n = 1 }; // ERROR[T0003]
+    let h := lib::Hidden(n = 1); // ERROR[T0003]
     println(f());
 }

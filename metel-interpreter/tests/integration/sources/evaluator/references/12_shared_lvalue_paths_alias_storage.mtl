@@ -2,12 +2,12 @@ struct Point { x: i64 }
 struct Outer { point: Point }
 
 fun main() {
-    var direct := Point { x = 1 };
+    var direct := Point(x = 1);
     let direct_ref: &i64 := &direct.x;
     direct.x = 5;
     assert(*direct_ref == 5);
 
-    var nested := Outer { point = Point { x = 10 } };
+    var nested := Outer(point = Point(x = 10));
     let nested_ref: &i64 := &nested.point.x;
     nested.point.x = 12;
     assert(*nested_ref == 12);
@@ -34,7 +34,7 @@ fun main() {
 struct Cell { v: i64 }
 
 fun reborrow_of_a_path_reference() {
-    var c := Cell { v = 1 };
+    var c := Cell(v = 1);
 
     let r: &i64 := &c.v;
     let rr := &*r;

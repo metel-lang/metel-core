@@ -3,7 +3,7 @@ prelude = "default"
 
 [options]
 error = ["T0001"]
-spec = ["spec.declarations.structs.instantiation-and-field-access.legality-1"]
+spec = ["spec.declarations.structs.call-syntax-construction.legality-1"]
 
 [expect]
 status = "typecheck_error"

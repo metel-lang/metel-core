@@ -19,8 +19,8 @@ extend Rectangle: Shape {
 }
 
 fun main() {
-    let a: dyn Shape := Circle { radius = 2.0 };
-    let b: dyn Shape := Rectangle { w = 3.0, h = 4.0 };
+    let a: dyn Shape := Circle(radius = 2.0);
+    let b: dyn Shape := Rectangle(w = 3.0, h = 4.0);
 
     assert(b.area() == 12.0);
     let a_area := a.area();

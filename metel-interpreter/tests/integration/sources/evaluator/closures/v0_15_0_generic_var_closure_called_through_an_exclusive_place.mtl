@@ -16,9 +16,9 @@ fun through_owned<T: Copy>(c: Cell, x: T) -> i64 {
 
 fun main() {
     let n := 0;
-    var a := Cell { go = [n] var || { n = n + 1; n } };
+    var a := Cell(go = [n] var || { n = n + 1; n });
     assert(through_exclusive(&var a, 1) == 1);
     let m := 10;
-    let b := Cell { go = [m] var || { m = m + 1; m } };
+    let b := Cell(go = [m] var || { m = m + 1; m });
     assert(through_owned(b, 1) == 11);
 }

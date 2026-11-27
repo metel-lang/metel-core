@@ -2,14 +2,14 @@ enum Shape { Circle { radius: i64 }, Rect { w: i64, h: i64 } }
 
 fun main() {
     // Enum variant with fields.
-    let circle := Shape::Circle { radius = 5 };
+    let circle := Shape::Circle(radius = 5);
     let r := match (circle) {
         Shape::Circle { radius } => radius,
         Shape::Rect   { w, h }   => w + h,
     };
     assert(r == 5);
     // Second variant.
-    let rect := Shape::Rect { w = 3, h = 4 };
+    let rect := Shape::Rect(w = 3, h = 4);
     let area := match (rect) {
         Shape::Circle { radius } => radius,
         Shape::Rect   { w, h }   => w * h,

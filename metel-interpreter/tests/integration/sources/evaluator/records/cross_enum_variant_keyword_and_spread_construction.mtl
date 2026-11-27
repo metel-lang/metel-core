@@ -5,6 +5,6 @@ fun area(s: Shape) -> i64 {
 }
 fun main() {
     let dims := .{ .w = 2, .h = 5 };
-    assert(area(Shape::Rect { w = dims.w, h = dims.h }) == 10);
-    assert(area(Shape::Rect { h = 3, w = 4 }) == 12);
+    assert(area(Shape::Rect(w = dims.w, h = dims.h)) == 10);
+    assert(area(Shape::Rect(h = 3, w = 4)) == 12);
 }

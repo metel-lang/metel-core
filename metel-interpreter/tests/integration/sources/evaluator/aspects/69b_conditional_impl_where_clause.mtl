@@ -19,6 +19,6 @@ extend Box2<T>: Farewell where T: Display {
 }
 
 fun main() {
-    let b := Box2 { value = 9 };
+    let b := Box2(value = 9);
     assert(b.farewell() == "bye");
 }

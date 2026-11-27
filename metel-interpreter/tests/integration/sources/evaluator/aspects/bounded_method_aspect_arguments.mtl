@@ -17,5 +17,5 @@ extend<T> Wrapped<T> {
 }
 fun main() {
     assert(generic(&Doubler {}, 6) == 12);
-    assert(Wrapped { value = Doubler {} }.apply(7) == 14);
+    assert(Wrapped(value = Doubler {}).apply(7) == 14);
 }
