@@ -7925,6 +7925,20 @@ impl InferContext {
     }
 
     #[must_use]
+    pub fn get_variant_fields(
+        &self,
+        enum_name: &str,
+        variant_name: &str,
+    ) -> Option<&Vec<crate::pipeline::type_checking::type_engine::FieldEntry>> {
+        self.registry
+            .enum_info(&self.current_module_path, enum_name)?
+            .variants
+            .iter()
+            .find(|v| v.name == variant_name)
+            .map(|v| &v.fields)
+    }
+
+    #[must_use]
     pub fn get_method_type(&self, type_name: &str, method_name: &str) -> Option<&InferType> {
         self.registry
             .method_type(&self.current_module_path, type_name, method_name)
