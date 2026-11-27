@@ -1235,43 +1235,14 @@ fn impl_methods_for_different_instantiations_get_different_symbol_ids() {
     id("S::plain");
 }
 
-// metel-core#1571: a struct and a function of one name are different declarations, in different
-// namespaces, and so have different SymbolIds, each with its own definition span; a call to the
-// function resolves to the function's id.
-#[test]
-fn a_type_and_a_function_of_one_name_get_distinct_symbol_ids() {
-    use crate::identity::symbols::Namespace;
-    let typed = typecheck_source(
-        "namespaces/main.mtl",
-        "struct Foo { x: i64 }
-        fun Foo() -> i64 { 5 }
-        fun main() { let a := Foo(); }",
-    );
-    let symbol = |namespace| {
-        *typed
-            .names
-            .symbols
-            .get(&(vec![], namespace, "Foo".to_string()))
-            .unwrap_or_else(|| panic!("no {namespace:?} symbol for `Foo`"))
-    };
-    let (type_id, value_id) = (symbol(Namespace::Type), symbol(Namespace::Value));
-    assert_ne!(type_id, value_id);
-    let span = |id| &typed.names.definitions[&id];
-    assert_ne!(
-        (span(type_id).line, span(type_id).col),
-        (span(value_id).line, span(value_id).col),
-        "each declaration keeps its own definition span"
-    );
-    let referenced: Vec<_> = typed.names.references.values().copied().collect();
-    assert!(
-        referenced.contains(&value_id),
-        "the call `Foo()` resolves to the function"
-    );
-    assert!(
-        !referenced.contains(&type_id),
-        "nothing in the program refers to the struct"
-    );
-}
+// metel-core#2198 (RFC-0100): a struct and a function of one name used to be different
+// declarations in different namespaces, each with its own SymbolId (metel-core#1571). That
+// coexistence is now a T0037 duplicate-declaration error (check_duplicate_declarations), so
+// there is no longer a successful case to construct here; see
+// typechecking/types/neg_struct_and_function_of_one_name_is_t0037.mtl for the integration
+// fixture covering the reversal. The underlying per-namespace SymbolId distinction this test
+// exercised is still correct and still covered by the surrounding tests in this module (methods
+// of distinct instantiations, repeated names within one namespace, and so on).
 
 // metel-core#1559: a declaration in an embedded std module has the same SymbolId in every program,
 // whatever the program declares. It is a `Std` id, not a `Declared` one, and a user declaration is

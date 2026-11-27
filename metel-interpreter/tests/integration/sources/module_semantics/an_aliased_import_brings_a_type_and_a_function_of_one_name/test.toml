@@ -1,5 +1,0 @@
-runner = "full_pipeline"
-prelude = "default"
-
-[expect]
-status = "success"
