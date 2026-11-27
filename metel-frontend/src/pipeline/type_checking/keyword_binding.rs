@@ -118,6 +118,32 @@ pub(super) fn bind_arguments(
     })
 }
 
+/// A construction call's arguments as the brace literal they are equivalent to (RFC-0100): each
+/// written argument paired with the field it binds, keyword wrapper removed, in *written* order —
+/// a brace literal evaluates its fields as written, which is the order construction arguments must
+/// evaluate in (`spec.declarations.structs.call-syntax-construction.dynamics-1`).
+///
+/// # Errors
+/// The binder's errors, with `callee` naming the type or variant in messages.
+pub(super) fn construction_fields(
+    callee: &str,
+    field_names: &[String],
+    args: &[Expr],
+    call_span: &Span,
+) -> Result<Vec<(String, Expr)>, MetelError> {
+    let params: Vec<ParamSlot<'_>> = field_names.iter().map(|name| ParamSlot { name }).collect();
+    let binding = bind_arguments(callee, &params, args, call_span)?;
+    let mut field_for_arg = vec![0; args.len()];
+    for (field, &arg) in binding.arg_for_param.iter().enumerate() {
+        field_for_arg[arg] = field;
+    }
+    Ok(args
+        .iter()
+        .zip(field_for_arg)
+        .map(|(arg, field)| (field_names[field].clone(), unwrap_keyword(arg).clone()))
+        .collect())
+}
+
 /// What a keyword-argument call's callee tells the binder.
 pub(super) enum CalleeNames<'a> {
     /// A declared function: its value-parameter names, receiver excluded.

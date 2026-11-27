@@ -1,0 +1,14 @@
+// metel-core#2199: a value moved into a construction call's argument is moved, inside a generic body
+// as anywhere else; using it afterwards is rejected.
+struct Holder { name: String }
+
+fun keep<T>(value: T) -> T {
+    let name := "a".to_string();
+    let holder := Holder(name = name);
+    let again := name;
+    value
+}
+
+fun main() {
+    keep(1);
+}

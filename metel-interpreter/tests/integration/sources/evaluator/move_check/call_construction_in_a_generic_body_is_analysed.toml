@@ -1,0 +1,6 @@
+[options]
+move_check = true
+spec = ["spec.declarations.structs.call-syntax-construction.legality-1"]
+
+[expect]
+status = "success"

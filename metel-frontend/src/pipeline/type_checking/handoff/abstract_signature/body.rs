@@ -1229,10 +1229,7 @@ impl BodyFreezer<'_, '_> {
             }
             Expr::Call {
                 callee, args, span, ..
-            } => {
-                let (kind, retained) = self.call_expression(callee, args, span, &ty)?;
-                return self.finish_expression(retained.unwrap_or(ty), kind, expression.span());
-            }
+            } => return self.call_or_construction(callee, args, span, ty, expression.span()),
             Expr::FieldAccess {
                 object,
                 field,
@@ -1903,6 +1900,73 @@ impl BodyFreezer<'_, '_> {
                 })
                 .transpose()?,
         })
+    }
+
+    fn call_or_construction(
+        &self,
+        callee: &Expr,
+        args: &[Expr],
+        span: &Span,
+        ty: AbstractType,
+        at: &Span,
+    ) -> Result<AbstractExpr, String> {
+        if let Some(fields) = self.construction_call(callee, args, span, &ty)? {
+            let kind = self.struct_literal(&fields)?;
+            return self.finish_expression(ty, kind, at);
+        }
+        let (kind, retained) = self.call_expression(callee, args, span, &ty)?;
+        self.finish_expression(retained.unwrap_or(ty), kind, at)
+    }
+
+    /// A call that constructs a struct or enum variant (RFC-0100, metel-core#2199/#2201) as the brace
+    /// literal it is equivalent to, its arguments bound to fields exactly as inference bound them.
+    /// Inference retains a callable contract for every real call and none for a construction, so a
+    /// call without one whose type is a nominal struct or enum is a construction. `None` otherwise.
+    fn construction_call(
+        &self,
+        callee: &Expr,
+        args: &[Expr],
+        span: &Span,
+        ty: &AbstractType,
+    ) -> Result<Option<Vec<(String, Expr)>>, String> {
+        if self.facts.definition_call_types().get(span).is_some() {
+            return Ok(None);
+        }
+        let identity = match ty {
+            AbstractType::Named { identity, .. }
+            | AbstractType::Concrete(crate::data::types::Type::Named(_, _, identity)) => identity.0,
+            _ => None,
+        };
+        let Some(id) = identity else {
+            return Ok(None);
+        };
+        let (name, field_names): (String, Vec<String>) =
+            if let Some(fields) = self.registry.raw_struct_env().get(&id) {
+                (
+                    super::super::super::overload::callee_name(callee)
+                        .unwrap_or_default()
+                        .to_string(),
+                    fields.iter().map(|field| field.name.clone()).collect(),
+                )
+            } else if let Expr::Path(segments, ..) = callee
+                && let Some(variant) = segments.last()
+                && let Some(info) = self.registry.enum_info_by_id(id)
+                && let Some(found) = info.variants.iter().find(|v| &v.name == variant)
+            {
+                (
+                    variant.clone(),
+                    found
+                        .fields
+                        .iter()
+                        .map(|field| field.name.clone())
+                        .collect(),
+                )
+            } else {
+                return Ok(None);
+            };
+        super::super::super::keyword_binding::construction_fields(&name, &field_names, args, span)
+            .map(Some)
+            .map_err(|error| error.to_string())
     }
 
     fn struct_literal(&self, fields: &[(String, Expr)]) -> Result<AbstractExprKind, String> {
