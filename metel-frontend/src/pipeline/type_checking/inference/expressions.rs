@@ -823,63 +823,6 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
-        } if let Expr::Path(segments, _, _) = callee.as_ref()
-            && let [enum_name, variant_name] = segments.as_slice()
-            && ctx.get_variant_fields(enum_name, variant_name).is_some() =>
-        {
-            // RFC-0100 section 7a (metel-core#2201): a qualified call naming an enum variant
-            // constructs it, the same way a bare struct-name call constructs a struct
-            // (metel-core#2199) above. The path normalizer leaves a local `Enum::Variant`
-            // path as an unresolved two-segment `Expr::Path` (it only rewrites
-            // module-qualified paths), so this matches the raw path directly rather than
-            // going through `callee_name`, which only handles `Ident`/`ResolvedPath`.
-            let field_names: Vec<String> = ctx
-                .get_variant_fields(enum_name, variant_name)
-                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-                .unwrap_or_default();
-            let params: Vec<super::super::keyword_binding::ParamSlot<'_>> = field_names
-                .iter()
-                .map(|n| super::super::keyword_binding::ParamSlot { name: n.as_str() })
-                .collect();
-            let binding =
-                super::super::keyword_binding::bind_arguments(variant_name, &params, args, span)?;
-            let fields: Vec<(String, Expr)> = binding
-                .arg_for_param
-                .iter()
-                .enumerate()
-                .map(|(field_index, &arg_index)| {
-                    (field_names[field_index].clone(), args[arg_index].clone())
-                })
-                .collect();
-            let synthetic = Expr::StructLiteral {
-                path: vec![enum_name.clone(), variant_name.clone()],
-                fields,
-                symbol_id: None,
-                span: span.clone(),
-            };
-            let result = infer_expr(&synthetic, ctx, fun_generalizations)?;
-            if !type_args.is_empty() {
-                let resolved_args: Vec<InferType> = type_args
-                    .iter()
-                    .map(crate::pipeline::type_checking::conversions::type_expr_to_infer)
-                    .collect();
-                let type_id = ctx
-                    .registry()
-                    .resolve_type_id(ctx.current_module_path(), enum_name);
-                let expected = InferType::Named(
-                    enum_name.clone(),
-                    resolved_args,
-                    crate::data::types::NominalId(type_id),
-                );
-                ctx.add_constraint(result.clone(), expected, span.clone());
-            }
-            Ok(result)
-        }
-        Expr::Call {
-            callee,
-            type_args,
-            args,
-            span,
         } if super::super::keyword_binding::has_keyword(args)
             && keyword_callee_is_defined(callee, ctx)
             && !super::super::overload::callee_name(callee)
