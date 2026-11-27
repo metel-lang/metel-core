@@ -1,5 +1,6 @@
 [options]
 spec = ["spec.declarations.structs.instantiation-and-field-access.legality-2"]
+error = ["T0003"]
 
 [expect]
 status = "typecheck_error"
