@@ -1,0 +1,7 @@
+// RFC-0100 (metel-core#2199): a construction call reports an unknown field exactly as the equivalent
+// brace literal does.
+struct Point { x: i64, y: i64 }
+
+fun main() {
+    let p := Point(x = 1, z = 2);
+}

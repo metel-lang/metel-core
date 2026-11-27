@@ -1,0 +1,4 @@
+pub struct Widget { pub id: i64 }
+extend Widget {
+    pub fun kind(self) -> String { "beta" }
+}

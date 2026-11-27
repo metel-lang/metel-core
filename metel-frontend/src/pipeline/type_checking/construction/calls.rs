@@ -17,92 +17,128 @@ fn is_through_shared_reference(expr: &TypedExpr) -> bool {
     }
 }
 
-/// RFC-0100 sections 2/5/6 (metel-core#2199): `T(args)` where `T` names a struct constructs
-/// it, reusing the existing struct-literal construction logic (generic field hints, exact-row
-/// checking, visibility) rather than duplicating it. Binds the call's positional/keyword
-/// arguments to the struct's declared field names using the same rule RFC-0223 uses for
-/// function parameters (`keyword_binding::bind_arguments`), then dispatches through
-/// `construct_expr` on a synthesized `Expr::StructLiteral` -- exactly the AST node a user
-/// writing `T { field = value, .. }` directly would produce.
-fn construct_call_as_struct_literal(
-    name: &str,
-    type_args: &[TypeExpr],
-    args: &[Expr],
-    span: &Span,
-    expected_ty: Option<&Type>,
-    ctx: &mut ConstructCtx,
-) -> Result<TypedExpr, MetelError> {
-    // A generic struct has no concrete field list in `get_struct_fields`; its fields live in
-    // `raw_struct_env` instead (the same fallback `has_struct_named` already uses to detect it).
-    let field_names: Vec<String> = ctx
-        .get_struct_fields(name)
-        .map(|fields| fields.iter().map(|(n, _, _)| n.clone()).collect())
-        .or_else(|| {
-            ctx.written_type_id(name)
-                .and_then(|id| ctx.registry.raw_struct_env().get(&id))
-                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-        })
-        .unwrap_or_default();
-    let fields =
-        super::super::keyword_binding::construction_fields(name, &field_names, args, span)?;
-    let synthetic = Expr::StructLiteral {
-        path: vec![name.to_string()],
-        fields,
-        symbol_id: None,
-        span: span.clone(),
+/// Whether a call constructs a struct or a variant (RFC-0100 sections 2, 5 and 7), and as what
+/// brace literal, decided from what this pass can look up -- the same decision inference makes
+/// from its own context (`inference::expressions::inferred_construction`). This pass decides for
+/// itself because a generic body is reconstructed at run time with no inference facts to read.
+pub(super) fn construction_of(
+    callee: &Expr,
+    ctx: &ConstructCtx,
+) -> Option<super::super::construction_call::Construction> {
+    use super::super::construction_call::{CalleeShape, Construction, Fields, callee_shape};
+    let entry_names = |fields: &Vec<type_engine::FieldEntry>| {
+        fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()
     };
-    // `Pair::<i64>(1, 2)`: explicit type arguments have no struct-literal equivalent to carry
-    // them, so thread them through as an expected type instead -- exactly what an explicit
-    // `let p: Pair<i64> := Pair { .. };` annotation would give the literal.
-    if type_args.is_empty() {
-        construct_expr(&synthetic, expected_ty, ctx)
-    } else {
-        let resolved_args: Vec<Type> = type_args
-            .iter()
-            .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
-            .collect::<Result<_, _>>()?;
-        let nominal = crate::data::types::NominalId(ctx.type_symbol_id(name));
-        let turbofish_ty = Type::Named(name.to_string(), resolved_args, nominal);
-        construct_expr(&synthetic, Some(&turbofish_ty), ctx)
+    match callee_shape(callee)? {
+        CalleeShape::Name { name, symbol_id } => {
+            let declared = match symbol_id {
+                Some(id) => ctx.registry.raw_struct_env().get(&id).map(entry_names),
+                None if ctx.has_struct_named(name) => Some(
+                    ctx.get_struct_fields(name)
+                        .map(|fields| fields.iter().map(|(n, _, _)| n.clone()).collect())
+                        .or_else(|| {
+                            ctx.written_type_id(name)
+                                .and_then(|id| ctx.registry.raw_struct_env().get(&id))
+                                .map(entry_names)
+                        })
+                        .unwrap_or_default(),
+                ),
+                None => None,
+            };
+            if let Some(declared) = declared {
+                return Some(Construction {
+                    path: vec![name.to_string()],
+                    symbol_id,
+                    fields: Fields::Declared(declared),
+                });
+            }
+            // An unqualified variant, resolved against the expected type (RFC-0111) -- unless the
+            // name resolved to a lexical binding, which takes precedence (RFC-0100 section 7).
+            (symbol_id.is_none()
+                && ctx.identity.binding_spans.get(callee.span()).is_none()
+                && ctx.can_be_unqualified_variant(name))
+            .then(|| Construction {
+                path: vec![name.to_string()],
+                symbol_id: None,
+                fields: Fields::Unqualified,
+            })
+        }
+        CalleeShape::Member {
+            type_name,
+            member,
+            path_span,
+        } => {
+            let qualified = ctx.qualified_type_id(path_span);
+            let owner = qualified.or_else(|| ctx.written_type_id(type_name));
+            let static_member = owner.is_some_and(|id| {
+                ctx.registry.method_scheme_by_id(id, member).is_some()
+                    || ctx.registry.method_type_by_id(id, member).is_some()
+            }) || ctx
+                .concrete_method_with_id(type_name, qualified, member)
+                .is_some();
+            let fields = match owner.and_then(|id| ctx.registry.enum_info_by_id(id)) {
+                Some(info) => match info.variants.iter().find(|v| v.name == member) {
+                    Some(variant) => Fields::Declared(entry_names(&variant.fields)),
+                    None if static_member => return None,
+                    None => Fields::Unknown,
+                },
+                // Not an enum: a static member of some other type. A path naming no type at all
+                // is left to the brace literal, which reports the unknown enum.
+                None if static_member || owner.is_some() => return None,
+                None => Fields::Unknown,
+            };
+            Some(Construction {
+                path: vec![type_name.to_string(), member.to_string()],
+                symbol_id: qualified,
+                fields,
+            })
+        }
+        CalleeShape::UnitVariant {
+            enum_name,
+            variant,
+            symbol_id,
+        } => {
+            let declared = symbol_id
+                .and_then(|id| ctx.registry.enum_info_by_id(id))
+                .and_then(|info| info.variants.iter().find(|v| v.name == variant))
+                .map(|found| entry_names(&found.fields));
+            Some(Construction {
+                path: vec![enum_name.to_string(), variant.to_string()],
+                symbol_id,
+                fields: declared.map_or(Fields::Unknown, Fields::Declared),
+            })
+        }
     }
 }
 
-/// RFC-0100 section 7a (metel-core#2201): a qualified call `Enum::Variant(args)` constructs
-/// that variant, the same way `T(args)` constructs a struct (metel-core#2199) -- binds the
-/// call's arguments to the variant's declared field names and dispatches through a synthesized
-/// two-segment `Expr::StructLiteral`, exactly the AST node `Enum::Variant { field = value }`
-/// already produces and the construction pass already knows how to type.
-fn construct_call_as_enum_variant_literal(
-    enum_name: &str,
-    variant_name: &str,
+/// A construction call (RFC-0100) typed as the brace literal it is equivalent to.
+fn construct_construction(
+    construction: &super::super::construction_call::Construction,
+    callee: &Expr,
     type_args: &[TypeExpr],
     args: &[Expr],
     span: &Span,
     expected_ty: Option<&Type>,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
-    let field_names: Vec<String> = ctx
-        .get_variant_fields(enum_name, variant_name)
-        .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-        .unwrap_or_default();
-    let fields =
-        super::super::keyword_binding::construction_fields(variant_name, &field_names, args, span)?;
-    let synthetic = Expr::StructLiteral {
-        path: vec![enum_name.to_string(), variant_name.to_string()],
-        fields,
-        symbol_id: None,
-        span: span.clone(),
-    };
-    if type_args.is_empty() {
-        construct_expr(&synthetic, expected_ty, ctx)
-    } else {
-        let resolved_args: Vec<Type> = type_args
-            .iter()
-            .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
-            .collect::<Result<_, _>>()?;
-        let nominal = crate::data::types::NominalId(ctx.type_symbol_id(enum_name));
-        let turbofish_ty = Type::Named(enum_name.to_string(), resolved_args, nominal);
-        construct_expr(&synthetic, Some(&turbofish_ty), ctx)
+    let synthetic = construction.literal(callee, args, span)?;
+    // `Pair::<i64>(1, 2)`: explicit type arguments have no brace-literal equivalent to carry them,
+    // so they become the expected type -- what `let p: Pair<i64> := ..;` would give the literal.
+    match construction.type_name() {
+        Some(type_name) if !type_args.is_empty() => {
+            let resolved_args: Vec<Type> = type_args
+                .iter()
+                .map(|te| infer_type_to_type(&ctx.type_expr_to_infer_ctx(te), span))
+                .collect::<Result<_, _>>()?;
+            let nominal = crate::data::types::NominalId(
+                construction
+                    .symbol_id
+                    .or_else(|| ctx.type_symbol_id(type_name)),
+            );
+            let turbofish_ty = Type::Named(type_name.to_string(), resolved_args, nominal);
+            construct_expr(&synthetic, Some(&turbofish_ty), ctx)
+        }
+        _ => construct_expr(&synthetic, expected_ty, ctx),
     }
 }
 
@@ -125,28 +161,13 @@ pub(super) fn construct_call(
     expected_ty: Option<&Type>,
     ctx: &mut ConstructCtx,
 ) -> Result<TypedExpr, MetelError> {
-    // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
-    // constructs it instead of invoking a function. The unified namespace
-    // (metel-core#2198) guarantees a name is never both a struct and a function, so
-    // this check alone decides which -- no argument-shape heuristic participates.
-    if let Some(name) = super::super::overload::callee_name(callee)
-        && ctx.has_struct_named(name)
-    {
-        return construct_call_as_struct_literal(name, type_args, args, span, expected_ty, ctx);
-    }
-    // RFC-0100 section 7a (metel-core#2201): a qualified call naming an enum variant
-    // constructs it. The path normalizer leaves a local `Enum::Variant` path as an
-    // unresolved two-segment `Expr::Path` (it only rewrites module-qualified paths), so this
-    // checks the raw path directly rather than going through `callee_name`, which only
-    // handles `Ident`/`ResolvedPath`. Checked ahead of `type_member_scheme` below so a real
-    // variant call can never be shadowed by a same-named static method.
-    if let Expr::Path(segments, _, _) = callee
-        && let [enum_name, variant_name] = segments.as_slice()
-        && ctx.has_enum_variant_named(enum_name, variant_name)
-    {
-        return construct_call_as_enum_variant_literal(
-            enum_name,
-            variant_name,
+    // RFC-0100 (metel-core#2199/#2201): a call that constructs a struct or a variant is typed as
+    // the brace literal it is equivalent to. The unified namespace (metel-core#2198) guarantees a
+    // name is never both a type and a function, so no argument-shape heuristic participates.
+    if let Some(construction) = construction_of(callee, ctx) {
+        return construct_construction(
+            &construction,
+            callee,
             type_args,
             args,
             span,

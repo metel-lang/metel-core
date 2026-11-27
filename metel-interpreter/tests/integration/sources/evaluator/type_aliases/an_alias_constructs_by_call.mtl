@@ -1,0 +1,14 @@
+// RFC-0100 section 2 (metel-core#2199): a type alias exposes its type as a construction target, so
+// `Alias(args)` builds the type the alias names.
+struct Point { x: i64, y: i64 }
+type P := Point;
+
+fun origin() -> P {
+    P(x = 0, y = 0)
+}
+
+fun main() {
+    let p := P(x = 3, y = 4);
+    assert(p.x + p.y == 7);
+    assert(origin().y == 0);
+}

@@ -1,0 +1,5 @@
+[options]
+spec = ["spec.declarations.enums.variant-construction.legality-1"]
+
+[expect]
+status = "success"

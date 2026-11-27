@@ -1,0 +1,7 @@
+// RFC-0100 section 7 (metel-core#2201): a qualified call naming a variant the enum lacks is reported as
+// the equivalent brace literal reports it, not as a call to an unknown function.
+enum Shape { Circle { radius: i64 } }
+
+fun main() {
+    let s := Shape::Triangle(side = 1);
+}

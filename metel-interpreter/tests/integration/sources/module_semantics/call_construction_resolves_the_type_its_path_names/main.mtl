@@ -1,0 +1,22 @@
+// RFC-0100 (metel-core#2199/#2201): a construction call builds the type its path names, by identity --
+// two same-named structs from two glob imports, a struct named only through its module prefix, and
+// the core `Option` where the module declares its own -- exactly as the brace form does.
+import alpha::*;
+import beta::*;
+
+enum Option { Maybe, Not }
+
+fun main() {
+    let a := alpha::Widget(id = 1);
+    let b := beta::Widget(id = 2);
+    assert(a.kind() == "alpha");
+    assert(b.kind() == "beta");
+
+    let c := alpha::Counter(n = 3);
+    assert(c.n == 3);
+
+    let core := std::core::Option::Some(value = 4);
+    assert(core.unwrap_or(0) == 4);
+    let own := Option::Maybe;
+    match (own) { Option::Maybe => assert(true), Option::Not => assert(false), }
+}

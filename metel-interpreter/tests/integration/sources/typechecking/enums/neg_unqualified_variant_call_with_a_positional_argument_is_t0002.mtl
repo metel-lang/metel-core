@@ -1,0 +1,7 @@
+// RFC-0100 section 7 (metel-core#2201): an unqualified variant call names each field -- its enum, and
+// so its declaration order, is known only once the expected type is.
+enum Shape { Square { side: i64 } }
+
+fun main() {
+    let shape: Shape := Square(2);
+}

@@ -1929,6 +1929,8 @@ impl BodyFreezer<'_, '_> {
         span: &Span,
         ty: &AbstractType,
     ) -> Result<Option<Vec<(String, Expr)>>, String> {
+        use super::super::super::construction_call::{CalleeShape, callee_shape};
+        use super::super::super::keyword_binding::{ConstructionFields, construction_fields};
         if self.facts.definition_call_types().get(span).is_some() {
             return Ok(None);
         }
@@ -1940,21 +1942,31 @@ impl BodyFreezer<'_, '_> {
         let Some(id) = identity else {
             return Ok(None);
         };
-        let (name, field_names): (String, Vec<String>) =
+        // The constructed type is read off the call's own solved type; the callee only names the
+        // variant, in whichever shape path normalization left it.
+        let shape = callee_shape(callee);
+        let (name, field_names): (&str, Vec<String>) =
             if let Some(fields) = self.registry.raw_struct_env().get(&id) {
+                let name = match shape {
+                    Some(CalleeShape::Name { name, .. }) => name,
+                    _ => "",
+                };
                 (
-                    super::super::super::overload::callee_name(callee)
-                        .unwrap_or_default()
-                        .to_string(),
+                    name,
                     fields.iter().map(|field| field.name.clone()).collect(),
                 )
-            } else if let Expr::Path(segments, ..) = callee
-                && let Some(variant) = segments.last()
+            } else if let Some(
+                CalleeShape::Name { name: variant, .. }
+                | CalleeShape::Member {
+                    member: variant, ..
+                }
+                | CalleeShape::UnitVariant { variant, .. },
+            ) = shape
                 && let Some(info) = self.registry.enum_info_by_id(id)
-                && let Some(found) = info.variants.iter().find(|v| &v.name == variant)
+                && let Some(found) = info.variants.iter().find(|v| v.name == variant)
             {
                 (
-                    variant.clone(),
+                    variant,
                     found
                         .fields
                         .iter()
@@ -1964,9 +1976,14 @@ impl BodyFreezer<'_, '_> {
             } else {
                 return Ok(None);
             };
-        super::super::super::keyword_binding::construction_fields(&name, &field_names, args, span)
-            .map(Some)
-            .map_err(|error| error.to_string())
+        construction_fields(
+            name,
+            &ConstructionFields::Declared(&field_names),
+            args,
+            span,
+        )
+        .map(Some)
+        .map_err(|error| error.to_string())
     }
 
     fn struct_literal(&self, fields: &[(String, Expr)]) -> Result<AbstractExprKind, String> {

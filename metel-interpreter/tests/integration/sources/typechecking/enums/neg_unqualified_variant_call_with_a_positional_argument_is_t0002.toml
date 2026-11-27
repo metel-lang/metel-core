@@ -1,0 +1,8 @@
+[options]
+spec = ["spec.declarations.enums.variant-construction.legality-1"]
+error = ["T0002"]
+
+[expect]
+status = "typecheck_error"
+code = "T0002"
+contains = "an unqualified variant call names each field"

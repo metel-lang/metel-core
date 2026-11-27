@@ -761,94 +761,28 @@ fn infer_expr_inner(
             type_args,
             args,
             span,
-        } if super::super::overload::callee_name(callee)
-            .is_some_and(|name| ctx.get_struct_fields(name).is_some()) =>
-        {
-            // RFC-0100 sections 2/5/6 (metel-core#2199): a call whose callee names a struct
-            // constructs it instead of invoking a function. The unified namespace
-            // (metel-core#2198) guarantees a name is never both, so this check alone decides
-            // which -- checked ahead of the keyword-call and overload arms below, which
-            // otherwise assume any callee they see is a function value. Bind the call's
-            // positional/keyword arguments to the struct's declared field names (the same rule
-            // RFC-0223 uses for function parameters, `keyword_binding::bind_arguments`) and
-            // infer a synthesized `Expr::StructLiteral` -- exactly the AST node a user writing
-            // `T { field = value, .. }` would produce -- instead of duplicating struct-literal
-            // inference here.
-            let name = super::super::overload::callee_name(callee).unwrap();
-            let field_names: Vec<String> = ctx
-                .get_struct_fields(name)
-                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-                .unwrap_or_default();
-            let fields =
-                super::super::keyword_binding::construction_fields(name, &field_names, args, span)?;
-            let synthetic = Expr::StructLiteral {
-                path: vec![name.to_string()],
-                fields,
-                symbol_id: None,
-                span: span.clone(),
-            };
-            // `Pair::<i64>(1, 2)`: explicit type arguments have no struct-literal equivalent;
-            // threaded through as a direct constraint on the inferred type instead.
+        } if let Some(construction) = inferred_construction(callee, ctx) => {
+            // RFC-0100 (metel-core#2199/#2201): a call that constructs a struct or a variant is
+            // inferred as the brace literal it is equivalent to (`construction_call`) -- checked
+            // ahead of the keyword-call and overload arms below, which assume any callee they see
+            // is a function value.
+            let synthetic = construction.literal(callee, args, span)?;
             let result = infer_expr(&synthetic, ctx, fun_generalizations)?;
-            if !type_args.is_empty() {
+            // `Pair::<i64>(1, 2)`: explicit type arguments have no brace-literal equivalent, so
+            // they constrain the inferred type directly.
+            if !type_args.is_empty()
+                && let Some(type_name) = construction.type_name()
+            {
                 let resolved_args: Vec<InferType> = type_args
                     .iter()
                     .map(crate::pipeline::type_checking::conversions::type_expr_to_infer)
                     .collect();
-                let type_id = ctx
-                    .registry()
-                    .resolve_type_id(ctx.current_module_path(), name);
+                let type_id = construction.symbol_id.or_else(|| {
+                    ctx.registry()
+                        .resolve_type_id(ctx.current_module_path(), type_name)
+                });
                 let expected = InferType::Named(
-                    name.to_string(),
-                    resolved_args,
-                    crate::data::types::NominalId(type_id),
-                );
-                ctx.add_constraint(result.clone(), expected, span.clone());
-            }
-            Ok(result)
-        }
-        Expr::Call {
-            callee,
-            type_args,
-            args,
-            span,
-        } if let Expr::Path(segments, _, _) = callee.as_ref()
-            && let [enum_name, variant_name] = segments.as_slice()
-            && ctx.get_variant_fields(enum_name, variant_name).is_some() =>
-        {
-            // RFC-0100 section 7a (metel-core#2201): a qualified call naming an enum variant
-            // constructs it, the same way a bare struct-name call constructs a struct
-            // (metel-core#2199) above. The path normalizer leaves a local `Enum::Variant`
-            // path as an unresolved two-segment `Expr::Path` (it only rewrites
-            // module-qualified paths), so this matches the raw path directly rather than
-            // going through `callee_name`, which only handles `Ident`/`ResolvedPath`.
-            let field_names: Vec<String> = ctx
-                .get_variant_fields(enum_name, variant_name)
-                .map(|fields| fields.iter().map(|f| f.name.clone()).collect())
-                .unwrap_or_default();
-            let fields = super::super::keyword_binding::construction_fields(
-                variant_name,
-                &field_names,
-                args,
-                span,
-            )?;
-            let synthetic = Expr::StructLiteral {
-                path: vec![enum_name.clone(), variant_name.clone()],
-                fields,
-                symbol_id: None,
-                span: span.clone(),
-            };
-            let result = infer_expr(&synthetic, ctx, fun_generalizations)?;
-            if !type_args.is_empty() {
-                let resolved_args: Vec<InferType> = type_args
-                    .iter()
-                    .map(crate::pipeline::type_checking::conversions::type_expr_to_infer)
-                    .collect();
-                let type_id = ctx
-                    .registry()
-                    .resolve_type_id(ctx.current_module_path(), enum_name);
-                let expected = InferType::Named(
-                    enum_name.clone(),
+                    type_name.to_string(),
                     resolved_args,
                     crate::data::types::NominalId(type_id),
                 );
@@ -3334,6 +3268,101 @@ fn infer_record_method_call_with_scheme(
 
 /// `module::Type::member` used as a value, where the path normalizer has already identified the
 /// type its module prefix names (metel-core#1683). Looks the member up by that type's identity.
+/// Whether a call constructs a struct or a variant (RFC-0100 sections 2, 5 and 7), and as what
+/// brace literal, decided from what inference can look up. The construction pass decides the same
+/// way from its own context (`construction::calls::construction_of`).
+fn inferred_construction(
+    callee: &Expr,
+    ctx: &InferContext,
+) -> Option<super::super::construction_call::Construction> {
+    use super::super::construction_call::{CalleeShape, Construction, Fields, callee_shape};
+    let names = |fields: &Vec<crate::pipeline::type_checking::type_engine::FieldEntry>| {
+        fields.iter().map(|f| f.name.clone()).collect::<Vec<_>>()
+    };
+    let registry = ctx.registry();
+    let module = ctx.current_module_path();
+    match callee_shape(callee)? {
+        CalleeShape::Name { name, symbol_id } => {
+            let declared = match symbol_id {
+                Some(id) => registry.raw_struct_env().get(&id).map(names),
+                None => ctx.get_struct_fields(name).map(names),
+            };
+            if let Some(declared) = declared {
+                return Some(Construction {
+                    path: vec![name.to_string()],
+                    symbol_id,
+                    fields: Fields::Declared(declared),
+                });
+            }
+            // An unqualified variant, resolved against the expected type (RFC-0111) -- unless a
+            // lexical binding of the name takes precedence (RFC-0100 section 7).
+            (symbol_id.is_none() && !ctx.binds_value(name) && registry.has_variant_named(name))
+                .then(|| Construction {
+                    path: vec![name.to_string()],
+                    symbol_id: None,
+                    fields: Fields::Unqualified,
+                })
+        }
+        CalleeShape::Member {
+            type_name,
+            member,
+            path_span,
+        } => {
+            let qualified = registry
+                .qualified_path(module, path_span)
+                .map(|path| path.type_id);
+            let static_member = qualified.map_or_else(
+                || ctx.get_method_type(type_name, member).is_some(),
+                |id| {
+                    registry.method_type_by_id(id, member).is_some()
+                        || registry.method_scheme_by_id(id, member).is_some()
+                },
+            ) || ctx.binds_value(&format!("{type_name}::{member}"));
+            let info = match qualified {
+                Some(id) => registry.enum_info_by_id(id),
+                None => registry.enum_info(module, type_name),
+            };
+            let fields = match info {
+                Some(info) => match info.variants.iter().find(|v| v.name == member) {
+                    Some(variant) => Fields::Declared(names(&variant.fields)),
+                    None if static_member => return None,
+                    None => Fields::Unknown,
+                },
+                // Not an enum: a static member of some other type (`Point::origin`,
+                // `List::new`). A path naming no type at all is left to the brace literal, which
+                // reports the unknown enum exactly as the brace form would.
+                None if static_member
+                    || qualified.is_some()
+                    || registry.resolve_type_id(module, type_name).is_some() =>
+                {
+                    return None;
+                }
+                None => Fields::Unknown,
+            };
+            Some(Construction {
+                path: vec![type_name.to_string(), member.to_string()],
+                symbol_id: qualified,
+                fields,
+            })
+        }
+        CalleeShape::UnitVariant {
+            enum_name,
+            variant,
+            symbol_id,
+        } => {
+            let declared = symbol_id
+                .and_then(|id| registry.enum_info_by_id(id))
+                .and_then(|info| info.variants.iter().find(|v| v.name == variant))
+                .map(|found| names(&found.fields));
+            Some(Construction {
+                path: vec![enum_name.to_string(), variant.to_string()],
+                symbol_id,
+                fields: declared.map_or(Fields::Unknown, Fields::Declared),
+            })
+        }
+    }
+}
+
 fn infer_qualified_type_member(
     qualified: &crate::pipeline::name_resolution::name_resolver::QualifiedPath,
     type_name: &str,
