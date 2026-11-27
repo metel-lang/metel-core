@@ -3,6 +3,7 @@ prelude = "empty"
 [options]
 arch_verifies = ["arch.type-construction.requirement-8"]
 error = ["T0003"]
+spec = ["spec.modules.visibility.legality-9"]
 
 [expect]
 status = "typecheck_error"
