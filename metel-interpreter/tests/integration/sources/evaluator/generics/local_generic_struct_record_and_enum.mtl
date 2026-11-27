@@ -22,7 +22,7 @@ fun main() {
 
     // A parameter no field mentions comes from the expected type.
     record Marker<T> {}
-    let m: Marker<i64> := Marker {};
+    let m: Marker<i64> := Marker();
 
     enum Opt<T> { Some { value: T }, None }
     var got := 0;

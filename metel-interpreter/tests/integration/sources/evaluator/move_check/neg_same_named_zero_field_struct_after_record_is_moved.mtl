@@ -4,7 +4,7 @@
 // is identified by its own declaration, not by name and fields, so `b` is judged as a struct.
 fun a() -> i64 {
     record E {}
-    let e := E {};
+    let e := E();
     let u := e;
     let v := e;
     0
@@ -12,7 +12,7 @@ fun a() -> i64 {
 
 fun b() -> i64 {
     struct E {}
-    let e := E {};
+    let e := E();
     let u := e;
     let v := e;
     0

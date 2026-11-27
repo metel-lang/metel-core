@@ -44,7 +44,7 @@ fun main() {
     let owned := binding(["first".to_string(), "second".to_string()]);
     assert(owned.len() == 2);
     assert(arguments(["a".to_string(), "b".to_string()]).len() == 2);
-    let sink := Sink {};
+    let sink := Sink();
     assert(method_argument(&sink, ["a".to_string(), "b".to_string()]).len() == 2);
     let receiver := receivers(["a".to_string(), "b".to_string()]);
     assert(borrowed_receiver(&receiver) == 2);

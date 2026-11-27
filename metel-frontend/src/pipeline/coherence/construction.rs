@@ -38,6 +38,7 @@ pub(super) fn check(graph: &NormalizedModuleGraph) -> Result<(), MetelError> {
     for module in graph.modules() {
         let checker = Checker {
             names,
+            unit_variant_values: &graph.unit_variant_values,
             module: &module.module_path,
             variants: enum_variants(names, &module.module_path, &module.program.decls),
         };
@@ -75,6 +76,7 @@ fn enum_variants(
 
 struct Checker<'a> {
     names: &'a ResolvedNames,
+    unit_variant_values: &'a HashSet<(String, usize, usize)>,
     module: &'a [String],
     variants: HashMap<TypeIdentity, HashSet<String>>,
 }
@@ -172,11 +174,15 @@ impl Checker<'_> {
         else {
             return Ok(());
         };
-        // A literal that initializes no field -- `Flag::On {}`, `Empty {}` -- builds nothing from
-        // fields: it is the same value as the bare `Flag::On` or `Empty` (RFC-0106), legal anywhere,
-        // and path normalization represents a qualified unit variant this way. Only a literal that
-        // builds a value from its fields is privileged.
-        if fields.is_empty() {
+        // Path normalization rewrites a bare qualified unit-variant path (`lib::Kind::A`) to a
+        // field-less literal; that literal was not written, and the bare form is legal anywhere.
+        // A field-less literal that was written (`Empty {}`, `Flag::On {}`) is held to the rule
+        // like any other.
+        if fields.is_empty()
+            && self
+                .unit_variant_values
+                .contains(&(span.filename.clone(), span.start, span.end))
+        {
             return Ok(());
         }
         // `Self` that survived to here was written outside any `extend` block.

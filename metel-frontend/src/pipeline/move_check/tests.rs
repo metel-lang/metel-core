@@ -5295,8 +5295,8 @@ fun main() { assert(a() == 0); assert(b() == 2); }
 fn a_non_copy_zero_field_struct_is_moved_even_if_an_earlier_zero_field_record_has_its_name() {
     let violations = assert_has_violation(
         r#"
-fun a() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
-fun b() -> i64 { struct E {} let e := E {}; let u := e; let v := e; 0 }
+fun a() -> i64 { record E {} let e := E(); let u := e; let v := e; 0 }
+fun b() -> i64 { struct E {} let e := E(); let u := e; let v := e; 0 }
 fun main() { assert(a() == 0); assert(b() == 0); }
 "#,
         "e",
@@ -5309,8 +5309,8 @@ fun main() { assert(a() == 0); assert(b() == 0); }
 fn a_copy_zero_field_record_is_copied_even_if_an_earlier_zero_field_struct_has_its_name() {
     assert_no_violations(
         r#"
-fun a() -> i64 { struct E {} let e := E {}; let u := e; 0 }
-fun b() -> i64 { record E {} let e := E {}; let u := e; let v := e; 0 }
+fun a() -> i64 { struct E {} let e := E(); let u := e; 0 }
+fun b() -> i64 { record E {} let e := E(); let u := e; let v := e; 0 }
 fun main() { assert(a() == 0); assert(b() == 0); }
 "#,
     );

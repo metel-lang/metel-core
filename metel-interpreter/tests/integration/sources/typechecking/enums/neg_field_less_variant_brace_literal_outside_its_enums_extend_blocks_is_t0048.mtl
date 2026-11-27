@@ -1,0 +1,9 @@
+// RFC-0100 section 3 (metel-core#2200): a field-less variant brace literal is privileged like any
+// other; outside the enum's `extend` blocks the variant is written bare or by call.
+enum Flag { On {}, Off }
+
+fun main() {
+    let a := Flag::On;
+    let b := Flag::On();
+    let c := Flag::On {};
+}

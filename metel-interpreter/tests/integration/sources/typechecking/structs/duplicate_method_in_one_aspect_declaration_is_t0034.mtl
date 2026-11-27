@@ -5,4 +5,4 @@ aspect Tag {
 }
 struct S {}
 extend S: Tag { fun t(&self) -> i64 { 1 } }
-fun main() { let s := S {}; println("${s.t()}"); }
+fun main() { let s := S(); println("${s.t()}"); }
