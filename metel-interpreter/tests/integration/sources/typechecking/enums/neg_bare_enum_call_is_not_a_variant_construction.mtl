@@ -1,0 +1,6 @@
+// metel-core#2201 (RFC-0100 section 7a): an unqualified enum type name does not identify a
+// variant -- Message(1) is not a variant construction, so `Message` is just an undefined name.
+enum Message { Number { value: i64 } }
+fun main() {
+    let a := Message(1);
+}
