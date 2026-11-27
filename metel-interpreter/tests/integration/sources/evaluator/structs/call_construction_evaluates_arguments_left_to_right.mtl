@@ -1,0 +1,13 @@
+// RFC-0100 (metel-core#2199): construction arguments evaluate left to right, then the
+// canonical construction operation runs on the complete, ordered field row.
+struct Pair { a: i64, b: i64 }
+fun next(counter: &var i64) -> i64 {
+    *counter += 1;
+    *counter
+}
+fun main() {
+    var counter := 0;
+    let pair := Pair(a = next(&var counter), b = next(&var counter));
+    assert(pair.a == 1);
+    assert(pair.b == 2);
+}
