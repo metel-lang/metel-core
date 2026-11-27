@@ -1,0 +1,19 @@
+// RFC-0100 section 1: a type position resolves in the type namespace. A local value named `Point`
+// does not change what `Point` means in an annotation, a pattern head, a brace-literal head or a
+// `Type::member` path.
+struct Point { x: i64 }
+
+extend Point {
+    fun at(x: i64) -> Point {
+        let Point := x + 1;
+        Point { x = Point }
+    }
+}
+
+fun main() {
+    let Point := 7;
+    let q: Point := Point::at(Point);
+    let got := match (q) { Point { x } => x };
+    assert(got == 8);
+    assert(Point == 7);
+}
